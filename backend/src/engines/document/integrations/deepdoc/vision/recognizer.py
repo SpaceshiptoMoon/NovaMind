@@ -27,14 +27,23 @@ _SESSION_CACHE: dict[str, tuple[Any, Any]] = {}  # path -> (InferenceSession, Ru
 
 
 class Recognizer:
+    """ONNX 检测模型基类：封装 preprocess → 批量推理 → postprocess 主链与几何工具箱。
+
+    版面识别（layout）与表格结构识别（tsr）继承本类；检测输出统一为
+    [{"type", "bbox", "score"}]，bbox 为 [x0, top, x1, bottom] 原图像素坐标。
+    推理 session 按模型文件路径做模块级缓存，跨实例共享（session 线程安全）；
+    labels/input_shape 等包装状态仍为各实例独立。
+    """
     @staticmethod
     def _import_cv2():
+        """惰性导入 cv2（重依赖延迟到真实推理时才加载）。"""
         import cv2
 
         return cv2
 
     @staticmethod
     def _import_onnxruntime():
+        """惰性导入 onnxruntime。"""
         import onnxruntime as ort
 
         return ort
@@ -48,6 +57,15 @@ class Recognizer:
         model_filename: str | None = None,
         autoload: bool = False,
     ):
+        """初始化识别器元数据，默认不加载模型文件。
+
+        Args:
+            labels: 类别标签表，索引与模型输出类别 id 对应。
+            domain: 模型域标识（layout/tsr 等），用于日志与模型文件名默认值。
+            model_dir: ONNX 模型文件所在目录；None 表示仅在显式配置时加载。
+            model_filename: 模型文件名，默认 ``<domain>.onnx``。
+            autoload: 是否立即调用 load() 加载模型。
+        """
         self.labels = list(labels or [])
         self.domain = domain or "recognizer"
         self.model_dir = Path(model_dir) if model_dir is not None else None
@@ -65,6 +83,16 @@ class Recognizer:
             self.load()
 
     def load(self):
+        """加载 ONNX session（按模型路径模块级缓存，重复加载直接复用）。
+
+        layout / tsr 域先做模型文件完整性检查，缺文件直接抛错（此处不触发联网下载）。
+
+        Returns:
+            self，支持链式调用。
+
+        Raises:
+            FileNotFoundError: 模型文件不存在。
+        """
         _logger.info("DeepDoc 识别器模型开始加载", domain=self.domain, model_filename=self.model_filename)
         ort = self._import_onnxruntime()
         if self.domain in {"layout", "tsr"}:
@@ -106,15 +134,23 @@ class Recognizer:
         return self
 
     def ensure_loaded(self):
+        """断言模型已加载，否则抛出 RuntimeError 并提示期望的模型路径。"""
         if not self.loaded or self.ort_sess is None or self.input_name is None:
             raise RuntimeError(f"DeepDoc recognizer '{self.domain}' is not loaded. Expected model file '{self.model_filename}' under '{self.model_dir}'.")
 
     def _resolve_model_path(self) -> Path | None:
+        """拼接 model_dir 与 model_filename 得到模型文件路径（配置不全时为 None）。"""
         if self.model_dir is None or self.model_filename is None:
             return None
         return self.model_dir / self.model_filename
 
     def create_inputs(self, imgs, im_info):
+        """组装 PaddleDetection 风格的模型输入 feed。
+
+        单图直接走 (1, C, H, W) 通道；多图按批内最大高宽零填充成批，
+        im_shape / scale_factor 记录各图缩放后形状与缩放比，供 postprocess 把
+        检测框映射回原图像素坐标。
+        """
         inputs: dict[str, Any] = {}
         if len(imgs) == 1:
             inputs["image"] = np.array((imgs[0],)).astype("float32")
@@ -140,6 +176,18 @@ class Recognizer:
         return inputs
 
     def preprocess(self, image_list):
+        """批量图像预处理，按模型接口族产出输入张量。
+
+        两条分支：
+        - PaddleDetection 风格（模型输入含 scale_factor）：LinearResize → 标准化 →
+          CHW → PadStride(32)，逐图经 create_inputs 组装；
+        - 固定输入（input_shape 如 640×640）：灰度扩三通道、RGBA 丢 alpha、
+          BGR→RGB、resize 到 input_shape、/255、CHW；scale_factor 记录
+          原图尺寸/模型输入尺寸，供 postprocess 映射回原图坐标。
+
+        Args:
+            image_list: 本批图像列表（HWC ndarray 或可转 ndarray 的对象）。
+        """
         self.ensure_loaded()
         inputs = []
         if "scale_factor" in self.input_names:
@@ -181,6 +229,7 @@ class Recognizer:
         return inputs
 
     def _run_model_batch(self, batch_inputs):
+        """以模型输入名为 feed dict 跑一次推理（支持 ndarray 与输入 dict 两种形态）。"""
         self.ensure_loaded()
         assert self.ort_sess is not None
         if isinstance(batch_inputs, np.ndarray):
@@ -190,6 +239,23 @@ class Recognizer:
         return self.ort_sess.run(None, feed_dict, self.run_options)
 
     def postprocess(self, boxes, inputs, thr):
+        """把模型原始输出解析为检测框。
+
+        两条分支：
+        - PaddleDetection 风格：输出为 N×6 [类别id, 置信度, x0, top, x1, bottom]，
+          坐标已是原图像素（模型图内部用 scale_factor 映射回），按阈值过滤后回填标签；
+        - 固定输入风格（YOLO 系导出）：输出为 [cx, cy, w, h, 各类得分...]，先按
+          得分过滤，再解码 xywh→xyxy 并经 scale_factor 映射回原图像素，最后按类别
+          做贪心 NMS（IoU>0.2 抑制）。
+
+        Args:
+            boxes: 模型原始输出张量。
+            inputs: preprocess 产出的输入 dict（取 scale_factor 做坐标映射回）。
+            thr: 置信度阈值，低于该值的框丢弃。
+
+        Returns:
+            [{"type": 小写类别名, "bbox": [x0, top, x1, bottom]（原图像素）, "score": 置信度}]。
+        """
         if "scale_factor" in self.input_names:
             result = []
             for box in boxes:
@@ -255,6 +321,7 @@ class Recognizer:
 
     @staticmethod
     def sort_Y_firstly(arr, threshold):
+        """按 top 升序为主排序，top 差小于阈值时改比 x0（同行内横排）。"""
         def cmp(c1, c2):
             diff = c1["top"] - c2["top"]
             if abs(diff) < threshold:
@@ -265,6 +332,7 @@ class Recognizer:
 
     @staticmethod
     def sort_X_firstly(arr, threshold):
+        """按 x0 升序为主排序，差小于阈值时改比 top（同列内纵排）。"""
         def cmp(c1, c2):
             diff = c1["x0"] - c2["x0"]
             if abs(diff) < threshold:
@@ -275,6 +343,7 @@ class Recognizer:
 
     @staticmethod
     def sort_C_firstly(arr, thr=0):
+        """先按 X 排序，再按 C（列号）属性冒泡整理：列号升序、同列按 top（列优先阅读序）。"""
         arr = Recognizer.sort_X_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
@@ -286,6 +355,7 @@ class Recognizer:
 
     @staticmethod
     def sort_R_firstly(arr, thr=0):
+        """先按 Y 排序，再按 R（行号）属性冒泡整理：行号升序、同行按 x0（行优先阅读序）。"""
         arr = Recognizer.sort_Y_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
@@ -297,6 +367,11 @@ class Recognizer:
 
     @staticmethod
     def overlapped_area(a, b, ratio=True):
+        """计算 a 与 b 的交集面积。
+
+        ratio=True 时返回交集占 a 自身面积的比例（0~1）；ratio=False 时返回像素面积。
+        x 或 y 投影不相交时返回 0。
+        """
         top, bottom, x0, x1 = a["top"], a["bottom"], a["x0"], a["x1"]
         if b["x0"] > x1 or b["x1"] < x0:
             return 0
@@ -313,6 +388,18 @@ class Recognizer:
 
     @staticmethod
     def layouts_cleanup(boxes, layouts, far=2, thr=0.7):
+        """去重同类且相互重叠的版面区域。
+
+        索引相邻（距离 < far）的同类型区域，任一方向被对方覆盖比例 ≥ thr 即判为
+        重复检出：双方都有 score 时弃分低者；否则统计区域内 OCR 框覆盖面积，弃
+        覆盖小者。layouts 原地修改并返回。
+
+        Args:
+            boxes: 该页 OCR 框列表（无 score 兜底时用于估算区域内容覆盖）。
+            layouts: 待去重的版面区域列表。
+            far: 配对的最大索引距离。
+            thr: 覆盖比例阈值。
+        """
         def not_overlapped(a, b):
             return any([a["x1"] < b["x0"], a["x0"] > b["x1"], a["bottom"] < b["top"], a["top"] > b["bottom"]])
 
@@ -350,6 +437,18 @@ class Recognizer:
 
     @staticmethod
     def find_overlapped(box, boxes_sorted_by_y, naive=False):
+        """在按 top 升序排列的候选框中找被 box 覆盖比例最大者。
+
+        默认先按 y 投影二分收窄窗口再线性扫描；naive=True 时跳过二分直接全扫。
+
+        Args:
+            box: 目标框。
+            boxes_sorted_by_y: 已按 top 升序排列的候选框。
+            naive: 是否跳过二分收窄。
+
+        Returns:
+            覆盖比例最大候选的下标；候选列表为空或无任何重叠时返回 None。
+        """
         if not boxes_sorted_by_y:
             return None
         boxes = boxes_sorted_by_y
@@ -384,6 +483,12 @@ class Recognizer:
 
     @staticmethod
     def find_horizontally_tightest_fit(box, boxes):
+        """找与 box 同 layoutno 且水平方向最贴合的候选（x0 左缘差、x1 右缘差、中线
+        偏移三者最小）。
+
+        Returns:
+            最优候选下标；候选列表为空或无同 layoutno 候选时返回 None。
+        """
         if not boxes:
             return None
         min_distance, min_index = 1000000, None
@@ -402,6 +507,10 @@ class Recognizer:
 
     @staticmethod
     def find_overlapped_with_threshold(box, boxes: Sequence[dict], thr=0.3):
+        """找与 box 覆盖比例首个达到 thr 的候选（同为正向覆盖时取反向覆盖更大者）。
+
+        比较语义为 (正向覆盖, 反向覆盖) 元组字典序；候选列表为空或无达标者返回 None。
+        """
         if not boxes:
             return None
         max_overlapped_i, max_overlapped, reverse_overlapped = None, thr, 0
@@ -420,9 +529,15 @@ class Recognizer:
         # subclasses that override __call__ with a fuller pipeline signature
         # (e.g. LayoutRecognizer.__call__ needs ocr_res) do not dispatch here.
         # Mirrors upstream RAGFlow's LayoutRecognizer.forward = super().__call__.
+        """纯检测主链（preprocess → 批量推理 → postprocess）。
+
+        显式委托基类 __call__：子类若以更全的管线签名覆写 __call__
+        （如 LayoutRecognizer.__call__ 需要接收 ocr_res），不会误派发到子类实现。
+        """
         return Recognizer.__call__(self, image_list, thr=thr, batch_size=batch_size)
 
     def close(self):
+        """丢弃本实例的 session 引用并触发 GC；session 为模块缓存共享时，最后一个引用释放后才真正回收内存。"""
         logging.info("Close recognizer.")
         if hasattr(self, "ort_sess"):
             del self.ort_sess
@@ -431,6 +546,16 @@ class Recognizer:
         gc.collect()
 
     def __call__(self, image_list, thr=0.7, batch_size=16):
+        """批量主链：按 batch_size 切批 → preprocess → 推理 → postprocess。
+
+        Args:
+            image_list: 页面图像列表（HWC ndarray）。
+            thr: 置信度阈值，透传给 postprocess。
+            batch_size: 每批图像数；切批只控制单次推理内存峰值，结果按原顺序拼接。
+
+        Returns:
+            每页一个检测框列表（顺序与输入一致）；模型空输出时该页为 []。
+        """
         self.ensure_loaded()
         results = []
         images = []
@@ -458,4 +583,5 @@ class Recognizer:
         return results
 
     def __del__(self):
+        """析构时触发 close() 释放资源。"""
         self.close()

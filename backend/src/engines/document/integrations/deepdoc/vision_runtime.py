@@ -33,20 +33,30 @@ VISION_RUNTIME_DEPENDENCIES = (
 
 
 class DeepDocVisionRuntimeUnavailable(RuntimeError):
+    """视觉运行时依赖缺失异常（missing 带缺失包清单）。"""
     def __init__(self, *, missing: list[str], message: str | None = None):
+        """记录缺失依赖清单并生成含缺失项的消息。"""
         self.missing = list(missing)
         super().__init__(message or self._build_message())
 
     def _build_message(self) -> str:
+        """按缺失清单拼装错误消息。"""
         joined = ", ".join(self.missing) if self.missing else "unknown dependencies"
         return f"DeepDoc vision runtime is unavailable: missing {joined}"
 
 
 class DeepDocVisionParserUnavailable(RuntimeError):
+    """运行时可用但解析器实现不就绪（vendored 包不完整）异常。"""
     pass
 
 
 def get_vision_runtime_status() -> dict[str, Any]:
+    """视觉运行时完整状态：依赖/模型三组/公式模型/实现就绪度。
+    
+    Returns:
+        dict：available/missing_required/package_status/model_status/
+        parser_available/ocr|layout|tsr_models_available/formula_model_status。
+    """
     runtime_report = get_deepdoc_runtime_report()
     required_missing = get_missing_runtime_dependencies(*VISION_RUNTIME_DEPENDENCIES)
     available = not required_missing
@@ -79,6 +89,12 @@ def get_vision_runtime_status() -> dict[str, Any]:
 
 
 def get_vision_health_status() -> dict[str, Any]:
+    """健康检查摘要：各能力是否可执行的布尔判定。
+    
+    Returns:
+        dict：runtime_available/can_run_vendored_ocr/can_run_layout_inference/
+        can_run_tsr_inference 等能力开关。
+    """
     runtime_status = get_vision_runtime_status()
     return {
         "runtime_available": runtime_status["available"],
@@ -96,6 +112,12 @@ def get_vision_health_status() -> dict[str, Any]:
 
 
 def run_vision_smoke_check() -> dict[str, Any]:
+    """冒烟测试：对 OCR/layout/TSR 逐组件做真实加载与合成图推理。
+    
+    Returns:
+        dict：健康摘要 + load_checks/inference_checks（每项含 attempted/
+        ok/error），供 /health/detailed 暴露端到端可用性。
+    """
     health = get_vision_health_status()
     load_checks = {
         "vendored_ocr_load": {"attempted": False, "ok": False, "error": None},
@@ -136,6 +158,7 @@ def run_vision_smoke_check() -> dict[str, Any]:
 
 
 def _attempt_component_load(component: str) -> dict[str, Any]:
+    """尝试真实实例化组件（autoload 模型加载），异常捕获进结果。"""
     result = {"attempted": True, "ok": False, "error": None}
     try:
         if component == "ocr":
@@ -163,6 +186,7 @@ def _attempt_component_load(component: str) -> dict[str, Any]:
 
 
 def _attempt_component_inference(component: str) -> dict[str, Any]:
+    """用 64x64 合成图跑一次真实推理验证前向链路（异常捕获进结果）。"""
     result = {"attempted": True, "ok": False, "error": None}
     synthetic_image = np.zeros((64, 64, 3), dtype=np.uint8)
     try:
@@ -197,6 +221,11 @@ def _attempt_component_inference(component: str) -> dict[str, Any]:
 
 
 def ensure_vision_runtime_available() -> dict[str, Any]:
+    """断言运行时依赖齐备，返回状态。
+    
+    Raises:
+        DeepDocVisionRuntimeUnavailable: 必需依赖缺失。
+    """
     status = get_vision_runtime_status()
     if not status["available"]:
         raise DeepDocVisionRuntimeUnavailable(missing=status["missing_required"])
@@ -204,6 +233,12 @@ def ensure_vision_runtime_available() -> dict[str, Any]:
 
 
 def ensure_vision_parser_available() -> dict[str, Any]:
+    """断言依赖齐备且解析器实现就绪，返回状态。
+    
+    Raises:
+        DeepDocVisionRuntimeUnavailable: 必需依赖缺失。
+        DeepDocVisionParserUnavailable: 解析器实现不就绪。
+    """
     status = ensure_vision_runtime_available()
     if not status["parser_available"]:
         raise DeepDocVisionParserUnavailable(

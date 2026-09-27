@@ -22,6 +22,7 @@ __all__ = list(_EXPORT_MAP.keys())
 
 
 def __getattr__(name):
+    """按需导入 _EXPORT_MAP 登记的符号（PEP 562 模块级懒加载）。"""
     target = _EXPORT_MAP.get(name)
     if target is None:
         raise AttributeError(name)

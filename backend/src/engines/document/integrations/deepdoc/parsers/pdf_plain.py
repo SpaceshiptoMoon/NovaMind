@@ -21,12 +21,19 @@ logger = get_logger(__name__)
 
 
 class RAGFlowPlainPdfParser:
+    """无 OCR 的轻量 PDF 解析器：pdfplumber 直抽文本，深度档不可用时的降级路径。"""
     def __call__(
         self,
         filename: str | bytes | Path,
         from_page: int = 0,
         to_page: int | None = None,
     ):
+        """按页抽取 PDF 文本流并做 PUA 归一。
+
+        Returns:
+            (lines, tables, outlines) 三元组：lines 为（归一后文本行，页码空串）列表，
+            tables 恒为空列表，outlines 为 PDF 书签标题。
+        """
         lines = []
         outlines = extract_pdf_outlines(filename)
         try:

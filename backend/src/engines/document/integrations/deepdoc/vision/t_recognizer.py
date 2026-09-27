@@ -26,6 +26,18 @@ def run_recognizer_diagnostics(
     threshold: float = 0.5,
     recognizer: Any | None = None,
 ) -> list[dict[str, Any]]:
+    """对图像/PDF 跑 layout / TSR 检测诊断：输出标注图像与 JSON 检测明细。
+
+    Args:
+        inputs: 图像/PDF 文件或目录。
+        output_dir: 输出目录（自动创建）。
+        mode: "layout" 为版面检测，"tsr" 为表格结构检测。
+        threshold: 置信度阈值。
+        recognizer: 外部注入的识别器运行时；None 时内部构建。
+
+    Returns:
+        每个输入的诊断结果 dict（source/image/json/detections）。
+    """
     normalized_mode = mode.lower()
     if normalized_mode not in {"layout", "tsr"}:
         raise ValueError("mode must be 'layout' or 'tsr'")
@@ -59,6 +71,7 @@ def run_recognizer_diagnostics(
 
 
 def _normalize_detection(item: dict[str, Any], mode: str) -> dict[str, Any]:
+    """统一不同输出形态为 {type, score, bbox}（tsr 框取 label 与 x0/top/x1/bottom 字段）。"""
     if mode == "tsr" and "label" in item:
         return {
             "type": str(item["label"]),
@@ -73,6 +86,7 @@ def _normalize_detection(item: dict[str, Any], mode: str) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(description="Run vendored DeepDoc layout/TSR diagnostics")
     parser.add_argument("--inputs", required=True, help="Image/PDF file or directory")
     parser.add_argument("--output_dir", default="./layout_outputs")
@@ -82,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """命令行入口：解析参数后执行 layout/TSR 诊断，返回退出码 0。"""
     args = build_parser().parse_args(argv)
     run_recognizer_diagnostics(
         args.inputs,

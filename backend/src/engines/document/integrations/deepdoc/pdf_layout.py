@@ -19,6 +19,17 @@ class PdfLayoutExtractor:
     """Structured PDF extractor adapted toward RAGFlow's column-aware reading order."""
 
     def extract_page_lines(self, words: Sequence[dict[str, Any]], page_number: int) -> list[dict[str, Any]]:
+        """词级 box 聚行并输出列感知阅读序。
+        
+        Args:
+            words: pdfplumber extract_words 的词级坐标 dict 列表。
+            page_number: 1-based 页码。
+        
+        Returns:
+            行级 dict 列表（page_number/text/x0/x1/top/bottom/col_id），
+            已按 (页, 列, top, x0) 排序；行容差取字符高中位数 0.45 倍，
+            词间隙超过 4 倍平均字宽即断行。
+        """
         if not words:
             return []
 
@@ -79,6 +90,12 @@ class PdfLayoutExtractor:
         return self.final_reading_order(lines)
 
     def assign_columns(self, boxes: Sequence[dict[str, Any]], *, force: bool = False) -> list[dict[str, Any]]:
+        """KMeans 按 x0 起点聚出每页栏数并写 col_id（0-based，左到右）。
+        
+        silhouette 显著性门槛防孤立框过切成多栏；全文档主体栏数一致性
+        回退纠正单页过切（单页 silhouette 显著更高时豁免）。sklearn 不可用
+        或框已带 col_id（force=False）时原样返回/标 0。
+        """
         boxes = [dict(box) for box in boxes]
         if not boxes:
             return boxes
@@ -209,6 +226,7 @@ class PdfLayoutExtractor:
 
     @staticmethod
     def final_reading_order(boxes: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        """阅读序排序键：(页, 列, top, x0)。双栏先左栏全列再右栏。"""
         return sorted(
             boxes,
             key=lambda item: (

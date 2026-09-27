@@ -15,6 +15,7 @@ from novamind.engines.document.integrations.deepdoc.vision.recognizer import Rec
 
 
 def _default_model_dir() -> Path:
+    """模型目录：DEEPDOC_MODEL_DIR 环境变量优先，否则仓库根 ``.cache/deepdoc``。"""
     env_dir = os.getenv("DEEPDOC_MODEL_DIR")
     if env_dir:
         return Path(env_dir)
@@ -23,6 +24,7 @@ def _default_model_dir() -> Path:
 
 
 class TableStructureRecognizer(Recognizer):
+    """表格结构识别器（TSR）：检出表格行列、表头与跨行跨列单元，并重建为 HTML 或描述文本。"""
     labels = [
         "table",
         "table column",
@@ -33,11 +35,20 @@ class TableStructureRecognizer(Recognizer):
     ]
 
     def __init__(self, *, autoload: bool = False):
+        """以 6 类标签表（table/column/row/column header/projected row header/spanning cell）加载 tsr.onnx。"""
         super().__init__(self.labels, domain="tsr", model_dir=_default_model_dir(), autoload=False)
         if autoload:
             self.load()
 
     def normalize_predictions(self, predictions: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
+        """检测输出转几何 dict 形态并对齐同表行列框边界。
+
+        行类框（row/header）：左右缘对齐到均值（>4 个时；少量取极值），使同表
+        各行共享左右边界；列框（table column）：上下缘对齐到中位数（少量取极值）。
+
+        Returns:
+            每表一个框列表 [{label, score, x0, x1, top, bottom}]（渲染图像素坐标）。
+        """
         res = []
         for table in predictions:
             normalized = [
@@ -82,12 +93,14 @@ class TableStructureRecognizer(Recognizer):
         return res
 
     def __call__(self, images, thr=0.2, predictions=None):
+        """主链入口：predictions 未传入时先 forward TSR 检测，再 normalize 后返回。"""
         if predictions is None:
             predictions = self.forward(images, thr=thr)
         return self.normalize_predictions(predictions)
 
     @staticmethod
     def is_caption(box):
+        """判断框是否为表/图题注：文本命中 Figure/Table/图表编号模式，或 layout_type 已带 caption 标记。"""
         patterns = [
             r"(?i)^fig(?:ure)?\.?\s*\d+",
             r"(?i)^table\s+\d+",
@@ -98,6 +111,12 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def blockType(box):
+        """判定单元格内容类型码（供表头行启发式使用）。
+
+        Returns:
+            Dt=日期/年份、Nu=数字、Ca=全大写代号、En=英文单词、NE=数字字母混合、
+            Sg=单字符、Nr=人名（分词器 nr 标记）、Tx/Lx=短/长文本、Ot=其他。
+        """
         patterns = [
             (r"^(20|19)[0-9]{2}[-/][0-9]{1,2}[-/][0-9]{1,2}$", "Dt"),
             (r"^(20|19)[0-9]{2}$", "Dt"),
@@ -121,6 +140,25 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def construct_table(boxes, is_english=False, html=True, **kwargs):
+        """由 TSR 行列检测结果重建表格：题注提取 → 行列分组 → 退化行列合并 →
+        表头判定 → 跨格合并 → HTML/描述输出。
+
+        输入框携带调用方写入的几何属性：R/C（行/列预测号）、R_top/R_bott 与
+        C_left/C_right（行/列边界像素坐标）、H（表头命中），可选 SP +
+        H_left/H_right/H_top/H_bott（跨行跨列单元边界）。单元格先经
+        sort_R_firstly 分行、sort_C_firstly 分列（跨页表退化为 sort_X_firstly），
+        再把「整行/列仅单个非空单元」的退化列/行并入有文本的邻侧；表头单元格
+        占比过半的行视为表头行；最后 __cal_spans 合并跨格，经 __html_table
+        （html=True）或 __desc_table 输出。
+
+        Args:
+            boxes: 单元格文本框（含上述几何属性）；内部复制操作，不改输入。
+            is_english: 英文表，影响题注拼接与描述措辞。
+            html: True 输出 HTML <table> 字符串；False 输出「表头: 单元格」描述行列表。
+
+        Returns:
+            HTML 字符串或描述文本列表；无有效单元格时返回 []。
+        """
         boxes = [dict(box) for box in boxes]
         caption = ""
         i = 0
@@ -312,6 +350,7 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def __html_table(caption, header_rows, table):
+        """单元格矩阵拼 HTML 字符串：表头行用 <th>，跨格带 colspan/rowspan，格内按 Y 排序拼接。"""
         html = "<table>"
         if caption:
             html += f"<caption>{caption}</caption>"
@@ -346,6 +385,7 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def __desc_table(caption, header_row_numbers, table, is_english):
+        """单元格矩阵拼描述文本行：每行「表头: 单元格; ...」，行尾追加表名。"""
         column_count = len(table[0])
         row_count = len(table)
         headers = {}
@@ -409,6 +449,7 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def __cal_spans(boxes, rows, cols, table, html=True):
+        """为跨行跨列单元计算 colspan/rowspan：SP 单元扩展到中心落在 H_* 边界内的所有行列，合并被覆盖单元并清空原位。"""
         col_left = [float(np.mean([cell.get("C_left", cell["x0"]) for cell in col])) for col in cols]
         col_right = [float(np.mean([cell.get("C_right", cell["x1"]) for cell in col])) for col in cols]
         row_top = [float(np.mean([cell.get("R_top", cell["top"]) for cell in row])) for row in rows]

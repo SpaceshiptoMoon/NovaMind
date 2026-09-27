@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+"""DeepDoc OCR 运行时：DB 文本检测 + CTC 文本识别两阶段推理，及整合两者的 OCR 门面。"""
 import copy
 import gc
 import logging
@@ -28,12 +29,14 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 def pip_install_torch(*args, **kwargs):
+    """探测 torch 是否可用（仅尝试 import，不做任何安装）；结果不外传，GPU 可用性在 load_model 内重新探测。"""
     try:
         import torch  # noqa: F401
     except ImportError:
         return None
 
 class _Settings:
+    """进程级环境设置：PARALLEL_DEVICES 控制多 GPU 运行时副本数。"""
     PARALLEL_DEVICES = int(os.environ.get("PARALLEL_DEVICES", "0"))
 
 settings = _Settings()
@@ -81,6 +84,18 @@ def create_operators(op_param_list, global_config=None):
 
 
 def load_model(model_dir, nm, device_id: int | None = None):
+    """加载 ``<model_dir>/<nm>.onnx`` 并按路径做模块级缓存（同模型重复加载直接复用）。
+
+    优先 CUDA（需 torch 可用且目标 device_id 存在），否则 CPU；线程数与显存
+    由 OCR_INTRA_OP_NUM_THREADS / OCR_INTER_OP_NUM_THREADS /
+    OCR_GPU_MEM_LIMIT_MB 等环境变量注入；CPU 恒开内存 arena 收缩。
+
+    Returns:
+        (InferenceSession, RunOptions) 二元组。
+
+    Raises:
+        ValueError: 模型文件不存在。
+    """
     model_file_path = os.path.join(model_dir, nm + ".onnx")
     model_cached_tag = model_file_path + str(device_id) if device_id is not None else model_file_path
 
@@ -94,6 +109,7 @@ def load_model(model_dir, nm, device_id: int | None = None):
         raise ValueError(f"not find model file path {model_file_path}")
 
     def cuda_is_available():
+        # CUDA 可用性探测（懒装 torch；失败/无 GPU 均视为不可用）。
         try:
             pip_install_torch()
             import torch
@@ -140,7 +156,9 @@ def load_model(model_dir, nm, device_id: int | None = None):
 
 
 class TextRecognizer:
+    """CTC 文本识别器：文本行裁剪图送 rec.onnx 推理并解码为 (文本, 置信度)。"""
     def __init__(self, model_dir, device_id: int | None = None):
+        """加载识别模型与 CTC 解码器（字典使用 model_dir 下 ocr.res）。"""
         self.rec_image_shape = [int(v) for v in "3, 48, 320".split(",")]
         self.rec_batch_num = 16
         postprocess_params = {"name": "CTCLabelDecode", "character_dict_path": os.path.join(model_dir, "ocr.res"), "use_space_char": True}
@@ -149,6 +167,11 @@ class TextRecognizer:
         self.input_tensor = self.predictor.get_inputs()[0]
 
     def resize_norm_img(self, img, max_wh_ratio):
+        """文本行裁剪图缩放到模型输入高度并归一化到 [-1, 1]，右侧零填充到批内宽度。
+
+        批内宽度由 max_wh_ratio（批内最大宽高比）决定，矮行统一补齐，保证整批
+        共用一个张量形状。
+        """
         imgC, imgH, imgW = self.rec_image_shape
 
         assert imgC == img.shape[2]
@@ -176,12 +199,20 @@ class TextRecognizer:
 
     def close(self):
         # close session and release manually
+        """丢弃 session 引用并触发 GC。"""
         logging.info("Close text recognizer.")
         if hasattr(self, "predictor"):
             del self.predictor
         gc.collect()
 
     def __call__(self, img_list):
+        """批量文本识别：文本行按宽高比排序分批（减少填充浪费），批量推理后 CTC 解码。
+
+        推理异常间隔重试，重试耗尽后向上抛出最后异常。
+
+        Returns:
+            (识别结果列表 [(文本, 置信度)], 总耗时秒)；结果顺序与输入一致。
+        """
         img_num = len(img_list)
         # Calculate the aspect ratio of all text bars
         width_list = []
@@ -228,11 +259,14 @@ class TextRecognizer:
         return rec_res, time.time() - st
 
     def __del__(self):
+        """析构时触发 close() 释放资源。"""
         self.close()
 
 
 class TextDetector:
+    """DB 文本检测器：det.onnx 整页推理，输出四边形文本框（4 角点像素坐标）。"""
     def __init__(self, model_dir, device_id: int | None = None):
+        """加载检测模型并构建预处理链；模型输入为固定尺寸时以固定形状替换 DetResizeForTest。"""
         pre_process_list = [
             {
                 "DetResizeForTest": {
@@ -258,6 +292,7 @@ class TextDetector:
         self.preprocess_op = create_operators(pre_process_list)
 
     def order_points_clockwise(self, pts):
+        """四边形角点重排为左上、右上、右下、左下。"""
         rect = np.zeros((4, 2), dtype="float32")
         s = pts.sum(axis=1)
         rect[0] = pts[np.argmin(s)]
@@ -269,12 +304,14 @@ class TextDetector:
         return rect
 
     def clip_det_res(self, points, img_height, img_width):
+        """把框角点钳制回原图像边界内。"""
         for pno in range(points.shape[0]):
             points[pno, 0] = int(min(max(points[pno, 0], 0), img_width - 1))
             points[pno, 1] = int(min(max(points[pno, 1], 0), img_height - 1))
         return points
 
     def filter_tag_det_res(self, dt_boxes, image_shape):
+        """检测框清理：角点排序、边界钳制，丢弃宽或高不超过 3 像素的退化框。"""
         img_height, img_width = image_shape[0:2]
         dt_boxes_new = []
         for box in dt_boxes:
@@ -291,12 +328,18 @@ class TextDetector:
         return dt_boxes
 
     def close(self):
+        """丢弃 session 引用并触发 GC。"""
         logging.info("Close text detector.")
         if hasattr(self, "predictor"):
             del self.predictor
         gc.collect()
 
     def __call__(self, img):
+        """对单张整页图检测文本框。
+
+        Returns:
+            (四边形框数组 [N, 4, 2]（原图像素坐标）, 检测耗时秒)；失败时返回 (None, 0)。
+        """
         ori_im = img.copy()
         data = {"image": img}
 
@@ -326,10 +369,18 @@ class TextDetector:
         return dt_boxes, time.time() - st
 
     def __del__(self):
+        """析构时触发 close() 释放资源。"""
         self.close()
 
 
 class OCR:
+    """OCR 门面：检测、透视裁剪、识别整合为统一的文字提取入口。
+
+    常用路径：__call__ 全管线（返回框 + 文本 + 置信度）、detect 仅检测、
+    recognize / recognize_batch 对已知框识别；行裁剪由 get_rotate_crop_image
+    透视变换完成。模型懒加载：autoload=False 实例化后按需 load()，本地模型
+    缺失时运行期兜底下载。
+    """
     def __init__(self, model_dir=None, *, autoload: bool = True, parallel_devices: int | None = None):
         """
         If you have trouble downloading HuggingFace models, -_^ this might help!!
@@ -353,6 +404,7 @@ class OCR:
             self.load()
 
     def _build_runtimes(self, model_dir: str):
+        """按 parallel_devices 数创建检测/识别运行时（每个 GPU 设备一套）。"""
         if self.parallel_devices > 0:
             self.text_detector = []
             self.text_recognizer = []
@@ -364,6 +416,12 @@ class OCR:
             self.text_recognizer = [TextRecognizer(model_dir)]
 
     def load(self):
+        """加载 OCR 模型；本地文件缺失时先经 download_model_group("ocr") 运行期兜底
+        下载再重建运行时。
+
+        Returns:
+            self，支持链式调用。
+        """
         if self.loaded and self.text_detector and self.text_recognizer:
             return self
 
@@ -389,6 +447,7 @@ class OCR:
         return self
 
     def ensure_loaded(self):
+        """确保模型已加载，未加载时按需触发一次。"""
         if not self.loaded or not self.text_detector or not self.text_recognizer:
             self.load()
         return self
@@ -463,6 +522,11 @@ class OCR:
         return _boxes
 
     def detect(self, img, device_id: int | None = None):
+        """仅文本检测（不识别）。
+
+        Returns:
+            (排序后四边形框, 空文本占位) 对的迭代器；图像无效或未检出时为 None。
+        """
         self.ensure_loaded()
         if device_id is None:
             device_id = 0
@@ -478,6 +542,7 @@ class OCR:
         return zip(self.sorted_boxes(dt_boxes), [("", 0) for _ in range(len(dt_boxes))])
 
     def recognize(self, ori_im, box, device_id: int | None = None):
+        """识别单个框内文本，置信度低于 drop_score 时返回空串。"""
         self.ensure_loaded()
         if device_id is None:
             device_id = 0
@@ -491,6 +556,7 @@ class OCR:
         return text
 
     def recognize_batch(self, img_list, device_id: int | None = None):
+        """批量识别文本行裁剪图，结果按输入顺序返回，置信度低于阈值者为空串。"""
         self.ensure_loaded()
         if device_id is None:
             device_id = 0
@@ -504,6 +570,12 @@ class OCR:
         return texts
 
     def __call__(self, img, device_id=0, cls=True):
+        """全管线：检测框 → 排序 → 逐框透视裁剪文本行 → 批量识别 → 过滤低置信度结果。
+
+        Returns:
+            [(框角点 [[x, y]×4], (文本, 置信度))] 列表；各阶段耗时记录在 time_dict
+            （det/rec/all 键）；未检出框时返回 (None, None, time_dict)。
+        """
         self.ensure_loaded()
         time_dict = {"det": 0, "rec": 0, "cls": 0, "all": 0}
         if device_id is None:

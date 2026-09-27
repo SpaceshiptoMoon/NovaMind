@@ -55,6 +55,7 @@ CHECKSUM_SKIP_ENV_VAR = "DEEPDOC_SKIP_MODEL_CHECKSUM"
 
 
 def default_model_dir() -> Path:
+    """默认模型目录：DEEPDOC_MODEL_DIR 环境变量优先，否则仓库根 ``.cache/deepdoc``。"""
     env_dir = os.getenv("DEEPDOC_MODEL_DIR")
     if env_dir:
         return Path(env_dir)
@@ -63,6 +64,7 @@ def default_model_dir() -> Path:
 
 
 def expected_model_files(group: str | None = None) -> list[str]:
+    """列出指定模型组（ocr/layout/tsr）的文件名清单；group=None 时聚合全部组的文件。"""
     if group is None:
         files: list[str] = []
         for names in MODEL_GROUPS.values():
@@ -72,6 +74,11 @@ def expected_model_files(group: str | None = None) -> list[str]:
 
 
 def get_model_status(model_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
+    """盘点模型目录下各组模型文件的存在情况。
+
+    Returns:
+        dict：model_dir / repo_id / 各组 present+missing+available / 整体 available。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_model_dir()
     groups = {}
     all_present = True
@@ -94,6 +101,12 @@ def get_model_status(model_dir: str | os.PathLike[str] | None = None) -> dict[st
 
 
 def ensure_model_group_available(group: str, model_dir: str | os.PathLike[str] | None = None) -> Path:
+    """断言指定模型组文件齐全并返回模型目录。
+
+    Raises:
+        ValueError: 组名未知。
+        FileNotFoundError: 组内存在缺失文件。
+    """
     status = get_model_status(model_dir)
     group_status = status["groups"].get(group)
     if not group_status:
@@ -420,6 +433,7 @@ def download_hf_files(
 
 
 def download_model_group(group: str | None = None, model_dir: str | os.PathLike[str] | None = None) -> Path:
+    """经多源降级下载链拉取指定组的全部模型文件（group=None 时下载全集）。"""
     base_dir = Path(model_dir) if model_dir is not None else default_model_dir()
     allow_patterns = expected_model_files(group)
     if not allow_patterns:

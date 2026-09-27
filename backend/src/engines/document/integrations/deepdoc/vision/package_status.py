@@ -8,6 +8,7 @@ from novamind.engines.document.integrations.deepdoc.vision.model_manager import 
 
 
 def get_vendored_vision_package_status() -> dict[str, Any]:
+    """盘点 vision 包模块完整度并附带模型文件状态（供 vision 运行时状态与健康检查接口使用）。"""
     package_dir = Path(__file__).resolve().parent
     expected_modules = [
         "__init__.py",

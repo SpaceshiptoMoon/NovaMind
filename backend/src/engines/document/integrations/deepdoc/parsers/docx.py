@@ -22,7 +22,17 @@ from novamind.engines.document.integrations.deepdoc.compat import (
 
 
 class RAGFlowDocxParser:
+    """RAGFlow DOCX 文档解析器（段落/图片/表格三路抽取）。"""
     def get_picture(self, document: Any, paragraph: Any) -> LazyImage | None:
+        """抽取段落内嵌图片的二进制数据。
+        
+        Args:
+            document: python-docx Document 对象，用于解析图片关系 ID。
+            paragraph: 待抽取的段落对象。
+        
+        Returns:
+            懒加载图片对象（惰性读取 blob，避免解析期占内存）；段落无图或图片损坏时返回 None。
+        """
         imgs = paragraph._element.xpath(".//pic:pic")
         if not imgs:
             return None
@@ -64,11 +74,19 @@ class RAGFlowDocxParser:
         return LazyImage(image_blobs)
 
     def _extract_table_content(self, table: Any) -> list[str]:
+        """把表格对象转为二维文本行，交由 _compose_table_content 拼装。"""
         rows = [[cell.text for cell in row.cells] for row in table.rows]
         return self._compose_table_content(rows)
 
     def _compose_table_content(self, rows: Sequence[Sequence[str]]) -> list[str]:
+        """按表头-数据行关系把表格行拼装为「表头: 值」文本。
+        
+        先按单元格内容类型（日期/数值/文本等）投票定主类型，主类型为数值的表格
+        把类型不一致的行识别为多级表头；每行数据与对应表头拼接，再按列数决定
+        逐行输出（宽表）或合并为单块文本（窄表）。
+        """
         def block_type(block: str) -> str:
+            """单元格文本类型判定：Dt 日期 / Nu 数值 / Tx·Lx 文本 / Nr 人名等（表头识别用）。"""
             patterns = [
                 (r"^(20|19)[0-9]{2}[年/-][0-9]{1,2}[月/-][0-9]{1,2}日*$", "Dt"),
                 (r"^(20|19)[0-9]{2}年$", "Dt"),
@@ -156,6 +174,17 @@ class RAGFlowDocxParser:
         return ["\n".join(lines)] if lines else []
 
     def __call__(self, file_name_or_binary: str | bytes, from_page: int = 0, to_page: int = MAXIMUM_PAGE_NUMBER):
+        """解析 DOCX 为段落 section 列表与表格文本列表。
+        
+        Args:
+            file_name_or_binary: 文件路径或 DOCX 字节流。
+            from_page: 起始页码（按 lastRenderedPageBreak 计数）。
+            to_page: 结束页码（不含），超出范围的段落文本留空。
+        
+        Returns:
+            (sections, tables) 二元组；section 为含 text/style/image 的字典列表，
+            tables 为表格文本行列表的列表。
+        """
         self.doc = (
             Document(file_name_or_binary)
             if isinstance(file_name_or_binary, str)

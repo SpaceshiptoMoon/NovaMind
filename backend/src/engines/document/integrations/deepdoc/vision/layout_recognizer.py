@@ -13,6 +13,7 @@ from novamind.engines.document.integrations.deepdoc.vision.recognizer import Rec
 
 
 def _default_model_dir() -> Path:
+    """模型目录：DEEPDOC_MODEL_DIR 环境变量优先，否则仓库根 ``.cache/deepdoc``。"""
     env_dir = os.getenv("DEEPDOC_MODEL_DIR")
     if env_dir:
         return Path(env_dir)
@@ -21,6 +22,13 @@ def _default_model_dir() -> Path:
 
 
 class LayoutRecognizer(Recognizer):
+    """版面区域识别器（PaddleDetection 风格导出）：检出文本块、标题、表格、图像、
+    页眉页脚等区域类型。
+
+    模型输入带 scale_factor（PaddleDetection 推理接口），postprocess 输出 bbox
+    已是渲染图像素坐标；本工程 PDF 解析管线实际使用 YOLOv10 变体
+    （LayoutRecognizer4YOLOv10，见 parsers/pdf.py）。
+    """
     labels = [
         "_background_",
         "Text",
@@ -36,6 +44,7 @@ class LayoutRecognizer(Recognizer):
     ]
 
     def __init__(self, domain: str = "layout", *, autoload: bool = False):
+        """固定 11 类标签表（含背景类）与垃圾类清单（header/footer/reference），输入形状 640×640。"""
         super().__init__(self.labels, domain=domain, model_dir=_default_model_dir(), autoload=False)
         self.garbage_layouts = ["footer", "header", "reference"]
         self.input_shape = (640, 640)
@@ -77,6 +86,33 @@ class LayoutRecognizer(Recognizer):
         return False
 
     def apply_layouts(self, image_list, ocr_res, layouts, scale_factor=3, drop=True):
+        """给 OCR 文本框贴版面类别，并为未访问的 figure/equation 区域合成占位框。
+
+        坐标统一：layout 模型输出的 bbox 为渲染图像素坐标（zoom 放大），除以
+        scale_factor（每页渲染 zoom）后与 OCR 文本框的页面坐标同尺度。逐页处理：
+        先过滤置信度 <0.4 的垃圾类区域 → sort_Y 排序 + 同类重叠去重
+        （layouts_cleanup）→ 按类别优先级逐类给 OCR 框贴标签（footer→reference→
+        题注→title→table→text→figure→equation）；垃圾类（header/footer/reference）
+        命中默认丢弃（例外：footer 框底在页面 90% 高度线之上、header 框顶在页面
+        10% 高度线之下的按正文保留），(cid:N) 乱码框直接移除，跨页重复出现
+        （计数>1）的垃圾文本从全部框中剔除；equation 区域贴标签后
+        layout_type 记为 "figure"。
+
+        未被访问的 figure/equation 区域合成空文本占位框（layout_type="figure"），
+        使无文字层命中的图像区下游仍可成组；table 区域不合成（防幻影表组），
+        与已访问 table/figure/equation 区域互相覆盖超限的视为重复检出
+        （见 _region_consumed_by_visited）亦不合成。
+
+        Args:
+            image_list: 页面图像列表（仅读取 shape 判定页眉页脚位置）。
+            ocr_res: 每页 OCR 文本框列表（页面坐标，带 text 的 dict）。
+            layouts: 版面检测结果（forward() 输出，bbox 为渲染图像素坐标）。
+            scale_factor: 各页渲染 zoom（数值或逐页列表），layout bbox 回页坐标用。
+            drop: 是否丢弃垃圾类命中的文本框。
+
+        Returns:
+            (贴标后的全部 OCR 框列表, 每页版面区域列表)。
+        """
         def is_garbage(box):
             patterns = [r"\(cid\s*:\s*\d+\s*\)"]
             return any(re.search(pattern, box.get("text", "")) for pattern in patterns)
@@ -179,12 +215,23 @@ class LayoutRecognizer(Recognizer):
         return boxes, page_layout
 
     def __call__(self, image_list, ocr_res, scale_factor=3, thr=0.2, batch_size=16, drop=True, layouts=None):
+        """全管线入口：layouts 未传入时先 forward 版面检测，再统一经 apply_layouts 贴标。
+
+        与基类 __call__ 签名不同：增加 ocr_res（OCR 文本框）参数，在此融合版面与
+        OCR 两路结果。
+        """
         if layouts is None:
             layouts = self.forward(image_list, thr=thr, batch_size=batch_size)
         return self.apply_layouts(image_list, ocr_res, layouts, scale_factor=scale_factor, drop=drop)
 
 
 class LayoutRecognizer4YOLOv10(LayoutRecognizer):
+    """YOLOv10 导出格式的版面识别器：标签表顺序、letterbox 预处理与输出解码均
+    区别于基类。
+
+    模型输入为固定 640×640 方图（居中灰边填充），输出 [cx, cy, w, h, score,
+    class] 需自行解码 + NMS。
+    """
     labels = [
         "title",
         "Text",
@@ -199,22 +246,31 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
     ]
 
     def __init__(self, domain="layout", *, autoload: bool = False):
+        """覆写 labels 属性供基类 __init__ 经 self.labels 读到子类标签表，并启用居中填充。"""
         super().__init__(domain="layout", autoload=autoload)
         self.center = True
 
     @staticmethod
     def _import_cv2():
+        """惰性导入 cv2。"""
         import cv2
 
         return cv2
 
     @staticmethod
     def _import_nms():
+        """惰性导入 operators.nms 非极大值抑制实现。"""
         from novamind.engines.document.integrations.deepdoc.vision.operators import nms
 
         return nms
 
     def preprocess(self, image_list):
+        """letterbox 预处理：按长边等比缩放、(114,114,114) 灰边填充到 640 方图、
+        BGR→RGB、/255。
+
+        scale_factor 记录 [宽缩放比, 高缩放比, 水平填充, 垂直填充]，供
+        postprocess 去填充并把框映射回原图像素坐标。
+        """
         self.ensure_loaded()
         cv2 = self._import_cv2()
         inputs = []
@@ -240,6 +296,12 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
         return inputs
 
     def postprocess(self, boxes, inputs, thr):
+        """YOLOv10 输出解码：按置信度过滤（固定 0.08）→ 去填充 → 映射回原图像素 →
+        按类别 NMS（IoU 0.45）。
+
+        Returns:
+            [{"type", "bbox": [x0, top, x1, bottom]（原图像素）, "score"}]。
+        """
         thr = 0.08
         boxes = np.squeeze(boxes)
         scores = boxes[:, 4]
@@ -271,4 +333,5 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
 
 
 class AscendLayoutRecognizer(LayoutRecognizer):
+    """Ascend 适配占位：当前无专属逻辑，行为与 LayoutRecognizer 完全一致。"""
     pass

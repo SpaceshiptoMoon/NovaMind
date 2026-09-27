@@ -19,6 +19,7 @@ __all__ = list(_EXPORT_MAP.keys())
 
 
 def __getattr__(name):
+    """门面惰性导出：按 _EXPORT_MAP 延迟 import，保持包导入零副作用。"""
     target = _EXPORT_MAP.get(name)
     if target is None:
         raise AttributeError(name)

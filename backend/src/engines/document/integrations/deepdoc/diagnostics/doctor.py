@@ -7,6 +7,7 @@ from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEn
 
 
 def build_doctor_payload(engine: DeepDocEngine, *, include_smoke: bool = False) -> dict[str, Any]:
+    """装配诊断报告：依赖探测 + 视觉健康 + 可选冒烟检查 + 模型状态。"""
     runtime_dependencies = engine.runtime_dependencies()
     vision_model_status = engine.vision_model_status()
     vision_health = engine.vision_health_status()
@@ -38,6 +39,7 @@ def build_remediation(
     vision_health: dict[str, Any],
     text_concat_model_status: dict[str, Any],
 ) -> dict[str, Any]:
+    """按诊断结果生成修复指引（装哪个包/下载哪个模型组）。"""
     missing_runtime = [
         name for name, status in runtime_dependencies.items() if not status.get("available")
     ]

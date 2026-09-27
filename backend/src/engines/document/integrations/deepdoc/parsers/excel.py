@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 class RAGFlowExcelParser:
+    """RAGFlow Excel 解析器：工作表逐行转 Markdown 行文本。"""
     @staticmethod
     def _import_openpyxl():
+        """懒加载 openpyxl。"""
         from openpyxl import Workbook, load_workbook
 
         return Workbook, load_workbook
 
     @staticmethod
     def _load_excel_to_workbook(file_like_object):
+        """从路径/字节流加载为工作簿；非 Excel 载荷走 CSV 兜底。
+        
+        先按文件头魔数判断（zip 的 PK 头 / OLE 旧格式头），非 Excel 载荷用 pandas
+        读 CSV；openpyxl 加载失败再降级 pandas（calamine 引擎兜底），统一包成工作簿。
+        """
         _, load_workbook = RAGFlowExcelParser._import_openpyxl()
         if isinstance(file_like_object, bytes):
             file_like_object = BytesIO(file_like_object)
@@ -50,7 +57,9 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _clean_dataframe(df: pd.DataFrame):
+        """清理数据帧：剔除控制字符。"""
         def clean_string(value):
+            """剔除单元格文本中的控制字符。"""
             if isinstance(value, str):
                 return ILLEGAL_CHARACTERS_RE.sub(" ", value)
             return value
@@ -59,6 +68,7 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _fill_worksheet_from_dataframe(ws, df: pd.DataFrame):
+        """把数据帧首行当表头、逐单元格写入工作表（pandas 兜底路径复用）。"""
         for col_num, column_name in enumerate(df.columns, 1):
             ws.cell(row=1, column=col_num, value=column_name)
         for row_num, row in enumerate(df.values, 2):
@@ -67,6 +77,7 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _dataframe_to_workbook(df):
+        """数据帧（或多表字典）包成工作簿，供统一的行遍历路径消费。"""
         Workbook, _ = RAGFlowExcelParser._import_openpyxl()
         if isinstance(df, dict) and len(df) > 1:
             return RAGFlowExcelParser._dataframes_to_workbook(df)
@@ -80,6 +91,7 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _dataframes_to_workbook(dfs: dict):
+        """多数据帧合并为一个多表工作簿。"""
         Workbook, _ = RAGFlowExcelParser._import_openpyxl()
         wb = Workbook()
         default_sheet = wb.active
@@ -93,6 +105,11 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _get_actual_row_count(ws):
+        """探测工作表实际数据行数。
+        
+        openpyxl 的 max_row 常含样式残留的虚增行；超大表先抽样确认有数据，
+        再二分定位最后的数据行，尾段线性扫描收边。
+        """
         max_row = ws.max_row
         if not max_row:
             return 0
@@ -102,6 +119,7 @@ class RAGFlowExcelParser:
         max_col = min(ws.max_column or 1, 50)
 
         def row_has_data(row_idx):
+            """该行前 50 列是否存在非空单元格（虚增行探测）。"""
             for col_idx in range(1, max_col + 1):
                 cell = ws.cell(row=row_idx, column=col_idx)
                 if cell.value is not None and str(cell.value).strip():
@@ -133,12 +151,22 @@ class RAGFlowExcelParser:
 
     @staticmethod
     def _get_rows_limited(ws):
+        """读取工作表实际数据范围内的行对象列表。"""
         actual_rows = RAGFlowExcelParser._get_actual_row_count(ws)
         if actual_rows == 0:
             return []
         return list(ws.iter_rows(min_row=1, max_row=actual_rows))
 
     def html(self, fnm, chunk_rows=256):
+        """工作表转 HTML 表格文本，按 chunk_rows 行分块。
+        
+        Args:
+            fnm: 文件路径或字节流。
+            chunk_rows: 每块包含的数据行数。
+        
+        Returns:
+            HTML 表格字符串列表，每块带工作表名 caption。
+        """
         from html import escape
 
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
@@ -146,6 +174,7 @@ class RAGFlowExcelParser:
         tb_chunks = []
 
         def fmt(value):
+            """单元格值转文本（None 转空串）。"""
             if value is None:
                 return ""
             return str(value).strip()
@@ -174,6 +203,7 @@ class RAGFlowExcelParser:
         return tb_chunks
 
     def __call__(self, fnm):
+        """解析 Excel 为「表头：值；……」行文本列表（sheet 名作后缀）。"""
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
         wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
 

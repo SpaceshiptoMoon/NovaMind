@@ -36,7 +36,15 @@ TITLE_TAGS = {"h1": "#", "h2": "##", "h3": "###", "h4": "####", "h5": "#####", "
 
 
 class RAGFlowHtmlParser:
+    """RAGFlow HTML 解析器：DOM 遍历抽文本块并按 token 预算分块。"""
     def __call__(self, file_name: str, binary: bytes | None = None, chunk_token_num: int = 512):
+        """解析 HTML 为分块文本列表。
+        
+        Args:
+            file_name: 文件路径（binary 为 None 时使用）。
+            binary: HTML 字节流；编码自动探测。
+            chunk_token_num: 单块 token 上限。
+        """
         if binary:
             encoding = find_codec(binary)
             text = binary.decode(encoding, errors="ignore")
@@ -49,6 +57,11 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def parser_txt(cls, text: str, chunk_token_num: int):
+        """HTML 文本清洗并分块。
+        
+        剔除 style/script/注释后按块级元素递归收集文本，同块文本合并，
+        表格 HTML 单独收集，最后按 token 预算分块并追加表格块。
+        """
         if not isinstance(text, str):
             raise TypeError("txt type should be string!")
 
@@ -73,6 +86,15 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def read_text_recursively(cls, element, parser_result, chunk_token_num: int = 512, parent_name: str | None = None, block_id: str | None = None):
+        """深度优先遍历 DOM：文本串记入当前块，table 整体输出，块级标签开新块。
+        
+        Args:
+            element: 当前遍历的 BeautifulSoup 节点。
+            parser_result: 结果缓冲（就地扩展）。
+            chunk_token_num: 兼容参数，遍历阶段不使用。
+            parent_name: 父标签名，裸文本用它标记归属。
+            block_id: 当前块级元素 ID，同块文本靠它聚合。
+        """
         if isinstance(element, NavigableString):
             content = element.strip()
             if content:
@@ -93,6 +115,11 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def merge_block_text(cls, parser_result):
+        """按 block_id 聚合文本块；标题行加 Markdown 井号前缀，表格单独收集。
+        
+        Returns:
+            (块文本列表, 表格信息列表) 二元组。
+        """
         block_content = []
         current_content = ""
         table_info_list = []
@@ -125,6 +152,7 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def _token_count(cls, text: str):
+        """RAGFlow 分词后的 token 数（块大小计量）。"""
         if not text:
             return 0
         tokenized = rag_tokenizer.tokenize(text)
@@ -132,12 +160,17 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def _split_oversized_block(cls, block: str, chunk_token_num: int):
+        """把超 token 预算的块按最小语言单元（CJK 单字/连续非空白串）切小。
+        
+        单个 atom 仍超预算（长 URL/base64 等）时按字符窗口硬切。
+        """
         pieces = []
         current = ""
         current_tokens = 0
         token_cache = {}
 
         def atom_token_count(atom: str):
+            """单个语言单元的 token 数（带缓存）。"""
             if atom.isspace():
                 return 0
             if atom not in token_cache:
@@ -165,6 +198,7 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def chunk_block(cls, block_text_list, chunk_token_num: int = 512):
+        """把块文本聚合到 token 预算内；超预算的块先切小再输出。"""
         chunks = []
         current_block = ""
         current_token_count = 0

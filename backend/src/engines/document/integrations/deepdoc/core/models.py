@@ -23,6 +23,11 @@ def strip_position_tags(text: str) -> str:
 
 @dataclass(slots=True)
 class DeepDocParseResult:
+    """DeepDoc 解析结果契约：全文/chunks/metadata 三元组。
+    
+    metadata 携带 reading_order/chunk_structure/table_regions 等引擎特有
+    信息；strip_position_tags 用于产出不含坐标标记的干净文本。
+    """
     full_text: str
     chunks: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)

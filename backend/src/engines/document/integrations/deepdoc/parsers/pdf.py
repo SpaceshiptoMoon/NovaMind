@@ -58,6 +58,14 @@ logger = get_logger(__name__)
 
 @dataclass(slots=True)
 class DeepDocPdfBox:
+    """DeepDoc PDF 文本框：页局部坐标的最小排版单元（行级）。
+    
+    字段语义：page 为 1-based 页码；x0/x1/top/bottom 为页内点坐标
+    （top 从页顶起算）；col_id 为双栏检测的列号（0=未分栏/单栏）；
+    position_tag 为 ``@@page\tx0\tx1\ttop\tbottom##`` 坐标标记，
+    前端按它做高亮定位；positions 为 [page,x0,x1,top,bottom] 列表；
+    layout_type/layoutno 为版面类型与编号（text/title/table/figure 等）。
+    """
     page: int
     x0: float
     x1: float
@@ -72,13 +80,20 @@ class DeepDocPdfBox:
 
     @property
     def height(self) -> float:
+        """框高（bottom-top，非负）。"""
         return max(self.bottom - self.top, 0.0)
 
     def to_dict(self) -> dict[str, Any]:
+        """序列化为 dict（含全部字段，供 metadata 落盘）。"""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DeepDocPdfBox:
+        """从 dict 反序列化（兼容 page/page_number 双键名）。
+        
+        Raises:
+            KeyError: 缺 x0/x1/top/bottom 任一必需坐标键。
+        """
         positions = data.get("positions")
         return cls(
             page=int(data.get("page_number", data.get("page", 0))),
@@ -95,6 +110,7 @@ class DeepDocPdfBox:
         )
 
     def line_tag(self) -> str:
+        """生成坐标标记字符串（前端定位与 chunk 出处追溯用）。"""
         return f"@@{self.page}\t{self.x0:.1f}\t{self.x1:.1f}\t{self.top:.1f}\t{self.bottom:.1f}##"
 
 
@@ -111,6 +127,7 @@ TEXT_PAGE_ZOOM_ENV = "DEEPDOC_TEXT_PAGE_ZOOM"
 
 
 def _text_page_zoom() -> int:
+    """读取有文字层页的渲染 zoom（环境变量可配，默认 2，合法 2-4）。"""
     raw = os.getenv(TEXT_PAGE_ZOOM_ENV, "").strip()
     if not raw:
         return 2
@@ -134,6 +151,10 @@ _RENDER_WINDOW_DEFAULT = 16
 
 
 def _render_window_size() -> int:
+    """读取分窗批处理的窗大小（页/窗，默认 16，须 >=1）。
+    
+    窗即一个 layout 推理 batch，渲染 buffer 驻留上限与文档总页数无关。
+    """
     raw = os.getenv(RENDER_WINDOW_SIZE_ENV, "").strip()
     if not raw:
         return _RENDER_WINDOW_DEFAULT
@@ -178,6 +199,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     FORMULA_CROP_PADDING = 4.0  # 公式裁剪外扩（PDF 点，防止笔画贴边被切）
 
     def __init__(self):
+        """初始化适配层组件；所有模型（OCR/layout/xgb/公式）全部惰性加载。
+        
+        有意不调 vendored super().__init__：那会构造即同步载模型并可能联网。
+        此处自行落齐 vendored 属性契约（有对齐测试防漂移）。
+        """
         # 有意不调 vendored super().__init__()：它会同步加载 OCR（构造即载
         # det/rec）与 xgb 模型并可能联网 snapshot_download。适配层保持惰性
         # 模型加载与「回退必须可见」语义，改为自行落齐 vendored 属性契约
@@ -212,6 +238,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self.rotated_table_imgs: dict[Any, Any] = {}
 
     def _get_layout_recognizer(self):
+        """懒加载并缓存版面识别器（YOLOv10 输出形状须配 4YOLOv10 后处理）。"""
         if self._layout_recognizer is None:
             # The hosted layout.onnx (InfiniFlow/deepdoc) is a YOLOv10 model whose
             # output is (batch, anchors, 6=[xywh,score,class]); LayoutRecognizer4YOLOv10
@@ -226,12 +253,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _import_fitz():
+        """懒导入 PyMuPDF（fitz）。"""
         import fitz
 
         return fitz
 
     @staticmethod
     def total_page_number(fnm, binary=None):
+        """读 PDF 总页数；打开失败记日志并返回 0。"""
         try:
             with _pdfplumber_lock, pdfplumber.open(fnm) if binary is None else pdfplumber.open(BytesIO(binary)) as pdf:
                 total_page = len(pdf.pages)
@@ -241,6 +270,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             return 0
 
     def _has_color(self, obj):
+        """判断字符是否带颜色信息（灰度纯黑字符供乱码裁决参考）。"""
         if obj.get("ncs", "") == "DeviceGray":
             if obj.get("stroking_color") and obj.get("stroking_color")[0] == 1 and obj.get("non_stroking_color") and obj.get("non_stroking_color")[0] == 1:
                 if re.match(r"[a-zT_\[\]\(\)-]+", obj.get("text", "")):
@@ -249,6 +279,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _is_garbled_char(ch):
+        """单字符是否为乱码特征（PUA/高位私用区/U+FFFD/控制符/未分配码位）。"""
         if not ch:
             return False
         cp = ord(ch)
@@ -272,6 +303,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @classmethod
     def _is_garbled_text(cls, text):
+        """文本乱码率是否 >=30%（字符级乱码占比）。"""
         if not text:
             return False
         garbled = sum(1 for ch in text if cls._is_garbled_char(ch))
@@ -279,6 +311,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _has_subset_font_prefix(fontname):
+        """字体名是否带 XXXXXX+ 子集前缀（LaTeX 产出 PDF 的常态，单看必误报）。"""
         return bool(fontname and re.match(r"^[A-Z]{6}\+", str(fontname)))
 
     @classmethod
@@ -318,6 +351,22 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         chunk_size: int = 1000,
         formula_recognition: bool | None = None,
     ) -> DeepDocParseResult:
+        """解析 PDF 入口：按 pdf_mode 分发到 plain 或 full 流水线。
+        
+        Args:
+            filename: 文件路径或 PDF 字节流。
+            pdf_mode: "full"（OCR+版面全流水线，默认）/ "plain"（pdfplumber 直抽
+                文本）；"layout"/"vision" 为 full 的兼容别名。
+            chunk_size: chunk 目标字符长度。
+            formula_recognition: 是否启用公式识别；None 走配置默认。
+        
+        Returns:
+            DeepDocParseResult：full_text / chunks / metadata（含 reading_order、
+            table_regions、figure_regions、chunk_structure 等契约键）。
+        
+        Raises:
+            ValueError: pdf_mode 不在支持列表。
+        """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
         logger.info(
             "DeepDoc PDF 解析器开始",
@@ -354,6 +403,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self,
         filename: str | bytes | Path,
     ) -> list[DeepDocPdfBox]:
+        """纯文字层快路径：不经 OCR/版面模型，逐页抽词成行并按列排序。
+        
+        输入路径或字节流；输出 DeepDocPdfBox 列表（每行一框）：page 为 1-based
+        页码，x0/x1/top/bottom 为页内点坐标，text 已做 PUA 语境化归一，
+        position_tag/positions 携带行坐标供前端高亮，col_id 为列号。
+        本方法不做乱码检测与版面打标，适合仅需行级坐标的场景。
+        """
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
         boxes: list[DeepDocPdfBox] = []
         with _pdfplumber_lock, pdfplumber.open(pdf_source) as pdf:
@@ -456,11 +512,17 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def remove_tag(text: str) -> str:
+        """剥离文本内嵌的坐标标记（strip_position_tags 委托）。"""
         # 委托到 core.models.strip_position_tags，保持全包唯一的坐标标记清洗正则。
         return strip_position_tags(text)
 
     @staticmethod
     def extract_positions(text: str):
+        """从含坐标标记的文本提取位置信息。
+        
+        Returns:
+            ([页码 0-based 列表], x0, x1, top, bottom) 元组列表。
+        """
         positions = []
         for tag in re.findall(r"@@[0-9-]+\t[0-9.\t]+##", text):
             page_number, left, right, top, bottom = tag.strip("#").strip("@").split("\t")
@@ -470,6 +532,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _line_tag(line: dict[str, Any]) -> str:
+        """dict 行坐标转坐标标记字符串（页号取 page_number 键，1-based）。"""
         return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
             int(line.get("page_number", 1)),
             float(line["x0"]),
@@ -484,6 +547,12 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         chunk_size: int,
     ) -> DeepDocParseResult:
+        """plain 模式：pdfplumber 逐行抽文本 + PUA 归一，不跑 OCR/版面。
+        
+        Returns:
+            DeepDocParseResult，metadata 带 pdf_mode=plain、outlines（书签）、
+            plain_sections（行文本与页码）。
+        """
         plain_sections, _, outlines = self._plain_parser(filename)
         plain_lines = [line for line, _ in plain_sections if line.strip()]
         full_text = "\n".join(plain_lines).strip()
@@ -777,6 +846,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                     window_heuristic_used = True
 
             def _heuristic_for_window(window_fused: list[list[dict[str, Any]]], window_zooms: list[int], window_shapes: list[tuple[int, int]]) -> list[list[dict[str, Any]]]:
+                """单窗全部页的启发式 layout 兜底（模型推理失败按窗回退时用）。"""
                 pages = []
                 for fused, zoom, (h, w) in zip(window_fused, window_zooms, window_shapes):
                     pages.append(
@@ -1027,6 +1097,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             return chars
 
         def _is_cjk(text: str) -> bool:
+            """文本是否含 CJK 字符（词间补空格只对非 CJK 生效）。"""
             return any("一" <= ch <= "鿿" for ch in text)
 
         sorted_chars = sorted(chars, key=lambda c: (float(c.get("top", 0.0)), float(c.get("x0", 0.0))))
@@ -1273,6 +1344,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         """
 
         def _char_weight(c: dict[str, Any]) -> int:
+            """字符 dict 的非空白字符数（回收统计口径）。"""
             return sum(1 for ch in str(c.get("text", "") or "") if not ch.isspace())
 
         if not page_lefted:
@@ -1391,6 +1463,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         page_height: float,
         zoom: int,
     ) -> list[dict[str, Any]]:
+        """无版面模型时的启发式打标（top/x0 排序 + 位置/文本规则）。
+        
+        按页顶/页底 6% 判 header/footer，caption 正则判表图题，
+        首块与字号判 title，分隔符密度判 table，其余为 text。
+        """
         if not blocks:
             return []
         font_sizes = [float(block.get("font_size", 0.0)) for block in blocks if float(block.get("font_size", 0.0)) > 0]
@@ -1429,6 +1506,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _collect_ocr_sources(pages: list[list[dict[str, Any]]]) -> list[str]:
+        """逐页取首个 OCR 来源标记，无标记页记 fitz_text（诊断口径）。"""
         sources = []
         for page in pages:
             source = next((str(block.get("ocr_source")) for block in page if block.get("ocr_source")), "fitz_text")
@@ -1437,6 +1515,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _build_vision_strategy(ocr_sources: list[str], layout_source: str) -> str:
+        """按 OCR 来源集合 + 版面来源合成 vision_strategy 标识串（metadata 契约）。"""
         source_set = set(ocr_sources)
         if source_set == {"text_layer"}:
             text_source = "text-layer"
@@ -1455,6 +1534,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> list[str]:
+        """纯字符长度聚块：块间以空行拼接，超 chunk_size 先出当前块。"""
         chunks: list[str] = []
         current_parts: list[str] = []
         current_length = 0
@@ -1482,6 +1562,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self,
         boxes: Sequence[DeepDocPdfBox],
     ) -> tuple[list[DeepDocPdfBox], str]:
+        """委托 UpDownConcatMerger 做上下文段落合并。
+        
+        Returns:
+            (合并后框列表, 策略名 xgb/heuristic/disabled) 二元组。
+        """
         merged, strategy = self._updown_concat.merge(list(boxes))
         return list(merged), strategy
 
@@ -1491,6 +1576,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         total_pages: int | None = None,
     ) -> tuple[list[DeepDocPdfBox], dict[str, Any]]:
+        """委托 PageNoiseFilter 做脏页过滤，透传过滤元信息。"""
         filtered, meta = self._page_filter.filter_boxes(list(boxes), total_pages=total_pages)
         return list(filtered), meta
 
@@ -1501,6 +1587,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         page_images: dict[int, Image.Image] | None = None,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
+        """委托 PdfArtifactExtractor 抽表格/图片 artifact（附页图与 zoom）。"""
         return self._artifact_extractor.extract(list(boxes), page_images=page_images, zoom_map=zoom_map)
 
     def _render_artifact_pages(
@@ -1531,6 +1618,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         try:
             def _page_image(page_num: int) -> Image.Image:
+                """渲染单页为 PIL 图（闭包内使用，zoom 取 zoom_map 缺省 2）。"""
                 zoom = float(zoom_map.get(page_num, 2.0) if zoom_map else 2.0)
                 pix = doc.load_page(page_num - 1).get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
                 img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
@@ -1827,6 +1915,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     def _build_table_regions_metadata(
         artifacts: dict[str, list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
+        """artifacts 的 tables 转正序 table_regions 元数据（reading_order 消费）。
+        
+        每项含 artifact_id/pages/bbox/caption/html/成员文本与成员框坐标/
+        TSR 结构摘要（行列数、结构框），成员框供正文按框剔除。
+        """
         table_regions: list[dict[str, Any]] = []
         ordered_tables = sorted(
             artifacts.get("tables", []),
@@ -2089,6 +2182,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         table_regions: Sequence[dict[str, Any]],
         figure_regions: Sequence[dict[str, Any]],
     ) -> list[dict[str, Any]]:
+        """文本框 + 表/图 region 合成全局阅读序 entry 列表。
+        
+        排序键 (页, 列, top, x0, kind 权重)；每个 entry 带 kind/page/
+        source_id/global_order/order_on_page，是 full 模式 MD 与分块的唯一来源。
+        """
         entries: list[dict[str, Any]] = []
 
         for box in text_boxes:
@@ -2170,6 +2268,8 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _reading_order_entry_text(entry: dict[str, Any]) -> str:
+        """entry 转输出文本：text 直出；table 优先内联 HTML（回退 [TABLE]+文本）；
+        figure 为 ![alt](占位符)（无占位符回退 [FIGURE] 文本块）。"""
         kind = str(entry.get("kind", "text"))
         if kind == "text":
             return str(entry.get("text", "")).strip()
@@ -2205,6 +2305,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         chunk_size: int,
     ) -> tuple[list[str], list[dict[str, Any]]]:
+        """按 reading_order 聚块并记录 chunk 结构信息。
+        
+        Returns:
+            (chunks, chunk_structure) 二元组；structure 每项含 chunk_index/
+            entry_kinds/entry_source_ids/pages，供 chunk 级溯源；无 entry 时
+            回退纯文本聚块、structure 为空。
+        """
         chunks: list[str] = []
         chunk_structure: list[dict[str, Any]] = []
         current_parts: list[str] = []
@@ -2212,6 +2319,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         current_length = 0
 
         def flush() -> None:
+            """把累积中的 entry 落成 chunk 并记录结构信息（来源/页码/类型）。"""
             nonlocal current_parts, current_entries, current_length
             if not current_parts:
                 return
@@ -2266,6 +2374,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def _reading_order_entries_by_page(reading_order: Sequence[dict[str, Any]]) -> dict[int, int]:
+        """按页统计 reading_order entry 数（分阶段诊断口径）。"""
         counts: dict[int, int] = {}
         for entry in reading_order:
             page = int(entry.get("page", 0))
@@ -2277,6 +2386,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         all_boxes: Sequence[DeepDocPdfBox],
         chunk_boxes: Sequence[DeepDocPdfBox],
     ) -> list[DeepDocPdfBox]:
+        """从全量框筛出可进 artifact 流的框：保留页内、非公式、有文本或表图版面。"""
         kept_pages = {box.page for box in chunk_boxes}
         if not kept_pages:
             kept_pages = {box.page for box in all_boxes}

@@ -21,6 +21,12 @@ class RAGFlowFigureParser(VisionFigureParser):
     SUPPORTED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
 
     def __init__(self, vision_model=None, figures_data=None, *args, **kwargs):
+        """初始化图片解析器。
+        
+        Args:
+            vision_model: 独立视觉模型名（当前实现留作注入位，未参与 OCR 兜底路径）。
+            figures_data: 传入时走上游 VisionFigureParser 初始化（PDF 内嵌图表场景）。
+        """
         self.standalone_vision_model = vision_model
         if figures_data is not None:
             super().__init__(
@@ -31,10 +37,16 @@ class RAGFlowFigureParser(VisionFigureParser):
             )
 
     def parse(self, file_path: str | Path) -> tuple[str, list[str], dict[str, Any]]:
+        """解析本地图片文件为（全文、分块、元数据）三元组。"""
         path = Path(file_path)
         return self.parse_bytes(path.read_bytes(), path.suffix.lower().lstrip("."))
 
     def parse_bytes(self, file_bytes: bytes, file_type: str) -> tuple[str, list[str], dict[str, Any]]:
+        """解析图片字节流为（全文、分块、元数据）三元组。
+        
+        全文为尺寸摘要 + OCR 文本行；元数据含图片宽高/格式、OCR 行与四边形框、
+        OCR 模型状态，preview 为懒加载原图。
+        """
         suffix = file_type.lower().lstrip(".")
         if suffix not in self.SUPPORTED_EXTENSIONS:
             raise ValueError(f"Unsupported image format for deepdoc figure parser: {suffix}")
@@ -71,6 +83,10 @@ class RAGFlowFigureParser(VisionFigureParser):
         return full_text.strip(), chunks, metadata
 
     def _extract_text_with_ocr(self, image: Image.Image) -> tuple[list[str], list[dict[str, Any]]]:
+        """OCR 抽取图中文字，返回（文本行，含 quad 坐标的框）二元组。
+        
+        OCR 不可用或检测失败时静默返回空列表（能力缺失优于报错中断）。
+        """
         try:
             ocr = OCR(autoload=True)
         except Exception:

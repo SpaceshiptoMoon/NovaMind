@@ -36,6 +36,7 @@ class PdfArtifactExtractor:
     """Adapted toward RAGFlow `_extract_table_figure` grouping behavior."""
 
     def __init__(self, ocr=None):
+        """初始化产物抽取器；OCR 与表格结构识别器（TSR）均惰性加载。"""
         self._ocr = ocr
         self._tsr: TableStructureRecognizer | None = None
         self._tsr_attempted = False
@@ -48,6 +49,21 @@ class PdfArtifactExtractor:
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
+        """从版面框抽取表格/图片 artifact。
+        
+        流程：题注识别 → 按 layoutno 区域分组 → 跨页物理连续合并 → 题注挂载 →
+        表格质量门（假表降级）→ 产出 tables/figures 两类 artifact 字典。
+        
+        Args:
+            boxes: 版面打标后的框对象（页局部坐标）。
+            page_images: 页号到 PIL 图的映射（供 crop 判真/旋转/TSR）。
+            zoom: 默认渲染 zoom（zoom_map 未覆盖的页用）。
+            zoom_map: 每页实际渲染 zoom。
+        
+        Returns:
+            {"tables": [...], "figures": [...]}，每项含 artifact_id/caption/
+            text/html/members/bbox 等字段。
+        """
         table_groups: dict[str, list[Any]] = {}
         figure_groups: dict[str, list[Any]] = {}
         captions: list[Any] = []
@@ -118,6 +134,10 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _group_key(box: Any) -> str:
+        """组身份键：优先 页号:layoutno（上游区域身份），合成框回退坐标摘要。
+        
+        id 会嵌入 __FIGURE_URL__ 占位符，不得含坐标标记字符。
+        """
         # artifact_id 会以 __FIGURE_URL__{id}__ 形式嵌入 full_text，并随后被
         # strip_position_tags（@@...## 正则）清洗。id 里不能带 position_tag 的
         # 坐标标记，否则正文被腐蚀成 __FIGURE_URL__N:__，而 pipeline 替换用的
@@ -188,6 +208,7 @@ class PdfArtifactExtractor:
         page_images: dict[int, Image.Image] | None,
         zoom_map: dict[int, float] | None,
     ) -> dict[int, float]:
+        """各页真实页高（像素高/zoom → 点）；跨页连续性判据的边界带折算基准。"""
         heights: dict[int, float] = {}
         if not page_images:
             return heights
@@ -205,6 +226,7 @@ class PdfArtifactExtractor:
         previous_page_height: float | None = None,
         next_page_height: float | None = None,
     ) -> bool:
+        """相邻页两组是否物理连续（前组贴页底 + 后继组贴页顶 + 水平重叠）。"""
         prev_bbox = PdfArtifactExtractor._group_bbox(previous_members)
         next_bbox = PdfArtifactExtractor._group_bbox(next_members)
         if not prev_bbox or not next_bbox:
@@ -226,6 +248,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _is_caption_box(box: Any) -> bool:
+        """框是否为题注（TSR 判定或 layout_type 含 caption）。"""
         from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
             TableStructureRecognizer,
         )
@@ -360,6 +383,11 @@ class PdfArtifactExtractor:
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
+        """把表格组构建为 table artifact：旋转 OCR → 跨页合成图 → TSR 结构 → HTML。
+        
+        返回 dict 含 caption/text/html/table_structure/pages/bbox/image/
+        caption_boxes（挂载题注页级坐标）等。
+        """
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
         caption = "\n".join(getattr(item, "text", "").strip() for item in captions).strip()
         content_boxes = [item for item in ordered if not self._is_caption_box(item)]
@@ -443,6 +471,7 @@ class PdfArtifactExtractor:
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
+        """把图片组构建为 figure artifact（题注/成员文本/crop 图）。"""
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
         caption = "\n".join(getattr(item, "text", "").strip() for item in captions).strip()
         content_text = "\n".join(
@@ -478,6 +507,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _group_bbox(members: Sequence[Any]) -> dict[str, float] | None:
+        """组成员的联合 bbox（页局部坐标）；空组返回 None。"""
         if not members:
             return None
         return {
@@ -512,6 +542,11 @@ class PdfArtifactExtractor:
         composite_image: Image.Image | None = None,
         y_offsets: Sequence[int] | None = None,
     ) -> tuple[str, str, dict[str, Any]]:
+        """三级降级产表格 HTML：TSR 模型 → 几何构造 → 启发式平铺。
+        
+        Returns:
+            (html, html_source, table_structure 元信息) 三元组。
+        """
         tsr_structured_boxes, tsr_meta = self._infer_structured_boxes_from_tsr_model(
             content_boxes,
             crop_descriptors=crop_descriptors,
@@ -567,6 +602,11 @@ class PdfArtifactExtractor:
         composite_image: Image.Image | None = None,
         y_offsets: Sequence[int] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """TSR 模型推理结构框：逐页 crop 推理或跨页合成图一次推理。
+        
+        Returns:
+            (structured_boxes, 元信息) 二元组；模型不可用/失败返回空列表与原因。
+        """
         recognizer = self._get_tsr_recognizer()
         if recognizer is None or not crop_descriptors or not content_boxes:
             return [], {"source": "unavailable", "prediction_pages": 0, "prediction_count": 0}
@@ -697,6 +737,7 @@ class PdfArtifactExtractor:
         *,
         caption: str = "",
     ) -> list[dict[str, Any]]:
+        """无模型时的几何结构推断：top 聚行、行内拆格，产出 R/C 标注框。"""
         if not content_boxes:
             return []
         rows: dict[int, list[Any]] = {}
@@ -762,6 +803,7 @@ class PdfArtifactExtractor:
         return structured_boxes
 
     def _infer_row_cells(self, row_boxes: Sequence[Any]) -> list[dict[str, Any]]:
+        """把一行框切成单元格：含 | / 制表符分隔的框按分隔符均分宽度拆分。"""
         ordered = sorted(row_boxes, key=lambda item: getattr(item, "x0", 0.0))
         cells: list[dict[str, Any]] = []
         for box in ordered:
@@ -786,6 +828,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _split_box_text_into_cells(box: Any) -> list[dict[str, Any]]:
+        """框文本按 | / 制表符拆成多格（不足 2 格视为非表格行返回空）。"""
         text = getattr(box, "text", "").strip()
         if not text:
             return []
@@ -812,6 +855,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _guess_header_rows(rows: Sequence[Sequence[dict[str, Any]]]) -> set[int]:
+        """启发式表头行判定：首行数值占比 <=0.4 且不低于次行时判首行为表头。"""
         if not rows:
             return set()
         if len(rows) == 1:
@@ -826,6 +870,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _numeric_ratio(cells: Sequence[dict[str, Any]]) -> float:
+        """单元格集合中纯数值格的占比（表头判定特征）。"""
         if not cells:
             return 0.0
         numeric_count = 0
@@ -837,6 +882,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _heuristic_table_html(content_boxes: Sequence[Any], *, caption: str = "") -> str:
+        """无结构信息时的兜底 HTML：按 top 聚行、x0 排序的 <td> 平铺表。"""
         if not content_boxes:
             return ""
         rows: dict[int, list[Any]] = {}
@@ -871,6 +917,7 @@ class PdfArtifactExtractor:
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> list[dict[str, Any]]:
+        """按页收集组成员的 crop 描述符（页号/组 bbox/crop 图/成员框）。"""
         if not page_images or not members:
             return []
         crops: list[dict[str, Any]] = []
@@ -900,11 +947,13 @@ class PdfArtifactExtractor:
         return crops
 
     def _encode_group_crops(self, crop_descriptors: Sequence[dict[str, Any]]) -> LazyImage:
+        """组的各页 crop 编码为惰加载图片对象（无 crop 返回空 LazyImage）。"""
         if not crop_descriptors:
             return LazyImage([])
         return LazyImage(self._encode_crops([descriptor["crop"] for descriptor in crop_descriptors if descriptor.get("crop") is not None]))
 
     def _get_tsr_recognizer(self):
+        """懒加载 TSR；健康检查不过或加载失败缓存 None 不重试。"""
         if self._tsr_attempted:
             return self._tsr
         self._tsr_attempted = True
@@ -935,6 +984,12 @@ class PdfArtifactExtractor:
         rotated_size: tuple[int, int] | None = None,
         y_offset: int = 0,
     ) -> list[dict[str, Any]]:
+        """把 TSR 的行/列/表头/跨行预测匹配到该页内容框，产出结构化格。
+        
+        每个格带 R/C 行列号、页面坐标 R_top/R_bott/C_left/C_right、表头标记 H，
+        命中 spanning cell 时补 SP 与 H_* 跨行坐标。支持旋转框坐标还原与
+        合成图 y_offset 平移。
+        """
         page = int(descriptor["page"])
         bbox = descriptor["bbox"]
         page_boxes = [
@@ -1160,6 +1215,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _to_local_box(box: Any, *, bbox: dict[str, float], zoom: float) -> dict[str, float]:
+        """页面坐标框转组 crop 内局部像素坐标。"""
         return {
             "x0": (float(getattr(box, "x0", 0.0)) - bbox["x0"]) * zoom,
             "x1": (float(getattr(box, "x1", 0.0)) - bbox["x0"]) * zoom,
@@ -1169,9 +1225,11 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _from_local_coord(value: float, offset: float, zoom: float) -> float:
+        """crop 局部像素坐标转回页面坐标（页号局部 top 偏移 + /zoom）。"""
         return float(value) / float(zoom) + float(offset)
 
     def _best_prediction_index(self, box: dict[str, float], predictions: Sequence[dict[str, Any]]) -> int | None:
+        """取与框重叠 IoMin 最大的预测下标；无一重叠返回 None。"""
         best_index = None
         best_score = 0.0
         for index, prediction in enumerate(predictions):
@@ -1182,6 +1240,7 @@ class PdfArtifactExtractor:
         return best_index
 
     def _best_prediction(self, box: dict[str, float], predictions: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
+        """取与框 IoMin 最大的预测对象（无则 None）。"""
         best_prediction = None
         best_score = 0.0
         for prediction in predictions:
@@ -1193,6 +1252,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _prediction_overlap(box: dict[str, float], prediction: dict[str, Any]) -> float:
+        """框与预测框的 IoMin（交面积/较小框面积）。"""
         left = max(box["x0"], prediction["x0"])
         right = min(box["x1"], prediction["x1"])
         top = max(box["top"], prediction["top"])
@@ -1242,6 +1302,7 @@ class PdfArtifactExtractor:
         return composite, y_offsets, page_heights
 
     def _encode_crops(self, crops: Sequence[Image.Image]) -> list[bytes]:
+        """PIL crop 编码为 PNG 字节列表。"""
         if not crops:
             return []
         ordered_crops = list(crops)
@@ -1265,6 +1326,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _crop_image(image: Image.Image, bbox: dict[str, float], *, zoom: float = 1.0) -> Image.Image | None:
+        """按页面坐标 bbox 从页图裁 crop（坐标 ×zoom 到像素）；越界返回 None。"""
         left = max(0, int(bbox["x0"] * zoom))
         top = max(0, int(bbox["top"] * zoom))
         right = min(image.size[0], max(left + 1, int(bbox["x1"] * zoom)))

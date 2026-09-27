@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 
 
 def _as_image(value: Image.Image | LazyImage | bytes) -> Image.Image:
+    """把 PIL / LazyImage / bytes 输入统一规整为 RGB PIL 图像副本。"""
     if isinstance(value, Image.Image):
         return value.copy()
     if isinstance(value, LazyImage):
@@ -33,6 +34,11 @@ def save_results(
     output_dir: str | Path = "output",
     threshold: float = 0.5,
 ) -> list[Path]:
+    """逐图绘制检测结果并保存为 JPG 到 output_dir。
+
+    Returns:
+        保存文件路径列表（按输入顺序编号命名）。
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     saved: list[Path] = []
@@ -52,6 +58,17 @@ def draw_box(
     labels: Sequence[str] | None = None,
     threshold: float = 0.5,
 ) -> Image.Image:
+    """在图像上绘制检测框与类别+置信度标签（低于阈值的不绘制）。
+
+    Args:
+        image: 原始图像（PIL / LazyImage / bytes）。
+        result: 检测结果列表（bbox 或 x0/top/x1/bottom 字段，像素坐标）。
+        labels: 配色用的类别表；None 时从结果中出现的类别自动生成。
+        threshold: 绘制阈值，置信度低于该值不绘制。
+
+    Returns:
+        绘制后的图像副本（不修改原图）。
+    """
     rendered = _as_image(image)
     detections = [item for item in result if float(item.get("score", 1.0)) >= threshold]
     inferred = [str(item.get("type", "unknown")) for item in detections]
@@ -85,6 +102,7 @@ def draw_box(
 
 
 def get_color_map_list(num_classes: int) -> list[list[int]]:
+    """按类别数生成 PaddleOCR 风格的可区分配色（按位展开 RGB）。"""
     color_map = num_classes * [0, 0, 0]
     for index in range(num_classes):
         bit_index = 0
@@ -99,6 +117,7 @@ def get_color_map_list(num_classes: int) -> list[list[int]]:
 
 
 def imagedraw_textsize_c(draw: ImageDraw.ImageDraw, text: str) -> tuple[int, int]:
+    """兼容 Pillow <10 的 textsize 测宽高（新版回退 textbbox 量测）。"""
     if int(PIL.__version__.split(".")[0]) < 10:
         return draw.textsize(text)
     left, top, right, bottom = draw.textbbox((0, 0), text)

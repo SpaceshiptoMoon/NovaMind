@@ -14,6 +14,7 @@ from novamind.engines.document.integrations.deepdoc.diagnostics.doctor import bu
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建 CLI 参数：文件路径、解析器 ID、PDF 模式、分块大小等。"""
     parser = argparse.ArgumentParser(description="Standalone CLI for the vendored DeepDoc module")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -63,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _serialize_result(result) -> dict[str, Any]:
+    """DeepDocParseResult 转 JSON 兼容 dict（box 对象走 asdict）。"""
     return {
         "full_text": result.full_text,
         "chunks": list(result.chunks),
@@ -71,6 +73,7 @@ def _serialize_result(result) -> dict[str, Any]:
 
 
 def _redirect_stdout_logging_to_stderr() -> None:
+    """日志改道 stderr：stdout 只留解析结果 JSON，便于管道消费。"""
     root_logger = logging.getLogger()
     for handler in root_logger.handlers:
         if isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) is sys.stdout:
@@ -78,6 +81,11 @@ def _redirect_stdout_logging_to_stderr() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI 主入口：解析文件并输出 JSON 结果。
+    
+    Returns:
+        进程退出码：0 成功，1 解析失败（异常消息输出 stderr）。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     _redirect_stdout_logging_to_stderr()

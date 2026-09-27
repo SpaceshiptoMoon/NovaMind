@@ -11,15 +11,19 @@ from PIL import Image
 
 
 class LLMType:
+    """模型类型常量（standalone 模式仅保留 image2text）。"""
     IMAGE2TEXT = "image2text"
 
 
 class LLMBundle:
+    """RAGFlow 租户模型束占位：standalone DeepDoc 下一律拒绝构造。"""
     def __init__(self, *args, **kwargs):
+        """构造即拒绝：standalone 模式无租户模型服务。"""
         raise RuntimeError("RAGFlow tenant model services are not available in standalone DeepDoc")
 
 
 def get_tenant_default_model_by_type(*args, **kwargs):
+    """租户默认模型查询占位：调用即报错，强制调用方显式传 vision_model。"""
     raise RuntimeError("Provide vision_model explicitly when using standalone DeepDoc")
 
 
@@ -27,8 +31,10 @@ def timeout(_seconds: int, attempts: int = 1):
     """Retry a callable without introducing RAGFlow's signal-based timeout."""
 
     def decorator(func):
+        """被装饰函数包一层重试。"""
         @wraps(func)
         def wrapped(*args, **kwargs):
+            """按 attempts 重试调用，全失败抛最后一次异常。"""
             last_error = None
             for attempt in range(max(1, attempts)):
                 try:
@@ -45,6 +51,7 @@ def timeout(_seconds: int, attempts: int = 1):
 
 
 def ensure_pil_image(image: Any) -> Image.Image | None:
+    """把 PIL/LazyImage/字节流统一转为 RGB PIL 图；不可识别返回 None。"""
     if isinstance(image, Image.Image):
         return image
     if isinstance(image, LazyImage):
@@ -56,6 +63,11 @@ def ensure_pil_image(image: Any) -> Image.Image | None:
 
 
 def open_image_for_processing(image: Any, allow_bytes: bool = False) -> tuple[Image.Image | None, bool]:
+    """打开待处理图片，返回 (图, 是否新打开)。
+    
+    已有 PIL 原样返回（调用方不应关闭）；bytes 在 allow_bytes=True 时
+    打开并返回 True（调用方负责关闭），否则返回 (None, False)。
+    """
     if isinstance(image, Image.Image):
         return image, False
     if isinstance(image, LazyImage):
@@ -67,10 +79,12 @@ def open_image_for_processing(image: Any, allow_bytes: bool = False) -> tuple[Im
 
 
 def is_image_like(image: Any) -> bool:
+    """对象是否为可处理的图片形态（PIL/LazyImage/字节）。"""
     return isinstance(image, (Image.Image, LazyImage, bytes, bytearray, memoryview))
 
 
 def vision_llm_figure_describe_prompt() -> str:
+    """图表描述默认提示词（标签/趋势/关系）。"""
     return "Describe the figure accurately, including visible labels, trends, and relationships."
 
 
@@ -79,6 +93,7 @@ def vision_llm_figure_describe_prompt_with_context(
     context_above: str = "",
     context_below: str = "",
 ) -> str:
+    """带上下文的图表描述提示词（拼上图/下图文本）。"""
     return (
         f"{vision_llm_figure_describe_prompt()}\n"
         f"Context above:\n{context_above}\n"
@@ -93,6 +108,11 @@ def picture_vision_llm_chunk(
     prompt: str,
     callback=None,
 ) -> str:
+    """调视觉模型生成图片描述文本。
+    
+    vision_model 接受可调用对象或带 describe/generate/invoke 方法的对象；
+    返回 dict 时取 text/content 键。模型缺失返回空串。
+    """
     if vision_model is None:
         return ""
     callback = callback or (lambda progress, message: None)
@@ -120,6 +140,11 @@ def append_context2table_image4pdf(
     *,
     return_context: bool = False,
 ):
+    """为每个图表附上下文文本（return_context=True 时）。
+    
+    把 sections 文本截前 context_size 字符作为每个 figure 的上文；
+    return_context=False 时原样返回 figures_data。
+    """
     if not return_context:
         return figures_data
     texts = []

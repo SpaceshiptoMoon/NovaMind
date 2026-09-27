@@ -15,18 +15,31 @@ from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils impor
 
 
 class RAGFlowTextParser:
+    """文本族统一路由解析器：按后缀/parser_id 分发到 txt/markdown/html/json。"""
     def __init__(self):
+        """初始化文本族内部解析器（txt/markdown/html/json 四路）。"""
         self._txt_parser = RAGFlowTxtParser()
         self._markdown_parser = RAGFlowMarkdownParser()
         self._html_parser = RAGFlowHtmlParser()
         self._json_parser = RAGFlowJsonParser()
 
     def parse(self, file_path: str | Path, parser_id: str | None = None) -> tuple[str, list[str], dict]:
+        """解析本地文本文件为（全文、分块、元数据）三元组。"""
         path = Path(file_path)
         suffix = path.suffix.lower().lstrip(".")
         return self.parse_bytes(path.read_bytes(), suffix, parser_id=parser_id)
 
     def parse_bytes(self, file_bytes: bytes, file_type: str, parser_id: str | None = None) -> tuple[str, list[str], dict]:
+        """按后缀/parser_id 路由到对应文本解析器。
+        
+        Args:
+            file_bytes: 文件字节流。
+            file_type: 文件后缀（txt/csv/md/html/json）。
+            parser_id: 显式解析器 ID，优先于后缀推断。
+        
+        Returns:
+            (全文, 分块列表, 元数据) 三元组；元数据含 parser_class。
+        """
         suffix = file_type.lower().lstrip(".")
         parser_id = (parser_id or "").lower()
 

@@ -21,6 +21,13 @@ class RAGFlowEpubParser:
     """Parse EPUB files by extracting XHTML content in spine order."""
 
     def __call__(self, fnm, binary=None, chunk_token_num=512):
+        """解析 EPUB 为章节 section 列表（沿用 HTML 解析器的 section 结构）。
+        
+        Args:
+            fnm: 文件路径（binary 为 None 时使用）。
+            binary: EPUB 字节流；与 fnm 二选一，空字节流抛 ValueError。
+            chunk_token_num: 传给 HTML 解析器的分块 token 上限。
+        """
         if binary is not None:
             if not binary:
                 logger.warning("RAGFlowEpubParser received an empty EPUB binary payload for %r", fnm)
@@ -52,6 +59,7 @@ class RAGFlowEpubParser:
 
     @staticmethod
     def _get_spine_items(zf):
+        """按 spine 阅读顺序取章节条目；链路任一环缺失时走兜底排序。"""
         try:
             container_xml = zf.read("META-INF/container.xml")
         except KeyError:
@@ -105,6 +113,7 @@ class RAGFlowEpubParser:
 
     @staticmethod
     def _fallback_xhtml_order(zf):
+        """spine 元数据缺失时按文件名排序的兜底章节序。"""
         return sorted(
             name
             for name in zf.namelist()

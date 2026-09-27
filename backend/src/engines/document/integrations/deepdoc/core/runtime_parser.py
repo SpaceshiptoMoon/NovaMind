@@ -24,24 +24,28 @@ class DeepDocParser:
 
     @cached_property
     def _docx_parser(self):
+        """DOCX 解析器（懒加载防 import 重）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.docx import RAGFlowDocxParser
 
         return RAGFlowDocxParser()
 
     @cached_property
     def _epub_parser(self):
+        """EPUB 解析器（懒加载）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.epub import RAGFlowEpubParser
 
         return RAGFlowEpubParser()
 
     @cached_property
     def _excel_parser(self):
+        """Excel 解析器（懒加载）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.excel import RAGFlowExcelParser
 
         return RAGFlowExcelParser()
 
     @cached_property
     def _figure_parser(self):
+        """图片解析器（懒加载）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.figure import (
             RAGFlowFigureParser,
         )
@@ -50,28 +54,33 @@ class DeepDocParser:
 
     @cached_property
     def _pdf_parser(self):
+        """PDF 解析器（懒加载，含 OCR/layout 全依赖）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
         return RAGFlowPdfParser()
 
     @cached_property
     def _ppt_parser(self):
+        """PPT 解析器（懒加载）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.ppt import RAGFlowPptParser
 
         return RAGFlowPptParser()
 
     @cached_property
     def _text_parser(self):
+        """文本族解析器（txt/md/html/json 路由，懒加载）。"""
         from novamind.engines.document.integrations.deepdoc.parsers.text import RAGFlowTextParser
 
         return RAGFlowTextParser()
 
     @staticmethod
     def supported_extensions() -> set[str]:
+        """支持的文件后缀全集（含图片与文本族）。"""
         return {"pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"}
 
     @staticmethod
     def supported_pdf_modes() -> dict[str, dict[str, Any]]:
+        """PDF 解析模式能力表（full/plain 及其 available/missing）。"""
         return dict(get_deepdoc_capabilities()["pdf_modes"])
 
     async def parse(
@@ -81,6 +90,16 @@ class DeepDocParser:
         parsing_config: dict[str, Any] | None = None,
         splitting_config: dict[str, Any] | None = None,
     ) -> DeepDocParseResult:
+        """解析本地文件为 DeepDocParseResult（CPU 重活在 to_thread）。
+        
+        Args:
+            file_path: 文件路径。
+            parsing_config: 解析配置（deepdoc_parser_id/deepdoc_pdf_mode 等）。
+            splitting_config: 分块配置（chunk_size）。
+        
+        Raises:
+            ValueError: 文件类型不支持。
+        """
         file_path = Path(file_path)
         extension = file_path.suffix.lower().lstrip(".")
         parsing_config = parsing_config or {}
@@ -95,6 +114,7 @@ class DeepDocParser:
         parsing_config: dict[str, Any] | None = None,
         splitting_config: dict[str, Any] | None = None,
     ) -> DeepDocParseResult:
+        """解析字节流为 DeepDocParseResult（file_type 显式指定后缀）。"""
         extension = file_type.lower().lstrip(".")
         parsing_config = parsing_config or {}
         splitting_config = splitting_config or {}
@@ -107,6 +127,7 @@ class DeepDocParser:
         parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """按后缀路由到对应同步解析方法（各包 to_thread 防事件循环阻塞）。"""
         logger.info(
             "DeepDoc 解析路由",
             extension=extension,
@@ -136,6 +157,12 @@ class DeepDocParser:
         parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """PDF 同步解析：校验模式可用性 → 调 RAGFlowPdfParser。
+        
+        Raises:
+            ValueError: pdf_mode 不在能力表。
+            RuntimeError: 模式不可用（模型/依赖缺失）。
+        """
         parser_id = str(parsing_config.get("deepdoc_parser_id", "") or "")
         logger.info(
             "DeepDoc PDF 解析开始",
@@ -183,6 +210,7 @@ class DeepDocParser:
         parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """文本族同步解析：路由到 txt/md/html/json 子解析器再统一聚块。"""
         logger.info("DeepDoc 文本解析开始", extension=extension, deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"))
         if isinstance(source, Path):
             full_text, default_chunks, parser_metadata = self._text_parser.parse(source, parser_id=parsing_config.get("deepdoc_parser_id"))
@@ -199,6 +227,7 @@ class DeepDocParser:
         )
 
     def _parse_docx_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
+        """DOCX 同步解析：Heading 样式转 Markdown 层级标题，表格转 HTML。"""
         logger.info("DeepDoc DOCX 解析开始")
         parser_input = str(source) if isinstance(source, Path) else source
         sections, tables = self._docx_parser(parser_input)
@@ -252,6 +281,7 @@ class DeepDocParser:
         extension: str,
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """Excel 同步解析：优先 HTML 表格块，空结果回退行文本。"""
         logger.info("DeepDoc Excel 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
         blocks = self._excel_parser.html(parser_input) or self._excel_parser(parser_input)
@@ -271,6 +301,7 @@ class DeepDocParser:
         )
 
     def _parse_epub_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
+        """EPUB 同步解析：按 spine 序章节切分聚块。"""
         logger.info("DeepDoc EPUB 解析开始")
         if isinstance(source, Path):
             sections = self._epub_parser(str(source))
@@ -297,6 +328,7 @@ class DeepDocParser:
         extension: str,
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """PPT 同步解析：每页加 Slide 标题行后聚块。"""
         logger.info("DeepDoc PPT 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
         slides = self._ppt_parser(parser_input)
@@ -322,6 +354,7 @@ class DeepDocParser:
         extension: str,
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
+        """图片同步解析：OCR 文本行 + 元数据直通。"""
         logger.info("DeepDoc 图片解析开始", extension=extension)
         if isinstance(source, Path):
             full_text, default_chunks, metadata = self._figure_parser.parse(source)
@@ -333,6 +366,7 @@ class DeepDocParser:
 
     @staticmethod
     def _extract_heading_level(style_name: str) -> int:
+        """从 Heading N 样式名取级别（非法回退 1）。"""
         suffix = style_name.replace("Heading", "").strip()
         try:
             return max(1, int(suffix))
@@ -341,6 +375,7 @@ class DeepDocParser:
 
     @staticmethod
     def _table_text_to_html(table_text: str) -> str:
+        """「a: b; c: d」行文本转简单 HTML 表格。"""
         rows = [row.strip() for row in table_text.split("\n") if row.strip()]
         if not rows:
             return ""
@@ -352,6 +387,7 @@ class DeepDocParser:
 
     @staticmethod
     def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> list[str]:
+        """字符长度聚块：块间空行拼接，超 chunk_size 先出当前块。"""
         chunks: list[str] = []
         current_parts: list[str] = []
         current_length = 0

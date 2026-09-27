@@ -16,6 +16,12 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
 
 
 def get_deepdoc_capabilities() -> dict[str, Any]:
+    """DeepDoc 引擎能力表：解析器目录 + PDF 模式可用性。
+    
+    Returns:
+        dict：parsers（id → 后缀/描述）与 pdf_modes（full/plain →
+        available/missing），供 runtime 校验与前端配置面板。
+    """
     runtime_report = get_deepdoc_runtime_report()
     vision_status = get_vision_runtime_status()
     vision_health = get_vision_health_status()

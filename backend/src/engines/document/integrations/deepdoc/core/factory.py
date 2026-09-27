@@ -11,6 +11,7 @@ from novamind.engines.document.integrations.deepdoc.core.runtime_parser import D
 
 @dataclass(frozen=True, slots=True)
 class DeepDocParserSpec:
+    """解析器规格：id、覆盖后缀、目标解析器与 PDF 模式默认值。"""
     parser_id: str
     file_type: str
     mode: str
@@ -44,6 +45,7 @@ class DeepDocParserFactory:
 
     @classmethod
     def list_specs(cls) -> dict[str, DeepDocParserSpec]:
+        """全部内置解析器规格映射（pdf/docx/text-family/excel/epub/ppt/figure）。"""
         capabilities = get_deepdoc_capabilities()
         pdf_modes = capabilities["pdf_modes"]
         return {
@@ -123,6 +125,15 @@ class DeepDocParserFactory:
 
     @classmethod
     def resolve_parser_id(cls, file_type: str, parser_id: str | None = None) -> DeepDocParserSpec:
+        """把显式 parser_id 或文件后缀解析为规格。
+        
+        Args:
+            file_type: 文件后缀。
+            parser_id: 显式解析器 ID（None 按后缀推断）。
+        
+        Raises:
+            ValueError: parser_id 未知或后缀无匹配规格。
+        """
         specs = cls.list_specs()
         normalized_file_type = file_type.lower().lstrip(".")
         resolved_id = parser_id or cls.DEFAULT_PARSER_IDS.get(normalized_file_type)
@@ -132,6 +143,7 @@ class DeepDocParserFactory:
 
     @classmethod
     def build_configs(cls, file_type: str, parser_id: str | None = None) -> tuple[DeepDocParser, dict]:
+        """定位 spec 并合成运行参数，返回 (解析器实例, 运行参数 dict)。"""
         spec = cls.resolve_parser_id(file_type, parser_id)
         parser = DeepDocParser()
         parsing_config = {}

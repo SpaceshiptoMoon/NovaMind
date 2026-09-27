@@ -10,6 +10,17 @@ _IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", "
 
 
 def iter_diagnostic_images(inputs: str | Path) -> Iterator[tuple[str, Image.Image]]:
+    """遍历诊断输入：图像文件逐个产出，PDF 展开为逐页图像。
+
+    Args:
+        inputs: 图像/PDF 文件，或目录（子文件按名称排序处理）。
+
+    Yields:
+        (输入名（stem 或 stem-page-N）, RGB PIL 图像) 元组。
+
+    Raises:
+        FileNotFoundError: 输入路径不存在。
+    """
     source = Path(inputs)
     if not source.exists():
         raise FileNotFoundError(f"Diagnostic input does not exist: {source}")
@@ -24,6 +35,7 @@ def iter_diagnostic_images(inputs: str | Path) -> Iterator[tuple[str, Image.Imag
 
 
 def _iter_pdf_pages(path: Path) -> Iterator[tuple[str, Image.Image]]:
+    """以 2 倍缩放把 PDF 逐页栅格化为 RGB 图像（依赖 PyMuPDF）。"""
     try:
         import fitz
     except ImportError as exc:

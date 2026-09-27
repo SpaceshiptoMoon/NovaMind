@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+"""DeepDoc 推理输出后处理：DB 文本检测二值化取框与 CTC 识别序列解码。"""
 import copy
 import re
 
@@ -24,6 +25,11 @@ from shapely.geometry import Polygon
 
 
 def build_post_process(config, global_config=None):
+    """按配置 name 字段实例化后处理组件（仅支持 DBPostProcess / CTCLabelDecode）。
+
+    Raises:
+        ValueError: 未知的后处理组件名。
+    """
     support_dict = {"DBPostProcess": DBPostProcess, "CTCLabelDecode": CTCLabelDecode}
 
     config = copy.deepcopy(config)
@@ -44,6 +50,7 @@ class DBPostProcess:
     """
 
     def __init__(self, thresh=0.3, box_thresh=0.7, max_candidates=1000, unclip_ratio=2.0, use_dilation=False, **kwargs):
+        """记录二值化阈值、框置信度阈值、候选数上限与外扩比例（min_size 固定 3 像素）。"""
         self.thresh = thresh
         self.box_thresh = box_thresh
         self.max_candidates = max_candidates
@@ -94,6 +101,7 @@ class DBPostProcess:
         return np.array(boxes, dtype="int32"), scores
 
     def unclip(self, box, unclip_ratio):
+        """按 DB 公式（距离 = 面积 × 比例 / 周长）把四边形外扩后重新闭合。"""
         poly = Polygon(box)
         distance = poly.area * unclip_ratio / poly.length
         offset = pyclipper.PyclipperOffset()
@@ -102,6 +110,7 @@ class DBPostProcess:
         return expanded
 
     def get_mini_boxes(self, contour):
+        """取最小面积外接矩形并按左上→右下排角点（返回角点与短边长度）。"""
         bounding_box = cv2.minAreaRect(contour)
         points = sorted(list(cv2.boxPoints(bounding_box)), key=lambda x: x[0])
 
@@ -140,6 +149,15 @@ class DBPostProcess:
         return cv2.mean(bitmap[ymin : ymax + 1, xmin : xmax + 1], mask)[0]
 
     def __call__(self, outs_dict, shape_list):
+        """DB 概率图二值化并提取文本框（轮廓 → 最小框 → 外扩 → 得分过滤 → 映射回原图）。
+
+        Args:
+            outs_dict: 模型输出 dict（取 "maps" 概率图）。
+            shape_list: 各图 [src_h, src_w, ratio_h, ratio_w]，框坐标映射回原图像素用。
+
+        Returns:
+            每图一个 {"points": 框数组 [N, 4, 2]（原图像素坐标）}。
+        """
         pred = outs_dict["maps"]
         if not isinstance(pred, np.ndarray):
             pred = pred.numpy()
@@ -163,6 +181,7 @@ class BaseRecLabelDecode:
     """Convert between text-label and text-index"""
 
     def __init__(self, character_dict_path=None, use_space_char=False):
+        """加载字符字典（缺省数字+小写字母），按需补空格字符并建立字符→索引映射（阿拉伯语字典标记反转）。"""
         self.beg_str = "sos"
         self.end_str = "eos"
         self.reverse = False
@@ -190,6 +209,7 @@ class BaseRecLabelDecode:
         self.character = dict_character
 
     def pred_reverse(self, pred):
+        """识别结果分段倒序（阿拉伯语从右到左修正，拉丁/数字串保持原序）。"""
         pred_re = []
         c_current = ""
         for c in pred:
@@ -206,6 +226,7 @@ class BaseRecLabelDecode:
         return "".join(pred_re[::-1])
 
     def add_special_char(self, dict_character):
+        """占位实现：基类不添加特殊字符。"""
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
@@ -237,6 +258,7 @@ class BaseRecLabelDecode:
         return result_list
 
     def get_ignored_tokens(self):
+        """返回 CTC 空白符（下标 0）忽略清单。"""
         return [0]  # for ctc blank
 
 
@@ -244,9 +266,15 @@ class CTCLabelDecode(BaseRecLabelDecode):
     """Convert between text-label and text-index"""
 
     def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        """继承字典加载，CTC 解码无附加参数。"""
         super().__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, *args, **kwargs):
+        """模型概率输出经 argmax + 去重 + 去空白符解码为 (文本, 置信度)。
+
+        Returns:
+            不传 label 时返回解码结果列表；传入 label 时返回（识别结果, 标签结果）二元组。
+        """
         if isinstance(preds, tuple) or isinstance(preds, list):
             preds = preds[-1]
         if not isinstance(preds, np.ndarray):
@@ -260,5 +288,6 @@ class CTCLabelDecode(BaseRecLabelDecode):
         return text, label
 
     def add_special_char(self, dict_character):
+        """在字典头部插入空白符。"""
         dict_character = ["blank"] + dict_character
         return dict_character

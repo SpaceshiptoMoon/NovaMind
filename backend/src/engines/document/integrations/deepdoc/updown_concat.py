@@ -22,15 +22,19 @@ class UpDownConcatMerger:
     """Adapted from RAGFlow deepdoc/parser/pdf_parser.py paragraph concat logic."""
 
     def __init__(self):
+        """初始化合并器；xgb 模型引用惰性绑定。"""
         self._model = None
 
     def model_status(self) -> dict[str, Any]:
+        """查询段落合并模型可用性状态（路径/缺失项）。"""
         return get_text_concat_model_status()
 
     def model_available(self) -> bool:
+        """模型文件是否可用（决定走 xgb 还是启发式）。"""
         return bool(self.model_status()["available"])
 
     def load_model(self):
+        """懒加载 xgb 段落合并模型并缓存。"""
         if self._model is None:
             self._model = load_text_concat_model()
         return self._model
@@ -51,6 +55,14 @@ class UpDownConcatMerger:
         return [box for i, box in enumerate(boxes) if i not in drop_indices]
 
     def merge(self, boxes: Sequence[Any]) -> tuple[list[Any], str]:
+        """上下段落合并主入口：页码清理 → xgb 模型或启发式合并。
+        
+        Args:
+            boxes: 合并前文本框（页局部坐标，含 page/col_id/top/x0）。
+        
+        Returns:
+            (合并后框列表, 策略名) 二元组；策略名为 xgboost/heuristic/empty。
+        """
         if not boxes:
             return [], "empty"
         boxes = self._drop_page_number_boxes(boxes)
@@ -77,14 +89,17 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _char_width(box: dict[str, Any]) -> float:
+        """平均字符宽（框宽/字符数）——字距类特征的归一化基准。"""
         return max((box["x1"] - box["x0"]) / max(len(box["text"]), 1), 1.0)
 
     @staticmethod
     def _height(box: dict[str, Any]) -> float:
+        """框高（非 0 兜底）——垂直间距特征的归一化基准。"""
         return max(box["bottom"] - box["top"], 1.0)
 
     @staticmethod
     def _x_dis(a: dict[str, Any], b: dict[str, Any]) -> float:
+        """两框水平距离（取右左缘距/左右缘距/中心距最小者）——横向错位程度。"""
         return min(
             abs(a["x1"] - b["x0"]),
             abs(a["x0"] - b["x1"]),
@@ -93,6 +108,7 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _y_dis(a: dict[str, Any], b: dict[str, Any]) -> float:
+        """两框垂直中心距（down 中心 - up 中心）——纵向相邻程度。"""
         return (b["top"] + b["bottom"] - a["top"] - a["bottom"]) / 2
 
     # 上游 pdf_parser.proj_match 的完整编号/标题模式。5c29484 曾把本组正则整体
@@ -120,6 +136,8 @@ class UpDownConcatMerger:
 
     @classmethod
     def _match_proj(cls, text: str) -> bool:
+        """文本是否为编号/标题行（第N章/1.2/括号序号等，上游 proj_match 同款）——
+        此类行是段落边界，禁止向上合并。"""
         text = (text or "").strip()
         if len(text) <= 2:
             return False
@@ -142,6 +160,13 @@ class UpDownConcatMerger:
         return stripped[-1] in cls._STRONG_CONTINUATION_TAIL
 
     def _updown_concat_features(self, up: dict[str, Any], down: dict[str, Any]) -> list[Any]:
+        """构造上下框对的 xgb 特征向量（上游 concatting_feats 同款 33 维）。
+        
+        按序衡量：同行标记 / 垂直间距比 / 页差 / 版面类型一致性 / text、table
+        类型 / 句尾终结标点 / 句尾逗号续行 / 句首标点回指 / 括号配平 / 编号
+        标题行 / 大小写与数字形态 / 数字串 / 尾首重复 / 横向错位 / 高度差比 /
+        字符宽差 / token 数差与词性 / in_row 同行计数。
+        """
         w = max(self._char_width(up), self._char_width(down))
         h = max(self._height(up), self._height(down))
         y_dis = self._y_dis(up, down)
@@ -192,6 +217,7 @@ class UpDownConcatMerger:
         ]
 
     def _xgb_merge(self, boxes: Sequence[Any], model) -> list[Any]:
+        """xgboost 路径：页码清理 → 排序 → in_row 标注 → 模型逐对裁决合并。"""
         _import_xgboost()  # fail-fast guard: ensure xgboost is importable before using `model`
         states = [self._state_from_box(box) for box in boxes]
         mean_height = self._mean_height_by_page(states)
@@ -204,6 +230,8 @@ class UpDownConcatMerger:
         return [self._box_from_state(state, boxes[0].__class__) for state in merged_states]
 
     def _annotate_in_row_counts(self, states: list[dict[str, Any]], mean_height: dict[int, float]) -> None:
+        """标注每框的 in_row 计数（±12 邻域内垂直中心距 <1 倍行高的框数）——
+        衡量该行是否处在多行混排区（双栏中缝、表格行）。"""
         for index, state in enumerate(states):
             mh = mean_height.get(state["page_number"], 10.0)
             state["in_row"] = 0
@@ -226,6 +254,14 @@ class UpDownConcatMerger:
         mean_width: dict[int, float],
         model,
     ) -> list[dict[str, Any]]:
+        """模型路径核心循环：把排序框切成合并块（dfs 拼接）再块内并成单框。
+        
+        Args:
+            states: 排序后的框 dict 状态列表。
+            mean_height: 每页行高基准（间距守卫阈值）。
+            mean_width: 每页字符宽基准（水平分离守卫）。
+            model: xgboost 二分类模型（predict 单分）。
+        """
         # xgboost 模型路径此前从未真正执行过（二进制模型格式在 xgboost 3.1 被移除，
         # 长期静默回退 heuristic），xgb 名字从未绑定。此处显式导入供下方 DMatrix 使用。
         _import_xgboost()
@@ -238,6 +274,11 @@ class UpDownConcatMerger:
             chunks: list[dict[str, Any]] = []
 
             def dfs(up: dict[str, Any], dp: int):
+                """深度优先拼接：从 up 起向后找首个可合并的 down 递归成块。
+                
+                间距超限/页码样式/水平分离/layoutno 冲突时跳过；跨页仅在段尾强
+                续行时放行模型裁决；score<=0.5 拒并。
+                """
                 chunks.append(up)
                 cursor = dp
                 while cursor < min(dp + 12, len(remaining)):
@@ -308,6 +349,10 @@ class UpDownConcatMerger:
         return sorted(merged, key=lambda item: (item["page_number"], item.get("col_id", 0), item["top"], item["x0"]))
 
     def _heuristic_merge(self, boxes: Sequence[Any]) -> list[Any]:
+        """模型不可用时的启发式合并：冒泡修正纵向序 + 规则逐对合并。
+        
+        排序按 (页, 列, 顶, 左)；列内 x0 对齐且垂直相邻的框按标点规则拼接。
+        """
         if not boxes:
             return []
         mean_height = median(max(1.0, float(box.bottom - box.top)) for box in boxes)
@@ -354,6 +399,9 @@ class UpDownConcatMerger:
         return merged
 
     def _should_merge_heuristic(self, upper: Any, lower: Any, mean_height: float) -> bool:
+        """启发式合并判据：同页同列同版面、垂直间距 <=1.5 倍行高、水平重叠
+        >=30%、非编号标题行，且无断段信号（句号结尾）或横向分离。
+        """
         if upper.page != lower.page or upper.col_id != lower.col_id:
             return False
         if (upper.layout_type or "") != (lower.layout_type or ""):
@@ -383,12 +431,14 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _state_from_box(box: Any) -> dict[str, Any]:
+        """box 转 dict 状态（page 键改 page_number，便于合并中改写）。"""
         state = asdict(box)
         state["page_number"] = state.pop("page")
         return state
 
     @staticmethod
     def _box_from_state(state: dict[str, Any], box_cls) -> Any:
+        """合并后 dict 状态还原回 box 对象（重算坐标字段）。"""
         positions = state.get("positions") or []
         return box_cls(
             page=int(state["page_number"]),
@@ -406,6 +456,7 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _mean_height_by_page(states: Sequence[dict[str, Any]]) -> dict[int, float]:
+        """每页框高中位数（行高基准，垂直间距归一用）。"""
         result: dict[int, list[float]] = {}
         for state in states:
             result.setdefault(int(state["page_number"]), []).append(max(float(state["bottom"] - state["top"]), 1.0))
@@ -413,6 +464,7 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _mean_width_by_page(states: Sequence[dict[str, Any]]) -> dict[int, float]:
+        """每页平均字符宽中位数（水平错位归一用）。"""
         result: dict[int, list[float]] = {}
         for state in states:
             width = max(float(state["x1"] - state["x0"]) / max(len(state.get("text", "")), 1), 1.0)
@@ -421,6 +473,8 @@ class UpDownConcatMerger:
 
     @staticmethod
     def _merge_block_states(block: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        """块内多框并成单框：文本拼接（词边界补空格）、bbox 取联合、
+        positions 累积、page 取 min（跨页块页码归首）。"""
         merged = dict(block[0])
         merged_positions = [list(pos) for pos in (merged.get("positions") or [])]
         for state in block[1:]:

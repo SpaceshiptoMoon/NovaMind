@@ -41,6 +41,16 @@ class PageNoiseFilter:
     """Adapted from RAGFlow PDF page-filter behavior."""
 
     def filter_boxes(self, boxes: Sequence[Any], total_pages: int | None = None) -> tuple[list[Any], dict[str, Any]]:
+        """脏页过滤主入口：TOC 式目录页与内容稀疏页两道判。
+        
+        Args:
+            boxes: 合并后的文档框列表（累积/页局部坐标均可，按 page 判）。
+            total_pages: 文档总页数（可选，供稀疏页判定参考）。
+        
+        Returns:
+            (保留框列表, 元信息 dict) 二元组；元信息含 toc_detected/
+            removed_pages/dirty_pages/removed_boxes。
+        """
         if not boxes:
             return [], {"toc_detected": False, "dirty_pages": [], "removed_pages": [], "removed_boxes": 0}
 
@@ -64,6 +74,12 @@ class PageNoiseFilter:
         return filtered, meta
 
     def _filter_toc_like_section(self, boxes: list[Any]) -> tuple[list[Any], dict[str, Any]]:
+        """剔除 TOC 式目录区域（上游 _filter_forpages 同思路）。
+        
+        定位「contents/目录」标题行后，从标题行的下一框文本提取章节标题
+        前缀，删除前缀首次重现之前的全部框（目录条目区）。命中即返回，
+        不再做稀疏页判。
+        """
         findit = False
         removed_pages: set[int] = set()
         i = 0
@@ -110,6 +126,12 @@ class PageNoiseFilter:
         }
 
     def _filter_dirty_pages(self, boxes: list[Any], total_pages: int | None = None) -> tuple[list[Any], dict[str, Any]]:
+        """剔除脏页：目录点线页（确定性证据）与 cid/PUA/省略号高密度页。
+        
+        连续中点引导线 >3 框即删（上游判据）；弱证据（cid/PUA/省略号）
+        需框数 >3 且命中字符占该页 >=30% 才删——数学论文正文与中文省略号
+        是合法形态，不能只凭命中就整页删。
+        """
         if not boxes:
             return boxes, {"dirty_pages": [], "removed_pages": []}
 

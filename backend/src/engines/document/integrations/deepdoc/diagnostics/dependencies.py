@@ -24,6 +24,7 @@ RUNTIME_MODULES = {
 
 
 def probe_module(module_name: str) -> dict[str, Any]:
+    """探测单个包的可导入性（附版本号，异常捕获为缺失）。"""
     if find_spec(module_name) is None:
         return {"available": False, "version": None}
     try:
@@ -34,6 +35,7 @@ def probe_module(module_name: str) -> dict[str, Any]:
 
 
 def get_deepdoc_runtime_report() -> dict[str, dict[str, Any]]:
+    """DeepDoc 全部运行时依赖的导入状态报告（含导入错误消息）。"""
     return {
         runtime_name: probe_module(module_name)
         for runtime_name, module_name in RUNTIME_MODULES.items()
@@ -41,6 +43,7 @@ def get_deepdoc_runtime_report() -> dict[str, dict[str, Any]]:
 
 
 def get_missing_runtime_dependencies(*dependency_names: str) -> list[str]:
+    """给定依赖中不可导入的包名清单（空列表 = 全部就绪）。"""
     report = get_deepdoc_runtime_report()
     missing = []
     for dependency_name in dependency_names:

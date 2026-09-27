@@ -51,6 +51,7 @@ _LOADED_RECOGNIZERS: dict[str, FormulaRecognizer] = {}
 
 
 def default_formula_model_dir() -> Path:
+    """公式模型目录（环境变量覆盖，缺省 models/deepdoc/pix2text_mfr）。"""
     env_dir = os.getenv("DEEPDOC_FORMULA_MODEL_DIR")
     if env_dir:
         return Path(env_dir)
@@ -58,6 +59,11 @@ def default_formula_model_dir() -> Path:
 
 
 def get_formula_model_status(model_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
+    """模型文件齐备性与精度状态（int8/fp32/缺失清单）。
+    
+    Returns:
+        dict：model_dir/repo_id/missing/available/quantized/precision。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     missing = [name for name in FORMULA_MODEL_FILES if not (base_dir / name).exists()]
     quantized = all((base_dir / name).exists() for name in FORMULA_INT8_FILES)
@@ -73,6 +79,11 @@ def get_formula_model_status(model_dir: str | os.PathLike[str] | None = None) ->
 
 
 def ensure_formula_model_available(model_dir: str | os.PathLike[str] | None = None) -> Path:
+    """校验模型文件齐备，返回模型目录。
+    
+    Raises:
+        FileNotFoundError: 权重/分词器文件缺失。
+    """
     status = get_formula_model_status(model_dir)
     if not status["available"]:
         raise FileNotFoundError(
@@ -119,6 +130,7 @@ def _quantize_to_int8(model_dir: Path) -> bool:
 
 
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
+    """下载 fp32 权重与分词器（共享下载实现，幂等），随后尝试 INT8 量化。"""
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
     download_hf_files(base_dir, FORMULA_MODEL_REPO_ID, list(FORMULA_MODEL_FILES))
@@ -134,6 +146,11 @@ class FormulaRecognizer:
     """
 
     def __init__(self, model_dir: str | os.PathLike[str] | None = None):
+        """加载 encoder/decoder ONNX 会话与分词器；INT8 权重存在则优先。
+        
+        Raises:
+            FileNotFoundError: 模型文件缺失。
+        """
         base_dir = ensure_formula_model_available(model_dir)
         import onnxruntime as ort
         from tokenizers import Tokenizer
@@ -186,6 +203,7 @@ class FormulaRecognizer:
 
 
 def load_formula_recognizer(model_dir: str | os.PathLike[str] | None = None) -> FormulaRecognizer:
+    """按目录缓存加载 FormulaRecognizer（进程级单例）。"""
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     cache_key = str(base_dir)
     cached = _LOADED_RECOGNIZERS.get(cache_key)

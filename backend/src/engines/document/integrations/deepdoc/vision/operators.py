@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+"""DeepDoc 图像预处理算子：检测模型推理所需的 resize / 标准化 / CHW / 填充变换。"""
 import ast
 import logging
 import math
@@ -35,6 +36,7 @@ class StandardizeImag:
     """
 
     def __init__(self, mean, std, is_scale=True, norm_type="mean_std"):
+        """保存标准化参数（mean/std/缩放开关，语义见类 docstring）。"""
         self.mean = mean
         self.std = std
         self.is_scale = is_scale
@@ -66,6 +68,7 @@ class NormalizeImage:
     """normalize image such as subtract mean, divide std"""
 
     def __init__(self, scale=None, mean=None, std=None, order="chw", **kwargs):
+        """解析 scale（支持 "1./255." 字符串与分式写法）、mean、std，并按通道序整形为可广播形状。"""
         if isinstance(scale, str):
             try:
                 scale = float(scale)
@@ -84,6 +87,7 @@ class NormalizeImage:
         self.std = np.array(std).reshape(shape).astype("float32")
 
     def __call__(self, data):
+        """图像归一化：先乘 scale，再减 mean、除 std。"""
         img = data["image"]
 
         pil = ensure_pil_image(img)
@@ -98,9 +102,11 @@ class ToCHWImage:
     """convert hwc image to chw image"""
 
     def __init__(self, **kwargs):
+        """接受多余配置参数，无初始化逻辑。"""
         pass
 
     def __call__(self, data):
+        """HWC 通道序转 CHW。"""
         img = data["image"]
 
         pil = ensure_pil_image(img)
@@ -111,10 +117,13 @@ class ToCHWImage:
 
 
 class KeepKeys:
+    """从预处理 dict 中抽取指定键并按序拼成列表（模型输入前的收尾算子）。"""
     def __init__(self, keep_keys, **kwargs):
+        """记录需要保留的键名列表。"""
         self.keep_keys = keep_keys
 
     def __call__(self, data):
+        """按 keep_keys 顺序从 data 中取值，返回值列表。"""
         data_list = []
         for key in self.keep_keys:
             data_list.append(data[key])
@@ -130,6 +139,7 @@ class LinearResize:
     """
 
     def __init__(self, target_size, keep_ratio=True, interp=cv2.INTER_LINEAR):
+        """记录目标尺寸、是否保持长宽比与插值方式。"""
         if isinstance(target_size, int):
             target_size = [target_size, target_size]
         self.target_size = target_size
@@ -182,7 +192,13 @@ class LinearResize:
 
 
 class DetResizeForTest:
+    """DB 文本检测专用 resize：把图像边长调整到网络要求的倍数并记录缩放比。
+
+    按配置分三种模式：固定 image_shape（可保比例）、limit_side_len 长/短边限制、
+    resize_long 固定长边。
+    """
     def __init__(self, **kwargs):
+        """从配置挑选 resize 模式与参数；无配置时默认短边限制 736。"""
         super().__init__()
         self.resize_type = 0
         self.keep_ratio = False
@@ -202,6 +218,10 @@ class DetResizeForTest:
             self.limit_type = "min"
 
     def __call__(self, data):
+        """执行 resize 并把缩放比写入 data["shape"] = [src_h, src_w, ratio_h, ratio_w]。
+
+        宽高合计小于 64 的超小图先零填充到 32，避免网络对极小图失效。
+        """
         img = data["image"]
         src_h, src_w, _ = img.shape
         if sum([src_h, src_w]) < 64:
@@ -220,12 +240,14 @@ class DetResizeForTest:
         return data
 
     def image_padding(self, im, value=0):
+        """图像零填充到至少 32×32。"""
         h, w, c = im.shape
         im_pad = np.zeros((max(32, h), max(32, w), c), np.uint8) + value
         im_pad[:h, :w, :] = im
         return im_pad
 
     def resize_image_type1(self, img):
+        """按固定 image_shape 缩放；keep_ratio 时以高度定比、宽度向上取整到 32 的倍数。"""
         resize_h, resize_w = self.image_shape
         ori_h, ori_w = img.shape[:2]  # (h, w, c)
         if self.keep_ratio is True:
@@ -288,6 +310,7 @@ class DetResizeForTest:
         return img, [ratio_h, ratio_w]
 
     def resize_image_type2(self, img):
+        """长边缩放到 resize_long，两边向上取整到 128 的倍数（大步幅网络要求）。"""
         h, w, _ = img.shape
 
         resize_w = w
@@ -321,6 +344,7 @@ class Permute:
     def __init__(
         self,
     ):
+        """接受多余配置参数，无初始化逻辑。"""
         super().__init__()
 
     def __call__(self, im, im_info):
@@ -343,6 +367,7 @@ class PadStride:
     """
 
     def __init__(self, stride=0):
+        """记录最粗步幅；stride<=0 时跳过填充。"""
         self.coarsest_stride = stride
 
     def __call__(self, im, im_info):
@@ -389,6 +414,12 @@ def decode_image(im_file, im_info):
 
 def preprocess(im, preprocess_ops):
     # process image by preprocess_ops
+    """对单张图像依次应用算子链：初始化 im_info（scale_factor=1）后逐算子执行。
+
+    Returns:
+        (处理后图像, im_info)；im_info 携带 im_shape 与 scale_factor，供
+        postprocess 把检测框映射回原图像素坐标。
+    """
     im_info = {
         "scale_factor": np.array([1.0, 1.0], dtype=np.float32),
         "im_shape": None,
@@ -400,6 +431,16 @@ def preprocess(im, preprocess_ops):
 
 
 def nms(bboxes, scores, iou_thresh):
+    """非极大值抑制（NMS）：按置信度降序贪心保留，与已保留框 IoU 超阈值的被抑制。
+
+    Args:
+        bboxes: 框集合，xyxy 像素坐标。
+        scores: 各框置信度。
+        iou_thresh: IoU 阈值，超过即被抑制。
+
+    Returns:
+        保留框的下标列表。
+    """
     import numpy as np
 
     x1 = bboxes[:, 0]
@@ -427,6 +468,7 @@ def nms(bboxes, scores, iou_thresh):
 
 
 def create_operators(op_param_list, global_config=None):
+    """按配置实例化算子列表（转发 ocr.create_operators，共用 yaml 格式解析逻辑）。"""
     from novamind.engines.document.integrations.deepdoc.vision.ocr import (
         create_operators as _create_operators,
     )

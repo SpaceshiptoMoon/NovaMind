@@ -20,6 +20,17 @@ def run_ocr_diagnostics(
     threshold: float = 0.5,
     ocr: Any | None = None,
 ) -> list[dict[str, Any]]:
+    """对图像/PDF 跑 OCR 诊断：输出标注图像、纯文本识别结果与 JSON 明细清单。
+
+    Args:
+        inputs: 图像/PDF 文件或目录。
+        output_dir: 输出目录（自动创建）。
+        threshold: 置信度阈值，低于该值的结果丢弃。
+        ocr: 外部注入的 OCR 运行时（便于测试复用已加载实例）；None 时内部构建。
+
+    Returns:
+        每个输入的诊断结果 dict（source/image/text/detections）。
+    """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     runtime = ocr or OCR(autoload=True)
@@ -60,6 +71,7 @@ def run_ocr_diagnostics(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """构建命令行参数解析器。"""
     parser = argparse.ArgumentParser(description="Run vendored DeepDoc OCR diagnostics")
     parser.add_argument("--inputs", required=True, help="Image/PDF file or directory")
     parser.add_argument("--output_dir", default="./ocr_outputs")
@@ -68,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """命令行入口：解析参数后执行 OCR 诊断，返回退出码 0。"""
     args = build_parser().parse_args(argv)
     run_ocr_diagnostics(args.inputs, args.output_dir, threshold=args.threshold)
     return 0
