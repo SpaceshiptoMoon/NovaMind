@@ -167,6 +167,46 @@ def test_low_density_pua_normalized_to_space():
 
 
 @pytest.mark.unit
+def test_pua_between_cjk_deleted_not_spaced():
+    """CJK 夹间的 PUA（句读/填空占位，常成对 <U+E5D2><U+E5CF>）删除而非换空格——
+    中文排版字间无空格，换空格会断词（doc583 实测「研究成<U+E5D2><U+E5CF>果」
+    上游对拍同形态）。"""
+    parser = RAGFlowPdfParser()
+    parser._ocr = _FakeOCR(
+        detect_boxes=[[[0, 0], [200, 0], [200, 40], [0, 40]]],
+        recognize_texts=["SHOULD NOT USE"],
+    )
+    raw = "研究成\ue5d2\ue5cf果与\ue5d2\ue5cf应用"
+    chars = [_char(raw, 5, 95, 4, 18)]
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+
+    blocks = parser._fuse_page(img, chars, page_index=0, zoom=2)
+
+    assert len(blocks) == 1
+    assert blocks[0]["text"] == "研究成果与应用", blocks[0]["text"]
+    assert blocks[0]["ocr_source"] == "text_layer"
+
+
+@pytest.mark.unit
+def test_pua_at_line_boundary_keeps_single_space():
+    """行尾/行首边界的连续 PUA 归一为单个空格（邻居缺失按非 CJK 保守处理），
+    连续空格由出口收紧为单个。"""
+    parser = RAGFlowPdfParser()
+    parser._ocr = _FakeOCR(
+        detect_boxes=[[[0, 0], [200, 0], [200, 40], [0, 40]]],
+        recognize_texts=["SHOULD NOT USE"],
+    )
+    chars = [_char("独立完成的成果\ue5d2\ue5cf", 5, 95, 4, 18)]
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+
+    blocks = parser._fuse_page(img, chars, page_index=0, zoom=2)
+
+    assert len(blocks) == 1
+    # 框文本出口有 strip：行尾 PUA 归一的空格随 strip 去掉，词本身不断裂
+    assert blocks[0]["text"] == "独立完成的成果", repr(blocks[0]["text"])
+
+
+@pytest.mark.unit
 def test_clean_text_unaffected_by_pua_normalization():
     """正常文字层（无 PUA）经归一化后输出逐字不变（反例保障）。"""
     parser = RAGFlowPdfParser()

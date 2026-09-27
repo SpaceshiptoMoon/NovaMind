@@ -107,6 +107,41 @@ _CID_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)")
 # 词粘连）；数学符号类 PUA 保留同样是噪声，替换是安全退化方向。
 _PUA_CHAR_PATTERN = re.compile("[\ue000-\uf8ff]")
 
+# PUA 归一时的 CJK 语境判据：CJK 统一表意文字 + 扩展A + 兼容表意 + 全角
+# 标点（U+FF5F-FFEF）。全角 ASCII（U+FF00-FF5E，Ｔｗｏ２０１８ 等）不算
+# CJK——上游对拍实测它们出现在英文标题词间，PUA 是词间分隔形态，需保空格。
+_CJK_FULLWIDTH_PATTERN = re.compile(
+    "[\u2e80-\u9fff\u3400-\u4dbf\uf900-\ufaff\uff5f-\uffef]"
+)
+
+
+def _is_cjk_like(ch: str) -> bool:
+    return bool(_CJK_FULLWIDTH_PATTERN.match(ch))
+
+
+def _replace_pua(match: re.Match) -> str:
+    """PUA 占位字形的语境化替换（re.sub 回调）。
+
+    邻居都是 CJK/全角 → 句读占位形态，删除（CJK 排版字间无空格，换空格会
+    断词，doc583 实测「研究成<U+E5D2><U+E5CF>果」）；否则 → 词间分隔形态
+    （当全角空格用，如英文标题「Ｔｗｏ<U+E5E5>Ｃｌａｓｓ」），替换为空格
+    防词粘连。边界（行首/行尾/空邻居）按非 CJK 处理保空格。
+    """
+    s = match.string
+    start, end = match.start(), match.end()
+    # 邻居判定跳过连续 PUA（句读占位常成对出现，如 <U+E5D2><U+E5CF>）
+    i = start - 1
+    while i >= 0 and _PUA_CHAR_PATTERN.match(s[i]):
+        i -= 1
+    prev_cjk = i >= 0 and _is_cjk_like(s[i])
+    j = end
+    while j < len(s) and _PUA_CHAR_PATTERN.match(s[j]):
+        j += 1
+    next_cjk = j < len(s) and _is_cjk_like(s[j])
+    if prev_cjk and next_cjk:
+        return ""
+    return " "
+
 # 有文字层页的渲染 zoom（上游统一 zoomin=3；fork 默认 2 是低内存开发机的
 # 历史印记——文本来自 pdfplumber、像素仅供 det 检测，但 CID 乱码框的回退
 # OCR 恰恰从该渲染图 crop 识别，zoom=2 压低 33% DPI 影响其精度）。生产
@@ -1244,10 +1279,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         total += 1
                         if self._is_garbled_char(ch):
                             garbled += 1
-        # 乱码计数已在上面的原始字符上完成，此处出口归一不影响阈值裁决；
-        # 替换为空格而非删除，防 PUA 原为词间分隔时产生词粘连。紧接的
-        # 全角文字邻接不需要空格，收紧连续空格交给下游空白规整。
-        text = _PUA_CHAR_PATTERN.sub(" ", "".join(text_parts))
+        # 乱码计数已在上面的原始字符上完成，此处出口归一不影响阈值裁决。
+        # PUA 的两类真实形态按邻居裁决（第一性判据：CJK 排版字间无空格）：
+        # - 句读/填空占位（doc583 的 U+E5D2/E5CF，夹在 CJK 字间）→ 删除，
+        #   否则「研究成 果」被空格断词；
+        # - 词间分隔（U+E5E5 当全角空格用，至少一侧是 ASCII）→ 替换空格，
+        #   防全删后「ＴｗｏＣｌａｓｓ」词粘连。连续空格收紧。
+        text = _PUA_CHAR_PATTERN.sub(_replace_pua, "".join(text_parts))
         if "  " in text:
             text = re.sub(r" {2,}", " ", text)
         return text, box_chars, garbled, total
