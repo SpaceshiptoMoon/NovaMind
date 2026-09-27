@@ -373,7 +373,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                             x1=float(line["x1"]),
                             top=float(line["top"]),
                             bottom=float(line["bottom"]),
-                            text=str(line["text"]),
+                            # 文字层出口归一：与 _assemble_box_text/plain/reader 共用
+                            # 语境化规则（本方法无乱码检测，PUA 必须就地清洗）。
+                            text=normalize_pua_text(str(line["text"])),
                             col_id=int(line.get("col_id", 0)),
                             position_tag=position_tag,
                             positions=[

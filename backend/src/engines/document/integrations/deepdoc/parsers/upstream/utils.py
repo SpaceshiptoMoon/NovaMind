@@ -17,6 +17,8 @@
 from io import BytesIO
 
 from novamind.engines.document.integrations.deepdoc.compat import find_codec
+# PUA 出口归一化（书签标题可能携带未映射码点，与解析文本出口共用同一规则）。
+from novamind.shared.utils.text_utils import normalize_pua_text
 
 
 def _import_pdf_reader():
@@ -51,7 +53,8 @@ def extract_pdf_outlines(source):
                     if isinstance(node, list):
                         dfs(node, depth + 1)
                     else:
-                        outlines.append((node["/Title"], depth, pdf.get_destination_page_number(node) + 1))
+                        title = normalize_pua_text(str(node.get("/Title", "") or ""))
+                        outlines.append((title, depth, pdf.get_destination_page_number(node) + 1))
 
             dfs(pdf.outline, 0)
             return outlines

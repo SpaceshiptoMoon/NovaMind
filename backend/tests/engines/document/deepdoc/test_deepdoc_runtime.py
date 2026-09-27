@@ -2237,3 +2237,45 @@ def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):
     )
     engine = DeepDocEngine()
     assert engine.download_vision_models("ocr") == expected_path
+
+
+def test_parse_into_bboxes_pua_normalized(monkeypatch):
+    """正例：文字层词文本里的 PUA 占位经出口归一不透传（与 _assemble_box_text 同规则）。
+
+    PDF 内嵌字符流是 latin-1，字面塞不进 PUA 码点；改用假 pdfplumber 直驱
+    extract_words（与 plain/reader 测试同模式）。两分支都验：ASCII 词间占位
+    （E5CE）→ 保空格防粘连；CJK 夹间句读占位（E5D2/E5CF）→ 删除防断词。
+    """
+    import novamind.engines.document.integrations.deepdoc.parsers.pdf as pdf_mod
+
+    class _FakePage:
+        def extract_words(self, **kwargs):
+            return [
+                {"text": "Classification\ue5ceNumber", "x0": 72.0, "x1": 220.0, "top": 684.0, "bottom": 698.0},
+                {"text": "研究成\ue5d2\ue5cf果", "x0": 72.0, "x1": 260.0, "top": 700.0, "bottom": 714.0},
+            ]
+
+    class _FakePdf:
+        pages = [_FakePage()]
+
+    class _fake_open_ctx:
+        def __enter__(self):
+            return _FakePdf()
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(pdf_mod, "pdfplumber", SimpleNamespace(open=lambda source: _fake_open_ctx()))
+    boxes = RAGFlowPdfParser().parse_into_bboxes(b"<fake pdf bytes>")
+    assert len(boxes) == 2
+    # 行序按 top 升序（阅读顺序）：684 行在前、700 行在后
+    assert boxes[0].text == "Classification Number"  # ASCII 邻居 → 词间分隔保空格
+    assert boxes[1].text == "研究成果"  # CJK 夹间 → 句读占位删除
+
+
+def test_parse_into_bboxes_clean_text_unchanged():
+    """反例：干净文本逐字透传，出口归一不引入任何变换。"""
+    boxes = RAGFlowPdfParser().parse_into_bboxes(
+        _build_positioned_pdf_bytes([(72, 700, "Line One"), (72, 684, "Line Two")])
+    )
+    assert [box.text for box in boxes] == ["Line One", "Line Two"]
