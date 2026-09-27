@@ -297,6 +297,15 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识库文档管理页。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases/:kbId/documents，展示知识库概览统计与
+ * 空间继承能力（embedding/数据类型），承载文档上传（多选 + 文件夹递归）、搜索筛选、
+ * 卡片式批量选择、单文档处理/取消/重试/删除，跳详情时携带页码供返回恢复。
+ * 存在待处理/处理中文档时每 5s 静默轮询刷新，全部到终态自动停止。
+ */
+
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -523,6 +532,7 @@ function showUploadDialog() {
   uploadDialogVisible.value = true
 }
 
+/** 上传入队文件：单文件走单传接口，多文件走批量接口并逐项播报成败。 */
 async function handleUpload() {
   if (selectedFiles.value.length === 0) {
     ElMessage.warning('请选择要上传的文件')
@@ -594,6 +604,7 @@ async function handleProcess() {
   }
 }
 
+/** 分页拉取文档列表（带状态/关键词过滤），并按活跃文档启停状态轮询。 */
 async function fetchDocuments(showLoading = true) {
   if (showLoading) loading.value = true
   try {
@@ -622,6 +633,7 @@ function hasActiveDocuments(): boolean {
   )
 }
 
+/** 按活跃文档存在性启停 5s 轮询定时器（幂等），全部到终态后自动停止。 */
 function syncStatusPolling(): void {
   if (hasActiveDocuments() && statusPollTimer === null) {
     statusPollTimer = setInterval(async () => {
@@ -761,6 +773,7 @@ async function handleRetrySingle(doc: DocType) {
   await fetchDocuments()
 }
 
+/** 初始化：恢复详情页带回的页码，加载文档列表，再拉 KB 配置/统计与空间继承信息。 */
 onMounted(async () => {
   // 非法 kbId：不再发任何请求（文档列表/KB 配置都依赖 kbId），落到模板空态
   if (kbInvalid.value) return

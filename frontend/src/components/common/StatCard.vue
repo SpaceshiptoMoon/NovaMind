@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+/** 统计卡片：数值 + 标签 + 可选图标，color 同时作为图标色与左侧强调边 */
 import { computed } from 'vue'
 
 import type { Component } from 'vue'

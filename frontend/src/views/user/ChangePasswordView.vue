@@ -50,6 +50,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 用户自助修改密码页。
+ *
+ * 对应路由 /home/change-password，验证旧密码后提交新密码，成功即登出并跳转登录页；
+ * 管理员重置密码后的强制修改场景（query.forced=1）在页顶展示警示条。
+ */
+
 import { ref, reactive, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -93,6 +100,7 @@ const rules: FormRules = {
   ],
 }
 
+/** 校验表单后提交改密请求，成功即登出并跳转登录页。 */
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return

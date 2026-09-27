@@ -446,6 +446,15 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 智能体对话页（/home/workspace/agents/:agentId/chat）
+ *
+ * 对应路由 WorkspaceAgentChat，承载 ReAct 多步对话：消息按轮分组渲染（工作过程折叠）、
+ * 聊天/轨迹双视图切换、附件上传与图片预览、上下文压缩标记就地展开、模型选择。
+ * 关键交互：按 turn 分组的 computed 是渲染核心——进行中轮次默认展开、完成后折叠，
+ * 用户手动点过折叠条后以手动意图为准（manualTurnOverrides）。
+ */
+
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -553,6 +562,7 @@ function formatDuration(ms: number): string {
   return `${h}h${(m % 60).toString().padStart(2, '0')}m`
 }
 
+/** 把扁平消息流按「一条用户消息 + 其后所有消息」切轮，并给每轮归类最终回复与 ReAct 步骤 */
 const turns = computed<ChatTurn[]>(() => {
   const msgs = agentStore.messages
   const result: ChatTurn[] = []
@@ -704,6 +714,7 @@ function triggerFileSelect() {
   fileInputRef.value?.click()
 }
 
+/** 校验文件类型/大小后并行上传附件，逐个报告失败项 */
 async function handleFileSelected(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
@@ -799,6 +810,7 @@ function isImageFile(type?: string): boolean {
 const imageBlobCache = new Map<number, string>()
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
+/** 拉取附件图片为 Blob URL 缓存用于预览（img 标签带不上鉴权头，须走带 token 的 fetch） */
 async function loadAttachmentImage(attId: number) {
   if (imageBlobCache.has(attId)) return
   try {
@@ -947,6 +959,7 @@ function toggleReasoning(msgId: number) {
   }
 }
 
+/** 发送消息：空文本但有附件时以默认文案触发文档分析 */
 async function handleSend() {
   const content = inputText.value.trim()
   const hasAttachments = agentStore.pendingAttachments.length > 0

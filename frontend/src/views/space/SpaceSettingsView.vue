@@ -539,6 +539,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 空间设置页：空间配置 / 模型配置 / 成员管理三个 tab。
+ *
+ * 对应路由 /home/spaces/:id/settings（SpaceSettings），统一维护空间基本信息、
+ * 各模态 AI 模型（Embedding 锁定保护）、成员角色与细粒度权限、邀请与直接添加。
+ */
+
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -776,6 +783,7 @@ async function handleDirectAdd() {
   })
 }
 
+/** 从 member.custom_permissions 反填三态（true→allow / false→deny / 缺失→inherit）。 */
 function showPermDialog(member: Member) {
   permMember.value = member
   // 从 member.custom_permissions 反填三态：true→allow, false→deny, 缺失→inherit
@@ -788,6 +796,7 @@ function showPermDialog(member: Member) {
   permDialogVisible.value = true
 }
 
+/** 仅收集非继承项构建 resource→action→bool 提交；继承项缺省，由后端按角色回退。 */
 async function handleSavePermissions() {
   if (!permMember.value) return
   // 仅收集非继承项，构建 resource→action→bool
@@ -898,6 +907,7 @@ watch(activeTab, (tab) => {
 
 // === 数据加载 ===
 
+/** 并行拉取空间配置与用户可用模型，回填基本信息、Embedding/LLM/ASR/VLM 各表单。 */
 async function fetchConfig() {
   loading.value = true
   try {

@@ -1,9 +1,18 @@
+/**
+ * 空间（workspace/space）store
+ *
+ * 管理空间列表/公开空间/空间详情的 CRUD、当前空间选择、空间搜索关键词与结果。
+ * 消费方：SpaceListView、SpaceSettingsView、SpaceJoinView、BreadcrumbNav、WorkspaceLayout。
+ */
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { spaceApi } from '@/api/space'
 import type { Space, SpaceConfig } from '@/api/types'
 
-/** Patch Space data (currently no-op, kept for future extensibility) */
+/**
+ * 服务端响应补丁：剔除空间配置中遗留的 space_type 字段。
+ * space_type 已下放为 KB 级配置，旧数据可能仍带该字段，展示前统一清除。
+ */
 function patchSpace(space: Space): Space {
   // space_type is now a KB-level config, not a space-level config.
   // Remove any stale space_type from space config if present.
@@ -25,11 +34,13 @@ export const useSpaceStore = defineStore('space', () => {
   const isSearching = ref(false)
 
   const spaceCount = computed(() => spaces.value.length)
+  /** 空间列表视图：有关键词时展示搜索结果，否则展示全量列表 */
   const filteredSpaces = computed(() => {
     if (!searchKeyword.value) return spaces.value
     return searchResults.value
   })
 
+  /** 拉取我的空间列表（分页） */
   async function fetchSpaces(params?: { skip?: number; limit?: number }) {
     loading.value = true
     error.value = null
@@ -93,6 +104,7 @@ export const useSpaceStore = defineStore('space', () => {
     return updatedSpace
   }
 
+  /** 删除空间；若删的是当前空间，清空选中态 */
   async function deleteSpace(spaceId: number) {
     await spaceApi.deleteSpace(spaceId)
     spaces.value = spaces.value.filter((s) => s.id !== spaceId)
@@ -114,6 +126,7 @@ export const useSpaceStore = defineStore('space', () => {
     searchKeyword.value = keyword
   }
 
+  /** 关键词搜索空间并写入搜索结果（空关键词清空结果，回到列表视图） */
   async function searchSpaces(keyword: string) {
     searchKeyword.value = keyword
     if (!keyword) {

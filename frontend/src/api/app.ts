@@ -124,13 +124,19 @@ export interface ModelsResponse {
   models: Record<string, { max_tokens: number; temperature: number; top_p: number }>
 }
 
+/**
+ * app API
+ *
+ * 简历挖掘应用：简历上传解析、挖掘会话管理、MD 报告读取与下载
+ */
 export const appApi = {
-  // 获取可用 LLM 模型列表
+  /** 可用 LLM 模型清单（含各模型 max_tokens/temperature/top_p 默认参数） */
   getModels() {
     return request.get<ModelsResponse>('/ai-chat/models')
   },
 
   // 上传简历（使用 axios 实例，自动处理 token 刷新）
+  /** 上传简历并创建挖掘会话（可附 JD 文本/配置/指定模型；120s 超时） */
   async uploadResume(
     file: File,
     jdText?: string,
@@ -153,6 +159,7 @@ export const appApi = {
   },
 
   // 会话列表
+  /** 挖掘会话列表（分页，可按状态过滤） */
   listSessions(limit = 20, offset = 0, status?: number) {
     return request.get<ResumeSessionListResponse>(`${BASE_URL}/resume/sessions`, {
       limit,
@@ -162,11 +169,13 @@ export const appApi = {
   },
 
   // 会话详情
+  /** 会话详情（含结构化简历解析结果与状态） */
   getSession(sessionId: string) {
     return request.get<ResumeSession>(`${BASE_URL}/resume/sessions/${sessionId}`)
   },
 
   // 获取报告内容（从 MinIO 读取 MD 文本）
+  /** 拉取挖掘报告的 Markdown 原文（text 响应） */
   async getReportContent(sessionId: string): Promise<string> {
     const { default: axiosInstance } = await import('./index')
     const { data } = await axiosInstance.get(`${BASE_URL}/resume/sessions/${sessionId}/report`, {
@@ -176,11 +185,13 @@ export const appApi = {
   },
 
   // 删除会话
+  /** 删除挖掘会话 */
   deleteSession(sessionId: string) {
     return request.delete<{ message: string }>(`${BASE_URL}/resume/sessions/${sessionId}`)
   },
 
   // 下载报告
+  /** 下载报告文件（blob；文件名取自 Content-Disposition，支持 UTF-8 编码） */
   async downloadReport(sessionId: string) {
     const { default: axiosInstance } = await import('./index')
     const response = await axiosInstance.get(`${BASE_URL}/resume/sessions/${sessionId}/download`, {

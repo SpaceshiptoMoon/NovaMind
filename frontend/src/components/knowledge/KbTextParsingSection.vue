@@ -52,6 +52,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库配置弹窗的文本解析分区：PDF 专属解析策略与 OCR 开关 + 各文本类型解析策略 */
 import { textStrategyItems } from './kbConfig'
 import type { TextStrategy } from './kbConfig'
 

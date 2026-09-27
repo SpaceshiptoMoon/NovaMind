@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+/** 分页器：对 el-pagination 的受控封装，页码/页大小双向同步并聚合发 change 事件 */
 import { computed } from 'vue'
 
 interface Props {
@@ -47,6 +48,7 @@ const currentPageSize = computed({
   set: (val) => emit('update:pageSize', val),
 })
 
+/** 改页大小时重置回第 1 页再上报，避免落在越界页 */
 const handleSizeChange = (size: number) => {
   emit('change', 1, size)
 }

@@ -165,6 +165,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 技能详情页（/home/workspace/skills/:skillId）
+ *
+ * 对应路由 WorkspaceSkillDetail，展示技能元数据、审查状态、指令 Markdown 与评价；
+ * 所有者可见发布/版本更新/删除操作，普通用户可安装到 Agent、下载与评价。
+ */
+
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -290,6 +297,7 @@ async function handleUpdateVersion(file: File) {
   return false
 }
 
+/** 下载技能 zip 包为 Blob 并触发浏览器保存 */
 async function handleDownload() {
   if (!skill.value) return
   try {

@@ -761,6 +761,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识库评测页：测试集管理与测评任务两个 tab，及报告/预览/建任务等弹窗。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases/:kbId/evaluation（KbEvaluation），
+ * 承载「上传测试集 → 配置指标创建测评任务 → 轮询进度 → 查看报告/回归对比
+ * → 人工评分」全流程；运行中任务每 5s 轮询进度。
+ */
+
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -1008,6 +1016,7 @@ function showCreateTaskDialog(ts: TestSet) {
   fetchAvailableModels()
 }
 
+/** 校验后组装完整 config（检索参数 + 各指标策略/开关）创建测评任务并跳到任务 tab。 */
 async function handleCreateTask() {
   if (!taskFormRef.value || !selectedTestSet.value) return
 
@@ -1084,6 +1093,7 @@ async function handleCancelTask(task: EvaluationTask) {
 const taskProgress = reactive<Record<number, { current: number; total: number }>>({})
 let progressTimer: ReturnType<typeof setInterval> | null = null
 
+/** 轮询所有 pending/running 任务的进度；发现终态任务则清掉进度并重拉任务列表。 */
 async function pollProgress() {
   const activeTasks = tasks.value.filter((t) => t.status === 'pending' || t.status === 'running')
   if (activeTasks.length === 0) {
@@ -1191,6 +1201,7 @@ async function loadComparison() {
   }
 }
 
+/** 拉取同测试集且已完成的任务作为回归对比基线候选（排除当前任务自身）。 */
 async function loadComparisonCandidates(testSetId: number, currentTaskId: number) {
   try {
     const data = await evaluationApi.getTasks(spaceId.value, kbId.value, { limit: 100 })
@@ -1205,6 +1216,7 @@ async function loadComparisonCandidates(testSetId: number, currentTaskId: number
   }
 }
 
+/** 打开报告弹窗并拉取数据；完成态同时异步准备基线候选、初始化人工评分表单。 */
 async function viewReport(task: EvaluationTask) {
   reportDialogVisible.value = true
   reportLoading.value = true

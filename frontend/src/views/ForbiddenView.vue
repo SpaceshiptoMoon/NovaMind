@@ -7,6 +7,8 @@
 </template>
 
 <script setup lang="ts">
+/** 403 无权限占位页（/403），提供返回首页入口 */
+
 import { useRouter } from 'vue-router'
 
 const router = useRouter()

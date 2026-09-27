@@ -20,7 +20,14 @@ import type {
 const BASE = (spaceId: number, kbId: number) =>
   `/spaces/${spaceId}/knowledge-bases/${kbId}/evaluation`
 
+/**
+ * 评测 API
+ *
+ * RAG 检索质量评估：测试集管理（上传/用例沉淀）、评测任务（创建/取消/进度）、
+ * 报告查看/导出、两次报告对比、人工评分提交。
+ */
 export const evaluationApi = {
+  /** 测试集列表（分页） */
   getTestSets(
     spaceId: number,
     kbId: number,
@@ -29,6 +36,7 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/test-sets`, params as Record<string, unknown>)
   },
 
+  /** 上传测试集文件（xlsx/json），后端解析出问答用例 */
   uploadTestSet(
     spaceId: number,
     kbId: number,
@@ -43,6 +51,7 @@ export const evaluationApi = {
       .then((r) => r.data)
   },
 
+  /** 删除测试集（不影响已创建的评测任务） */
   deleteTestSet(
     spaceId: number,
     kbId: number,
@@ -51,6 +60,7 @@ export const evaluationApi = {
     return request.delete(`${BASE(spaceId, kbId)}/test-sets/${testSetId}`)
   },
 
+  /** 重命名测试集 */
   updateTestSetName(
     spaceId: number,
     kbId: number,
@@ -60,6 +70,7 @@ export const evaluationApi = {
     return request.put(`${BASE(spaceId, kbId)}/test-sets/${testSetId}`, data)
   },
 
+  /** 测试集内的全部问答用例 */
   getTestSetCases(spaceId: number, kbId: number, testSetId: number): Promise<TestSetCasesResponse> {
     return request.get(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`)
   },
@@ -83,6 +94,7 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`, data)
   },
 
+  /** 评测任务列表（分页；可按状态过滤） */
   getTasks(
     spaceId: number,
     kbId: number,
@@ -91,6 +103,7 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks`, params as Record<string, unknown>)
   },
 
+  /** 评测任务详情（配置与状态） */
   getTask(spaceId: number, kbId: number, taskId: number): Promise<EvaluationTask> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
@@ -108,6 +121,7 @@ export const evaluationApi = {
     )
   },
 
+  /** 创建评测任务：对指定测试集按配置跑检索+生成评估，返回任务句柄 */
   createTask(
     spaceId: number,
     kbId: number,
@@ -116,6 +130,7 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/tasks`, data)
   },
 
+  /** 删除评测任务及其报告 */
   deleteTask(
     spaceId: number,
     kbId: number,
@@ -124,18 +139,22 @@ export const evaluationApi = {
     return request.delete(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
 
+  /** 取消运行中的评测任务 */
   cancelTask(spaceId: number, kbId: number, taskId: number): Promise<TaskCancelResponse> {
     return request.post(`${BASE(spaceId, kbId)}/tasks/${taskId}/cancel`)
   },
 
+  /** 评测执行进度（当前/总数，轮询展示用） */
   getTaskProgress(spaceId: number, kbId: number, taskId: number): Promise<TaskProgressResponse> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/progress`)
   },
 
+  /** 评测报告（检索/生成各项指标） */
   getReport(spaceId: number, kbId: number, taskId: number): Promise<EvaluationReport> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/report`)
   },
 
+  /** 提交人工评分（对任务内用例逐条打分，计入报告） */
   submitHumanScores(
     spaceId: number,
     kbId: number,
@@ -145,6 +164,7 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/tasks/${taskId}/scores`, data)
   },
 
+  /** 导出评测报告文件（json/csv），从 Content-Disposition 解析文件名并触发浏览器保存 */
   async exportReport(
     spaceId: number,
     kbId: number,

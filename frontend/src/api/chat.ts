@@ -12,11 +12,18 @@ import type {
 
 const BASE_URL = '/ai-chat'
 
+/**
+ * chat API
+ *
+ * 智能答疑：普通问答、WebSocket 流式问答、附件上传下载、历史与清理
+ */
 export const chatApi = {
+  /** 一次性问答（非流式，等待完整回答返回） */
   chat(data: ChatRequest) {
     return request.post<ChatResponse>(`${BASE_URL}/chat`, data)
   },
 
+  /** 上传对话附件（带上传进度回调） */
   uploadAttachment(file: File, onProgress?: (percent: number) => void) {
     return request.upload<UploadChatAttachmentResponse>(
       `${BASE_URL}/chat-attachments`,
@@ -25,10 +32,12 @@ export const chatApi = {
     )
   },
 
+  /** 拼接附件下载 URL（不带鉴权头，直接给 <a href> 用） */
   downloadAttachment(attachmentId: number) {
     return `${BASE_URL}/chat-attachments/${attachmentId}/download`
   },
 
+  /** 带鉴权头 fetch 附件并以浏览器下载方式保存（下载失败抛错） */
   async downloadAttachmentFile(attachmentId: number, filename: string) {
     const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
     const token = tokenManager.getToken()
@@ -45,6 +54,12 @@ export const chatApi = {
     URL.revokeObjectURL(url)
   },
 
+  /**
+   * WebSocket 流式问答
+   *
+   * 事件回调：user_message 回显用户消息、sources 检索引用、trace 检索链路、
+   * reasoning/content 增量、done 终稿（含来源与置信度）；AbortSignal 可中断。
+   */
   chatStream(
     data: ChatRequest,
     callbacks: {
@@ -113,18 +128,22 @@ export const chatApi = {
     })
   },
 
+  /** 会话历史消息 */
   getChatHistory(sessionId: string) {
     return request.get<ChatHistoryResponse>(`${BASE_URL}/chat-history`, { session_id: sessionId })
   },
 
+  /** 清空会话消息（会话本身保留） */
   clearChat(sessionId: string) {
     return request.delete<void>(`${BASE_URL}/clear-chat`, { session_id: sessionId })
   },
 
+  /** 服务健康探活 */
   healthCheck() {
     return request.get<HealthCheckResponse>(`${BASE_URL}/health`)
   },
 
+  /** 可用 LLM 模型清单 */
   getModels() {
     return request.get<ModelsResponse>(`${BASE_URL}/models`)
   },

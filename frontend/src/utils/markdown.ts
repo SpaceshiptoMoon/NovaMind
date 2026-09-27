@@ -2,6 +2,14 @@ import { Marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
 
+/**
+ * Markdown 渲染工具
+ *
+ * renderMarkdown：GFM + highlight.js 代码高亮（带复制按钮）+ KaTeX 数学公式 +
+ * 引用角标 [n] 交互化；代码块/公式经占位符暂存穿过 marked 解析后回填。
+ * renderMarkdownWithToc：在其产物上为 h2/h3 注入锚点 id 并返回目录（Wiki 页专用）。
+ */
+
 let codeBlockId = 0
 
 const marked = new Marked({
@@ -123,6 +131,7 @@ export function renderMarkdown(text: string): string {
 
 // ---- TOC 支持（Wiki 浏览页专用；renderMarkdown 签名与行为不变，其他消费方零影响） ----
 
+/** 目录条目：标题锚点 id、纯文本内容、标题层级（仅 h2/h3） */
 export interface TocItem {
   id: string
   text: string

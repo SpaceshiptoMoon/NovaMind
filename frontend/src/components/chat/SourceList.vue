@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+/** 引用来源列表：按联网/知识库分组展示来源卡，支持 snippet 展开、hover 联动与 PDF 原文定位 */
 import { ref, computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import type { ChatSource } from '@/api/types'
@@ -132,6 +133,7 @@ function isExpanded(index: number): boolean {
   return expandedSet.value.has(index)
 }
 
+/** 点击来源卡：上抛 select 事件并切换 snippet 全文/3 行截断 */
 function toggleExpand(index: number) {
   const s = props.sources.find((x) => x.index === index)
   if (s) emit('select', s)

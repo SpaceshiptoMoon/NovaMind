@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+/** 页头：标题 + 可选返回键，右侧留操作 slot */
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 

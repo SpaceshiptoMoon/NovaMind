@@ -1,3 +1,10 @@
+/**
+ * HTTP 客户端与流式请求基础设施
+ *
+ * 集中提供：axios 实例（自动附 Authorization、401 静默刷新重放）、
+ * `request` 类型化请求方法、SSE/WS 流式工具。所有 api 模块经此发请求，
+ * 禁止裸用 axios。
+ */
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 
@@ -33,10 +40,12 @@ const REFRESH_TOKEN_KEY = 'refresh_token'
 // token 被拦截器刷新/清除时派发，供 store 同步响应式镜像
 export const TOKEN_SYNC_EVENT = 'novamind:token-sync'
 
+/** 派发令牌同步事件（localStorage 无响应性，store 监听此事件镜像状态） */
 function emitTokenSync() {
   window.dispatchEvent(new CustomEvent(TOKEN_SYNC_EVENT))
 }
 
+/** 访问/刷新令牌的 localStorage 存取（无响应性，响应式镜像见 stores/user） */
 export const tokenManager = {
   getToken: (): string | null => localStorage.getItem(TOKEN_KEY),
   setToken: (token: string): void => localStorage.setItem(TOKEN_KEY, token),
@@ -199,6 +208,12 @@ function getDefaultMessage(status: number): string {
 }
 
 // 导出请求方法 — 响应直接返回 data，不需要 .data.data
+/**
+ * 类型化请求方法集：泛型直接落到响应体，错误统一 toast + reject
+ *
+ * 401 时自动用 refresh token 静默续期并重放原请求（并发请求共享一次刷新）；
+ * `upload` 走 XHR 以支持上传进度回调。
+ */
 export const request = {
   get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
     return instance.get<T>(url, { params }).then((r) => r.data)
@@ -283,6 +298,12 @@ export const request = {
 }
 
 // SSE 流式请求工具
+/**
+ * POST 发起 SSE 流式请求，逐事件回调（fetch 实现，禁用 axios——axios 不支持流）
+ *
+ * 兼容三种后端事件形态：`{type, data}` JSON、`{event_type, data}` JSON、
+ * `event:` 行 + data 的标准 SSE。心跳注释行静默跳过。
+ */
 export async function createSSEStream(
   url: string,
   body: unknown,

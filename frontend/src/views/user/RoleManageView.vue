@@ -153,6 +153,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 系统角色管理页（管理员）。
+ *
+ * 对应路由 /home/admin/roles，支持角色的增删改查、关键词/类型筛选与按权限分类分组的
+ * 权限勾选配置；系统内置角色（is_system）只允许调整权限，不可编辑或删除。
+ */
+
 import { ref, computed, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading } from '@element-plus/icons-vue'
@@ -270,6 +277,7 @@ async function showPermissionDialog(role: Role) {
   permLoading.value = false
 }
 
+/** 将已勾选权限码整体提交为该角色的权限集合（全量覆盖语义）。 */
 async function handlePermSubmit() {
   if (!currentRole.value) return
 
@@ -313,6 +321,7 @@ function resetForm() {
   formRef.value?.resetFields()
 }
 
+/** 新建或更新角色：编辑态角色代码不可改，仅更新名称与描述。 */
 async function handleSubmit() {
   if (!formRef.value) return
 

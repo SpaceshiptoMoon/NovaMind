@@ -98,6 +98,7 @@ const targetTestSetId = ref<number | undefined>(undefined)
 const kbOptions = ref<Array<{ id: number; name: string }>>([])
 const testSets = ref<TestSet[]>([])
 
+/** 打开弹窗：预填 QA 问答对，并拉取该空间下知识库列表供选择 */
 async function open(payload: { question: string; answer: string }) {
   question.value = payload.question
   expectedAnswer.value = payload.answer
@@ -125,6 +126,7 @@ function reset() {
   reset2()
 }
 
+/** 切换知识库后重拉该库测试集列表；库下无集时强制回「新建」模式 */
 async function onKbChange() {
   testSets.value = []
   targetTestSetId.value = undefined
@@ -138,6 +140,7 @@ async function onKbChange() {
   }
 }
 
+/** 校验表单后按模式新建测试集或追加用例，成功后跳转评测页 */
 async function submit() {
   if (!question.value.trim() || !expectedAnswer.value.trim()) {
     ElMessage.warning('问题与期望答案均不能为空')

@@ -74,6 +74,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 技能审核页（/home/workspace/skills/admin）
+ *
+ * 对应路由 WorkspaceSkillAdmin（需 skill.config 权限），管理 LLM 自动审查设置并处理待审核技能的批准/拒绝。
+ */
+
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

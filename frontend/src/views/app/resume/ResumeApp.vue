@@ -237,6 +237,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 简历挖掘应用页（/home/apps/resume 与 /home/apps/resume/session/:sessionId 双路由复用）
+ *
+ * 承载上传配置向导与报告查看两阶段：上传简历（可附 JD/挖掘广度深度/模型）后台解析，
+ * 会话页则按状态轮询进度、完成后渲染 Markdown 报告并生成 TOC 侧栏。
+ */
+
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { UploadFilled, ArrowLeft, ArrowRight, Loading, Check } from '@element-plus/icons-vue'
@@ -281,6 +288,7 @@ const allSkills = computed(() => {
   )
 })
 
+/** 后处理报告 HTML：把 Q/A/评分段落正则包装成可区分样式的容器 */
 function enhanceReportHtml(html: string): string {
   // 将 Q/A/评分段落包装成可区分的容器
   return (
@@ -344,6 +352,7 @@ interface TocItem {
 }
 const tocItems = ref<TocItem[]>([])
 
+/** 从报告 HTML 提取 h2/h3 标题生成侧栏目录 */
 function extractToc(html: string) {
   const regex = /<h([23])[^>]*id="([^"]*)"[^>]*>(.*?)<\/h[23]>/gi
   const items: TocItem[] = []
@@ -447,6 +456,7 @@ function startPolling() {
   pollSession()
 }
 
+/** 轮询会话状态直到完成（3s 间隔；失败降级 5s），完成/失败时停止并拉取报告 */
 async function pollSession() {
   if (!session.value) return
   try {

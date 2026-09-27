@@ -43,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+/** 检索过程折叠面板：以时间线展示查询改写/检索/评分重试各步骤，并汇总为单行摘要 */
 import { ref, computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 
@@ -52,6 +53,7 @@ const props = defineProps<{
 
 const expanded = ref(false)
 
+/** 摘要行：将各步骤压缩为「改写 → 检索 N 条 → 通过/重试」形式 */
 const summary = computed(() => {
   if (!props.traces?.length) return ''
   const parts: string[] = []

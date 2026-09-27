@@ -52,6 +52,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 登录页（/login）
+ *
+ * 对应路由 Login，用户名密码登录；登录后按强制改密标记或 redirect 参数跳转。
+ */
+
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -76,6 +82,7 @@ const rules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
+/** 校验表单并登录，按 must_change_password 或 redirect 查询参数决定落地页 */
 const handleLogin = async () => {
   if (!formRef.value) return
 

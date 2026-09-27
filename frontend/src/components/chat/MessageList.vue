@@ -174,6 +174,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 聊天消息列表：渲染对话气泡、思考过程、附件卡与引用来源，并承载引用角标 popover、
+ * PDF 原文定位、消息反馈（乐观更新）与加入评测集等交互。
+ */
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, WarningFilled, Download, DocumentCopy, Top, Bottom, Collection } from '@element-plus/icons-vue'
@@ -285,6 +289,7 @@ const citeTriggerEl = ref<HTMLElement>()
 const activeCiteSource = ref<ChatSource | null>(null)
 const hoverCiteIndex = ref<number | null>(null)
 
+/** 悬浮引用角标时解析所属消息与来源，弹出 popover 预览卡（data-cite 为 1-based 角标） */
 function handleCiteOver(e: MouseEvent) {
   const target = e.target as HTMLElement
   const cite = target.closest('[data-cite]') as HTMLElement | null
@@ -302,6 +307,7 @@ function handleCiteOver(e: MouseEvent) {
   if (activeCiteSource.value) citePopoverVisible.value = true
 }
 
+/** 点击引用角标：高亮对应来源卡并平滑滚动至居中 */
 function handleCiteClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const cite = target.closest('[data-cite]') as HTMLElement | null
@@ -346,6 +352,7 @@ function getFeedback(msg: ChatMessage): 'up' | 'down' | null {
   return msg.feedback?.rating ?? null
 }
 
+/** 点赞/点踩：先乐观更新本地消息再调接口，失败回滚并按状态码提示 */
 async function handleFeedback(msg: ChatMessage, rating: 'up' | 'down' | null) {
   if (feedbackPending.value.has(msg.id)) return
   const prev = msg.feedback ?? null
@@ -378,6 +385,7 @@ const pdfAnnotateRef = ref<InstanceType<typeof PdfAnnotateDialog>>()
 const addToTestSetRef = ref<InstanceType<typeof AddToTestSetDialog>>()
 const testSetSpaceId = ref(0)
 
+/** 打开「加入评测集」弹窗，以该消息首个 kb 来源的 space_id 作为评测集挂载上下文 */
 function openAddToTestSet(msg: ChatMessage) {
   // 评测集挂在 KB 上，需要空间上下文：取该消息任一 kb 来源的 space_id
   const sources = getSources(msg)

@@ -25,6 +25,8 @@
 </template>
 
 <script setup lang="ts">
+/** 邀请链接落地页：持 token 自动加入空间并展示结果（对应路由 /home/spaces/:id/join）。 */
+
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { memberApi } from '@/api/member'

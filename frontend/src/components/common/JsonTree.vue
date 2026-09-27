@@ -27,6 +27,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 自递归可折叠 JSON 树：对象/数组可折叠，基本类型按类型着色（调试数据展示用）
+ */
+
 import { ref, computed } from 'vue'
 
 // 自递归组件名（Vue 3 SFC 自引用需要显式 name）
@@ -49,6 +53,7 @@ function toggle() {
 
 const isObject = computed(() => props.data !== null && typeof props.data === 'object')
 
+/** 数组按索引展平为 [index, value] 键值对，对象取 Object.entries */
 const entries = computed<[string, unknown][]>(() => {
   if (Array.isArray(props.data)) {
     return props.data.map((v, i) => [String(i), v] as [string, unknown])

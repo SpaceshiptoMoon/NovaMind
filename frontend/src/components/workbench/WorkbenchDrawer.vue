@@ -193,6 +193,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Agent 工作台右侧抽屉：概览 / 引用来源 / 工具结果 / 消息全文四视图切换。
+ *
+ * 数据来源分两路：sources/toolCalls 由父组件 props 传入，
+ * 消息全文视图从 agentStore 按 workbench store 的选中 id 查找；
+ * 视图切换与抽屉开合状态全部托管在 workbench store。
+ */
 import { ref, computed } from 'vue'
 import { Close, SetUp } from '@element-plus/icons-vue'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -231,6 +238,7 @@ const selectedMessage = computed(
   () => agentStore.messages.find((m) => m.id === workbench.selectedMessageId) ?? null,
 )
 
+/** 消息角色代号转展示标签（tool/compaction/plan 等扩展角色一并覆盖） */
 function roleLabel(role: AgentMessage['role']): string {
   switch (role) {
     case 'user':
@@ -250,6 +258,7 @@ function roleLabel(role: AgentMessage['role']): string {
   }
 }
 
+/** 折叠的来源摘要卡（点击展开/收起）；重建 Set 触发响应式更新 */
 function toggleSource(index: number) {
   const next = new Set(expandedSources.value)
   if (next.has(index)) next.delete(index)

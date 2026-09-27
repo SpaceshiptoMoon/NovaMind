@@ -5,6 +5,7 @@
  * removed（旧版删除），供前端渲染双栏或单栏 diff 视图。
  */
 
+/** 单行 diff 片段：equal/added/removed 三态 + 行文本 + 双侧行号（按态可选） */
 export interface DiffLine {
   type: 'equal' | 'added' | 'removed'
   text: string

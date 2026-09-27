@@ -240,6 +240,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Agent 轨迹时间线（左列表 + 右 inspector 双栏）：以 Session → Turn → Step 层级平铺展示
+ * 消息与工具调用记录，支持搜索过滤、一键折叠、hierarchy 跳转和拖拽调整 inspector 宽度。
+ */
 import { ref, computed, watch, nextTick } from 'vue'
 import type { AgentMessage, ToolCallRecord } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
@@ -416,6 +420,7 @@ function toggleAllSteps() {
 
 // ===== 搜索 =====
 const searchQuery = ref('')
+/** 全文搜索匹配：多关键词 AND 语义，匹配范围含摘要/内容/思考/工具名/工具调用参数 */
 function matchesSearch(rec: TrajectoryRecord): boolean {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return true
@@ -449,6 +454,7 @@ watch(searchQuery, (q) => {
 // ===== 可见记录（应用折叠） =====
 const filteredRecords = computed(() => records.value.filter(matchesSearch))
 
+/** 过滤后应用 Session/Steps 两级折叠，被折叠区域内的记录不渲染 */
 const visibleRecords = computed<TrajectoryRecord[]>(() => {
   const out: TrajectoryRecord[] = []
   for (const rec of filteredRecords.value) {
@@ -468,6 +474,7 @@ const visibleRecords = computed<TrajectoryRecord[]>(() => {
 })
 
 // ===== hierarchy 跳转 =====
+/** 选中记录：先自动展开目标所在的 Session 与父 assistant steps，再滚动至该行 */
 function selectRecord(recordId: string) {
   // auto un-fold：目标所在 session / 父 assistant steps 折叠则先展开
   const target =
@@ -506,6 +513,7 @@ let startX = 0
 let startWidth = 0
 let containerWidth = 0
 
+/** 拖拽分隔条起始：记录初值并挂全局 pointermove/pointerup 监听 */
 function onResizeStart(e: PointerEvent) {
   resizing = true
   startX = e.clientX

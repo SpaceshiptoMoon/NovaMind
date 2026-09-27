@@ -77,6 +77,7 @@ const cssHeight = ref(0)
 
 const overlayRects = computed(() => props.bboxes.filter((b) => b.page === currentPage.value))
 
+/** 把 DeepDoc pt 坐标矩形按当前页 css/scale=1 viewport 比例映射为 overlay 定位样式 */
 function rectStyle(rect: { x0: number; x1: number; top: number; bottom: number }) {
   const scaleX = cssWidth.value / (viewportWidth.value || 1)
   const scaleY = cssHeight.value / (viewportHeight.value || 1)
@@ -90,6 +91,7 @@ function rectStyle(rect: { x0: number; x1: number; top: number; bottom: number }
 
 let renderTask: RenderTask | null = null
 
+/** 渲染单页：按容器宽定 cssScale，canvas 物理像素乘 dpr 保清晰；切页竞态取消旧渲染任务 */
 async function renderPage(pageNum: number) {
   const doc = pdfDoc.value
   const canvas = canvasRef.value

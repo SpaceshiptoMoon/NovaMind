@@ -21,6 +21,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   const hasUnread = computed(() => unreadCount.value > 0)
 
+  /** 拉取未读徽标数（轮询兜底通道；失败静默等下一轮） */
   async function fetchUnreadCount(): Promise<void> {
     try {
       const res = await notificationApi.getUnreadCount()
@@ -30,6 +31,7 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  /** 拉取最近通知列表（header 下拉数据源），顺带校准未读数 */
   async function loadRecent(limit = 5): Promise<void> {
     try {
       const res = await notificationApi.getNotifications({ limit })
@@ -76,6 +78,7 @@ export const useNotificationStore = defineStore('notification', () => {
     pollTimer = setInterval(fetchUnreadCount, 30_000)
   }
 
+  /** 标记单条已读：本地乐观更新徽标，请求失败留给轮询收敛 */
   async function markRead(id: number): Promise<void> {
     const target = items.value.find((item) => item.id === id)
     if (target && !target.is_read) {
@@ -89,6 +92,7 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
+  /** 全部标记已读：本地先清零徽标，请求失败留给轮询收敛 */
   async function markAllRead(): Promise<void> {
     items.value = items.value.map((item) => ({ ...item, is_read: true }))
     unreadCount.value = 0

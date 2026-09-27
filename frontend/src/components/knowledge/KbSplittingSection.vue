@@ -124,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库配置弹窗的文本切分分区：按所选切分策略只展示真正生效的参数 */
 import { computed } from 'vue'
 
 type SplittingFormModel = {

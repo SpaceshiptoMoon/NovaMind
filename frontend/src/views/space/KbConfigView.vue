@@ -115,6 +115,15 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识库解析/切分/问题生成/Wiki 配置向导页。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases/:kbId/config，四步分区编辑同一份 configForm，
+ * 保存时按模态开关收口字段组装 payload 整体提交。
+ * 关键交互：以「保存时实际提交的 payload」序列化做 dirty 基线比对（程序化回填不误报），
+ * 离开时若有真实改动弹确认。
+ */
+
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -361,6 +370,7 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   applyWikiConfig(configForm, kbConfig?.wiki)
 }
 
+/** 拉取 KB 配置与空间配置并回填表单，回填完成后记录 dirty 基线快照。 */
 async function onLoad() {
   loading.value = true
   try {
@@ -467,6 +477,7 @@ function buildParsingConfig(): ParsingConfig {
   return parsing
 }
 
+/** 组装提交 payload：切分参数按策略只带生效字段，解析配置按模态开关收口。 */
 function buildPayload(): KnowledgeBaseConfigUpdateRequest {
   return {
     space_type: configForm.kbSpaceTypes.length > 0 ? configForm.kbSpaceTypes : ['text'],
@@ -487,6 +498,7 @@ function buildPayload(): KnowledgeBaseConfigUpdateRequest {
   }
 }
 
+/** 保存配置：校验至少选一种数据类型，成功后同步基线并返回知识库列表。 */
 async function onSave() {
   if (configForm.kbSpaceTypes.length === 0) {
     ElMessage.warning('请至少选择一种知识库数据类型')

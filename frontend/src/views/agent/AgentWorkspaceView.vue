@@ -16,6 +16,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 智能体工作台空态页（/home/workspace/agents）
+ *
+ * 对应路由 WorkspaceAgents，未选中智能体时展示引导占位；主列表由 WorkspaceLayout 侧栏承载。
+ * 创建弹窗逻辑收编在布局层，此处经 inject 调用。
+ */
+
 import { inject } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import NavIcon from '@/components/common/NavIcon.vue'

@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库设置页左侧导航栏：渲染 navItems 路由项，底部留 bottom 插槽 */
 import type { KbNavItem } from './navigation'
 
 defineProps<{

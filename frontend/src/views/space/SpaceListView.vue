@@ -277,6 +277,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识空间列表页：左侧空间侧栏 + 右侧 KB 子路由出口。
+ *
+ * 对应路由 /home/spaces（SpaceList），是所有 /home/spaces/:id/... KB 子页面的父布局：
+ * 承载空间选择/创建/管理、面包屑与子页面返回导航，子内容经 router-view 渲染。
+ * 侧栏在进入 KB 子页面时自动收成头像窄条，回空间首页自动展开。
+ */
+
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -516,6 +524,7 @@ async function fetchEmbeddingModels() {
   }
 }
 
+/** 校验通过后组装 SpaceConfig（含可选 embedding 配置）创建空间，成功后跳转其 KB 列表。 */
 async function handleCreateSpace() {
   if (!createSpaceFormRef.value) return
 
@@ -604,6 +613,7 @@ async function handleDeleteSpace(space: Space) {
   }
 }
 
+/** 逐个串行删除选中空间（高危操作不并行），进度写进表格 loading 文本并汇总成败。 */
 async function handleBatchDeleteSpaces() {
   if (selectedSpaceIds.value.length === 0) return
 
@@ -696,6 +706,7 @@ async function handleCreateKb() {
 
 // === 路由同步 ===
 
+/** 跟随 :id 参数同步选中空间；空间不存在时区分「无 KB 直跳 KB 列表」与「回空间列表」。 */
 watch(
   () => route.params.id,
   async (id) => {
@@ -739,6 +750,7 @@ watch(
 
 // === 初始化 ===
 
+/** 初始化：并行拉取我的空间与公开空间；未带 :id 进入时自动跳到第一个空间的 KB 列表。 */
 async function init() {
   loading.value = true
   try {

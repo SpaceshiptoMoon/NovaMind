@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库配置弹窗的问题生成分区：LLM 参数与 Prompt 模板表单，关闭开关时整块禁用 */
 import type { AvailableModelItem } from '@/api/types'
 import { DEFAULT_QUESTION_PROMPT_TEMPLATE } from './kbConfig'
 

@@ -1,3 +1,4 @@
+/** 知识库页签导航项：展示文案、跳转地址与激活态 */
 export interface KbNavItem {
   label: string
   to: string
@@ -5,6 +6,7 @@ export interface KbNavItem {
   active: boolean
 }
 
+/** 按空间/知识库构造知识库详情页顶部导航（文档/任务/Wiki/检索/评估五页签） */
 export function buildKbNavItems(options: {
   spaceId: number | string
   kbId: number | string

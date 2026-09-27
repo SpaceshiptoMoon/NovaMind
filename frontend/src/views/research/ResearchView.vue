@@ -362,6 +362,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 深度研究页（/home/workspace/research 及 /:spaceId 变体）
+ *
+ * 对应路由 WorkspaceResearch/WorkspaceResearchSpace，编排研究流程：提问 → 计划卡 →
+ * SSE 流式报告，支持研究模式、数据源（知识库/网络多源可插拔）、模型与高级参数配置。
+ * 右侧历史侧栏可回放历史报告（重组 user/assistant 两条消息）。
+ */
+
 import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -433,6 +441,7 @@ function isSourceEnabled(type: string): boolean {
   return selectedSourceTypes.value.includes(type)
 }
 
+/** 拉取空间可用的搜索数据源列表，失败时退回 builtin 两项预设 */
 async function fetchAvailableSources() {
   if (!spaceId.value) return
   try {
@@ -527,6 +536,7 @@ async function fetchRecentHistory() {
   }
 }
 
+/** 回放历史研究：清空消息后按 user 提问 + assistant 报告两条消息重建会话视图 */
 async function handleViewHistory(item: Research) {
   if (!spaceId.value) return
 
@@ -596,6 +606,7 @@ function handleQuickPrompt(text: string) {
   handleSend()
 }
 
+/** 发起研究：把源选择/模式/模型/高级设置/流程策略组装成研究请求并走 SSE 流 */
 async function handleSend() {
   const content = inputText.value.trim()
   if (!content || !spaceId.value) return

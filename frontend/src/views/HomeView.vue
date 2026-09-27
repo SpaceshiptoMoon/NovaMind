@@ -60,6 +60,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 登录后首页（/home）
+ *
+ * 对应路由 Home，承载 Hero 主 CTA（跳转对话）、功能入口卡片与应用门禁过滤、平台数据条。
+ */
+
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -81,6 +87,7 @@ const permStore = usePermissionStore()
 const wikiPagesLabel = ref('')
 let wikiOverviewLoadedFor = 0
 
+/** 拉取当前（或首个）空间的 Wiki 总页数用于数据条；同一空间只加载一次 */
 async function loadWikiOverview() {
   const spaceId = spaceStore.currentSpace?.id || spaceStore.spaces[0]?.id
   if (!spaceId || wikiOverviewLoadedFor === spaceId) return
@@ -141,6 +148,7 @@ function goChat() {
   router.push('/home/workspace/chat')
 }
 
+/** 跳转深度研究；无可用空间时引导先创建空间 */
 function goToResearch() {
   const spaceId = spaceStore.currentSpace?.id || spaceStore.spaces[0]?.id
   if (spaceId) {

@@ -85,6 +85,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * AI 对话页（/home/workspace/chat，经 /home/chat redirect 进入）
+ *
+ * 对应路由 WorkspaceChat（需 qa 应用），编排会话列表、消息流与输入卡；消息渲染交给
+ * MessageList/ChatInput 组件，本层负责会话切换与配置弹窗。
+ * 关键约束：流式进行中切换/新建会话必须先 cancelStream，否则 SSE 回调会写入新会话造成消息污染。
+ */
+
 import { ref, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
@@ -164,6 +172,7 @@ async function handleConfigSaved() {
   }
 }
 
+/** 切换会话：先取消在途 SSE 再拉取消息与配置，避免流式回调污染新会话 */
 async function handleSelectSession(sessionId: string) {
   if (chatStore.currentSessionId === sessionId) return
   // 流式中切会话：fetchMessages 会整体替换 messages 数组，正在飞的 SSE 回调会定位到新会话消息造成污染，故先取消
@@ -187,6 +196,7 @@ async function handleDeleteSession(sessionId: string) {
   }
 }
 
+/** 发送消息：组装附件 id 与模型/思考/联网选项，按是否流式分发到 store */
 async function handleSend(
   content: string,
   options: {
@@ -228,6 +238,7 @@ const availableModels = ref<
 
 const { isImageFile, imageBlobCache, loadAttachmentImage, revokeBlobUrls } = useChatAttachments()
 
+/** 拉取可用模型列表供输入卡内 ModelTrigger 选择 */
 async function fetchModels() {
   try {
     const data = await chatApi.getModels()

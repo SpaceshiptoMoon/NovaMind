@@ -7,6 +7,8 @@
 </template>
 
 <script setup lang="ts">
+/** 404 页面未找到兜底页（/:pathMatch(.*)*），提供返回首页入口 */
+
 import { useRouter } from 'vue-router'
 
 const router = useRouter()

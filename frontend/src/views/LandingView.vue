@@ -110,6 +110,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 公开封面页（/）
+ *
+ * 对应路由 Landing，未登录访客的产品介绍页：Hero、四大能力卡片、底部 CTA；按本地 token
+ * 有无在「登录/免费开始」与「进入控制台」之间切换入口。
+ */
+
 import { ref, computed } from 'vue'
 import { tokenManager } from '@/api'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'

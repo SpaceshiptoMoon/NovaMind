@@ -19,6 +19,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // 选中的消息 ID（轨迹视图点击 assistant/user/system 行，inspector 展示 reasoning/content 全文）
   const selectedMessageId = ref<number | null>(null)
 
+  /** 打开抽屉；传 view 则同时切换视图（不传保持当前视图） */
   function openDrawer(view?: DrawerView) {
     drawerOpen.value = true
     if (view) drawerView.value = view
@@ -32,6 +33,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     drawerOpen.value = !drawerOpen.value
   }
 
+  /** 切换抽屉视图（overview/sources/tool/message），抽屉随之打开 */
   function setView(view: DrawerView) {
     drawerView.value = view
     drawerOpen.value = true

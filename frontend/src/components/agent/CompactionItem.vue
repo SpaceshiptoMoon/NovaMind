@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+/** 上下文压缩占位条：展示压缩消息数与节省比例，展开后渲染压缩摘要 markdown */
 import { computed } from 'vue'
 import type { AgentCompactionData } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'

@@ -27,6 +27,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 分段面包屑导航：返回键 + 可点链段 + 当前段灰底强调
+ */
+
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'

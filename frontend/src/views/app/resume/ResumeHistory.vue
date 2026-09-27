@@ -130,6 +130,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 简历挖掘历史页（/home/apps/resume/history）
+ *
+ * 对应路由 ResumeHistory，按状态筛选/分页列出历史解析会话，支持查看报告、下载与删除。
+ */
+
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -205,6 +211,7 @@ function formatDate(date: string | null): string {
   }
 }
 
+/** 按当前筛选与分页参数拉取会话列表 */
 async function fetchData() {
   loading.value = true
   try {

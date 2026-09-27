@@ -1,7 +1,11 @@
+/** 知识库配置辅助：文本/图片/视频解析策略与 Wiki 生成配置的表单 ↔ 后端 config 双向转换 */
 import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 
+/** 文本解析策略：default（内置 reader）或 deepdoc */
 export type TextStrategy = 'default' | 'deepdoc'
+/** 图片解析策略：VLM 描述或 DeepDoc OCR */
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
+/** 视频解析策略：5 种抽帧/去重/描述组合预设 */
 export type VideoStrategy = 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite'
 
 /** 视频解析策略选项（5 预设映射到抽帧/去重/描述三阶段组合）。 */
@@ -18,11 +22,13 @@ export const videoStrategyItems: Array<{
   { value: 'rewrite', label: '重写连贯', desc: '逐帧描述后 LLM 重写润色（保留时间锚点）' },
 ]
 
+/** 校验视频策略枚举，非法值回退默认 simple */
 export function getVideoStrategyValue(value: unknown): VideoStrategy {
   const allowed: VideoStrategy[] = ['simple', 'scene', 'dedup', 'grouped', 'rewrite']
   return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
 }
 
+/** 各文本类型解析策略在表单里的字段名（pdf 除外，pdf 单独带 OCR 开关） */
 export type TextStrategyField =
   | 'docxStrategy'
   | 'excelStrategy'
@@ -50,6 +56,7 @@ export const textStrategyItems: Array<{
   { key: 'jsonStrategy', label: 'JSON' },
 ]
 
+/** 校验文本策略枚举，仅接受 deepdoc，其余回退 default */
 export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
@@ -81,6 +88,7 @@ export const DEFAULT_QUESTION_PROMPT_TEMPLATE = `留空则使用系统默认模�
 文档内容：
 {{content}}`
 
+/** 后端 config.text_parsing → 表单字段（逐类型回填策略与 PDF OCR 开关） */
 export function applyTextParsingConfig(
   target: {
     pdfStrategy: TextStrategy
@@ -108,6 +116,7 @@ export function applyTextParsingConfig(
   target.jsonStrategy = getTextStrategyValue(textConfig?.json?.strategy)
 }
 
+/** 表单字段 → 后端 TextParsingConfig（deepdoc 策略时 PDF 固定 parser=full） */
 export function buildTextParsingConfigFromForm(source: {
   pdfStrategy: TextStrategy
   pdfOcrEnabled: boolean
@@ -140,8 +149,10 @@ export function buildTextParsingConfigFromForm(source: {
 
 // ==================== Wiki 生成配置（表单 ↔ 后端 config 双向转换） ====================
 
+/** Wiki 生成粒度：聚焦/标准/穷举三档 */
 export type WikiGranularity = 'focused' | 'standard' | 'exhaustive'
 
+/** Wiki 粒度选项（下拉 label + 描述） */
 export const wikiGranularityItems: Array<{ value: WikiGranularity; label: string; desc: string }> =
   [
     { value: 'focused', label: '聚焦', desc: '仅提取文档主要主题（3-7 项）' },

@@ -1,3 +1,6 @@
+/**
+ * knowledge 组件域公共出口：集中再导出 KB 侧栏、配置分区组件与 document/kbConfig/navigation 辅助模块。
+ */
 export { default as KbSidebar } from './KbSidebar.vue'
 export { default as TaskNodeLogTable } from './TaskNodeLogTable.vue'
 export { default as KbMultimodalParsingSection } from './KbMultimodalParsingSection.vue'

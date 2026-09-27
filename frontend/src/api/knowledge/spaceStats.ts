@@ -4,7 +4,11 @@ import type {
   ActionStatsResponse,
 } from '../types'
 
-/** 空间统计看板 API（批次 2b：知识缺口看板） */
+/**
+ * 空间统计 API
+ *
+ * 空间级运营看板：知识缺口统计与操作审计聚合。
+ */
 export const spaceStatsApi = {
   /** 知识缺口看板（KPI/趋势/零命中/低分明细/KB 聚合） */
   getKnowledgeGap(params?: {

@@ -1,3 +1,10 @@
+/**
+ * 技能（skill）store
+ *
+ * 管理技能广场浏览、我的技能、技能上传/版本更新/发布与安装、评价、分类标签、
+ * AI 语义搜索，以及管理员侧的 LLM 审查设置与待审核队列。
+ * 消费方：SkillMarketplaceView、SkillDetailView、SkillAdminView、AgentChatView。
+ */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { skillApi } from '@/api/skill'
@@ -52,6 +59,7 @@ export const useSkillStore = defineStore('skill', () => {
   const aiSearchParsedQuery = ref<SkillAISearchParsedQuery | null>(null)
   const aiSearchLoading = ref(false)
 
+  /** 拉取技能广场列表（关键词/分类/标签/排序/分页），失败时清空 */
   async function fetchMarketplace(params?: {
     keyword?: string
     category?: string
@@ -92,6 +100,7 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
+  /** 上传技能压缩包创建新技能（占用 uploading 状态） */
   async function uploadSkill(file: File) {
     uploading.value = true
     uploadProgress.value = 0
@@ -104,6 +113,7 @@ export const useSkillStore = defineStore('skill', () => {
     }
   }
 
+  /** 为已有技能上传新版本压缩包 */
   async function updateSkillVersion(skillId: number, file: File) {
     uploading.value = true
     try {
@@ -154,6 +164,7 @@ export const useSkillStore = defineStore('skill', () => {
 
   // ==================== 管理员 ====================
 
+  /** 拉取 LLM 审查设置（是否启用 + 审查模型），失败置 null */
   async function fetchAdminSettings() {
     try {
       const result = await skillApi.getAdminSettings()
@@ -223,6 +234,7 @@ export const useSkillStore = defineStore('skill', () => {
 
   // ==================== AI 搜索 ====================
 
+  /** AI 语义搜索技能：结果 + 自然语言解释 + 解析后的结构化查询 */
   async function aiSearch(params: { query: string; limit?: number; offset?: number }) {
     aiSearchLoading.value = true
     try {

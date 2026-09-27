@@ -111,6 +111,11 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 聊天输入框：文本输入、附件上传、模式开关（深度思考/联网/流式）与模型选择，经 send 事件上抛父级。
+ *
+ * 与智能体/深度研究页输入卡同构；disabled（流式进行中）时切换为停止按钮并发 cancel-stream。
+ */
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
@@ -158,6 +163,7 @@ const { getFileExt, formatFileSize } = useChatAttachments()
 
 const models = computed<Record<string, ModelMeta>>(() => props.models ?? {})
 
+/** textarea 高度自适应内容：先置 auto 再按 scrollHeight 回填 */
 function autoResize() {
   if (!textareaRef.value) return
   textareaRef.value.style.height = 'auto'
@@ -175,6 +181,7 @@ function triggerFileSelect() {
   fileInputRef.value?.click()
 }
 
+/** 逐个校验扩展名与大小后串行上传附件，非法文件弹警告跳过 */
 async function handleFileSelected(e: Event) {
   const files = (e.target as HTMLInputElement).files
   if (!files || files.length === 0) return
@@ -213,6 +220,7 @@ function removeUploadFile(attachmentId: number) {
   chatStore.removePendingAttachment(attachmentId)
 }
 
+/** 组装发送载荷上抛；纯附件发送时以占位文案代替正文，发送后清空输入框 */
 function handleSendClick() {
   const content = inputText.value.trim()
   const hasAttachments = (props.pendingAttachmentsCount ?? 0) > 0

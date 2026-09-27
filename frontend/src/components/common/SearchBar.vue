@@ -19,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+/** 搜索输入框：v-model 双向绑定 + 防抖派发 search 事件（回车/按钮立即触发免等防抖） */
 import { ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 
@@ -60,6 +61,7 @@ watch(
 watch(searchValue, (val) => {
   emit('update:modelValue', val)
 
+  // 防抖派发搜索；回车/按钮走 handleSearch 先清定时器，保证立即执行不重复
   if (props.debounce > 0) {
     if (debounceTimer) {
       clearTimeout(debounceTimer)

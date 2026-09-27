@@ -75,5 +75,6 @@
 </template>
 
 <script setup lang="ts">
+/** 导航图标集：按 name 切换内置手绘 SVG 图形 */
 withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 })
 </script>

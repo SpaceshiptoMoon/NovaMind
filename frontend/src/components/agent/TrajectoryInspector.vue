@@ -342,6 +342,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 轨迹记录详情面板（TrajectoryList 右侧）：按 record kind 动态分配 tab（概览/思考/内容/工具调用/
+ * 参数/结果/引用/附件/耗时等），system 行支持按需拉取 System Prompt 全文。
+ */
 import { ref, computed, watch } from 'vue'
 import { Close, Top, Right } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
@@ -396,6 +400,7 @@ const TAB_LABELS: Record<TabId, string> = {
   timing: '耗时',
 }
 
+/** 按 record kind 计算可用 tab 列表（各 kind 只保留其内容相关的 tab） */
 const tabs = computed<{ id: TabId; label: string }[]>(() => {
   const r = props.record
   if (!r) return []
@@ -585,6 +590,7 @@ const systemPromptText = ref('')
 const systemPromptLoading = ref(false)
 const systemPromptError = ref('')
 
+/** 从接口拉取当前会话 System Prompt 全文（仅首次，结果缓存至切会话） */
 async function loadSystemPrompt() {
   if (!props.sessionId) {
     systemPromptError.value = '无会话 ID'

@@ -47,6 +47,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Agent 上下文用量环形指示器：百分比圆环 + 点击弹出 system/tools/messages 分段明细
+ */
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { AgentContextUsageData } from '@/api/types'
 
@@ -75,6 +79,7 @@ const levelClass = computed(() => {
   return 'lvl-ok'
 })
 
+/** 分段条中单一来源的宽度：该段 token 占三分段总量之比 × 总用量百分比 */
 function segWidth(key: 'system' | 'tools' | 'messages'): string {
   const b = props.breakdown
   if (!b) return '0%'

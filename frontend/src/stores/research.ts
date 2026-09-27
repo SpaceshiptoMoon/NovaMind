@@ -1,8 +1,16 @@
+/**
+ * Deep Research（深度研究）store
+ *
+ * 管理研究任务的聊天式消息流（user/progress/plan/assistant 四角色）、SSE 流式
+ * 进度与报告渲染、计划反馈交互（接受/修改）、研究历史记录。
+ * 消费方：ResearchView、ResearchHistoryView。
+ */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { researchApi } from '@/api/research'
 import type { Research, ResearchRequest, ResearchStats, ResearchPlan } from '@/api/types'
 
+/** 研究消息：在普通聊天消息之上扩展进度百分比、计划卡与引用来源等研究特有字段 */
 export interface ResearchMessage {
   id: string
   role: 'user' | 'assistant' | 'progress' | 'plan'
@@ -17,6 +25,7 @@ export interface ResearchMessage {
   planStatus?: 'awaiting' | 'accepted' | 'revising' | 'skipped'
 }
 
+/** 生成消息列表内的局部唯一 ID（本地渲染用，非服务端 ID） */
 let msgIdCounter = 0
 function nextMsgId() {
   return `msg_${++msgIdCounter}_${Date.now()}`
@@ -41,6 +50,7 @@ export const useResearchStore = defineStore('research', () => {
     ((decision: 'accepted' | 'edit_plan', feedback?: string) => void) | null
   >(null)
 
+  /** 提交计划反馈（接受/修改+意见）：转发到 WS 提交通道，并原位更新计划卡状态 */
   function submitPlanFeedback(decision: 'accepted' | 'edit_plan', feedback?: string) {
     if (!submitFeedbackRef.value) return
     submitFeedbackRef.value(decision, feedback)
@@ -52,6 +62,11 @@ export const useResearchStore = defineStore('research', () => {
     }
   }
 
+  /**
+   * 流式启动研究任务：按事件推进消息流——progress 事件逐步推进步骤卡（旧的置 done）、
+   * plan 事件插入/原位更新计划卡（wait_feedback=false 仅展示不挂起）、content 增量
+   * 写报告、done 落最终报告与统计。
+   */
   async function startResearchStream(spaceId: number, data: ResearchRequest) {
     isResearching.value = true
     progress.value = '正在提交研究任务...'
@@ -241,6 +256,7 @@ export const useResearchStore = defineStore('research', () => {
     }
   }
 
+  /** 拉取空间的研究历史（分页），同时返回数据供调用方直接使用 */
   async function fetchHistory(
     spaceId: number,
     params?: { limit?: number; offset?: number; status?: string },
@@ -256,6 +272,7 @@ export const useResearchStore = defineStore('research', () => {
     }
   }
 
+  /** 删除一条研究记录；若删的是当前研究，同步清空报告区 */
   async function deleteResearch(spaceId: number, sessionId: string) {
     await researchApi.deleteResearch(spaceId, sessionId)
     history.value = history.value.filter((r) => r.session_id !== sessionId)
@@ -265,12 +282,14 @@ export const useResearchStore = defineStore('research', () => {
     }
   }
 
+  /** 中止当前研究流并复位进行中状态 */
   function cancelResearch() {
     abortController.value?.abort()
     isResearching.value = false
     progress.value = ''
   }
 
+  /** 清空聊天式消息流与报告（开始新一轮研究前调用） */
   function clearMessages() {
     messages.value = []
     report.value = ''

@@ -105,6 +105,7 @@
 </template>
 
 <script setup lang="ts">
+/** 吉祥物独角兽 SVG 插画（品牌渐变配色），hover 有轻微放大 */
 withDefaults(defineProps<{ size?: number }>(), { size: 40 })
 </script>
 

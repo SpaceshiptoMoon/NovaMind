@@ -11,6 +11,11 @@ import type {
 
 const BASE_URL = '/notifications'
 
+/**
+ * notification API
+ *
+ * 站内通知：列表/未读数/已读标记、偏好设置，及常驻 WS 实时订阅
+ */
 export const notificationApi = {
   /** 获取通知列表 */
   getNotifications(params?: { limit?: number; offset?: number; unread_only?: boolean }) {

@@ -544,6 +544,16 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Wiki 词条浏览器：浏览 / 图谱 / 问题三个视图（el-tabs 内直排 pane）。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases/:kbId/wiki（KbWiki），承载
+ * 「页面索引与检索 → 正文渲染（[[slug|title]] 站内链接 + TOC scroll-spy）
+ * → 编辑/历史/回滚 → 问题登记与 lint 自动修复」全流程。
+ * 关键交互：Wiki 生成期间 5s 轮询 ingest 状态展示进度条；图谱/问题视图
+ * 点 slug 跳回浏览视图定位页面；URL ?page=slug 直达并同步。
+ */
+
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -897,6 +907,8 @@ let spy: IntersectionObserver | null = null
 let suppressSpy = false
 let suppressTimer: number | null = null
 
+/** 建立目录 scroll-spy：IntersectionObserver 以正文滚动容器为 root，
+ * 监听 h2/h3 标题，文档序最靠前的可见小节即高亮项。 */
 function setupTocSpy() {
   spy?.disconnect()
   const root = articleRef.value
@@ -955,6 +967,7 @@ function respyOnBrowse() {
   if (activeView.value === 'browse') void nextTick(setupTocSpy)
 }
 
+/** 正文点击代理：拦截标题锚点与 [[slug]] 站内链接的默认跳转，改为页内滚动/切页。 */
 function onContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
   // 标题 hover 的 # 锚点：拦截默认行为（避免 vue-router hash 入栈），走平滑滚动
@@ -983,6 +996,7 @@ async function loadIndex() {
   }
 }
 
+/** 加载当前页：清空旧来源与历史抽屉残留，拉正文后异步补来源、同步 URL query。 */
 async function selectPage(slug: string) {
   if (!slug) return
   selectedSlug.value = slug
@@ -1051,6 +1065,7 @@ function openEditor() {
   editorVisible.value = true
 }
 
+/** 编辑保存：带 version 提交乐观锁，409（他人已更新）时给出重开提示。 */
 async function saveEditor() {
   if (!currentPage.value) return
   saving.value = true
@@ -1118,6 +1133,7 @@ async function viewRevisionDiff(version: number) {
   }
 }
 
+/** 确认后回滚到指定版本（以旧内容生成新版本），并重载当前页与索引。 */
 async function confirmRevert(version: number) {
   if (!currentPage.value) return
   try {

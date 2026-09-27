@@ -5,6 +5,7 @@
 </template>
 
 <script setup lang="ts">
+/** 状态标签：内置常见状态映射，可用 statusMap 覆盖/扩展，未知状态原样灰显 */
 import { computed } from 'vue'
 
 interface StatusConfig {

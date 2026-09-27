@@ -183,6 +183,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库配置弹窗的多模态解析分区：图片/视频/音频三块的解析策略与参数表单 */
 import type { AvailableModelItem } from '@/api/types'
 import { type ImageStrategy, type VideoStrategy, videoStrategyItems } from './kbConfig'
 

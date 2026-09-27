@@ -14,6 +14,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 解析文档 Markdown 阅读器
+ *
+ * 在全文中按序定位各 chunk 并插入边界标记注释，与父组件联动：
+ * hoveredChunkIndex 驱动高亮，暴露 scrollToChunk 供外部滚动到指定 chunk。
+ */
 import { ref, computed, watch } from 'vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { Chunk } from '@/api/types'

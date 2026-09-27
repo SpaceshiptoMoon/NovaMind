@@ -4,6 +4,7 @@
 import type { SpaceConfig } from '@/api/types'
 import { MODALITY_ACCEPT_MAP, MODALITY_MAX_SIZE_MB } from '@/api/types'
 
+/** 任务状态码 → 展示文案与 el-tag 类型（数字键为后端原始枚举） */
 export const taskStatusMap: Record<
   number,
   { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }
@@ -15,6 +16,7 @@ export const taskStatusMap: Record<
   4: { text: '已取消', type: 'info' },
 }
 
+/** 文档状态字符串 → 展示文案与 el-tag 类型（兼容历史数字字符串键） */
 export const docStatusMap: Record<
   string,
   { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }
@@ -31,6 +33,7 @@ export const docStatusMap: Record<
   '4': { text: '已取消', type: 'info' },
 }
 
+/** 文件扩展名 → 文件图标底色/前景色 CSS 变量映射 */
 export const fileTypeStyles: Record<string, { bg: string; color: string }> = {
   pdf: { bg: 'var(--color-file-pdf-bg)', color: 'var(--color-file-pdf)' },
   docx: { bg: 'var(--color-file-doc-bg)', color: 'var(--color-file-doc)' },
@@ -62,6 +65,7 @@ export const fileTypeStyles: Record<string, { bg: string; color: string }> = {
   m4a: { bg: 'var(--color-file-audio-bg)', color: 'var(--color-file-audio)' },
 }
 
+/** 分块类型标识 → 中文展示标签 */
 export const chunkTypeLabels: Record<string, string> = {
   text: '文本',
   image: '图片',
@@ -71,11 +75,13 @@ export const chunkTypeLabels: Record<string, string> = {
   wiki_page: 'Wiki',
 }
 
+/** 按文件名取扩展名并查样式，未知类型回退到 txt 样式 */
 export function getFileTypeStyle(filename: string): { bg: string; color: string } {
   const ext = filename?.split('.').pop()?.toLowerCase() || ''
   return fileTypeStyles[ext] || { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' }
 }
 
+/** 按空间启用的模态聚合出上传 accept 扩展名串（逗号分隔、去重） */
 export function getUploadAccept(spaceTypes: string[]): string {
   const exts = new Set<string>()
   for (const t of spaceTypes) {
@@ -85,6 +91,7 @@ export function getUploadAccept(spaceTypes: string[]): string {
   return [...exts].join(',')
 }
 
+/** 按扩展名反查所属模态的上传大小上限（MB），未命中回退 100MB */
 export function getFileMaxSize(ext: string): number {
   for (const [modality, accept] of Object.entries(MODALITY_ACCEPT_MAP)) {
     const exts = accept.split(',').map((e) => e.replace('.', '').trim())
@@ -93,10 +100,12 @@ export function getFileMaxSize(ext: string): number {
   return 100
 }
 
+/** 判断空间是否启用了某模态（容忍 undefined/null 入参） */
 export function hasModality(spaceTypes: string[] | undefined | null, modality: string): boolean {
   return Array.isArray(spaceTypes) && spaceTypes.includes(modality)
 }
 
+/** 归一化后端 space_type 到模态数组；空/旧格式一律收敛为 ['text'] */
 export function normalizeSpaceTypes(config: SpaceConfig | null | undefined): string[] {
   const raw = config?.space_type
   if (!raw) return ['text']

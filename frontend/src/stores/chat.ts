@@ -1,3 +1,10 @@
+/**
+ * 智能问答（chat）会话 store
+ *
+ * 管理普通聊天（非 Agent）的会话列表、消息、非流式/SSE 流式发送、检索来源与
+ * 思考过程增量渲染、附件待发队列、会话级压缩配置。消费方：ChatView、ChatInput、
+ * SessionConfigDialog、WorkspaceLayout。
+ */
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { chatApi } from '@/api/chat'
@@ -24,8 +31,10 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref<AbortController | null>(null)
   const pendingAttachments = ref<ChatAttachment[]>([])
 
+  /** 是否已有活跃会话 */
   const hasSession = computed(() => !!currentSessionId.value)
 
+  /** 拉取会话列表；带 offset 时追加（翻页），否则整体替换 */
   async function fetchSessions(params?: { limit?: number; offset?: number }) {
     try {
       const data = await sessionApi.getSessions(params)
@@ -40,6 +49,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** 拉取某会话的全部历史消息并切换当前会话 */
   async function fetchMessages(sessionId: string) {
     loading.value = true
     error.value = null
@@ -55,6 +65,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** 删除会话；若删的是当前会话，同时清空消息区 */
   async function deleteSession(sessionId: string) {
     await sessionApi.deleteSession(sessionId)
     sessions.value = sessions.value.filter((s) => s.session_id !== sessionId)
@@ -64,6 +75,10 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * 非流式发送：先本地 push 用户消息（含附件），成功后用服务端回执替换本地消息
+   * （保持 ID 一致、回填附件），再 push AI 回答；失败时回滚本地用户消息。
+   */
   async function sendMessage(
     content: string,
     options?: {
@@ -144,6 +159,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * SSE 流式发送：预置用户消息与空的 assistant 占位消息，按事件增量写入
+   * 正文/思考/来源/检索轨迹；首字前可收到 user_message 事件（回填服务端 ID）
+   * 与 sources 事件（正文角标）。失败时移除无内容的占位消息。
+   */
   async function sendMessageStream(
     content: string,
     options?: {
@@ -311,6 +331,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // ========== 附件管理 ==========
 
+  /** 上传附件，成功后加入待发队列 */
   async function uploadAttachment(
     file: File,
     onProgress?: (percent: number) => void,
@@ -338,12 +359,14 @@ export const useChatStore = defineStore('chat', () => {
     abortController.value?.abort()
   }
 
+  /** 清空消息与会话选择（新建会话入口用） */
   function clearMessages() {
     messages.value = []
     currentSessionId.value = null
     sessionConfig.value = null
   }
 
+  /** 拉取会话级压缩配置；空 ID 直接清空，失败静默置 null */
   async function fetchSessionConfig(sessionId: string) {
     if (!sessionId) {
       sessionConfig.value = null
@@ -356,6 +379,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** 保存会话级压缩配置（包裹为 { compression } 结构提交） */
   async function saveSessionConfig(sessionId: string, config: CompressionConfig) {
     sessionConfig.value = await sessionApi.createConfig(sessionId, { compression: config })
     return sessionConfig.value
@@ -366,6 +390,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionConfig.value = null
   }
 
+  /** 切换当前会话；传 null 表示离开会话并清空消息 */
   function setSession(sessionId: string | null) {
     currentSessionId.value = sessionId
     if (!sessionId) {

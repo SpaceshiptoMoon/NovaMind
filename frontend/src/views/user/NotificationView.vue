@@ -79,6 +79,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 站内通知中心页。
+ *
+ * 对应路由 /home/notifications，分页展示通知列表、点击标记已读并按 link 跳转，
+ * 支持全部已读与通知偏好（站内/邮件/接收类型）设置，偏好区首次展开时才拉取。
+ */
+
 import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -154,6 +161,7 @@ async function handleSavePrefs() {
   }
 }
 
+/** 按分页参数拉取通知列表，未读数回写 store 供顶栏铃铛徽标同源同步。 */
 async function fetchNotifications() {
   loading.value = true
   try {
@@ -182,6 +190,7 @@ async function handleMarkAllRead() {
   }
 }
 
+/** 点击通知卡：未读则先标记已读，携带 link 时跳转对应页面。 */
 async function handleClick(n: Notification) {
   if (!n.is_read) {
     await notifStore.markRead(n.id)

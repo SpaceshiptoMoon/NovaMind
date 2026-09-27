@@ -49,6 +49,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 重置密码页（/reset-password）
+ *
+ * 对应路由 ResetPassword，凭 URL 中的 token 设置新密码；token 缺失或失效时展示无效态。
+ */
+
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -94,6 +100,7 @@ onMounted(() => {
   }
 })
 
+/** 校验并提交新密码；token 已失效时切换到链接无效态而非报错提示 */
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return

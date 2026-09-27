@@ -49,6 +49,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 任务节点日志表格
+ *
+ * 将 stepProgress 中文本/音频/视频三套管道的节点键归一为表格行并格式化
+ * 状态/耗时/指标/时间范围；按规范顺序排列，兼容旧扁平字符串与新增节点键。
+ */
 import { computed } from 'vue'
 
 import type { TaskNodeLog } from '@/api/types'
@@ -102,6 +108,7 @@ interface NodeRow {
   error: string | null
 }
 
+/** 归一化节点条目：兼容旧版仅存状态字符串的扁平格式与新版 TaskNodeLog 对象 */
 function normalizeEntry(entry: TaskNodeLog | string | undefined): TaskNodeLog | null {
   if (entry == null) return null
   if (typeof entry === 'string') return { status: entry } // 兼容旧扁平 {step:'done'}

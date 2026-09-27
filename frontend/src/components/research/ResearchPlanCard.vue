@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 深度研究计划确认卡片：展示研究步骤清单，awaiting 态允许确认执行或带意见修订
+ */
+
 import { ref, computed } from 'vue'
 import { Check, RefreshRight } from '@element-plus/icons-vue'
 import type { ResearchPlan } from '@/api/types'

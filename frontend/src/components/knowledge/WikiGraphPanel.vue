@@ -68,6 +68,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * Wiki 图谱 echarts 面板
+ *
+ * 概览（overview）与邻域（ego，仅直接相连一层）两种模式由 centerSlug 推导，
+ * force 布局渲染页面关系图；主题切换联动重渲染，双击节点聚焦邻域，
+ * 单击节点经 select 事件上抛给父级。
+ */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Loading, Refresh, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
 import * as echarts from 'echarts/core'
@@ -119,6 +126,7 @@ function onSelectVisibleChange(visible: boolean) {
   }
 }
 
+/** 拉取全量页面轻量列表，作为 ego 中心下拉的数据源 */
 async function loadAllNodes() {
   nodesLoading.value = true
   try {
@@ -181,6 +189,7 @@ function escapeHtml(s: string): string {
   )
 }
 
+/** 由图数据构建完整 echarts option：主题色经 cssVar 固化进 canvas，标签按链接数分级直标 */
 function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   const categories = [...new Set(data.nodes.map((n) => n.page_type))]
   const textColor = cssVar('--color-text', '#303133')
@@ -346,6 +355,7 @@ watch(theme, () => {
   chart.setOption(buildOption(graph.value))
 })
 
+/** 初始化 echarts 实例并绑定 click/dblclick/graphRoam 交互事件，随后全量渲染图数据 */
 function renderChart(data: WikiGraphResponse) {
   if (!canvasRef.value) return
   // 0×0 容器（如面板尚不可见）初始化 ECharts 会告警/渲染异常；
@@ -410,6 +420,7 @@ function zoomBy(factor: number) {
   })
 }
 
+/** 按 centerSlug 推导 ego/overview 模式拉取图数据并渲染，失败时清空画布 */
 async function loadGraph() {
   loading.value = true
   try {

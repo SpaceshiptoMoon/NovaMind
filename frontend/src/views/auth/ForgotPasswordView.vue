@@ -21,6 +21,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 忘记密码页（/forgot-password）
+ *
+ * 对应路由 ForgotPassword，提交邮箱请求重置链接；无论邮箱是否存在都返回同样的成功提示（防枚举）。
+ */
+
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -42,6 +48,7 @@ const rules: FormRules = {
   ],
 }
 
+/** 校验并提交邮箱，成功或失败统一按「已发送」处理再跳登录页 */
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return

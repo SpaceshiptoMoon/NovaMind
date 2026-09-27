@@ -247,6 +247,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 用户级模型配置页。
+ *
+ * 对应路由 /home/settings/models，按 Tab 管理 LLM/Embedding/Rerank/VLM/ASR 五类模型凭证
+ * 与搜索引擎（Tavily/SerpAPI/DuckDuckGo）配置，均支持新增/编辑/删除/连接测试。
+ * 搜索引擎 Tab 懒加载；编辑时 API Key 留空表示不修改原 Key，编辑态 payload 不含 provider。
+ */
+
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -325,6 +333,7 @@ const PROTOCOL_OPTIONS: Record<string, { value: string; label: string }[]> = {
 
 const availableProtocols = computed(() => PROTOCOL_OPTIONS[activeTab.value] || [])
 
+/** 拉取用户全部模型配置，前端按当前 Tab 的 model_type 过滤展示。 */
 async function fetchConfigs() {
   loading.value = true
   try {
@@ -366,6 +375,7 @@ function showEditDialog(row: ModelConfig) {
   dialogVisible.value = true
 }
 
+/** 创建或更新模型配置：扩展配置 textarea 需为合法 JSON，随 Tab 类型落 model_type。 */
 async function handleSubmit() {
   await formRef.value?.validate()
   submitLoading.value = true
@@ -400,6 +410,7 @@ async function handleSubmit() {
   }
 }
 
+/** 用表单当前值（未保存的草稿配置）调用后端连通性测试并弹出结果。 */
 async function handleTestForm() {
   testLoading.value = true
   try {
@@ -525,6 +536,7 @@ function showEditSearchDialog(row: SearchEngineConfig) {
   searchDialogVisible.value = true
 }
 
+/** 解析扩展配置 textarea；非法 JSON 时提示并抛错，由提交方中断流程。 */
 function parseSearchExtraConfig(): Record<string, unknown> | undefined {
   if (!searchExtraConfigStr.value.trim()) return undefined
   try {
@@ -535,6 +547,7 @@ function parseSearchExtraConfig(): Record<string, unknown> | undefined {
   }
 }
 
+/** 创建或更新搜索引擎配置；编辑态 api_key 留空 = 不修改，payload 不回传 provider。 */
 async function handleSubmitSearch() {
   await searchFormRef.value?.validate()
   searchSubmitLoading.value = true
@@ -567,6 +580,7 @@ async function handleSubmitSearch() {
   }
 }
 
+/** 草稿连通性测试；编辑态 api_key 留空时无法取到原 Key，前置拦截提示填写。 */
 async function handleTestSearchForm() {
   // 新建态：直接用表单值测试；编辑态：api_key 留空时无法测原 Key，提示用户填写
   if (

@@ -201,6 +201,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 文档详情页。
+ *
+ * 对应路由 /home/spaces/:id/documents/:docId，展示文档元信息、解析失败/处理中的节点级
+ * 流程时间线、分块列表（折叠预览 + 展开渲染 Markdown/图片）与右侧原文预览面板。
+ * kbId 优先取 query，缺失时先反查归属知识库再加载，失败落「文档不存在」空态。
+ */
+
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -272,6 +280,7 @@ function truncateContent(content: string, maxLen = 80): string {
   return firstLine.slice(0, maxLen) + '...'
 }
 
+/** 加载文档详情（含分块总数）并联动首页分块列表；kbId 为 0 时短路不发请求。 */
 async function fetchDocument() {
   if (kbId.value === 0) return
   loading.value = true
@@ -308,6 +317,7 @@ async function fetchChunks() {
   }
 }
 
+/** 拉取最近一次处理任务，供状态展示与时间线数据（step_progress）使用。 */
 async function fetchLatestTask() {
   if (kbId.value === 0) return
   try {

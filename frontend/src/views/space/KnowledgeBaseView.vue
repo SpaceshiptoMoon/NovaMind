@@ -85,6 +85,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 空间内知识库列表页。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases，横卡网格展示空间下全部知识库，
+ * 点击卡片进入文档管理，hover 提供编辑/配置/归档激活/删除操作，空态支持快捷新建。
+ */
+
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -126,6 +133,7 @@ function goConfig(kb: KnowledgeBase) {
 
 // === 知识库列表 ===
 
+/** 加载空间下知识库列表（含文档数统计与归档状态）。 */
 async function fetchKnowledgeBases() {
   loading.value = true
   try {
@@ -148,6 +156,7 @@ function showEditDialog(kb: KnowledgeBase) {
   dialogVisible.value = true
 }
 
+/** 保存编辑：描述空串也显式提交，避免 config 缺失导致清空操作静默失效。 */
 async function handleSubmit() {
   if (!formRef.value || !editKbId.value) return
 
@@ -235,6 +244,7 @@ function goToDocuments(kbId: number) {
   router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId}/documents`)
 }
 
+/** 弹窗式快捷新建：仅输入名称即创建知识库并刷新列表。 */
 async function handleQuickCreateKb() {
   try {
     const { value } = await ElMessageBox.prompt('请输入知识库名称', '新建知识库', {

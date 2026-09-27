@@ -76,6 +76,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 注册页（/register）
+ *
+ * 对应路由 Register，用户名/邮箱/手机号/密码四项校验齐全后注册并自动登录。
+ */
+
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -163,6 +169,7 @@ const rules = {
   ],
 }
 
+/** 从后端错误响应中提取可读信息，优先拼接字段级 details */
 function extractErrorMessage(error: unknown): string {
   const err = error as {
     response?: {

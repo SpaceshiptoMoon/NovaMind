@@ -119,6 +119,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 个人信息页。
+ *
+ * 对应路由 /home/profile，展示当前登录用户的基本信息与账号状态，
+ * 提供编辑资料（用户名/邮箱/手机号）与修改密码两个入口弹窗，改密成功后延迟自动登出。
+ */
+
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Edit, Lock } from '@element-plus/icons-vue'
@@ -258,6 +265,7 @@ function showPasswordDialog() {
   passwordDialogVisible.value = true
 }
 
+/** 提交新密码；成功后提示并延时 1.5s 登出，让用户重新以新密码登录。 */
 async function handlePasswordSubmit() {
   if (!passwordFormRef.value) return
 

@@ -32,7 +32,9 @@ export function initTheme(): void {
   applyTheme(theme.value)
 }
 
+/** 主题读写组合式入口：返回共享的 theme ref 与 toggleTheme 切换函数 */
 export function useTheme() {
+  /** 明暗互换并持久化到 localStorage */
   function toggleTheme(): void {
     theme.value = theme.value === 'dark' ? 'light' : 'dark'
     localStorage.setItem(STORAGE_KEY, theme.value)

@@ -284,6 +284,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识库文档处理任务列表页。
+ *
+ * 对应路由 /home/spaces/:id/knowledge-bases/:kbId/tasks，按批次展示任务看板统计与
+ * 处理消息流，任务可展开到文档子项明细（进度/流程日志/节点耗时）。
+ * 存在 pending/processing 任务时每 5s 静默轮询刷新（保留用户展开状态），全部到终态自动停止。
+ */
+
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -327,6 +335,7 @@ const currentPageFailedCount = computed(() =>
   tasks.value.reduce((sum, task) => sum + (task.task_summary?.failed ?? 0), 0),
 )
 
+/** 分页拉取批次任务总览；silent=true 为轮询静默刷新，不闪 loading、不重置展开态。 */
 async function fetchTasks(silent = false) {
   if (kbInvalid.value) return
   if (!silent) loading.value = true
@@ -354,6 +363,7 @@ function hasActiveTasks(): boolean {
   return tasks.value.some((t) => t.status === 0 || t.status === 1)
 }
 
+/** 按活跃任务存在性启停 5s 轮询定时器（幂等，已启动/已停止时不重复操作）。 */
 function syncTaskPolling(): void {
   if (hasActiveTasks() && taskPollTimer === null) {
     taskPollTimer = setInterval(async () => {
@@ -592,6 +602,7 @@ function getTaskSuccessPercent(task: DocumentTask) {
   return Math.min(100, Math.round((completedCount / totalCount) * 100))
 }
 
+/** 单文档进度百分比：终态直接满格，否则按四主节点（解析/切分/向量化/索引）完成数折算。 */
 function getTaskProgressPercent(row?: {
   status?: number
   step_progress?: Record<string, unknown>

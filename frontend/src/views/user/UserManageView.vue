@@ -327,6 +327,15 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 用户管理页（管理员）。
+ *
+ * 对应路由 /home/admin/users（需 user.manage 权限），循环拉取全量用户后前端筛选分页，
+ * 承载创建/编辑、停用启用、强制下线、重置密码、删除、应用权限（deny-list）与角色分配
+ * 七类管理操作；超级管理员账号对所有操作免疫。
+ * 关键交互：应用权限弹窗以「勾选=可用」展示，提交时换算为后端 disabled_apps 被禁集合。
+ */
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading } from '@element-plus/icons-vue'
@@ -403,7 +412,7 @@ function formatDate(date: string | null): string {
   }
 }
 
-// 获取用户列表
+// 循环拉取全部用户（API 单页 limit 上限 100），前端搜索/筛选/分页
 async function fetchUsers() {
   loading.value = true
   try {
@@ -675,6 +684,7 @@ const appAccessUser = ref<User | null>(null)
 // 勾选集合 = 可用应用（提交时转换为被禁集合：全集 - 勾选）
 const appAccessEnabled = ref<AppCodeType[]>([])
 
+/** 加载用户当前可用应用（disabled_apps 取反为勾选集）并打开应用权限弹窗。 */
 async function showAppAccessDialog(user: User) {
   appAccessUser.value = user
   appAccessVisible.value = true
@@ -693,6 +703,7 @@ async function showAppAccessDialog(user: User) {
   }
 }
 
+/** 勾选集换算回 disabled_apps（全集 - 勾选）后提交。 */
 async function handleAppAccessSubmit() {
   if (!appAccessUser.value) return
   appAccessSubmitLoading.value = true
@@ -719,6 +730,7 @@ const roleDialogUser = ref<User | null>(null)
 const roleDialogSelectedId = ref<number | null>(null)
 const roleDialogRoles = ref<Role[]>([])
 
+/** 拉取角色列表并回显：管理员回显 admin 角色，否则回显 viewer 兜底。 */
 async function showRoleDialog(user: User) {
   roleDialogUser.value = user
   roleDialogVisible.value = true

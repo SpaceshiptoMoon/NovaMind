@@ -87,6 +87,7 @@
 </template>
 
 <script setup lang="ts">
+/** 知识库配置弹窗的 Wiki 自动生成分区：抽取模型/粒度/页数上限与内容风格、抽取侧重指令 */
 import type { AvailableModelItem } from '@/api/types'
 import { wikiGranularityItems } from './kbConfig'
 

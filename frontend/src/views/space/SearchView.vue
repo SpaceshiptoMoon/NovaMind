@@ -339,6 +339,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 知识库检索测试页。
+ *
+ * 对应路由 /home/spaces/:id/search，左结果右参数三区布局：支持 9 种检索模式、四路权重
+ * 调节、Rerank/LLM 回答/查询改写（HyDE、子问题拆分）等高级参数，展示缓存命中与模式
+ * 降级标记；wiki_page 命中卡片可点击直达对应 Wiki 页面。
+ */
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -438,6 +446,7 @@ function getScoreClass(score: number): string {
   return 'score-low'
 }
 
+/** 拉取空间知识库列表并默认选中第一个，联动加载该库的检索模式。 */
 async function fetchKnowledgeBases() {
   try {
     const data = await knowledgeBaseApi.getKnowledgeBases(spaceId.value)
@@ -452,6 +461,7 @@ async function fetchKnowledgeBases() {
   }
 }
 
+/** 拉取当前知识库可用的检索模式列表与 LLM/Rerank 模型配置（含默认模型）。 */
 async function fetchSearchModes() {
   if (!searchForm.kb_id) return
 
@@ -483,6 +493,7 @@ function handleReset() {
   Object.assign(searchForm, { ...defaultSearchForm, kb_id: kbId })
 }
 
+/** 组装完整检索请求（权重/Rerank/LLM/查询改写按开关条件性携带）并渲染结果与 AI 回答。 */
 async function handleSearch() {
   if (!searchForm.kb_id || !searchForm.query.trim()) {
     ElMessage.warning('请选择知识库并输入查询内容')

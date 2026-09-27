@@ -154,6 +154,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 技能广场页（/home/workspace/skills）
+ *
+ * 对应路由 WorkspaceSkills，广场/我的技能双 Tab 浏览，支持普通搜索、AI 智能搜索、
+ * 分类/标签/排序过滤与 zip 技能包上传（上传与审核入口需 skill.config 权限）。
+ */
+
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -228,6 +235,7 @@ function clearAISearch() {
   skillStore.aiSearchParsedQuery = null
 }
 
+/** 执行搜索：AI 模式走自然语言解析搜索，否则按关键字/分类/标签/排序走广场列表 */
 function handleSearch() {
   currentPage.value = 1
   if (aiSearchMode.value && searchKeyword.value) {
@@ -275,6 +283,7 @@ function goToDetail(skillId: number) {
   router.push(`/home/workspace/skills/${skillId}${query}`)
 }
 
+/** el-upload before-upload 钩子：手动调 API 上传 zip 并刷新当前列表，返回 false 阻止默认上传 */
 async function handleUpload(file: File) {
   if (!file.name.endsWith('.zip')) {
     ElMessage.error('请上传 .zip 格式的文件')

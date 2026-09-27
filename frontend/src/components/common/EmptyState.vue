@@ -116,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+/** 空状态占位：内置 search/chat/data 三种线条插画 + 标题描述 + 操作 slot */
 withDefaults(
   defineProps<{
     headline?: string

@@ -143,6 +143,7 @@
 <script setup lang="ts">
 /** 空间洞察页（批次 2b）：知识缺口看板。
  * 信息架构：KPI 四卡 → 趋势双线 → 零命中 Top N + 低分明细 → KB 聚合表。
+ * 对应路由 /home/spaces/:id/insights，按空间 + 时间窗拉取问答反馈与检索信号。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -214,6 +215,7 @@ function goSession(sessionId: string) {
   void router.push({ path: '/home/workspace/chat', query: { session_id: sessionId } })
 }
 
+/** 拉取当前时间窗 + KB 过滤下的知识缺口统计，成功后重渲染趋势图。 */
 async function load() {
   loading.value = true
   try {
@@ -253,6 +255,7 @@ function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+/** 渲染问答量/零命中双线趋势图；颜色取自 CSS 变量，主题切换时由 watch 触发重渲染。 */
 function renderTrend() {
   const el = trendChartRef.value
   if (!el) return

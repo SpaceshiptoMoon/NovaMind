@@ -304,6 +304,11 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 会话设置弹窗：编辑压缩策略、会话级 RAG 绑定、联网搜索引擎与模型生成参数四组配置。
+ *
+ * 父组件通过改 sessionId prop 触发打开并拉取当前配置；保存时按四个接口分别提交。
+ */
 import { ref, reactive, watch, computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -402,6 +407,7 @@ function handleClose() {
   visible.value = false
 }
 
+/** 打开时先重置全部表单为默认值，再拉取会话配置逐组回填（含历史 search_mode 枚举迁移） */
 async function loadConfig(sessionId: string) {
   // 重置表单
   ragForm.space_id = null
@@ -486,6 +492,7 @@ async function loadConfig(sessionId: string) {
   }
 }
 
+/** 切换 RAG 空间：清空已选知识库并拉取该空间下的 KB 下拉选项 */
 async function handleRagFormSpaceChange(spaceId: number | null) {
   ragForm.kb_ids = []
   ragFormKbOptions.value = []
@@ -498,6 +505,7 @@ async function handleRagFormSpaceChange(spaceId: number | null) {
   }
 }
 
+/** 依次提交压缩/LLM/RAG/联网搜索四组配置，全部成功后关闭弹窗并通知父级 */
 async function handleSave() {
   saving.value = true
   try {

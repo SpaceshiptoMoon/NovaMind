@@ -1,3 +1,10 @@
+/**
+ * Agent 会话 store
+ *
+ * 管理 Agent CRUD、对话会话与消息流、SSE 流式/非流式发送（正文/思考/来源/工具调用/
+ * 上下文用量/计划卡增量渲染）、MCP 服务器与工具注册表、聊天附件待发队列。
+ * 消费方：AgentChatView、WorkspaceLayout、TrajectoryInspector、WorkbenchDrawer。
+ */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
@@ -18,6 +25,7 @@ import type {
 
 // 后端工具状态归并到前端 ToolCallRecord.status 四态
 // pending/running → running；completed → completed；failed/timeout/其它 → failed
+/** 把后端工具状态字符串归并为前端三态（running/completed/failed） */
 function normalizeToolStatus(status: string): ToolCallRecord['status'] {
   switch (status) {
     case 'completed':
@@ -69,6 +77,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== Agent CRUD =====================
 
+  /** 拉取 Agent 列表（支持分页），失败时清空列表 */
   async function fetchAgents(params?: { limit?: number; offset?: number }) {
     agentsLoading.value = true
     try {
@@ -105,6 +114,7 @@ export const useAgentStore = defineStore('agent', () => {
     return updated
   }
 
+  /** 删除 Agent；若删的是当前 Agent，同步清空会话状态 */
   async function deleteAgent(agentId: number) {
     await agentApi.deleteAgent(agentId)
     agents.value = agents.value.filter((a) => a.id !== agentId)
@@ -117,6 +127,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== 对话管理 =====================
 
+  /** 拉取 Agent 的会话列表；带 offset 时追加（翻页），否则整体替换 */
   async function fetchConversations(agentId: number, params?: { limit?: number; offset?: number }) {
     conversationsLoading.value = true
     try {
@@ -134,6 +145,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  /** 拉取某会话的历史消息，并从持久化工具调用重建 toolCalls 与上下文用量仪表 */
   async function fetchMessages(sessionId: string) {
     messagesLoading.value = true
     error.value = null
@@ -165,6 +177,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  /** 删除会话；若删的是当前会话，清空聊天区 */
   async function deleteConversation(sessionId: string) {
     await agentApi.deleteSession(sessionId)
     conversations.value = conversations.value.filter((c) => c.session_id !== sessionId)
@@ -175,6 +188,10 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== SSE 流式对话 =====================
 
+  /**
+   * 流式发送消息并按事件增量渲染：正文/思考流式累积、工具卡片插到当前决策消息之后、
+   * 计划卡按 plan.* 事件原位更新状态。多轮工具调用时每轮决策文本单独成消息，最终回答取最后一轮。
+   */
   async function sendMessageStream(
     agentId: number,
     content: string,
@@ -465,6 +482,11 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== 非流式对话 =====================
 
+  /**
+   * 非流式发送消息：全程收集增量事件，onDone 时一次性按
+   * 「user → 各轮决策消息 → 各工具结果 → 最终回答」的顺序重建消息列表。
+   * 决策文本按 offset 切片归轮，与流式路径的渲染语义对齐。
+   */
   async function sendMessage(
     agentId: number,
     content: string,
@@ -719,10 +741,12 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  /** 中止当前流式请求 */
   function cancelStream() {
     abortController.value?.abort()
   }
 
+  /** 清空整个聊天状态（会话 ID、消息、工具卡、流式累积、附件、计划卡），切会话/删 Agent 时调用 */
   function clearChat() {
     currentSessionId.value = null
     messages.value = []
@@ -738,6 +762,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ========== 附件管理 ==========
 
+  /** 上传附件（动态引入 chatApi 避免循环依赖），成功后加入待发队列 */
   async function uploadAttachment(
     file: File,
     onProgress?: (percent: number) => void,
@@ -821,6 +846,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== 初始化 =====================
 
+  /** 进入某 Agent 聊天页的入口：拉 Agent 详情 + 会话列表 */
   async function initForAgent(agentId: number) {
     await fetchAgent(agentId)
     await fetchConversations(agentId)

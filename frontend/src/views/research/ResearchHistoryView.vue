@@ -137,6 +137,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 研究历史页（/home/workspace/research/:spaceId/history）
+ *
+ * 对应路由 WorkspaceResearchHistory，按空间列出历史研究（状态筛选/分页），可查看报告详情弹窗或删除记录。
+ */
+
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -203,6 +209,7 @@ function goBack() {
   router.push(`/home/research/${spaceId.value}`)
 }
 
+/** 拉取当前筛选与分页参数下的研究历史列表 */
 async function fetchData() {
   loading.value = true
   try {

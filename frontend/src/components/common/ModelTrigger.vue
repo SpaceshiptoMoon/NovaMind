@@ -74,6 +74,10 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 对话模型选择器：下拉分 LLM/VLM 两组列出可用模型，含「Auto 跟随智能体配置」项（v-model）
+ */
+
 import { ref, computed } from 'vue'
 import { MagicStick, ArrowDown, Check } from '@element-plus/icons-vue'
 

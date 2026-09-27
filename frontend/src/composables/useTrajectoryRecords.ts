@@ -26,6 +26,7 @@ export type TrajectoryKind =
   | 'plan'
   | 'notice'
 
+/** 轨迹视图单行 record：由 messages 平铺派生，携带稳定序号、行摘要与决策/工具父子关系 */
 export interface TrajectoryRecord {
   /** 稳定身份：msg.id > tool_call_id > 'system' > seq */
   recordId: string

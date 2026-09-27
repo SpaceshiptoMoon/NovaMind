@@ -8,16 +8,38 @@ import type {
   SearchSourceInfo,
 } from './types'
 
+/**
+ * 深度研究 API
+ *
+ * 会话式深研究：数据源发现、WS 流式执行（进度/计划确认/报告产出）、
+ * 历史记录管理。
+ */
 export const researchApi = {
   /** 源发现：返回注册表全部数据源（新源注册后自动出现，前端零改动） */
   listSearchSources(spaceId: number) {
     return request.get<{ sources: SearchSourceInfo[] }>(`/spaces/${spaceId}/deep-research/sources`)
   },
 
+  /** 发起一次深研究（入队执行，返回会话；实时进展走 streamResearch 流） */
   startResearch(spaceId: number, data: ResearchRequest) {
     return request.post<Research>(`/spaces/${spaceId}/deep-research`, data)
   },
 
+  /**
+   * WS 流式执行深研究，按事件类型分发回调。
+   *
+   * Promise 在连接正常关闭（done 后）时 resolve；认证失败（4401/4403）或
+   * 异常断连时 reject；signal 中止则静默结束。
+   *
+   * @param callbacks.onProgress 执行进度（状态/当前步骤/百分比/本轮检索 query）
+   * @param callbacks.onPlanGenerated 计划生成回调；wait_feedback=true 时服务端已挂起，
+   *   须在超时前调第二参 submitFeedback 提交决策（'accepted' 直接收紧，
+   *   'edit_plan' 附反馈文本由模型修订计划后继续）
+   * @param callbacks.onContent 报告正文增量 chunk（流式渲染）
+   * @param callbacks.onDone 研究完成：最终报告全文 + 检索统计 + 引用来源
+   * @param callbacks.onError 执行/连接错误
+   * @param callbacks.signal 传入 AbortSignal 可随时取消（关闭 WS，静默结束）
+   */
   streamResearch(
     spaceId: number,
     data: ResearchRequest,
@@ -108,6 +130,7 @@ export const researchApi = {
     )
   },
 
+  /** 研究历史列表（分页；可按状态过滤） */
   getResearchHistory(
     spaceId: number,
     params?: { limit?: number; offset?: number; status?: string },
@@ -115,10 +138,12 @@ export const researchApi = {
     return request.get<ResearchListResponse>(`/spaces/${spaceId}/deep-research`, params)
   },
 
+  /** 研究会话详情（任务分解/最终报告/统计） */
   getResearchDetail(spaceId: number, sessionId: string) {
     return request.get<Research>(`/spaces/${spaceId}/deep-research/${sessionId}`)
   },
 
+  /** 删除研究会话记录 */
   deleteResearch(spaceId: number, sessionId: string) {
     return request.delete<{ message: string }>(`/spaces/${spaceId}/deep-research/${sessionId}`)
   },

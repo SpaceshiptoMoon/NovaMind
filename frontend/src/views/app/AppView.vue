@@ -23,6 +23,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 应用中心页（/home/apps）
+ *
+ * 对应路由 Apps，按应用级门禁（appCode）过滤后展示可用应用卡片，点击跳转对应应用。
+ */
+
 import { type Component, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Document, ArrowRight } from '@element-plus/icons-vue'

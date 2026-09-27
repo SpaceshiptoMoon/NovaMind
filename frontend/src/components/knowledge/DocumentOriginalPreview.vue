@@ -151,6 +151,12 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 解析原文档预览面板
+ *
+ * 展示文件信息与下载操作，图片/音频经带认证 blob URL 内联预览；
+ * 「查看解析结果」弹窗按需拉取解析 Markdown 并提供文内搜索高亮导航。
+ */
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   Close,
@@ -218,6 +224,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 // 带认证的预览 Blob URL（图片/音频通过 fetch + token 获取后创建）
 const previewUrl = ref('')
 
+/** 拉取图片/音频的带认证 blob URL 供内联预览，切换文档时先释放旧 URL 防泄漏 */
 async function loadPreviewUrl() {
   if (!props.document) return
   if (category.value !== 'image' && category.value !== 'audio') return
@@ -341,6 +348,7 @@ function handleDialogClose() {
   currentMatchIndex.value = 0
 }
 
+/** 搜索输入防抖 250ms 后重新应用高亮 */
 function handleSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
@@ -436,6 +444,7 @@ function applySearch() {
   }
 }
 
+/** 移除全部搜索高亮 mark，把文本合并还原回原文本节点 */
 function clearHighlights() {
   if (!contentRef.value) return
   const marks = contentRef.value.querySelectorAll(
@@ -464,6 +473,7 @@ function prevMatch() {
   navigateToMatch(prevIdx)
 }
 
+/** 跳到第 index（0 起）处匹配，滚动至视口中央并同步计数显示 */
 function navigateToMatch(index: number) {
   if (!contentRef.value) return
   const marks = contentRef.value.querySelectorAll(

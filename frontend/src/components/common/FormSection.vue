@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+/** 表单分组区块：标题 + 可选描述 + 内容 slot */
 defineProps<{
   title: string
   description?: string
