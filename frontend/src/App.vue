@@ -3,7 +3,9 @@
 </template>
 
 <script setup lang="ts">
-// 根组件 - 路由出口
+/**
+ * 根组件：全局唯一的路由出口（布局/页面全部经 router-view 渲染）
+ */
 </script>
 
 <style>

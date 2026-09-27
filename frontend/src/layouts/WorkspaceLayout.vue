@@ -394,6 +394,11 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 工作台主布局：全宽顶栏 + 可折叠侧栏 + 主内容区
+ *
+ * 侧栏仅在工作台路由渲染（频道分段 + 上下文列表）；skip-link 供键盘导航。
+ */
 import { ref, reactive, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

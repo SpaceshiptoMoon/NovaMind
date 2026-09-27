@@ -1,3 +1,9 @@
+/**
+ * 路由注册表
+ *
+ * 三层布局：公开封面页 / AuthLayout（登录注册）/ WorkspaceLayout（/home 全站）。
+ * 路由懒加载，meta.requiresAuth + meta.title 驱动守卫行为。
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 import { setupRouterGuards } from './guards'
 

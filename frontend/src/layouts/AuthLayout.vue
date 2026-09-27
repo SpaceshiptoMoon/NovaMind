@@ -16,6 +16,9 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 认证页布局：居中品牌头 + 路由出口；showHeader=false 时收起品牌区
+ */
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'

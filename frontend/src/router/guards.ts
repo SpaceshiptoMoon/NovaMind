@@ -1,3 +1,8 @@
+/**
+ * 全局路由守卫
+ *
+ * 登录校验（无 token 重定向 /login）、页面标题、权限数据惰性预取。
+ */
 import type { Router } from 'vue-router'
 import { tokenManager } from '@/api'
 import { usePermissionStore } from '@/stores/permission'

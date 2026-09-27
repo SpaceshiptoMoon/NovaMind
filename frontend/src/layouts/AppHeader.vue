@@ -145,6 +145,11 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 全局顶栏：品牌区 + 主导航 + 系统菜单 + 全局项（通知/用户）
+ *
+ * 工作台路由下受控侧栏折叠按钮（collapsed 由 WorkspaceLayout 下传）。
+ */
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'

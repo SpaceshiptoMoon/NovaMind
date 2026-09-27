@@ -1,3 +1,8 @@
+/**
+ * 应用引导入口
+ *
+ * 装配 Pinia/Element Plus/路由/权限指令，挂载前先恢复主题避免亮暗闪烁。
+ */
 import 'element-plus/dist/index.css'
 import 'katex/dist/katex.min.css'
 import './assets/main.css'
