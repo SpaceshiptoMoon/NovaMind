@@ -1,3 +1,4 @@
+"""任务重试计数字段默认值为 0 的契约。"""
 import sys
 from pathlib import Path
 

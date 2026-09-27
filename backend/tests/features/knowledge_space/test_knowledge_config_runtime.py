@@ -1,3 +1,4 @@
+"""KB 配置演进：已删字段清理、space_type/description 保留。"""
 import sys
 from pathlib import Path
 from types import SimpleNamespace

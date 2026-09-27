@@ -1,3 +1,4 @@
+"""批次仓储行为：空批次过滤与 summary 已处理计数落库。"""
 import asyncio
 import sys
 from pathlib import Path

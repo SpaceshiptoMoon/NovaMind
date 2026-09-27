@@ -1,3 +1,4 @@
+"""DeepDoc 运行时配置面：KB 配置/服务层接受全部 deepdoc 选项。"""
 import asyncio
 import sys
 from pathlib import Path

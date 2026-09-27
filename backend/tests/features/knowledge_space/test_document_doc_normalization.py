@@ -1,3 +1,4 @@
+"""doc 上传归一为 docx 的门禁：魔数校验拒绝非 OLE2 内容。"""
 import pytest
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 

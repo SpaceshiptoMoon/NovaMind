@@ -1,3 +1,4 @@
+"""pytest 全局夹具：SQLite 异步引擎定向建表、DB 会话与客户端工厂桩。"""
 from __future__ import annotations
 
 import sys

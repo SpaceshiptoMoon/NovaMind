@@ -1,3 +1,4 @@
+"""上游映射门禁：vendored/适配层路径与 .tmp 快照的逐字对拍。"""
 from __future__ import annotations
 
 from pathlib import Path

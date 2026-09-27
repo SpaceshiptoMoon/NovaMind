@@ -1,3 +1,4 @@
+"""解析文本落 MinIO：storage 重挂载不丢对象、UTF-8 BOM 写入契约。"""
 import asyncio
 import sys
 from pathlib import Path

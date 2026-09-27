@@ -1,1 +1,1 @@
-# Database infrastructure components package
+"""数据库基础设施层：ORM 基类、引擎/会话工厂与迁移钩子。"""

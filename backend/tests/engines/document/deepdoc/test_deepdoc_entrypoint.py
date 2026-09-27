@@ -1,3 +1,4 @@
+"""DeepDoc wheel 打包契约：console_script 入口存在性。"""
 from __future__ import annotations
 
 import zipfile

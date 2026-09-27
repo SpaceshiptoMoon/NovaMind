@@ -1,3 +1,4 @@
+"""DeepDoc 轻量集成：KB 配置接受 deepdoc 策略与 vision 选项（不加载模型）。"""
 import asyncio
 import sys
 from pathlib import Path

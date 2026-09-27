@@ -1,3 +1,4 @@
+"""批量入队原子性：单文档入队失败时整批回滚不留半提交。"""
 import asyncio
 import sys
 from pathlib import Path

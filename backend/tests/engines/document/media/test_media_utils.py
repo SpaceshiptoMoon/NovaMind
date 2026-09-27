@@ -1,3 +1,4 @@
+"""媒体工具函数测试（帧抽取等；依赖 av 包，缺失时跳过）。"""
 import asyncio
 import sys
 from pathlib import Path

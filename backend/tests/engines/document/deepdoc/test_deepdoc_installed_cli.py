@@ -1,3 +1,4 @@
+"""DeepDoc 安装态验证：临时 venv 真装 wheel 后 CLI 可用。"""
 from __future__ import annotations
 
 import subprocess

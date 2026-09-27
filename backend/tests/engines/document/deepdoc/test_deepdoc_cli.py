@@ -1,3 +1,4 @@
+"""DeepDoc CLI 入口测试：capabilities/doctor 子命令输出。"""
 import json
 import subprocess
 import sys

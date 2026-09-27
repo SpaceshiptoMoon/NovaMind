@@ -1,3 +1,4 @@
+"""知识库目录重组的兼容性门禁：旧 import 路径不得复活。"""
 from __future__ import annotations
 
 import sys

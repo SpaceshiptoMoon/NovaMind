@@ -1,3 +1,4 @@
+"""重试语义：retry 复用最近一次任务的管道配置而非全局默认。"""
 import asyncio
 import sys
 from pathlib import Path

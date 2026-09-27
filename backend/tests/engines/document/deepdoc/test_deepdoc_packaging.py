@@ -1,3 +1,4 @@
+"""DeepDoc wheel 打包契约：README 与 vendored pdf_parser 必须随包分发。"""
 from __future__ import annotations
 
 import zipfile

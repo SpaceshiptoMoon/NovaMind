@@ -1,3 +1,4 @@
+"""KB 配置更新语义：深合并嵌套结构、None 字段保留不误删。"""
 import asyncio
 import sys
 from pathlib import Path
