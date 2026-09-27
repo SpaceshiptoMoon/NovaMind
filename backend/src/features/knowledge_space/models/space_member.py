@@ -97,7 +97,7 @@ class SpaceMember(BaseModel):
     # ========== 权限访问方法 ==========
 
     def get_custom_permissions(self) -> dict:
-        """获取自定义权限"""
+        """读取细粒度权限覆盖（键缺失时回退角色默认）。"""
         return self.custom_permissions or {}
 
 
@@ -115,7 +115,7 @@ class SpaceMember(BaseModel):
     # ========== 角色检查方法 ==========
 
     def is_admin(self) -> bool:
-        """检查是否是管理员"""
+        """成员是否具备空间管理员角色（配置/成员管理门槛）。"""
         return self.role == SpaceRole.ADMIN
 
     def is_editor_or_above(self) -> bool:
@@ -135,13 +135,13 @@ class SpaceMember(BaseModel):
         self.status = MemberStatus.SUSPENDED
 
     def set_pending(self) -> None:
-        """设置为待接受状态"""
+        """邀请发出后置 PENDING（接受/拒绝前的中间态）。"""
         self.status = MemberStatus.PENDING
 
     # ========== 角色变更方法 ==========
 
     def set_role(self, role: SpaceRole) -> None:
-        """设置角色"""
+        """直接改派空间角色（细粒度权限随之重算）。"""
         self.role = role
 
 

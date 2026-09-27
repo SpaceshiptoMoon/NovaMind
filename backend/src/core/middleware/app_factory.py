@@ -120,7 +120,7 @@ def _add_middleware(app: FastAPI, config):
 
 
 def _register_routes(app: FastAPI, router_manager: RouterManager):
-    """注册所有路由"""
+    """把 RouterManager 汇总的路由逐一挂载（含 prefix/tags）。"""
     for router, prefix, tags in router_manager.get_all_routers():
         app.include_router(router, prefix=prefix, tags=tags)
 

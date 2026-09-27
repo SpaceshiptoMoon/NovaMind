@@ -86,15 +86,15 @@ class KnowledgeSpace(BaseModel):
     # ========== 配置访问方法 ==========
 
     def get_config(self) -> dict:
-        """获取完整配置"""
+        """读取空间级完整配置 JSON（parsing/splitting/storage 等）。"""
         return self.config or {}
 
     def get_description(self) -> str | None:
-        """获取描述"""
+        """从配置取空间描述（列表页摘要用）。"""
         return self.get_config().get("description", "")
 
     def get_storage_config(self) -> dict:
-        """获取存储配置"""
+        """读取存储节（配额/生命周期等约束）。"""
         return self.get_config().get("storage", {})
 
     # ========== Embedding 配置 ==========
@@ -131,15 +131,15 @@ class KnowledgeSpace(BaseModel):
         return parsing.get("vlm_description_enabled", False)
 
     def get_defaults_config(self) -> dict:
-        """获取默认配置"""
+        """读取新建知识库的默认参数节。"""
         return self.get_config().get("defaults", {})
 
     def get_limits_config(self) -> dict:
-        """获取限制配置"""
+        """读取空间级限额节（文档数/容量等上限）。"""
         return self.get_config().get("limits", {})
 
     def get_default_splitting_config(self) -> dict:
-        """获取默认切分配置"""
+        """读取默认切分参数，未配置时回退 recursive/1000/100 内置值。"""
         return self.get_defaults_config().get("splitting", {
             "strategy": "recursive",
             "chunk_size": 1000,
@@ -153,7 +153,7 @@ class KnowledgeSpace(BaseModel):
         return self.status == SpaceStatus.DELETED or self.deleted_at is not None
 
     def is_active(self) -> bool:
-        """检查空间是否可用"""
+        """空间处于 ACTIVE 状态（可进空间做任何操作的门槛）。"""
         return self.status == SpaceStatus.ACTIVE and self.deleted_at is None
 
     def is_public(self) -> bool:

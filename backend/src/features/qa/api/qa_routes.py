@@ -131,7 +131,7 @@ async def delete_message(
     qa_service: QAService = Depends(get_qa_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """删除本人单条消息。"""
+    """删除本人单条消息（级联清会话内计数与缓存）。"""
     success = await qa_service.delete_message(message_id, current_user["id"])
     if not success:
         raise MessageNotFoundError(message_id)

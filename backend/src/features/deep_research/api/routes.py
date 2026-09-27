@@ -387,7 +387,7 @@ async def get_research(
     research_service: DeepResearchService = Depends(get_deep_research_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """获取研究会话详情"""
+    """读取研究会话全量详情（主题/任务/报告/搜索摘要）。"""
     space, member = validated
     space_id = space.id
     user_id = current_user["id"]
@@ -438,7 +438,7 @@ async def delete_research(
     research_service: DeepResearchService = Depends(get_deep_research_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """删除研究会话记录"""
+    """删除研究记录（本人或管理员）；级联清理产物。"""
     space, member = validated
     space_id = space.id
     user_id = current_user["id"]

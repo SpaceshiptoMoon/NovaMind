@@ -88,7 +88,7 @@ class CodeExecutionTool(BaseTool):
         return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 
     async def _run_code(self, args: dict[str, Any]) -> str:
-        """执行代码"""
+        """在受限沙箱执行代码片段，返回 stdout/stderr 摘要。"""
         code = args.get("code", "")
         language = args.get("language", "")
         timeout = args.get("timeout")

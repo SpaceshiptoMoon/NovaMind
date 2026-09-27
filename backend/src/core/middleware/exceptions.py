@@ -38,7 +38,7 @@ logger = get_logger(__name__)
 
 def setup_exception_handlers(app: FastAPI):
     """
-    设置异常处理器
+    注册全局与各模块异常处理器
 
     各模块的 setup 函数为同步操作（注册异常处理器无需 async）。
     """

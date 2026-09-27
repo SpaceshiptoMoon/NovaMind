@@ -381,7 +381,7 @@ class AgentService:
     async def get_memory_stats(
         self, user_id: int, agent_id: int
     ) -> MemoryStatsResponse:
-        """获取记忆统计"""
+        """汇总该 Agent 的记忆条数/分类分布统计。"""
         await self.get_agent_or_fail(user_id, agent_id)
         memories, total = await self.memory_repo.list_by_agent(
             agent_id, user_id, limit=1000,

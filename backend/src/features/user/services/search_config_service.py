@@ -104,7 +104,7 @@ class SearchConfigService:
         data: SearchConfigCreate,
         user_id: int,
     ) -> SearchConfigResponse:
-        """创建搜索配置"""
+        """创建搜索引擎凭证（密钥加密落库，可设为主源）。"""
         # 同 user 同 provider 唯一
         existing = await self.repo.get_by_user_and_provider(user_id, data.provider)
         if existing:
@@ -136,7 +136,7 @@ class SearchConfigService:
         config_id: int,
         data: SearchConfigUpdate,
     ) -> SearchConfigResponse:
-        """更新搜索配置
+        """更新搜索引擎凭证（api_key 留空=不改）
 
         api_key 留空（None）= 不改；显式传值则加密后覆盖。
         """

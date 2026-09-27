@@ -71,7 +71,7 @@ class Document(BaseModel):
     # ========== 存储信息 ==========
 
     def get_storage_info(self) -> dict:
-        """获取存储信息"""
+        """读取存储 JSON 段（MinIO 桶/对象键/媒体产物锚点）。"""
         return self.storage or {}
 
     def get_minio_bucket(self) -> str | None:

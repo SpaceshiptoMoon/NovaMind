@@ -70,7 +70,7 @@ class BaseModel(Base):
 
 
 async def create_tables(engine: AsyncEngine) -> None:
-    """创建所有数据库表"""
+    """按当前 metadata 全量建表（create_all 不做 ALTER，已有表结构变更走启动期幂等补列钩子）。"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

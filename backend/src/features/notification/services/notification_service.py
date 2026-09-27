@@ -140,7 +140,7 @@ class NotificationService:
         return UnreadCountResponse(unread_count=count)
 
     async def get_preferences(self, user_id: int) -> NotificationPreferenceResponse:
-        """获取用户通知偏好"""
+        """读取通知渠道偏好（首读惰性落默认行）。"""
         pref = await self._pref_repo.get_or_create(user_id)
         return NotificationPreferenceResponse.model_validate(pref)
 

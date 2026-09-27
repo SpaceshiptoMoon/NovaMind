@@ -71,7 +71,7 @@ async def create_config(
     qa_service: QAService = Depends(get_qa_service),
 ):
     """
-    创建会话配置
+    为会话创建压缩配置
 
     - **compression.enable_compression**: 是否启用压缩（默认 true）
     - **compression.strategy**: 压缩策略（默认 summary）
@@ -119,7 +119,7 @@ async def get_config(
     repo: SessionConfigRepository = Depends(get_session_config_repo),
 ):
     """
-    获取会话配置
+    读取会话压缩配置
 
     如果会话没有配置，返回 404 错误。
     """
@@ -157,7 +157,7 @@ async def delete_config(
     qa_service: QAService = Depends(get_qa_service),
 ):
     """
-    删除会话配置
+    删除会话压缩配置
 
     删除后会话将使用全局默认配置。
     """
@@ -190,7 +190,7 @@ async def update_compression_config(
     qa_service: QAService = Depends(get_qa_service),
 ):
     """
-    更新会话压缩配置
+    更新会话压缩参数
 
     - **compression.enable_compression**: 是否启用压缩
     - **compression.strategy**: 压缩策略（summary/sliding_window/keep_recent/truncate）

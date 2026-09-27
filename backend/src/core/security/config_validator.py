@@ -261,7 +261,7 @@ class SecurityConfigValidator:
                 ))
 
     def _check_environment(self) -> None:
-        """检查环境变量"""
+        """校验敏感环境变量已设置且非弱值（SECRET_KEY/DB_PASSWORD 等）。"""
         # 检查敏感环境变量是否设置
         sensitive_vars = [
             ("SECRET_KEY", "JWT 密钥"),

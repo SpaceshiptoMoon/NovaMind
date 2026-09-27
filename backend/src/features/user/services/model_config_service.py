@@ -179,7 +179,7 @@ class ModelConfigService:
         return ModelConfigListResponse(total=total, items=items)
 
     async def get_config(self, user_id: int, config_id: int) -> ModelConfigResponse:
-        """获取单个配置"""
+        """读取单个模型客户端配置（归属校验，密钥不解密回显）。"""
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:
@@ -192,7 +192,7 @@ class ModelConfigService:
         data: ModelConfigCreate,
         user_id: int,
     ) -> ModelConfigResponse:
-        """创建模型配置"""
+        """创建模型客户端配置（API Key 加密落库）。"""
         # 检查是否已存在相同模型
         existing = await self.repo.get_by_user_and_model(
             user_id, data.model_type, data.model
@@ -257,7 +257,7 @@ class ModelConfigService:
         config_id: int,
         data: ModelConfigUpdate
     ) -> ModelConfigResponse:
-        """更新模型配置"""
+        """更新模型客户端配置（密钥字段为空则沿用原值）。"""
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:
@@ -356,7 +356,7 @@ class ModelConfigService:
         return self._build_response(config)
 
     async def delete_config(self, user_id: int, config_id: int) -> None:
-        """删除模型配置"""
+        """删除模型客户端配置（引用方后续调用将失败）。"""
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:

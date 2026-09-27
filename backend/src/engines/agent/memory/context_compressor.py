@@ -83,7 +83,7 @@ class ContextCompressor(ICompressionStrategy):
         token_budget: TokenBudget,
         conversation_id: int | None = None,
     ) -> tuple[list[MemoryMessage], bool, float]:
-        """执行五阶段压缩"""
+        """五阶段压缩历史消息到 token 预算内，返回（压缩后消息, 是否触发, 压缩比）。"""
         if len(messages) <= 4:
             return messages, False, 1.0
 

@@ -86,15 +86,15 @@ class KnowledgeBase(BaseModel):
     # ========== 配置访问方法 ==========
 
     def get_config(self) -> dict:
-        """获取完整配置"""
+        """读取知识库级完整配置 JSON（覆盖空间默认值）。"""
         return self.config or {}
 
     def get_splitting_config(self) -> dict:
-        """获取切分配置"""
+        """读取切分参数节（strategy/chunk_size/overlap）。"""
         return (self.config or {}).get("splitting", {})
 
     def get_parsing_config(self) -> dict:
-        """获取解析配置"""
+        """读取解析参数节（deepdoc 模式/OCR 开关等）。"""
         return (self.config or {}).get("parsing", {})
 
     def get_question_generation_config(self) -> dict:
@@ -123,7 +123,7 @@ class KnowledgeBase(BaseModel):
             return content_modes
 
     def get_description(self) -> str | None:
-        """获取描述"""
+        """从配置取知识库描述（列表页摘要用）。"""
         return (self.config or {}).get("description")
 
     def is_active(self) -> bool:

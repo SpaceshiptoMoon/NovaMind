@@ -57,7 +57,7 @@ def _get_engine():
 
 
 async def _check_db_component(engine) -> dict:
-    """检查数据库连接"""
+    """SELECT 1 探活，返回组件探针结果。"""
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     return {"type": "mysql"}

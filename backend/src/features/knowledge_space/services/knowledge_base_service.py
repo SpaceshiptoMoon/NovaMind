@@ -431,7 +431,7 @@ class KnowledgeBaseService:
         return result
 
     def _validate_config_updates(self, config_updates: dict, kb=None) -> None:
-        """校验配置更新请求"""
+        """校验配置 Patch 合法性（未知键/非法切分策略在此拒绝）。"""
         splitting = config_updates.get("splitting", {})
         if "strategy" in splitting:
             valid_strategies = {"recursive", "fixed_size", "markdown", "semantic"}

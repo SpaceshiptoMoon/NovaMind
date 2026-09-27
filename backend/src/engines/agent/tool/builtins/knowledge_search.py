@@ -265,7 +265,7 @@ class KnowledgeSearchTool(BaseTool):
     # ==================== 搜索与文档列表 ====================
 
     async def _search(self, port, args: dict[str, Any], context: dict[str, Any]) -> str:
-        """执行知识库搜索"""
+        """检索用户可见知识库，返回格式化的命中列表 JSON。"""
         try:
             user_id: int = context["user_id"]
 

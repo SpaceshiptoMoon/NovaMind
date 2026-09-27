@@ -198,7 +198,7 @@ class AppLifespanManager:
             self.logger.warning("Redis连接失败，部分缓存功能将不可用", error=str(e))
 
     async def _create_database_tables(self):
-        """创建数据库表"""
+        """启动期建表：先动态导入全部模型注册 metadata，再 create_all + 幂等补列。"""
         try:
             # 动态导入模型以确保注册到 SQLAlchemy metadata
             _import_models()

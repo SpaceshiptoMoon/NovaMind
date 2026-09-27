@@ -129,17 +129,17 @@ class ResearchSession(BaseModel):
     # ========== Config 访问方法 ==========
 
     def get_config(self) -> dict:
-        """获取研究配置"""
+        """读取研究计划配置 JSON 段（深度/来源/模型参数）。"""
         return self.config or {}
 
     # ========== Status Info 访问方法 ==========
 
     def get_status_info(self) -> dict:
-        """获取状态详情"""
+        """读取状态时间线 JSON 段（started/completed/error/cancel）。"""
         return self.status_info or {}
 
     def get_error_message(self) -> str | None:
-        """获取错误信息"""
+        """从状态时间线取最近一次错误消息（未失败为 None）。"""
         return self.get_status_info().get("error_message")
 
     def set_started(self) -> None:
@@ -151,7 +151,7 @@ class ResearchSession(BaseModel):
         flag_modified(self, "status_info")
 
     def set_error(self, error_message: str) -> None:
-        """设置错误信息"""
+        """落入错误消息与完成时间，置 FAILED 语义的状态快照。"""
         if not self.status_info:
             self.status_info = {}
         self.status_info["error_message"] = error_message
@@ -159,7 +159,7 @@ class ResearchSession(BaseModel):
         flag_modified(self, "status_info")
 
     def set_cancelled(self, reason: str = None) -> None:
-        """设置取消状态"""
+        """记取消时间与可选原因（终态，可附带截断产物）。"""
         if not self.status_info:
             self.status_info = {}
         self.status_info["cancelled_at"] = now_china().isoformat()
@@ -170,7 +170,7 @@ class ResearchSession(BaseModel):
     # ========== Result 访问方法 ==========
 
     def get_result(self) -> dict:
-        """获取研究结果"""
+        """读取研究结果 JSON 段（answer/sources/reasoning_steps）。"""
         return self.result or {}
 
     def set_result(
@@ -180,7 +180,7 @@ class ResearchSession(BaseModel):
         reasoning_steps: list = None,
         confidence: float = None
     ) -> None:
-        """设置研究结果"""
+        """逐字段合并写入研究结果（None 字段跳过不覆盖）。"""
         if not self.result:
             self.result = {}
 

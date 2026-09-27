@@ -80,7 +80,7 @@ class SpaceAuditLog(BaseModel):
     # ========== Resource 访问方法 ==========
 
     def get_resource(self) -> dict:
-        """获取资源信息"""
+        """读取审计目标资源 JSON（类型/ID/名称快照）。"""
         return self.resource or {}
 
 

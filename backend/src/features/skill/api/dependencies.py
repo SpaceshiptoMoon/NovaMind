@@ -103,7 +103,7 @@ async def update_llm_review_settings(enabled: bool, model: str | None = None) ->
 
 
 async def get_llm_review_settings() -> dict:
-    """获取当前审查设置"""
+    """读取技能审查配置（规则+LLM 双审的阈值/开关）。"""
     enabled = await get_llm_review_enabled()
     model_name = await get_llm_review_model()
     return {

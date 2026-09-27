@@ -67,7 +67,7 @@ class WebSearchTool(BaseTool):
         return f"未知工具：{tool_name}"
 
     async def _search(self, args: dict[str, Any], context: dict[str, Any]) -> str:
-        """执行网页搜索"""
+        """走 ExternalSearchService 联网搜索并格式化结果；未配置 provider 时降级提示。"""
         port = None
         try:
             port = context.get("web_search_port")

@@ -80,7 +80,7 @@ class SessionConfig(BaseModel):
     # ========== 压缩配置访问方法 ==========
 
     def get_compression_config(self) -> dict:
-        """获取压缩配置"""
+        """读取压缩参数节（键缺省回退内置阈值）。"""
         return self.compression_config or {}
 
     @property

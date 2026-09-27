@@ -60,7 +60,7 @@ class TaskTracker:
         return (await raw_client.hlen(self._tracker_key)) or 0
 
     async def mark_cancelled(self, entity_id: int | str) -> None:
-        """设置取消标记"""
+        """写取消标记供 worker 协作取消。"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
         await raw_client.setex(f"{self._cancel_prefix}{entity_id}", CANCEL_KEY_TTL, "1")

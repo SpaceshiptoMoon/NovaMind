@@ -214,7 +214,7 @@ class ToolExecutor:
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> str:
-        """执行内置工具"""
+        """路由到内置工具实现，异常统一捕获为错误 JSON 返回。"""
         tool = self._tool_registry.find_tool_provider(tool_name)
         if not tool:
             raise ValueError(f"未找到工具 '{tool_name}'")

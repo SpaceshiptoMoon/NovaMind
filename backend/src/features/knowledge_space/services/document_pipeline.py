@@ -707,7 +707,7 @@ async def _process_image_document_static(
     task=None,
     model_config_port: ModelConfigService | None = None,
 ):
-    """处理图片类型文档
+    """图片文档解析：VLM 描述或 OCR 转文本后走文本 embedding
 
     支持两种策略：
     - vlm: 通过 VLM 生成图片描述文本，再走文本 Embedding 索引到 ES

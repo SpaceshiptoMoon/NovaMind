@@ -30,7 +30,7 @@ class MemoryRepository:
         source_type: str | None = None,
         extra_data: dict | None = None,
     ) -> AgentMemory:
-        """创建长期记忆条目"""
+        """写入长期记忆条目（source_type 缺省 consolidate，即压缩归纳产物）。"""
         memory = AgentMemory(
             agent_id=agent_id,
             user_id=user_id,
@@ -132,7 +132,7 @@ class MemoryRepository:
         return result.scalars().all(), total
 
     async def update(self, memory_id: int, **kwargs) -> AgentMemory | None:
-        """更新记忆字段"""
+        """白名单字段更新（非白名单键静默过滤）。"""
         allowed = {f for f in self._UPDATABLE_FIELDS if f in kwargs}
         if not allowed:
             return await self.get_by_id(memory_id)
