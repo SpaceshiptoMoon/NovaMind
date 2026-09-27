@@ -8,13 +8,25 @@
 仅用于「拼入提示词」前的轻量净化，不是完整的 prompt 注入防御——完整防御还需
 结合模板分隔边界、模型侧约束等。本模块是其中可复用的一环。
 """
+from __future__ import annotations
+
+import re
 from typing import Any
 
-# 已知的结构性分隔标签（唯一实现——qa 的本地 _sanitize 已于批次 5.3 删除收敛到本模块）
+# 已知的结构性分隔标签（唯一实现——qa 的本地 _sanitize 已于批次 5.3 删除收敛到本模块）。
+# 与 _build_retrieval_context / _format_attachments_prompt 实际使用的块边界标签
+# 保持同步：检索内容与附件正文可能含字面标签，缺一个就能伪造对应块边界。
 _STRUCTURE_TAGS = (
     "<web-search-results>", "</web-search-results>",
     "<knowledge-base-context>", "</knowledge-base-context>",
+    "<wiki-pages>", "</wiki-pages>",
+    "<documents>", "</documents>",
+    "</document>",
 )
+
+# 参数化开标签（带属性，如 <document filename="a.pdf">）：精确 replace 覆盖不了
+# 任意属性组合，用正则剥除整个开标签。
+_STRUCTURE_OPEN_TAG_PATTERN = re.compile(r"<document\b[^>]*>")
 
 
 def sanitize_prompt_input(text: Any) -> str:
@@ -39,6 +51,7 @@ def sanitize_prompt_input(text: Any) -> str:
 
     for tag in _STRUCTURE_TAGS:
         text = text.replace(tag, "")
+    text = _STRUCTURE_OPEN_TAG_PATTERN.sub("", text)
 
     # 剥离行首 markdown 标题标记（1-6 个 # 后接空白），
     # 防止用户内容伪造模板的 `## Retrieved Documents`/`## User Question`/`## Requirements` 等区段。

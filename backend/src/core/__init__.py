@@ -1,1 +1,1 @@
-# Core infrastructure components package
+"""core 基础设施层：应用工厂、中间件、认证授权、数据库与 WS 运行时。"""

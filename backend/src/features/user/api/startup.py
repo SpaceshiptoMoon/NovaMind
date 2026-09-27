@@ -1,3 +1,4 @@
+"""用户模块启动装配：feature 注册、异常映射与预置角色初始化。"""
 from fastapi import FastAPI
 from novamind.core.auth.exceptions import (
     AuthenticationError as CoreAuthAuthenticationError,

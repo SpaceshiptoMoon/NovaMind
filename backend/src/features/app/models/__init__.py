@@ -1,5 +1,2 @@
-from novamind.features.app.models.resume import ResumeSession, ResumeSessionStatus
+"""应用中心 ORM 模型。"""
 
-__all__ = [
-    "ResumeSession", "ResumeSessionStatus",
-]

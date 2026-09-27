@@ -1,3 +1,4 @@
+"""YAML 配置加载器：${VAR} 占位符解析、环境覆盖与线程安全单例。"""
 import os
 import re
 import threading

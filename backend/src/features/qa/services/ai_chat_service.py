@@ -33,7 +33,10 @@ from novamind.features.qa.exceptions import (
 )
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.schemas.qa import QARequest
-from novamind.features.qa.services.heartbeat import stream_with_heartbeat_structured
+from novamind.features.qa.services.heartbeat import (
+    StreamHeartbeatOutcome,
+    stream_with_heartbeat_structured,
+)
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.search_config_service import SearchConfigService
@@ -1117,7 +1120,7 @@ class AIChatService:
                 # 收集完整的AI回复
                 full_response = ""
 
-                # 流式生成AI回复（带心跳机制 + thinking 模式适配）
+                # 流式生成AI回复（带心跳机制 + thinking 模式适配 + 流死检测）
                 raw_stream = prep.llm_client.generate_text_stream_structured(
                     prompt=prep.conversation_history,
                     max_tokens=prep.max_tokens,
@@ -1125,8 +1128,11 @@ class AIChatService:
                     top_p=prep.top_p,
                     enable_thinking=enable_thinking,
                 )
+                heartbeat_outcome = StreamHeartbeatOutcome()
 
-                async for chunk in stream_with_heartbeat_structured(raw_stream):
+                async for chunk in stream_with_heartbeat_structured(
+                    raw_stream, outcome=heartbeat_outcome,
+                ):
                     # 心跳注释（SSE 时代透传 ``: heartbeat``）：WS 化后改为
                     # 应用层 heartbeat 事件，前端 switch 无 case 即忽略
                     if isinstance(chunk, str):
@@ -1144,8 +1150,34 @@ class AIChatService:
                             "session_id": session_id,
                         })
 
+                # 空回答守卫：流正常终结但零内容（上游空响应/纯 reasoning 模型异常）。
+                # 不落库空 assistant 消息（会产生"幻影回复"），语义等同 LLM 失败路径：
+                # 清理用户消息 + error 事件，让前端明确知道本轮失败可重试。
+                if not full_response.strip():
+                    self.logger.warning(
+                        "流式对话零内容（LLM 空响应），按失败处理",
+                        session_id=session_id,
+                        user_id=user_id,
+                    )
+                    await self._cleanup_user_message(user_message)
+                    yield self._emit("error", {
+                        "content": "模型返回了空回答，请重试或更换模型",
+                    })
+                    return
+
                 # 保存完整的AI回复到数据库（落库 sources/answer_status 到 extra）
                 _ai_extra = self._build_ai_extra(prep)
+                if heartbeat_outcome.terminated_on_silence:
+                    # 流因连续静默被判定死亡：正文是截断内容。仍落库（用户已看到
+                    # 部分 answer，丢弃反而造成 UI 与历史不一致），但 extra 打
+                    # truncated 标记供历史/看板辨析，done 帧同步透传前端可提示。
+                    _ai_extra = {**(_ai_extra or {}), "truncated": True,
+                                 "truncated_reason": "stream_silence"}
+                    self.logger.warning(
+                        "流式回答因流中断截断，已标记 truncated 落库",
+                        session_id=session_id,
+                        response_chars=len(full_response),
+                    )
                 ai_message = await self.qa_service.add_message(
                     QARequest(
                         content=full_response,
@@ -1169,6 +1201,7 @@ class AIChatService:
                 "sources": prep.sources,
                 "answer_status": prep.answer_status,
                 "confidence": prep.confidence,
+                "truncated": bool(heartbeat_outcome.terminated_on_silence),
             })
 
         except (asyncio.CancelledError, GeneratorExit):

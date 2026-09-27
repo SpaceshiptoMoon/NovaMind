@@ -1,3 +1,4 @@
+"""用户模块依赖注入装配：service 等 FastAPI Depends 工厂。"""
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.features.user.repository import UserRepository

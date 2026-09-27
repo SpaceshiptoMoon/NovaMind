@@ -1,3 +1,4 @@
+"""知识库解析管道步骤定义：解析→切分→嵌入→入库的步骤编排与快照记录。"""
 from __future__ import annotations
 
 import traceback
@@ -876,15 +877,21 @@ async def run_post_parse_tail(
     # {doc}_{高序号} chunk 会永久残留进检索（审计 P1#4——指纹失效重建路径
     # 只有 REPROCESS/删除/取消清 ES，RETRY 成功路径不清）。索引前按文档
     # 清一次本份额度，幂等且与分块数无关。
+    # 清理失败必须中止而非降级 upsert：残留旧 chunk 是"错误结果"方向（旧
+    # 内容继续进检索且无人再清）；任务置失败可重试（arq max_tries / 手动
+    # RETRY）才是安全方向——重试会重新走到这里再清一次。
     try:
         await es_client.delete_document_chunks(
             space_id=document.space_id, document_id=document.id,
         )
     except Exception as pre_del_err:
-        logger.warning(
-            "索引前清理旧分块失败（继续按 upsert 索引，可能残留旧 chunk）",
+        logger.error(
+            "索引前清理旧分块失败，中止索引（可重试）",
             document_id=document.id, error=str(pre_del_err),
         )
+        raise RuntimeError(
+            f"索引前清理旧分块失败，为避免残留旧 chunk 中止本次索引: {pre_del_err}"
+        ) from pre_del_err
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
         chunks=es_chunks,

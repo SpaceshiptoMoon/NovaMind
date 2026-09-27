@@ -1,3 +1,4 @@
+"""用户模块请求/响应 Pydantic 模型（含密码强度等校验器）。"""
 from datetime import datetime
 from typing import Self
 

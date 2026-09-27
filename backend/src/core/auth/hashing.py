@@ -1,3 +1,4 @@
+"""密码哈希工具：Argon2id（异步包装防事件循环阻塞）。"""
 import asyncio
 
 from argon2 import PasswordHasher

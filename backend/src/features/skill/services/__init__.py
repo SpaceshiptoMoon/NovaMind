@@ -1,3 +1,4 @@
+"""技能广场业务服务聚合导出。"""
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from novamind.features.skill.services.skill_parser import (

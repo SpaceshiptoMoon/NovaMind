@@ -1,3 +1,4 @@
+"""异步数据库引擎与会话管理：engine 单例、会话工厂与 get_db 依赖。"""
 import asyncio
 import threading
 from contextlib import asynccontextmanager

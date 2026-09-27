@@ -1,3 +1,4 @@
+"""YAML 配置层导出：全部配置 dataclass 与 get_config() 加载入口。"""
 from .config import (
     AdminConfig,
     AppConfig,

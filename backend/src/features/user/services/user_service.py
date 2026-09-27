@@ -1,3 +1,4 @@
+"""用户业务服务：创建/认证/更新/软删除编排，密码哈希在此层落地。"""
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger

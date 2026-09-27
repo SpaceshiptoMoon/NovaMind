@@ -1,3 +1,4 @@
+"""技能广场 ORM 模型聚合导出。"""
 from novamind.features.skill.models.skill import (
     ReviewStatus,
     SkillDefinition,

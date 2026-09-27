@@ -1,3 +1,4 @@
+"""QA 依赖注入装配：service/processor 等 FastAPI Depends 工厂。"""
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger

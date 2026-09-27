@@ -1,3 +1,4 @@
+"""YAML 配置 dataclass 定义：全部配置节的强类型结构。"""
 from dataclasses import dataclass, field
 from urllib.parse import quote_plus
 

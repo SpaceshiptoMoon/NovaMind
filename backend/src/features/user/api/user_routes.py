@@ -1,3 +1,4 @@
+"""用户与认证 HTTP 路由（登录/注册/用户管理/RBAC/模型配置）。"""
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request

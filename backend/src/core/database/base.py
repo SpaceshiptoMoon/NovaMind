@@ -1,3 +1,4 @@
+"""ORM 基类与公共模型混入：时间戳/软删除列，全部模型的声明根。"""
 import datetime
 import uuid
 from decimal import Decimal

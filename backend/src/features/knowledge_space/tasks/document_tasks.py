@@ -242,14 +242,29 @@ async def process_document_task(
 
                 try:
                     from novamind.shared.storage.client_factory import ClientFactory
+                    from novamind.features.knowledge_space.exceptions import (
+                        PermanentProcessingError,
+                    )
                     es_client = await ClientFactory.get_elasticsearch_client()
                     await es_client.delete_document_chunks(
                         space_id=space_id,
                         document_id=document_id,
                     )
                     logger.info("重新处理前已清除旧 ES 分块", document_id=document_id, job_id=job_id)
+                except PermanentProcessingError:
+                    raise
                 except Exception as cleanup_err:
-                    logger.warning("重新处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
+                    # REPROCESS 语义 = 全量重建。旧 ES 分块清不掉就不能进管道：
+                    # 若新解析分块数变少，旧 chunk 残留进检索且无人再清（错误结果
+                    # 方向）。失败置 FAILED 可重试（重试同样走 REPROCESS 全量
+                    # 清理），与"失败方向必须安全"一致。
+                    logger.error(
+                        "重新处理前清除旧 ES 分块失败，任务置失败（可重试）",
+                        document_id=document_id, error=str(cleanup_err),
+                    )
+                    raise PermanentProcessingError(
+                        f"重处理前清理旧 ES 分块失败: {cleanup_err}"
+                    ) from cleanup_err
 
                 # 清理 MinIO 旧帧目录（{base_object}_frames/ 前缀）：视频重处理时帧数/idx 可能
                 # 变化，主对象覆盖但高序号旧帧成孤儿；delete_document_chunks 只清 ES 不清 MinIO。
