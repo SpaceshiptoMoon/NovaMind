@@ -8,20 +8,24 @@ class MarkdownSplitter(BaseSplitter):
     """Markdown文档切分器，按Markdown结构进行切分"""
 
     def __init__(self, max_chunk_size: int = 1000, min_chunk_size: int = 50):
-        """
-        初始化Markdown切分器
-        :param max_chunk_size: 最大块大小
-        :param min_chunk_size: 最小块大小，小于这个值的块会被合并到前一个块
+        """初始化 Markdown 切分器。
+
+        Args:
+            max_chunk_size: 单块最大字符数（硬上限）。
+            min_chunk_size: 最小块大小阈值，小于此值的块合并到前一块（而非丢弃）。
         """
         super().__init__()
         self.max_chunk_size = max_chunk_size
         self.min_chunk_size = min_chunk_size
 
     async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        按Markdown结构切分文档
-        :param documents: 原始文档列表
-        :return: 切分后的文档块列表
+        """按 Markdown 标题层级与段落边界切分文档列表，保留标题结构信息。
+
+        Args:
+            documents: 原始文档列表，每项含 text/source，可选 page/doc_id/type/title。
+
+        Returns:
+            切分后的文档块列表，每项额外携带 title/level 标题元数据。
         """
         split_docs = []
 
@@ -49,12 +53,7 @@ class MarkdownSplitter(BaseSplitter):
         return split_docs
 
     async def _split_markdown_by_structure(self, text: str, title: str = "") -> list[dict[str, str]]:
-        """
-        根据Markdown结构切分文本
-        :param text: 输入的Markdown文本
-        :param title: 原始文档标题
-        :return: 切分后的文本块列表
-        """
+        """先按标题分段聚合，再对超限块二次细分，最后合并过小的块。"""
         # 按标题分割文档
         parts = self._split_by_headers(text)
         
@@ -136,11 +135,7 @@ class MarkdownSplitter(BaseSplitter):
         return merged
 
     def _split_by_headers(self, text: str) -> list[dict[str, str]]:
-        """
-        按Markdown标题分割文本
-        :param text: Markdown文本
-        :return: 分割后的部分列表
-        """
+        """按 ``#`` 标题行把文本切成若干部分，标题前的无主内容归入文档开头部分。"""
 
         
         # 找到所有标题及其内容
@@ -194,11 +189,7 @@ class MarkdownSplitter(BaseSplitter):
         return parts
 
     def _split_large_chunk(self, chunk: dict[str, str]) -> list[dict[str, str]]:
-        """
-        进一步分割过大的块
-        :param chunk: 需要分割的块
-        :return: 分割后的块列表
-        """
+        """对超过 max_chunk_size 的块按段落→句子→固定大小逐级细分，标题元数据原样继承。"""
         content = chunk["content"]
         title = chunk["title"]
         level = chunk["level"]
@@ -259,11 +250,7 @@ class MarkdownSplitter(BaseSplitter):
         return chunks
 
     def _split_by_sentences(self, text: str) -> list[str]:
-        """
-        按句子分割文本
-        :param text: 输入文本
-        :return: 句子列表
-        """
+        """按中英文句读标点切句并组合短句，无标点段整段保留不丢弃。"""
         # 匹配中文和英文的句子结束标点
         sentence_endings = r'[.!?。！？]'
 
@@ -309,11 +296,7 @@ class MarkdownSplitter(BaseSplitter):
         return combined_sentences
 
     def _split_by_fixed_size(self, text: str) -> list[str]:
-        """
-        按固定大小分割文本
-        :param text: 输入文本
-        :return: 固定大小的文本块列表
-        """
+        """按 max_chunk_size 硬切分文本，不重叠。"""
         if len(text) <= self.max_chunk_size:
             return [text]
 

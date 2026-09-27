@@ -17,11 +17,7 @@ class PDFReader(BaseReader):
         super().__init__()
 
     def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
-        """
-        同步读取 PDF 文件（在线程池中执行）
-        :param file_path: PDF文件路径
-        :return: 文档块列表
-        """
+        """用 pypdf 提取 PDF 全文（拼成一整块，含逐页 PUA 归一）。"""
         documents = []
         try:
             # 使用 pypdf（PyPDF2 官方继任者，API 兼容）读取 PDF
@@ -50,9 +46,12 @@ class PDFReader(BaseReader):
         return documents
 
     async def load_data(self, file_path: str) -> list[dict[str, str]]:
-        """
-        从PDF文件加载数据（异步，在共享线程池中执行）
-        :param file_path: PDF文件路径
-        :return: 文档块列表，每个文档块包含文本和其他元数据
+        """异步加载 PDF 全文，重活转共享线程池避免阻塞事件循环。
+
+        Args:
+            file_path: PDF 文件路径。
+
+        Returns:
+            单元素文档块列表（全文拼合），读取失败时返回空列表。
         """
         return await run_in_executor(self._load_data_sync, file_path)

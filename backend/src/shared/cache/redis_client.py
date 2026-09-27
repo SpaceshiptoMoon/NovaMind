@@ -148,10 +148,13 @@ class RedisCache:
     # ============================================================
 
     async def get(self, key: str) -> Any | None:
-        """
-        获取缓存值（自动 JSON 反序列化）
-        :param key: 缓存键
-        :return: 缓存值，不存在返回 None
+        """获取缓存值并自动 JSON 反序列化；降级语义：Redis 异常记 warning 并返回 None。
+
+        Args:
+            key: 缓存键。
+
+        Returns:
+            反序列化后的缓存值；键不存在或非 JSON 内容时返回原始串/None。
         """
         try:
             if not self.redis_client:
@@ -179,12 +182,15 @@ class RedisCache:
         value: Any,
         expire: int | None = None
     ) -> bool:
-        """
-        设置缓存值（自动 JSON 序列化）
-        :param key: 缓存键
-        :param value: 缓存值
-        :param expire: 过期时间（秒），None 表示永不过期
-        :return: 是否成功
+        """设置缓存值，非字符串/字节类型自动 JSON 序列化以保证读回类型一致。
+
+        Args:
+            key: 缓存键。
+            value: 任意可 JSON 序列化的值。
+            expire: 过期秒数；None 表示永不过期。
+
+        Returns:
+            是否写入成功（Redis 异常降级返回 False）。
         """
         try:
             if not self.redis_client:
@@ -204,20 +210,17 @@ class RedisCache:
             return False
 
     async def setex(self, key: str, ttl: int, value: Any) -> bool:
-        """
-        设置带过期时间的缓存值
-        :param key: 缓存键
-        :param ttl: 过期时间（秒）
-        :param value: 缓存值
-        :return: 是否成功
-        """
+        """设置带过期时间的缓存值（``set`` 的 TTL 必填快捷方式）。"""
         return await self.set(key, value, expire=ttl)
 
     async def delete(self, *keys: str) -> int:
-        """
-        删除一个或多个键
-        :param keys: 要删除的键
-        :return: 删除的键数量
+        """删除一个或多个键。
+
+        Args:
+            *keys: 要删除的缓存键。
+
+        Returns:
+            实际删除的键数量（Redis 异常降级返回 0）。
         """
         try:
             if not self.redis_client:
@@ -233,10 +236,13 @@ class RedisCache:
             return 0
 
     async def exists(self, *keys: str) -> int:
-        """
-        检查键是否存在
-        :param keys: 要检查的键
-        :return: 存在的键数量
+        """检查键是否存在。
+
+        Args:
+            *keys: 要检查的缓存键。
+
+        Returns:
+            存在的键数量。
         """
         try:
             if not self.redis_client:
@@ -248,12 +254,7 @@ class RedisCache:
             return 0
 
     async def expire(self, key: str, ttl: int) -> bool:
-        """
-        设置键的过期时间
-        :param key: 缓存键
-        :param ttl: 过期时间（秒）
-        :return: 是否成功
-        """
+        """为已存在的键设置过期时间。"""
         try:
             if not self.redis_client:
                 await self.connect()
@@ -264,10 +265,13 @@ class RedisCache:
             return False
 
     async def ttl(self, key: str) -> int:
-        """
-        获取键的剩余过期时间
-        :param key: 缓存键
-        :return: 剩余秒数，-1 表示永不过期，-2 表示不存在
+        """获取键的剩余过期时间。
+
+        Args:
+            key: 缓存键。
+
+        Returns:
+            剩余秒数；-1 表示永不过期，-2 表示键不存在。
         """
         try:
             if not self.redis_client:
@@ -279,11 +283,14 @@ class RedisCache:
             return -2
 
     async def incr(self, key: str, amount: int = 1) -> int:
-        """
-        递增计数器
-        :param key: 缓存键
-        :param amount: 递增量
-        :return: 递增后的值
+        """原子递增计数器。
+
+        Args:
+            key: 计数器键。
+            amount: 递增量。
+
+        Returns:
+            递增后的值（Redis 异常降级返回 0）。
         """
         try:
             if not self.redis_client:
@@ -295,12 +302,7 @@ class RedisCache:
             return 0
 
     async def decr(self, key: str, amount: int = 1) -> int:
-        """
-        递减计数器
-        :param key: 缓存键
-        :param amount: 递减量
-        :return: 递减后的值
-        """
+        """原子递减计数器（``incr`` 取负实现）。"""
         return await self.incr(key, -amount)
 
     # ============================================================
@@ -308,10 +310,13 @@ class RedisCache:
     # ============================================================
 
     async def mget(self, *keys: str) -> list[Any | None]:
-        """
-        批量获取多个键的值
-        :param keys: 缓存键列表
-        :return: 值列表
+        """批量获取多个键的值，逐值 JSON 反序列化。
+
+        Args:
+            *keys: 缓存键列表。
+
+        Returns:
+            与键序对应的值列表，缺失键为 None。
         """
         try:
             if not self.redis_client:
@@ -336,11 +341,14 @@ class RedisCache:
             return [None] * len(keys)
 
     async def mset(self, mapping: dict[str, Any], expire: int | None = None) -> bool:
-        """
-        批量设置多个键值对
-        :param mapping: 键值对字典
-        :param expire: 过期时间（秒）
-        :return: 是否成功
+        """批量设置键值对，可选统一过期时间（逐键 expire）。
+
+        Args:
+            mapping: 键值对字典。
+            expire: 过期秒数；None 表示永不过期。
+
+        Returns:
+            是否写入成功。
         """
         try:
             if not self.redis_client:
@@ -375,11 +383,14 @@ class RedisCache:
         match: str,
         count: int = 100
     ) -> AsyncIterator[str]:
-        """
-        扫描匹配的键（使用 SCAN 命令，生产环境安全）
-        :param match: 匹配模式（如 "user:*"）
-        :param count: 每次扫描的数量
-        :return: 键的异步迭代器
+        """用 SCAN 增量扫描匹配键（ unlike KEYS，不阻塞生产实例）。
+
+        Args:
+            match: 通配符模式（如 "user:*"）。
+            count: 每次 SCAN 的建议批量。
+
+        Yields:
+            匹配的键（bytes 已解码为 str）。
         """
         try:
             if not self.redis_client:
@@ -395,11 +406,14 @@ class RedisCache:
             return
 
     async def delete_by_pattern(self, pattern: str, batch_size: int = 100) -> int:
-        """
-        批量删除匹配模式的所有键
-        :param pattern: 匹配模式（如 "space:123:*"）
-        :param batch_size: 每批删除的数量
-        :return: 删除的总键数
+        """批量删除匹配模式的所有键，按 batch_size 分批防大命令阻塞。
+
+        Args:
+            pattern: 通配符模式（如 "space:123:*"）。
+            batch_size: 每批删除的键数上限。
+
+        Returns:
+            删除的总键数（中途异常时返回已删除数）。
         """
         deleted_count = 0
         try:
@@ -432,11 +446,7 @@ class RedisCache:
             return deleted_count
 
     async def keys_count(self, pattern: str = "*") -> int:
-        """
-        统计匹配模式的键数量（使用 SCAN）
-        :param pattern: 匹配模式
-        :return: 键数量
-        """
+        """用 SCAN 统计匹配模式的键数量。"""
         try:
             if not self.redis_client:
                 await self.connect()
@@ -454,10 +464,13 @@ class RedisCache:
     # ============================================================
 
     async def hgetall(self, key: str) -> dict:
-        """
-        获取Hash中的所有字段
-        :param key: 键
-        :return: 字段字典
+        """读取 Hash 全部字段，bytes 键值解码为 str。
+
+        Args:
+            key: Hash 键。
+
+        Returns:
+            字段到值的字典（Hash 不存在时为空字典）。
         """
         try:
             if not self.redis_client:
@@ -482,11 +495,14 @@ class RedisCache:
             return {}
 
     async def hset(self, key: str, mapping: dict) -> bool:
-        """
-        设置Hash字段
-        :param key: 键
-        :param mapping: 字段映射
-        :return: 是否成功
+        """批量写入 Hash 字段。
+
+        Args:
+            key: Hash 键。
+            mapping: 字段名到值的映射。
+
+        Returns:
+            是否写入成功。
         """
         try:
             if not self.redis_client:
@@ -509,15 +525,18 @@ class RedisCache:
         retrieved_docs: list,
         expire_hours: int = 24,
     ) -> bool:
-        """
-        缓存查询查询结果及其嵌入向量（用于精确匹配和相似查询）
-        :param user_id: 用户ID
-        :param query: 查询文本
-        :param answer: RAG结果
-        :param embedding: 查询的嵌入向量
-        :param retrieved_docs: 检索到的文档列表
-        :param expire_hours: 过期时间（小时）
-        :return: 是否缓存成功
+        """缓存 RAG 查询结果与嵌入向量（键为查询文本 SHA-256，供精确/相似命中复用）。
+
+        Args:
+            user_id: 用户 ID，隔离缓存命名空间。
+            query: 查询文本。
+            answer: RAG 生成的回答。
+            embedding: 查询的嵌入向量（float32 逐值列表）。
+            retrieved_docs: 检索到的文档列表。
+            expire_hours: 过期时间（小时）。
+
+        Returns:
+            是否缓存成功。
         """
         import numpy as np
 
@@ -546,11 +565,14 @@ class RedisCache:
             return False
 
     async def get_cached_query_vector(self, user_id: str, query: str) -> dict | None:
-        """
-        获取缓存的查询向量数据（用于精确匹配）
-        :param user_id: 用户ID
-        :param query: 查询文本
-        :return: 包含query、answer、embedding等的字典，如果不存在返回None
+        """按查询文本精确读取缓存的查询向量数据（SHA-256 键直查）。
+
+        Args:
+            user_id: 用户 ID。
+            query: 查询文本。
+
+        Returns:
+            含 query/answer/embedding/retrieved_docs 的字典；未命中返回 None。
         """
         query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
         key = f"query_vector:{user_id}:{query_hash}"
@@ -592,13 +614,16 @@ class RedisCache:
         threshold: float = 0.95,
         limit: int = 5,
     ) -> list[dict]:
-        """
-        查找相似的历史查询（基于embedding的近似缓存）
-        :param user_id: 用户ID
-        :param query_embedding: 查询嵌入向量
-        :param threshold: 相似度阈值
-        :param limit: 返回结果数量
-        :return: 相似查询列表
+        """用 RediSearch KNN 查找相似历史查询（近似缓存命中）。
+
+        Args:
+            user_id: 用户 ID，检索范围限定在该用户的缓存内。
+            query_embedding: 查询嵌入向量。
+            threshold: 余弦相似度阈值，低于该值的结果丢弃。
+            limit: 返回结果数量上限。
+
+        Returns:
+            按相似度降序排列的相似查询列表；RediSearch 未启用或异常时返回空列表。
         """
         try:
             import numpy as np
@@ -680,11 +705,14 @@ class RedisCache:
         embedding_dim: int,
         index_name: str = "query_vector_idx"
     ) -> bool:
-        """
-        创建Redis向量索引
-        :param embedding_dim: 嵌入向量维度
-        :param index_name: 索引名称
-        :return: 是否创建成功
+        """创建 RediSearch 向量索引（FLAT + COSINE），已存在视为成功。
+
+        Args:
+            embedding_dim: 嵌入向量维度（须与 embedding 模型输出一致）。
+            index_name: 索引名称。
+
+        Returns:
+            是否创建成功（或已存在）。
         """
         try:
             from redis.commands.search.field import TagField, TextField, VectorField

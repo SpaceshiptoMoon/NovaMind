@@ -12,12 +12,13 @@ class SemanticSplitter(BaseSplitter):
                  max_chunk_size: int = 1000, 
                  similarity_threshold: float = 0.7,
                  batch_size: int = 20):
-        """
-        初始化语义切分器
-        :param embedding_client: 嵌入模型客户端
-        :param max_chunk_size: 最大块大小
-        :param similarity_threshold: 相似度阈值，低于此值则切分
-        :param batch_size: 批处理大小，用于批量生成嵌入向量
+        """初始化语义切分器。
+
+        Args:
+            embedding_client: 嵌入模型客户端，用于计算候选块间语义相似度。
+            max_chunk_size: 单块最大字符数（硬上限）。
+            similarity_threshold: 相邻块余弦相似度阈值，低于此值在块间切分。
+            batch_size: 嵌入向量批量生成的批大小。
         """
         super().__init__()
         self.embedding_client = embedding_client
@@ -26,10 +27,13 @@ class SemanticSplitter(BaseSplitter):
         self.batch_size = batch_size
 
     async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        切分文档列表
-        :param documents: 原始文档列表
-        :return: 切分后的文档块列表
+        """按语义断点切分文档列表。
+
+        Args:
+            documents: 原始文档列表，每项含 text/source，可选 page/doc_id/type。
+
+        Returns:
+            切分后的文档块列表，doc_id 按 ``{原doc_id}_sem_chunk_{序号}`` 编号。
         """
         split_docs = []
         
@@ -54,11 +58,7 @@ class SemanticSplitter(BaseSplitter):
         return split_docs
 
     async def _split_text_semantically(self, text: str) -> list[str]:
-        """
-        基于语义的文本切分
-        :param text: 输入文本
-        :return: 切分后的文本块列表
-        """
+        """先初步粗切，再按相邻块 embedding 相似度聚合出语义连贯的块。"""
         # 首先使用递归字符切分器进行初步切分
         from novamind.engines.document.splitters.recursive_splitter import (
             RecursiveCharacterSplitter,

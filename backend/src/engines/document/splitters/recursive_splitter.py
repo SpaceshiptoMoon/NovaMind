@@ -9,12 +9,13 @@ class RecursiveCharacterSplitter(BaseSplitter):
 
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100,
                  separators: list[str] | None = None, min_chunk_size: int = 500):
-        """
-        初始化切分器
-        :param chunk_size: 块大小
-        :param chunk_overlap: 重叠大小
-        :param separators: 分隔符列表，按优先级排序
-        :param min_chunk_size: 最小块大小，小于此大小的块会与相邻块合并（0 表示不限制）
+        """初始化切分器。
+
+        Args:
+            chunk_size: 单块最大字符数（硬上限）。
+            chunk_overlap: 相邻块之间的重叠字符数，缓解切分边界处上下文断裂。
+            separators: 分隔符列表，按优先级从粗到细排序；缺省为中文标点优先的通用序列。
+            min_chunk_size: 最小块大小阈值，小于此值的碎块与相邻块合并；0 表示禁用合并。
         """
         super().__init__()
         self.chunk_size = chunk_size
@@ -27,10 +28,13 @@ class RecursiveCharacterSplitter(BaseSplitter):
             self.separators = separators
 
     async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        切分文档列表
-        :param documents: 原始文档列表
-        :return: 切分后的文档块列表
+        """切分文档列表，并对同页碎块做小碎块合并。
+
+        Args:
+            documents: 原始文档列表，每项含 text/source，可选 page/doc_id/type。
+
+        Returns:
+            切分后的文档块列表，doc_id 按 ``{原doc_id}_chunk_{序号}`` 重新编号。
         """
         split_docs = []
 
@@ -62,11 +66,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
         return split_docs
 
     async def _split_text(self, text: str) -> list[str]:
-        """
-        实际的文本切分逻辑
-        :param text: 输入文本
-        :return: 切分后的文本块列表
-        """
+        """按分隔符优先级递归切分单篇文本。"""
         if len(text) <= self.chunk_size:
             return [text]
 
@@ -118,8 +118,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
         return final_texts
 
     def _merge_small_chunks(self, chunks: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        合并文本长度小于 min_chunk_size 的碎块与相邻块
+        """合并文本长度小于 min_chunk_size 的碎块与相邻块
 
         策略：从左到右扫描，小块优先向后合并（与下一个块拼接），
         如果向后合并会超过 chunk_size，则尝试向前合并（与上一个块拼接）。

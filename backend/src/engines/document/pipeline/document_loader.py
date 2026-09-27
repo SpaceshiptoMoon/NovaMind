@@ -40,10 +40,7 @@ class DocumentRegistry:
 
     @classmethod
     def register_reader(cls, extension: str, reader_class: type[BaseReader] = None):
-        """
-        注册文档读取器的装饰器/直接调用函数
-        可以作为装饰器使用 @register_reader('ext') 或直接调用 register_reader('ext', ReaderClass)
-        """
+        """注册扩展名到读取器类的映射；支持装饰器与直接调用两种用法。"""
         def decorator(actual_reader_class: type[BaseReader]):
             cls._readers_registry[extension] = actual_reader_class
             return actual_reader_class
@@ -64,10 +61,7 @@ class DocumentRegistry:
 
     @classmethod
     def register_splitter(cls, name: str, splitter_class: type[BaseSplitter] = None):
-        """
-        注册文档切分器的装饰器/直接调用函数
-        可以作为装饰器使用 @register_splitter('name') 或直接调用 register_splitter('name', SplitterClass)
-        """
+        """注册策略名到切分器类的映射；支持装饰器与直接调用两种用法。"""
         def decorator(actual_splitter_class: type[BaseSplitter]):
             cls._splitters_registry[name] = actual_splitter_class
             return actual_splitter_class
@@ -112,10 +106,11 @@ class DocumentLoader:
 
     def __init__(self, splitter: BaseSplitter, 
                  embedding_client: BaseEmbedding):
-        """
-        初始化文档加载器
-        :param splitter: 文档切分器，如果不提供，在load_and_split时会根据文件类型设置默认切分器
-        :param embedding_client: 嵌入模型客户端，用于语义切分
+        """初始化文档加载器。
+
+        Args:
+            splitter: 文档切分器；传 None 时 load_and_split 按扩展名选默认切分器。
+            embedding_client: 嵌入模型客户端，semantic 切分策略必需。
         """
         self.splitter = splitter
         self.embedding_client = embedding_client 
@@ -126,11 +121,7 @@ class DocumentLoader:
             self.readers[ext] = reader_class()
 
     async def _get_default_splitter_for_extension(self, extension: str) -> BaseSplitter:
-        """
-        根据文件扩展名获取默认的切分器
-        :param extension: 文件扩展名
-        :return: 默认切分器实例
-        """
+        """按扩展名返回默认切分器（md 用 MarkdownSplitter，其余用递归切分器）。"""
         if extension == 'pdf':
             # PDF通常使用较小的块大小
             return RecursiveCharacterSplitter(chunk_size=400, chunk_overlap=50)
@@ -142,10 +133,17 @@ class DocumentLoader:
             return RecursiveCharacterSplitter()
 
     async def load_and_split(self, file_path: str | Path) -> list[dict[str, str]]:
-        """
-        加载并切分文档
-        :param file_path: 文件路径
-        :return: 切分后的文档块列表
+        """按扩展名路由到读取器加载文档，再用切分器切分。
+
+        Args:
+            file_path: 文件路径。
+
+        Returns:
+            切分后的文档块列表。
+
+        Raises:
+            FileNotFoundError: 文件不存在。
+            ValueError: 扩展名未注册读取器。
         """
         file_path = Path(file_path)
         
@@ -173,11 +171,7 @@ class DocumentLoader:
         return split_documents
 
     async def load_multiple_files(self, file_paths: list[str | Path]) -> list[dict[str, str]]:
-        """
-        加载并切分多个文件
-        :param file_paths: 文件路径列表
-        :return: 切分后的文档块列表
-        """
+        """顺序加载并切分多个文件，结果合并为一个列表。"""
         all_documents = []
         for file_path in file_paths:
             documents = await self.load_and_split(file_path)
@@ -187,10 +181,7 @@ class DocumentLoader:
 
     @staticmethod
     async def get_supported_formats() -> list[str]:
-        """
-        获取支持的文件格式
-        :return: 支持的文件格式列表
-        """
+        """返回注册表支持的扩展名列表。"""
         return DocumentRegistry.get_supported_formats()
 
 
@@ -217,16 +208,20 @@ class DocumentProcessor:
         file_path: str | Path,
         ocr_enabled: bool = False,
     ) -> str:
-        """
-        Reader-only：读取文件，返回合并后的全文内容（不做切分）
+        """Reader-only：读取文件并合并为全文，不做切分。
 
         支持的文件类型由 DocumentRegistry 注册表决定：
         pdf, docx, txt, html, md, markdown 等。
 
-        :param file_path: 文件路径
-        :return: 文件的完整文本内容
-        :raises ValueError: 不支持的文件类型
-        :raises FileNotFoundError: 文件不存在
+        Args:
+            file_path: 文件路径。
+
+        Returns:
+            文件的完整文本内容；文字层为空且 ocr_enabled 时的 PDF 走 OCR 兜底。
+
+        Raises:
+            ValueError: 不支持的文件类型。
+            FileNotFoundError: 文件不存在。
         """
         file_path = Path(file_path)
 
@@ -315,16 +310,20 @@ class DocumentProcessor:
         strategy: str = 'recursive',
         **kwargs,
     ) -> list[str]:
-        """
-        Splitter-only：对纯文本进行切分，返回 chunk 文本列表
+        """Splitter-only：对纯文本按指定策略切分，返回 chunk 文本列表。
 
         不读取文件，只做切分。
 
-        :param text: 要切分的全文文本
-        :param strategy: 切分策略 ('recursive', 'semantic', 'fixed_size', 'markdown')
-        :param kwargs: 策略特定的参数
-        :return: 切分后的文本块列表（纯文本，非 dict）
-        :raises ValueError: 不支持的切分策略
+        Args:
+            text: 要切分的全文文本。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown'）。
+            **kwargs: 策略特定参数（chunk_size / similarity_threshold 等），逐策略透传。
+
+        Returns:
+            切分后的文本块列表（纯文本，非 dict）。
+
+        Raises:
+            ValueError: 策略名未注册。
         """
         # 从注册表中获取切分器类
         splitter_class = DocumentRegistry.get_splitter_class(strategy)
@@ -560,12 +559,18 @@ class DocumentProcessor:
 
     async def load_with_strategy(self, file_path: str | Path, strategy: str | None = 'recursive',
                           **kwargs) -> list[dict[str, str]]:
-        """
-        使用指定策略加载文档
-        :param file_path: 文件路径
-        :param strategy: 切分策略 ('recursive', 'semantic', 'fixed_size', 'markdown')
-        :param kwargs: 策略特定的参数
-        :return: 切分后的文档块列表
+        """按指定策略构建切分器并加载切分文档（兼容旧调用的组合入口）。
+
+        Args:
+            file_path: 文件路径。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown'）。
+            **kwargs: 策略特定参数，逐策略透传。
+
+        Returns:
+            切分后的文档块列表。
+
+        Raises:
+            ValueError: 策略名未注册。
         """
         # 从注册表中获取切分器类
         splitter_class = DocumentRegistry.get_splitter_class(strategy)
@@ -615,12 +620,18 @@ class DocumentProcessor:
 
     async def process_directory(self, directory_path: str | Path, strategy: str | None = 'recursive',
                          **kwargs) -> list[dict[str, str]]:
-        """
-        处理目录中的所有支持的文档
-        :param directory_path: 目录路径
-        :param strategy: 切分策略
-        :param kwargs: 策略特定的参数
-        :return: 切分后的文档块列表
+        """遍历目录下所有已注册扩展名的文件，逐个加载并切分。
+
+        Args:
+            directory_path: 目录路径。
+            strategy: 切分策略。
+            **kwargs: 策略特定参数，逐策略透传。
+
+        Returns:
+            全部文件的切分结果合并列表。
+
+        Raises:
+            ValueError: 路径不是目录。
         """
         directory_path = Path(directory_path)
         if not directory_path.is_dir():

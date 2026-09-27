@@ -16,9 +16,7 @@ class HTMLReader(BaseReader):
         super().__init__()
 
     def _read_with_encoding_sync(self, file_path: str) -> str:
-        """
-        尝试多种编码格式读取文件（同步版本，在线程池中执行）
-        """
+        """按 utf-8/gbk/gb2312/latin-1/cp1252 顺序尝试解码，全部失败则忽略错误硬读。"""
         encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1', 'cp1252']
 
         for encoding in encodings:
@@ -34,11 +32,7 @@ class HTMLReader(BaseReader):
             return file.read()
 
     def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
-        """
-        同步读取 HTML 文件（在线程池中执行）
-        :param file_path: HTML文件路径
-        :return: 文档块列表
-        """
+        """用 BeautifulSoup 提取页面可见文本并拼成整块。"""
         documents = []
         try:
             # 使用支持多种编码的方法读取HTML文件
@@ -64,9 +58,12 @@ class HTMLReader(BaseReader):
         return documents
 
     async def load_data(self, file_path: str) -> list[dict[str, str]]:
-        """
-        从HTML文件加载数据（异步，在共享线程池中执行）
-        :param file_path: HTML文件路径
-        :return: 文档块列表，每个文档块包含文本和其他元数据
+        """异步加载 HTML 文本，重活转共享线程池避免阻塞事件循环。
+
+        Args:
+            file_path: HTML 文件路径。
+
+        Returns:
+            单元素文档块列表（页面可见文本），读取失败时返回空列表。
         """
         return await run_in_executor(self._load_data_sync, file_path)

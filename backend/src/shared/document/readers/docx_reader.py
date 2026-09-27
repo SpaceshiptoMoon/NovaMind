@@ -16,11 +16,7 @@ class DocxReader(BaseReader):
         super().__init__()
 
     def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
-        """
-        同步读取 DOCX 文件（在线程池中执行）
-        :param file_path: DOCX文件路径
-        :return: 文档块列表
-        """
+        """用 python-docx 提取段落与表格文本并拼成整块。"""
         documents = []
         try:
             # 使用python-docx读取DOCX
@@ -53,9 +49,12 @@ class DocxReader(BaseReader):
         return documents
 
     async def load_data(self, file_path: str) -> list[dict[str, str]]:
-        """
-        从DOCX文件加载数据（异步，在共享线程池中执行）
-        :param file_path: DOCX文件路径
-        :return: 文档块列表，每个文档块包含文本和其他元数据
+        """异步加载 DOCX 文本，重活转共享线程池避免阻塞事件循环。
+
+        Args:
+            file_path: DOCX 文件路径。
+
+        Returns:
+            单元素文档块列表（段落+表格全文拼合），读取失败时返回空列表。
         """
         return await run_in_executor(self._load_data_sync, file_path)

@@ -7,20 +7,24 @@ class FixedSizeSplitter(BaseSplitter):
     """固定大小切分器，按固定大小切分文本，不考虑语义边界"""
 
     def __init__(self, chunk_size: int = 500, chunk_overlap: int = 0):
-        """
-        初始化固定大小切分器
-        :param chunk_size: 块大小
-        :param chunk_overlap: 重叠大小
+        """初始化固定大小切分器。
+
+        Args:
+            chunk_size: 单块最大字符数（硬上限）。
+            chunk_overlap: 相邻块重叠字符数，须小于 chunk_size 否则退化为无重叠。
         """
         super().__init__()
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
     async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        按固定大小切分文档
-        :param documents: 原始文档列表
-        :return: 切分后的文档块列表
+        """按固定字符数切分文档列表，不做语义边界判断。
+
+        Args:
+            documents: 原始文档列表，每项含 text/source，可选 page/doc_id/type。
+
+        Returns:
+            切分后的文档块列表，doc_id 按 ``{原doc_id}_fixed_chunk_{序号}`` 编号。
         """
         split_docs = []
 
@@ -45,11 +49,7 @@ class FixedSizeSplitter(BaseSplitter):
         return split_docs
 
     def _split_text_fixed_size(self, text: str) -> list[str]:
-        """
-        按固定大小切分文本
-        :param text: 输入文本
-        :return: 切分后的文本块列表
-        """
+        """按固定步长滑动窗口切分单篇文本，窗口步长为 chunk_size - chunk_overlap。"""
         if len(text) <= self.chunk_size:
             return [text]
 
