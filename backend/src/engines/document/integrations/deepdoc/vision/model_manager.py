@@ -241,12 +241,17 @@ def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None
                 # 截断）时不校验会把半截文件当完整文件落盘，此后每次下载按
                 # 「文件已存在」永久跳过，模型静默损坏、运行期兜底自愈失效。
                 expected_size = resp.headers.get("Content-Length")
+                written = 0
                 with open(tmp, "wb") as fh:
                     for chunk in resp.iter_content(chunk_size=1 << 20):
                         fh.write(chunk)
-                if expected_size is not None and fh.tell() != int(expected_size):
+                        written += len(chunk)
+                # 字节数须在 with 块内统计：块外 fh 已关闭，tell() 会抛
+                # ValueError（c682743 初版在块外调 fh.tell()，有 Content-Length
+                # 的响应必炸、无头响应静默跳过校验——两个方向都错）。
+                if expected_size is not None and written != int(expected_size):
                     raise OSError(
-                        f"truncated download: got {fh.tell()} bytes, expected {expected_size}"
+                        f"truncated download: got {written} bytes, expected {expected_size}"
                     )
             tmp.replace(target)
             logger.info(

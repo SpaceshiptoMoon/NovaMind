@@ -127,6 +127,20 @@ class UpDownConcatMerger:
             return False
         return any(re.match(pattern, text) for pattern in cls._PROJ_PATTERNS)
 
+    # 强续行标点：段尾为这些字符时句子明显未完，跨页拼接是排版常识
+    # （中文逗号/顿号/分号/冒号/连字符/开括号 + 西文对应符）。句号/问号/
+    # 叹号结尾的段落到页边界必须断开。量级依据：上游 naive_vertical_merge
+    # 的 concatting_feats 同款字符集（"，、‘“；：-" + 开括号延伸）。
+    _STRONG_CONTINUATION_TAIL = tuple("，、；：-,;:([{（〔【《“‘‘—…")
+
+    @classmethod
+    def _strong_continuation(cls, text: str) -> bool:
+        """段尾是否强续行信号（跨页拼接门控）。"""
+        stripped = (text or "").rstrip()
+        if not stripped:
+            return False
+        return stripped[-1] in cls._STRONG_CONTINUATION_TAIL
+
     def _updown_concat_features(self, up: dict[str, Any], down: dict[str, Any]) -> list[Any]:
         w = max(self._char_width(up), self._char_width(down))
         h = max(self._height(up), self._height(down))
@@ -236,6 +250,20 @@ class UpDownConcatMerger:
                         break
                     if not same_page and ydis > mh * 16:
                         break
+                    # 跨页守卫（上游 _concat_downward concat_between_pages 语义的
+                    # 保守化，评审补跑欠账发现）：本合并器在 page-local 域运行
+                    # （调用方桥出时已减回累积偏移），跨页对的 y_dis≈0，上方
+                    # mh*16 间距 break 永不触发——无守卫时 xgboost 可把整本书
+                    # 并成一块，合并块 page 取 min 后 position_tag 页码全部丢
+                    # 失，引用溯源指错页（test_windowed_parse_full_keeps_book_
+                    # wide_position_tags 捕获）。上游等价合并段（naive_vertical_
+                    # merge）在累积 Y 域运行且跨页间距天然巨大，不依赖此守卫；
+                    # fork 此段无该天然屏障，必须显式门控：跨页仅在段尾是强续
+                    # 行标点（逗号/连字符/开括号等，句子明显未完）时才允许进
+                    # 模型判定，句号/问号结尾的段落到页边界必须断开。
+                    if not same_page and down["page_number"] > up["page_number"]:
+                        if not self._strong_continuation(up["text"]):
+                            break
                     if re.match(r"[0-9]{2,3}/[0-9]{3}$", up["text"]) or re.match(r"[0-9]{2,3}/[0-9]{3}$", down["text"]):
                         cursor += 1
                         continue

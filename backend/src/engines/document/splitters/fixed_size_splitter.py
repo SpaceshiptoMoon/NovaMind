@@ -49,7 +49,18 @@ class FixedSizeSplitter(BaseSplitter):
         return split_docs
 
     def _split_text_fixed_size(self, text: str) -> list[str]:
-        """按固定步长滑动窗口切分单篇文本，窗口步长为 chunk_size - chunk_overlap。"""
+        """按固定步长滑动窗口切分单篇文本，窗口步长为 chunk_size - chunk_overlap。
+
+        chunk_overlap 为 0 退化为等宽切块；overlap > 0 时相邻块共享尾部内容。
+        末块不足 chunk_size 时整块输出并终止——末块绝不与 overlap 组合回退起点，
+        否则 start 永远停在 len(text) - overlap 处死循环（overlap > 0 必触发，
+        滑动窗口把内存吃爆）。
+        """
+        if self.chunk_size <= 0:
+            # 非法配置（0/负数）不挂死：整篇单块返回。chunk_size<=0 时窗口
+            # 不前进，与 overlap 死循环同根。
+            return [text] if text else []
+        overlap = self.chunk_overlap if self.chunk_overlap < self.chunk_size else 0
         if len(text) <= self.chunk_size:
             return [text]
 
@@ -59,20 +70,16 @@ class FixedSizeSplitter(BaseSplitter):
         while start_idx < len(text):
             # 计算结束位置
             end_idx = start_idx + self.chunk_size
-            
-            # 如果到达文本末尾，调整结束位置
-            if end_idx > len(text):
-                end_idx = len(text)
-            
+
+            # 到达文本末尾：剩余不足一块，整块输出后终止（不计 overlap）
+            if end_idx >= len(text):
+                chunks.append(text[start_idx:])
+                break
+
             # 提取文本块
-            chunk = text[start_idx:end_idx]
-            chunks.append(chunk)
-            
-            # 更新起始位置，考虑重叠
-            start_idx = end_idx - self.chunk_overlap
-            
-            # 确保不会无限循环（当重叠大于或等于块大小时）
-            if self.chunk_overlap >= self.chunk_size:
-                start_idx = end_idx
+            chunks.append(text[start_idx:end_idx])
+
+            # 更新起始位置，考虑重叠（局部变量，不改写调用方可见的实例配置）
+            start_idx = end_idx - overlap
 
         return chunks

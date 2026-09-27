@@ -166,6 +166,8 @@ def test_direct_download_files_skip_existing_and_atomic_write(tmp_path, monkeypa
     (tmp_path / "det.onnx").write_bytes(b"already-here")
 
     class _FakeResp:
+        headers = {"Content-Length": "3"}  # c682743：下载层读 Content-Length 防截断
+
         def __enter__(self):
             return self
 
@@ -185,8 +187,10 @@ def test_direct_download_files_skip_existing_and_atomic_write(tmp_path, monkeypa
         return _FakeResp()
 
     monkeypatch.setattr("requests.get", fake_get)
+    # 清单未登记 some/repo（checksum 放行），本测试关注幂等/原子写行为
     model_manager.direct_download_files(tmp_path, "some/repo", ["det.onnx", "rec.onnx"])
-    assert urls == ["https://hf-mirror.com/some/repo/resolve/main/rec.onnx"]
+    # 默认官方源（通用补丁原则：国内镜像只进部署配置，c682743 时期改默认）
+    assert urls == ["https://huggingface.co/some/repo/resolve/main/rec.onnx"]
     assert (tmp_path / "rec.onnx").read_bytes() == b"rec"
     assert not (tmp_path / "rec.onnx.part").exists()
 

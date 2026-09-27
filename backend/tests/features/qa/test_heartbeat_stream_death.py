@@ -108,3 +108,40 @@ async def test_silence_counter_resets_on_activity():
     assert texts == ["早", "晚"]
     assert heartbeats >= 1
     assert outcome.terminated_on_silence is False
+
+
+@pytest.mark.asyncio
+async def test_consumer_cancel_closes_upstream_stream():
+    """反例（子代理审查发现）：消费者中途取消时，挂起的 __anext__ 任务与
+    上游流必须被就地关闭——否则底层 httpx 连接保持打开（每次断连泄漏
+    一个 task + 一条连接）。历史实现回收代码在 CancelledError raise 之后
+    的顺序位置，不可达。
+
+    用上游生成器的 finally 是否执行来判定「流被关闭」。
+    """
+    outcome = StreamHeartbeatOutcome()
+    upstream_closed = False
+
+    async def slow_stream():
+        nonlocal upstream_closed
+        try:
+            yield _mk("第一块")
+            # 长静默：消费者会在心跳等待期间取消
+            await asyncio.sleep(10)
+            yield _mk("永不到达")
+        finally:
+            upstream_closed = True
+
+    gen = stream_with_heartbeat_structured(slow_stream(), interval=0.05, outcome=outcome)
+    received = []
+    async for item in gen:
+        if not isinstance(item, str):
+            received.append(item.text)
+            break  # 收到第一块后立即放弃生成器（模拟 WS 断连 → run_stream_to_ws aclose）
+
+    await gen.aclose()
+
+    assert received == ["第一块"]
+    # aclose 在挂起点抛 GeneratorExit → 上游 finally 已执行（连接已关闭）
+    assert upstream_closed is True
+    assert outcome.terminated_on_silence is False

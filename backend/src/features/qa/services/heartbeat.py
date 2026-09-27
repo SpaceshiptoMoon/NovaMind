@@ -109,48 +109,73 @@ async def stream_with_heartbeat_structured(
     pending: asyncio.Task | None = None
     silence_count = 0
 
-    while True:
-        if pending is None:
-            pending = asyncio.ensure_future(stream_iter.__anext__())
-        try:
-            chunk = await asyncio.wait_for(asyncio.shield(pending), timeout=interval)
-            pending = None
-            silence_count = 0
-            result.received_any = True
-            yield chunk
-        except TimeoutError:
-            silence_count += 1
-            if silence_count >= DEAD_STREAM_SILENCE_COUNT:
-                # 连续多个间隔无任何数据：判定流死，内容截断。任务取消交给
-                # finally（此处流已不可恢复，等它没有意义）。
-                result.terminated_on_silence = True
-                result.silence_count = silence_count
-                logger.warning(
-                    "流式输出连续静默超限，判定流终止（内容可能截断）",
-                    silence_intervals=silence_count,
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(stream_iter.__anext__())
+            try:
+                chunk = await asyncio.wait_for(asyncio.shield(pending), timeout=interval)
+                pending = None
+                silence_count = 0
+                result.received_any = True
+                yield chunk
+            except TimeoutError:
+                silence_count += 1
+                if silence_count >= DEAD_STREAM_SILENCE_COUNT:
+                    # 连续多个间隔无任何数据：判定流死，内容截断。任务取消交给
+                    # finally（此处流已不可恢复，等它没有意义）。
+                    result.terminated_on_silence = True
+                    result.silence_count = silence_count
+                    logger.warning(
+                        "流式输出连续静默超限，判定流终止（内容可能截断）",
+                        silence_intervals=silence_count,
+                        interval_seconds=interval,
+                    )
+                    break
+                result.heartbeat_count += 1
+                logger.debug(
+                    "SSE 心跳发送（structured）",
+                    silence_count=silence_count,
                     interval_seconds=interval,
                 )
+                yield ": heartbeat\n\n"
+            except StopAsyncIteration:
+                # shield 保证该信号只来自上游真实终结（超时路径不会 cancel 任务）
+                pending = None
                 break
-            result.heartbeat_count += 1
-            logger.debug(
-                "SSE 心跳发送（structured）",
-                silence_count=silence_count,
-                interval_seconds=interval,
-            )
-            yield ": heartbeat\n\n"
-        except StopAsyncIteration:
-            # shield 保证该信号只来自上游真实终结（超时路径不会 cancel 任务）
+            except asyncio.CancelledError:
+                # 消费者（chat_stream）被取消。挂起的 __anext__ 任务必须就地
+                # 取消，否则底层 LLM 流（httpx 连接）保持打开直至上游自行结束
+                # （每次中途断连泄漏一个 task + 一条连接）。此分支不可 await：
+                # 本任务已在取消传播中，await 会立即再被打断——置 None 交给
+                # finally 跳过回收，取消本身由事件循环回收（无 unretrieved 告警）。
+                if pending is not None:
+                    pending.cancel()
+                    pending = None
+                raise
+            except GeneratorExit:
+                # 消费者 aclose（run_stream_to_ws finally）。同上只 cancel 不
+                # await：GeneratorExit 清理路径中 await 可能触发
+                # "async generator ignored GeneratorExit"。
+                if pending is not None:
+                    pending.cancel()
+                    pending = None
+                raise
+    finally:
+        # 正常终结/判死路径的挂起任务回收（GeneratorExit/CancelledError 路径
+        # 已置 None 跳过）。cancel 后 await 确保底层生成器终结完成再返回。
+        if pending is not None:
+            pending.cancel()
+            try:
+                await pending
+            except (asyncio.CancelledError, StopAsyncIteration, Exception):
+                pass
             pending = None
-            break
-        except asyncio.CancelledError:
-            # 消费者（chat_stream）被取消：向上传播，任务在 finally 回收
-            raise
-
-    if pending is not None:
-        pending.cancel()
+        # 上游 iterator 本身也要关闭：交付块后（pending=None）被 aclose 时
+        # 没有挂起任务可取消，但上游生成器仍挂在 yield 点——不 aclose 则其
+        # finally（httpx 连接关闭等清理）不执行。
         try:
-            await pending
-        except (asyncio.CancelledError, StopAsyncIteration, Exception):
+            await stream_iter.aclose()
+        except (asyncio.CancelledError, GeneratorExit, StopAsyncIteration, Exception):
             pass
-        pending = None
-    result.silence_count = silence_count
+        result.silence_count = silence_count

@@ -344,6 +344,15 @@ def test_document_processor_runs_real_deepdoc_pdf_path(tmp_path):
 
 
 def test_document_processor_parse_document_result_preserves_deepdoc_metadata(monkeypatch, tmp_path):
+    """无 reading_order 的解析结果（plain/老快照）：metadata 透传，重切结构降级占位。
+
+    c7acada 哨兵重切语义：chunk_structure 一律由重切产物重建（保证与 chunks
+    条数对齐，否则页码坐标错位）。reading_order 缺失时重切产出 entry_count=0
+    的占位结构，解析器自带的旧 chunk_structure 不再透传——那套结构与重切后的
+    chunks 条数不对应，保留反而让下游页码错位（c7acada 修复的正是该问题）。
+    本测试锁定降级形态：parser/parser_id 等非结构键原样透传、重切占位结构
+    条数与 chunks 对齐、结构来源标记为 tagged_rechunk。
+    """
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(_build_minimal_pdf_bytes("Structured Chunk"))
 
@@ -353,7 +362,11 @@ def test_document_processor_parse_document_result_preserves_deepdoc_metadata(mon
         return DeepDocParseResult(
             full_text="structured full text",
             chunks=["chunk 1"],
-            metadata={"parser": "deepdoc", "chunk_structure": [{"entry_kinds": ["text"], "pages": [1]}]},
+            metadata={
+                "parser": "deepdoc",
+                "parser_id": "pdf_full",
+                "chunk_structure": [{"entry_kinds": ["text"], "pages": [1]}],
+            },
         )
 
     monkeypatch.setattr(processor, "_deepdoc_parser", SimpleNamespace(parse=fake_parse))
@@ -368,7 +381,12 @@ def test_document_processor_parse_document_result_preserves_deepdoc_metadata(mon
 
     assert result.full_text == "structured full text"
     assert result.metadata["parser"] == "deepdoc"
-    assert result.metadata["chunk_structure"][0]["entry_kinds"] == ["text"]
+    # 非 chunk_structure 键原样透传（parser_id 是 mock 里新加的键）
+    assert result.metadata["parser_id"] == "pdf_full"
+    # 重切重建：条数与 chunks 对齐（1:1）；reading_order 缺失 → entry_count=0 占位
+    assert len(result.metadata["chunk_structure"]) == len(result.chunks) == 1
+    assert result.metadata["chunk_structure"][0]["entry_count"] == 0
+    assert result.metadata["chunk_structure_source"] == "tagged_rechunk"
 
 
 def test_deepdoc_parser_uses_ragflow_adapted_docx_parser(tmp_path):

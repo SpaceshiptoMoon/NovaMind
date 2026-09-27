@@ -182,7 +182,12 @@ def test_mirror_url_template_substitution(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_mirrors_fallback_only_fetches_missing_files(monkeypatch, tmp_path):
-    """降级源逐源补齐：源 A 拿到 det，源 B 只需补 rec；本地已有文件不重复下载。"""
+    """降级源逐源补齐：源 A 拿到 det，源 B 只需补 rec；本地已有文件不重复下载。
+
+    c682743 引入 checksum 校验后，桩下载的字节（b"x"）过不了 InfiniFlow/deepdoc
+    清单校验——本测试关注的是「逐源补齐/跳过已有」的编排逻辑，非校验本身，
+    故 repo_id 用清单未登记的值（verify_model_checksum 对未登记文件放行）。
+    """
     seen = {"a": [], "b": []}
 
     def fake_url_download_factory(seen_list, succeed):
@@ -209,7 +214,7 @@ def test_mirrors_fallback_only_fetches_missing_files(monkeypatch, tmp_path):
     monkeypatch.setattr(model_manager, "_direct_download_from_url", per_source_download)
 
     (tmp_path / "det.onnx").write_bytes(b"already-here")  # 本地已有 → 不下载
-    model_manager.download_from_mirrors(tmp_path, "InfiniFlow/deepdoc", ["det.onnx", "rec.onnx"])
+    model_manager.download_from_mirrors(tmp_path, "some/unregistered-repo", ["det.onnx", "rec.onnx"])
 
     assert seen["b"] == ["rec.onnx"]
 
