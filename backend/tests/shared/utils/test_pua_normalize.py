@@ -14,8 +14,8 @@ pytestmark = pytest.mark.unit
 
 E5CE = ""  # doc583 填空栏占位
 E5D2 = ""  # doc583 句读占位（前半）
-E5CF = ""  # doc583 句读占位（后半）
-E5E5 = ""  # doc583 全角空格占位
+E5CF = ""  # doc583 句读占位（后半）
+E5E5 = ""  # doc583 全角空格占位
 
 
 @pytest.mark.unit
