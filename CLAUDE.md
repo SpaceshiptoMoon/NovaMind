@@ -137,6 +137,43 @@ Generic helpers that are not knowledge-specific belong under:
 - Prefer absolute imports from `novamind...`
 - Do not hide side effects inside utility functions
 
+### 注释与文档字符串规范（PEP 257 / PEP 8 / Google 风格）
+
+注释、docstring 一律用中文；标识符、关键字用英文。存量代码 reST（`:param:`）与 Google（`Args:`）两套方言混用，**存量不动，新代码统一 Google 风格**。
+
+**模块 docstring**（文件第一条语句）：一句话定位（是什么层/组件）+ 可选的关键约束（调用前提、不做什么、格式契约），三行以内最理想。简短模块单行即可。禁止写入 `# -*- coding: utf-8 -*-`（Py3 默认）、`@author`/`Created on`/`@version`（归属和时间是 git 的职责）、复述文件路径。范例：
+
+```python
+"""
+AES 加解密工具
+
+当前版本：AES-256-GCM + HKDF-SHA256 密钥派生（v2）。
+向后兼容：可解密旧版 AES-256-CBC + SHA-256 派生加密的数据（无前缀旧格式）。
+"""
+```
+
+**函数/类 docstring**（Google 风格）：第一行单句祈使式摘要、句号结尾；签名有类型标注时 docstring 不重复类型；参数说明写业务含义与约束，不复述参数名；`Raises:` 列业务异常类名；私有方法（`_` 前缀）一行摘要即可。范例：
+
+```python
+def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
+    """合并过小的相邻分块。
+
+    Args:
+        chunks: 待合并的分块列表，须已按阅读顺序排列。
+        min_size: 最小块大小阈值，0 表示禁用合并。
+
+    Returns:
+        合并后的分块列表，doc_id 按新顺序重新编号。
+
+    Raises:
+        ValueError: 当存在页码缺失的分块时。
+    """
+```
+
+**行内 `#` 注释**：只解释「为什么」（代码看不出的动机、坑、约束），不复述代码在做什么；注释与代码矛盾比没有注释更糟，改代码必须同步改注释。
+
+**TypeScript/Vue**：用 TSDoc（`/** ... */` + `@param`/`@returns`），类型写在签名里不重复。
+
 ### TypeScript / Vue
 
 - 2-space indentation
