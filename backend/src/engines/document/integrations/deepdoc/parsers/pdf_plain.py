@@ -15,6 +15,7 @@ from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils impor
     extract_pdf_outlines,
 )
 from novamind.shared.logging import get_logger
+from novamind.shared.utils.text_utils import normalize_pua_text
 
 logger = get_logger(__name__)
 
@@ -34,7 +35,12 @@ class RAGFlowPlainPdfParser:
                 end_page = len(pdf.pages) if to_page is None else min(len(pdf.pages), to_page)
                 for page in pdf.pages[from_page:end_page]:
                     text = page.extract_text() or ""
-                    lines.extend([line for line in text.split("\n")])
+                    # 逐行 PUA 归一（语境化规则与 full 模式/通用 reader 共用）：
+                    # plain 路径的全文与 chunks 全部来自这些 line，无第二出口。
+                    # 邻居判定天然限制在行内，与 replace_pua 的单字符串语义一致。
+                    lines.extend(
+                        normalize_pua_text(line) for line in text.split("\n")
+                    )
         except Exception:
             logger.exception("DeepDoc plain pdf parser failed")
         return [(line, "") for line in lines], [], outlines

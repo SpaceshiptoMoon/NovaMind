@@ -4,6 +4,7 @@ import os
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.executor import run_in_executor
 from novamind.shared.logging import get_logger
+from novamind.shared.utils.text_utils import normalize_pua_text
 from pypdf import PdfReader as PyPdfReader
 
 logger = get_logger(__name__)
@@ -30,7 +31,9 @@ class PDFReader(BaseReader):
             text = ""
             page_numbers = []
             for i, page in enumerate(pdf.pages):
-                text += page.extract_text() + "\n"
+                # pypdf 对未映射 CID 字体同样产出 PUA 字符（与 deepdoc 文字层
+                # 同根因），页级出口归一（语境化规则与 deepdoc 两条路径共用）。
+                text += normalize_pua_text(page.extract_text()) + "\n"
                 page_numbers.append(i + 1)
 
             if text.strip():
