@@ -38,7 +38,7 @@ async def get_current_user_id(current_user: dict = Depends(get_current_user)) ->
 def get_session_config_repo(
     db: AsyncSession = Depends(get_db)
 ) -> SessionConfigRepository:
-    """获取会话配置仓库"""
+    """装配会话配置仓储（请求级 DB 会话）。"""
     return SessionConfigRepository(db)
 
 

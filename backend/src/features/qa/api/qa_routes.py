@@ -113,7 +113,7 @@ async def update_message(
     qa_service: QAService = Depends(get_qa_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """更新消息"""
+    """编辑本人消息内容。"""
     result = await qa_service.update_message(message_id, request, current_user["id"])
     if not result:
         raise MessageNotFoundError(message_id)
@@ -131,7 +131,7 @@ async def delete_message(
     qa_service: QAService = Depends(get_qa_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """删除指定消息"""
+    """删除本人单条消息。"""
     success = await qa_service.delete_message(message_id, current_user["id"])
     if not success:
         raise MessageNotFoundError(message_id)

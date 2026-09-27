@@ -54,7 +54,7 @@ class TaskTracker:
         logger.debug("任务追踪：移除映射", entity_id=entity_id)
 
     async def get_active_count(self) -> int:
-        """获取当前正在处理的实体数量"""
+        """统计进行中任务数（并发余量监控用）。"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
         return (await raw_client.hlen(self._tracker_key)) or 0

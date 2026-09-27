@@ -98,7 +98,7 @@ async def get_space_service(db: AsyncSession = Depends(get_db)) -> SpaceService:
 
 
 async def get_member_service(db: AsyncSession = Depends(get_db)) -> MemberService:
-    """获取成员服务"""
+    """装配成员服务（单例 ES/MinIO 客户端注入）。"""
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
     return MemberService(db, es_client=es_client, minio_client=minio_client)
@@ -172,17 +172,17 @@ async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchServic
 
 
 async def get_audit_service(db: AsyncSession = Depends(get_db)) -> AuditService:
-    """获取审计服务"""
+    """装配审计服务（独立 DB 会话）。"""
     return AuditService(db)
 
 
 async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
-    """获取用户仓储"""
+    """装配用户仓储（R2 防环：跨 feature 直查 user models 用）。"""
     return UserRepository(db)
 
 
 async def get_kb_repository(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseRepository:
-    """获取知识库仓储"""
+    """装配知识库仓储（同一请求内复用 DB 会话）。"""
     return KnowledgeBaseRepository(db)
 
 

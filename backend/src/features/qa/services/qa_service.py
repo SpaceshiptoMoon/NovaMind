@@ -262,7 +262,7 @@ class QAService:
         request: QAUpdateRequest,
         user_id: int,
     ) -> QAResponse | None:
-        """更新消息"""
+        """更新消息内容（校验归属，非本人消息抛 MessageNotFoundError）。"""
         try:
             message = await self.repository.get_by_id(message_id)
             if not message or message.user_id != user_id:
@@ -308,7 +308,7 @@ class QAService:
     async def delete_message(
         self, message_id: int, user_id: int
     ) -> bool:
-        """删除消息"""
+        """删除单条消息并失效会话缓存（校验归属）。"""
         try:
             message = await self.repository.get_by_id(message_id)
             if not message or message.user_id != user_id:

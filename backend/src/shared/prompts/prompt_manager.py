@@ -54,7 +54,7 @@ class PromptManager:
 
 # 便捷函数
 def get_prompt(template_name: str) -> str:
-    """获取提示词模板"""
+    """模块级便捷入口：按模板名取渲染就绪的提示词文本。"""
     return PromptManager.get_template(template_name)
 
 

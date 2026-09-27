@@ -94,7 +94,7 @@ async def get_members(
     user_id: int = Depends(get_current_user_id),
     member_service: MemberService = Depends(get_member_service),
 ):
-    """获取成员列表"""
+    """分页列出空间成员（含角色与邀请状态）。"""
     members, total = await member_service.get_space_members(
         space_id=space_id,
         user_id=user_id,
@@ -127,7 +127,7 @@ async def invite_member(
     user_repo: UserRepository = Depends(get_user_repository),
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
-    """邀请成员（需要空间管理员权限）"""
+    """邀请成员：生成一次性 invite_token 并通知目标用户。"""
     # 根据邮箱查询用户
     target_user = await user_repo.get_user_by_email(data.email)
     if not target_user:
@@ -186,7 +186,7 @@ async def join_space(
     member_service: MemberService = Depends(get_member_service),
     audit_service: AuditService = Depends(get_audit_service),
 ):
-    """通过邀请令牌加入空间"""
+    """凭邀请令牌加入空间，成功后令牌作废。"""
     member = await member_service.join_space(
         token=data.invite_token,
         user_id=user_id,
@@ -224,7 +224,7 @@ async def add_member_direct(
     user_repo: UserRepository = Depends(get_user_repository),
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
-    """直接添加成员（需要空间管理员权限，免邀请令牌）"""
+    """按用户名/邮箱直接加为 ACTIVE 成员，跳过邀请流程。"""
     # identifier 含 @ 按邮箱查，否则按用户名查
     if "@" in data.identifier:
         target_user = await user_repo.get_user_by_email(data.identifier)
@@ -269,7 +269,7 @@ async def get_my_membership(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     member: SpaceMember = Depends(validate_space_member),
 ):
-    """获取我的成员信息"""
+    """当前用户在空间内的角色/权限视图。"""
     return MemberResponse.model_validate(member)
 
 
@@ -289,7 +289,7 @@ async def update_member_role(
     audit_service: AuditService = Depends(get_audit_service),
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
-    """更新成员角色（需要空间管理员权限）"""
+    """变更成员空间角色，权限随角色重算。"""
     if not data.role:
         raise InvalidParameterError("角色不能为空", "role")
 
@@ -330,7 +330,7 @@ async def update_member_permissions(
     audit_service: AuditService = Depends(get_audit_service),
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
-    """更新成员细粒度权限（需要空间管理员权限）"""
+    """覆盖式更新成员 custom_permissions，未列项回退角色默认。"""
     member = await member_service.update_member_permissions(
         space_id=space_id,
         operator_id=user_id,
@@ -366,7 +366,7 @@ async def remove_member(
     audit_service: AuditService = Depends(get_audit_service),
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
-    """移除成员（需要空间管理员权限）"""
+    """将成员移出空间（角色解除、令牌保留）。"""
     result = await member_service.remove_member(
         space_id=space_id,
         operator_id=user_id,
@@ -399,7 +399,7 @@ async def leave_space(
     member_service: MemberService = Depends(get_member_service),
     audit_service: AuditService = Depends(get_audit_service),
 ):
-    """离开空间"""
+    """当前用户自愿退出空间；owner 不可自行退出。"""
     result = await member_service.leave_space(
         space_id=space_id,
         user_id=user_id,

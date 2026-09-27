@@ -118,7 +118,7 @@ class User(BaseModel):
 
     # ========== 密码验证 ==========
     def check_password(self, plain_password: str) -> bool:
-        """检查密码是否正确"""
+        """校验明文密码与存储的 Argon2 哈希是否匹配（不匹配/格式异常均 False）。"""
         return verify_password(plain_password, self.password_hash)
 
     # ========== 状态检查 ==========
@@ -138,12 +138,12 @@ class User(BaseModel):
 
     # ========== Profile 访问方法 ==========
     def get_profile_value(self, key: str, default: Any = None) -> Any:
-        """获取 profile 中的值"""
+        """按 key 读取 JSON profile 字段，缺省返回 default。"""
         profile = self.profile or {}
         return profile.get(key, default)
 
     def get_security_info(self) -> dict[str, Any]:
-        """获取安全信息"""
+        """读取 profile.security 段（强制改密标记等安全状态）。"""
         return self.get_profile_value("security", {})
 
     # ========== 登录更新 ==========

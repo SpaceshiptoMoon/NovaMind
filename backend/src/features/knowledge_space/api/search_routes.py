@@ -169,7 +169,7 @@ async def get_search_modes(
     search_service: SearchService = Depends(get_search_service),
 ):
     """
-    获取可用检索模式
+    列出该知识库当前配置下可用的检索模式。
 
     URL: GET /api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search/modes
     """

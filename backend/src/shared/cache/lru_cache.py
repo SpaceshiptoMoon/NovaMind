@@ -156,7 +156,7 @@ class LRUCache[T]:
 
     @property
     def stats(self) -> dict[str, Any]:
-        """获取缓存统计信息"""
+        """快照命中/未命中/容量/命中率统计（加锁读取，供监控暴露）。"""
         with self._lock:
             total = self._hits + self._misses
             hit_rate = self._hits / total if total > 0 else 0

@@ -153,7 +153,7 @@ async def get_chat_history(
     current_user: dict = Depends(get_current_user),
     minio_client=Depends(get_minio_client_for_presign),
 ):
-    """获取聊天历史"""
+    """分页读取 AI 对话历史（按会话隔离，含 reasoning 轨迹）。"""
     messages = await qa_service.get_session_messages(
         session_id, current_user["id"]
     )

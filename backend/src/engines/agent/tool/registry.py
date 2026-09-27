@@ -28,7 +28,7 @@ class ToolRegistry:
         self._tool_name_to_provider: dict[str, str] = {}  # tool_name -> provider_name
 
     def register(self, tool: BaseTool) -> None:
-        """注册工具"""
+        """注册工具并建 OpenAI tool 名 → 提供者的二级索引。"""
         self._tools[tool.name] = tool
         for tool_def in tool.get_tools():
             func = tool_def.get("function", {})
@@ -38,7 +38,7 @@ class ToolRegistry:
         logger.info("工具已注册", tool_name=tool.name)
 
     def get_tool(self, name: str) -> BaseTool | None:
-        """获取工具"""
+        """按提供者名取工具实例。"""
         return self._tools.get(name)
 
     def find_tool_provider(self, tool_name: str) -> BaseTool | None:

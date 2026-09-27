@@ -269,7 +269,7 @@ async def get_documents(
     document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取文档列表"""
+    """分页列出知识库内文档，支持按文件名子串模糊搜索。"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
@@ -510,7 +510,7 @@ async def delete_document(
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除文档"""
+    """软删除文档并级联清理 ES 分块/MinIO 产物；仅可写成员，落审计日志。"""
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
 
@@ -568,7 +568,7 @@ async def process_documents(
     document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """批量触发拆分解析"""
+    """对入库未解析的文档批量入队解析任务（可写成员）。"""
     await validate_kb_writable(kb_id, space_id, db)
 
     result = await document_task_service.process_kb_documents(

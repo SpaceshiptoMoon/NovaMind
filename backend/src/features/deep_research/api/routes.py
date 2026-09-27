@@ -337,7 +337,7 @@ async def list_researches(
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     status: Annotated[ResearchStatus | None, Query(description="按状态过滤")] = None,
 ):
-    """获取知识空间的研究历史列表"""
+    """分页列出空间内研究会话（含状态摘要）。"""
     space, member = validated
     space_id = space.id
     user_id = current_user["id"]

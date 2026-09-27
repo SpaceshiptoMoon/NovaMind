@@ -43,7 +43,7 @@ async def create_space(
     space_service: SpaceService = Depends(get_space_service),
     audit_service: AuditService = Depends(get_audit_service),
 ):
-    """创建知识空间"""
+    """创建知识空间；落审计日志，创建者默认 owner 角色。"""
     # 准备配置（包含描述）
     config = data.config.model_dump() if data.config else {}
 
@@ -77,7 +77,7 @@ async def get_my_spaces(
     user_id: int = Depends(get_current_user_id),
     space_service: SpaceService = Depends(get_space_service),
 ):
-    """获取我的空间列表"""
+    """分页列出当前用户所属的空间（含 total 计数）。"""
     # 使用 COUNT 查询获取总记录数
     total = await space_service.count_user_spaces(user_id)
     # 分页查询返回
@@ -137,7 +137,7 @@ async def search_spaces(
     user_id: int = Depends(get_current_user_id),
     space_service: SpaceService = Depends(get_space_service),
 ):
-    """搜索知识空间"""
+    """按关键词搜索当前用户可见的空间，分页返回。"""
     # 先获取总数
     total = await space_service.count_search_spaces(
         keyword=keyword,
@@ -169,7 +169,7 @@ async def get_space(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     validated: tuple = Depends(validate_space_access),
 ):
-    """获取空间详情"""
+    """读取单个空间详情（空间成员可见）。"""
     space, _ = validated
     return SpaceResponse.model_validate(space)
 
@@ -189,7 +189,7 @@ async def update_space(
     audit_service: AuditService = Depends(get_audit_service),
     _admin=Depends(validate_space_admin),
 ):
-    """更新空间设置"""
+    """更新空间基础设置（名称/可见性/描述），仅空间管理员。"""
     # 准备更新数据
     update_data = data.model_dump(exclude_unset=True)
 
@@ -230,7 +230,7 @@ async def delete_space(
     audit_service: AuditService = Depends(get_audit_service),
     _admin=Depends(validate_space_admin),
 ):
-    """删除知识空间"""
+    """软删除空间及其全部资源，仅 owner；落审计日志。"""
     result = await space_service.delete_space(
         space_id=space_id,
         user_id=user_id,
@@ -260,7 +260,7 @@ async def get_space_config(
     validated: tuple = Depends(validate_space_access),
     space_service: SpaceService = Depends(get_space_service),
 ):
-    """获取空间配置"""
+    """读取空间级配置（解析/切分/检索等默认参数）。"""
     space, _ = validated
 
     result = await space_service.get_config(space_id)
@@ -288,7 +288,7 @@ async def update_space_config(
     audit_service: AuditService = Depends(get_audit_service),
     _admin=Depends(validate_space_admin),
 ):
-    """部分更新空间配置（需要空间管理员权限）"""
+    """Patch 语义合并更新空间配置；非法组合在后端校验层拒绝。"""
     space = await space_service.update_config(
         space_id=space_id,
         config_updates=config_update.model_dump(exclude_unset=True),

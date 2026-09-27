@@ -54,10 +54,10 @@ class QuestionAnswer(BaseModel):
     # ========== Extra 访问方法 ==========
 
     def get_extra(self) -> dict:
-        """获取扩展信息"""
+        """读取消息扩展 JSON 段（attachments 等非核心字段的挂载点）。"""
         return self.extra or {}
 
     def get_attachments(self) -> list:
-        """获取附件信息"""
+        """读取消息挂载的附件元数据列表。"""
         return self.get_extra().get("attachments", [])
 

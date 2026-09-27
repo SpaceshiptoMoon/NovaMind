@@ -102,7 +102,7 @@ class ElasticsearchClient:
         return self._schema.index_name(space_id)
 
     async def index_exists(self, space_id: int) -> bool:
-        """检查索引是否存在"""
+        """探测空间索引是否已创建。"""
         index_name = self.generate_index_name(space_id)
         try:
             return bool(await self.es_client.indices.exists(index=index_name))
@@ -150,7 +150,7 @@ class ElasticsearchClient:
         return index_name
 
     async def delete_index(self, space_id: int) -> bool:
-        """删除空间索引"""
+        """整索引删除（危险操作：空间内全部分块一并消失）。"""
         index_name = self.generate_index_name(space_id)
         try:
             await self.es_client.indices.delete(index=index_name)
@@ -253,7 +253,7 @@ class ElasticsearchClient:
             return 0
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> dict[str, Any] | None:
-        """获取分块"""
+        """按 chunk_id 读取分块原文；不存在或异常均返回 None。"""
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.get(index=index_name, id=chunk_id)
@@ -265,7 +265,7 @@ class ElasticsearchClient:
             return None
 
     async def delete_chunk(self, space_id: int, chunk_id: str) -> bool:
-        """删除分块"""
+        """按 chunk_id 删除单个分块（异常降级返回 False）。"""
         index_name = self.generate_index_name(space_id)
         try:
             await self.es_client.delete(index=index_name, id=chunk_id)
@@ -275,7 +275,7 @@ class ElasticsearchClient:
             return False
 
     async def delete_document_chunks(self, space_id: int, document_id: int) -> int:
-        """删除文档的所有分块"""
+        """delete_by_query 清空文档全部分块，返回实际删除数。"""
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.delete_by_query(

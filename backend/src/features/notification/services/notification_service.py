@@ -114,7 +114,7 @@ class NotificationService:
         offset: int = 0,
         unread_only: bool = False,
     ) -> NotificationListResponse:
-        """获取用户通知列表"""
+        """分页读取用户通知（新→旧排列）。"""
         notifications, total = await self._repo.list_by_user(
             user_id, limit, offset, unread_only
         )
@@ -135,7 +135,7 @@ class NotificationService:
         return await self._repo.mark_all_read(user_id)
 
     async def get_unread_count(self, user_id: int) -> UnreadCountResponse:
-        """获取未读通知数"""
+        """未读计数（红点/角标数据源）。"""
         count = await self._repo.get_unread_count(user_id)
         return UnreadCountResponse(unread_count=count)
 
@@ -147,7 +147,7 @@ class NotificationService:
     async def update_preferences(
         self, user_id: int, data: dict
     ) -> NotificationPreferenceResponse:
-        """更新用户通知偏好"""
+        """合并式更新通知偏好（只覆盖传入的渠道开关）。"""
         pref = await self._pref_repo.update(user_id, data)
         return NotificationPreferenceResponse.model_validate(pref)
 
@@ -192,7 +192,7 @@ class NotificationService:
             )
 
     async def _get_user_email(self, user_id: int) -> str | None:
-        """获取用户邮箱"""
+        """跨 feature 直查 user 表取邮箱（R2 models 直查防环）。"""
         try:
             from novamind.features.user.repository.user_repository import UserRepository
             user_repo = UserRepository(self.db)

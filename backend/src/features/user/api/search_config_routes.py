@@ -74,7 +74,7 @@ async def get_search_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     service: Annotated[SearchConfigService, Depends(get_search_config_service)],
 ):
-    """获取单个搜索配置详情"""
+    """读取当前用户的单个搜索引擎配置（密钥不回显明文）。"""
     user_id = current_user["id"]
     return await service.get_config(user_id, config_id)
 
@@ -93,7 +93,7 @@ async def update_search_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     service: Annotated[SearchConfigService, Depends(get_search_config_service)],
 ):
-    """更新搜索配置"""
+    """更新搜索引擎凭证；密钥留空表示沿用原值。"""
     user_id = current_user["id"]
     return await service.update_config(user_id, config_id, data)
 
@@ -125,7 +125,7 @@ async def delete_search_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     service: Annotated[SearchConfigService, Depends(get_search_config_service)],
 ):
-    """删除搜索配置（只能删除自己的配置）"""
+    """删除搜索引擎凭证（若为主源，联网搜索回退其余配置）。"""
     user_id = current_user["id"]
     await service.delete_config(user_id, config_id)
     return UserMessageResponse(message="配置已删除")

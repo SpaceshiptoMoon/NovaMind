@@ -199,11 +199,11 @@ class ResearchSession(BaseModel):
     # ========== 状态变更方法 ==========
 
     def is_running(self) -> bool:
-        """检查是否运行中"""
+        """会话是否处于执行中（可取消窗口）。"""
         return self.status == ResearchStatus.RUNNING
 
     def is_failed(self) -> bool:
-        """检查是否失败"""
+        """会话是否以失败终态结束。"""
         return self.status == ResearchStatus.FAILED
 
     def mark_started(self) -> None:

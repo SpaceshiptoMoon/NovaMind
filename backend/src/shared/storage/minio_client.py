@@ -114,7 +114,7 @@ class MinioClient:
             return False
 
     async def create_bucket(self, bucket_name: str) -> bool:
-        """创建存储桶"""
+        """创建存储桶（幂等：已存在时跳过）。"""
         try:
             if not await self.bucket_exists(bucket_name):
                 await asyncio.to_thread(self.client.make_bucket, bucket_name)
@@ -606,7 +606,7 @@ class MinioClient:
             raise
 
     def _delete_avatar(self, bucket_name: str, user_id: int) -> None:
-        """删除用户的旧头像"""
+        """头像更新前清理旧对象，避免 MinIO 孤儿文件堆积。"""
         avatar_prefix = self._path_strategy.avatar_prefix_for_user(user_id)
         try:
             objects = self.client.list_objects(bucket_name, prefix=avatar_prefix)

@@ -63,7 +63,7 @@ async def list_knowledge_bases(
     kb_repo: KnowledgeBaseRepository = Depends(get_kb_repository),
     kb_service = Depends(get_knowledge_base_service),
 ):
-    """获取知识库列表"""
+    """分页列出空间内知识库，附每个库的文档/分块统计。"""
     knowledge_bases = await kb_repo.get_by_space(
         space_id=space_id,
         status=status,
@@ -113,7 +113,7 @@ async def get_knowledge_base(
     db: AsyncSession = Depends(get_db),
     kb_service = Depends(get_knowledge_base_service),
 ):
-    """获取知识库详情"""
+    """读取单个知识库详情（空间成员可见）。"""
     kb = await validate_kb_access(kb_id, space_id, db)
     stats = await kb_service.get_full_stats(kb_id)
     response = KnowledgeBaseResponse.model_validate(kb)
@@ -136,7 +136,7 @@ async def create_knowledge_base(
     kb_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
     audit_service: AuditService = Depends(get_audit_service),
 ):
-    """创建知识库"""
+    """在空间内创建知识库并落默认解析/切分配置。"""
     kb = await kb_service.create_knowledge_base(
         space_id=space_id,
         creator_id=user_id,
@@ -173,7 +173,7 @@ async def update_knowledge_base(
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新知识库"""
+    """更新知识库基础信息（名称/描述），可写成员。"""
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
 
@@ -218,7 +218,7 @@ async def delete_knowledge_base(
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除知识库"""
+    """软删除知识库及其文档/分块；落审计日志。"""
     # 验证知识库可写（归档知识库禁止删除，需先激活）
     kb = await validate_kb_writable(kb_id, space_id, db)
     kb_name = kb.name
@@ -257,7 +257,7 @@ async def get_knowledge_base_config(
     kb_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取知识库配置"""
+    """读取知识库级配置（覆盖空间默认值）。"""
     kb = await validate_kb_access(kb_id, space_id, db)
 
     stats = await kb_service.get_full_stats(kb_id)
@@ -285,7 +285,7 @@ async def update_knowledge_base_config(
     kb_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """部分更新知识库配置"""
+    """Patch 语义合并更新知识库配置（可写成员）。"""
     kb = await validate_kb_writable(kb_id, space_id, db)
 
     await kb_service.update_config(

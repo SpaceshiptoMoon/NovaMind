@@ -20,7 +20,7 @@ class NotificationRepository:
         self.db = db
 
     async def create(self, data: dict) -> Notification:
-        """创建通知"""
+        """写入站内通知（WS 推送由 service 层负责）。"""
         notification = Notification(**data)
         async with self.db.begin_nested():
             self.db.add(notification)
@@ -93,7 +93,7 @@ class NotificationRepository:
         return result.rowcount
 
     async def get_unread_count(self, user_id: int) -> int:
-        """获取用户未读通知数"""
+        """count 查询未读通知。"""
         stmt = (
             select(func.count())
             .select_from(Notification)
@@ -102,7 +102,7 @@ class NotificationRepository:
         return (await self.db.execute(stmt)).scalar() or 0
 
     async def delete_by_id(self, notification_id: int) -> bool:
-        """删除通知"""
+        """物理删除单条通知。"""
         notification = await self.get_by_id(notification_id)
         if notification:
             async with self.db.begin_nested():
@@ -138,14 +138,14 @@ class NotificationPreferenceRepository:
         return pref
 
     async def get_or_create(self, user_id: int) -> NotificationPreference:
-        """获取或创建用户偏好"""
+        """惰性创建偏好行（首读即落默认值）。"""
         pref = await self.get_by_user_id(user_id)
         if pref is None:
             pref = await self.create_default(user_id)
         return pref
 
     async def update(self, user_id: int, data: dict) -> NotificationPreference | None:
-        """更新用户偏好"""
+        """整行覆盖式更新偏好配置。"""
         pref = await self.get_or_create(user_id)
         async with self.db.begin_nested():
             for key, value in data.items():

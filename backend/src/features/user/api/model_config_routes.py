@@ -140,7 +140,7 @@ async def get_model_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     model_config_service: Annotated[ModelConfigService, Depends(get_model_config_service)],
 ):
-    """获取单个配置详情"""
+    """读取当前用户的单个模型客户端配置（密钥字段不回显明文）。"""
     user_id = current_user["id"]
     return await model_config_service.get_config(user_id, config_id)
 
@@ -159,7 +159,7 @@ async def update_model_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     model_config_service: Annotated[ModelConfigService, Depends(get_model_config_service)],
 ):
-    """更新模型配置"""
+    """更新模型客户端配置；密钥留空表示沿用原值。"""
     user_id = current_user["id"]
     return await model_config_service.update_config(user_id, config_id, config_data)
 
@@ -176,7 +176,7 @@ async def delete_model_config(
     current_user: Annotated[dict, Depends(require_active_user)],
     model_config_service: Annotated[ModelConfigService, Depends(get_model_config_service)],
 ):
-    """删除模型配置"""
+    """删除模型客户端配置（引用它的会话/解析路径将无法再调用该模型）。"""
     user_id = current_user["id"]
 
     deleted, impacts = await model_config_service.delete_config_with_check(user_id, config_id)
