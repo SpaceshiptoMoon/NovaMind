@@ -15133,7 +15133,7 @@
     },
     "/api/v1/ai-chat/health": {
       "get": {
-        "description": "AI对话服务健康检查端点",
+        "description": "AI对话服务健康检查端点（可选认证：匿名可探活，携带有效 token 识别用户）",
         "operationId": "health_check_api_v1_ai_chat_health_get",
         "responses": {
           "200": {
@@ -15147,6 +15147,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "健康检查",
         "tags": [
           "AI 聊天"

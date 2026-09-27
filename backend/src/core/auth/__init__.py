@@ -10,14 +10,12 @@ from novamind.core.auth.dependencies import (
     get_current_user_optional,
     get_user_status_resolver,
     require_active_user,
-    require_admin,
 )
 from novamind.core.auth.token import TokenClaims
 
 __all__ = [
     "get_current_user",
     "get_current_user_optional",
-    "require_admin",
     "require_active_user",
     "get_user_status_resolver",
     "TokenClaims",

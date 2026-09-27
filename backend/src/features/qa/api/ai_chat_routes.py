@@ -17,7 +17,11 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import Response, StreamingResponse
-from novamind.core.auth import get_current_user, get_user_status_resolver
+from novamind.core.auth import (
+    get_current_user,
+    get_current_user_optional,
+    get_user_status_resolver,
+)
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.ws import run_stream_to_ws
 from novamind.features.qa.api.constants import (
@@ -257,10 +261,12 @@ async def download_chat_attachment(
     "/health",
     response_model=HealthCheckResponse,
     summary="健康检查",
-    description="AI对话服务健康检查端点",
+    description="AI对话服务健康检查端点（可选认证：匿名可探活，携带有效 token 识别用户）",
 )
-async def health_check():
-    """健康检查端点"""
+async def health_check(
+    current_user: dict | None = Depends(get_current_user_optional),
+):
+    """健康检查端点。探活用匿名放行；与其它业务端点统一走认证依赖链。"""
     return HealthCheckResponse(status="healthy", message="AI chat service is running")
 
 

@@ -15,9 +15,8 @@ CancelledError 直接打入 generator 帧——对 AsyncOpenAI/httpx 流等价�
 """
 
 import asyncio
-import time
 from collections.abc import AsyncGenerator, AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from novamind.shared.ai_models.base_model import StreamChunk
 from novamind.shared.logging import get_logger

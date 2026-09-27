@@ -130,8 +130,12 @@ class DocumentUploadService:
                 modality_limit = self._MODALITY_MAX_SIZE_MB.get(_mod, 100)
                 break
 
-        # 5. 验证文件（使用 python-magic 检测真实 MIME 类型），按模态传大小上限
-        file_info = validate_file(
+        # 5. 验证文件（使用 python-magic 检测真实 MIME 类型），按模态传大小上限。
+        #    校验入线程池：python-magic + zip 容器解析是 CPU/IO 同步操作，
+        #    且 upload_document 位于 API 请求路径（嵌入式 worker 与 API 共享
+        #    事件循环，同步阻塞会卡住全部并发请求——评审 P2-2）。
+        file_info = await asyncio.to_thread(
+            validate_file,
             content=file_content,
             filename=filename,
             allowed_extensions=allowed_types,

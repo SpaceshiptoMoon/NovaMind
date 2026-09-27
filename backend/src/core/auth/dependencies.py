@@ -1,6 +1,6 @@
 """FastAPI 认证依赖项（归 core/auth）。
 
-``get_current_user`` / ``get_current_user_optional`` / ``require_admin`` /
+``get_current_user`` / ``get_current_user_optional`` / ``require_active_user`` /
 ``require_active_user`` 原住 ``features/user/api/auth.py``，被 9 个 feature 跨
 feature 直连 import。归位 core/auth 后切断了 feature 对 user 内部的直接依赖：
 认证是横切基础设施，本属 core。
@@ -27,7 +27,6 @@ from novamind.core.auth.exceptions import (
     PasswordChangeRequiredError,
 )
 from novamind.core.auth.token import decode_access_token
-from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.database.database import get_db
 from novamind.core.middleware.manifest import API_V1_PREFIX
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +34,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 if TYPE_CHECKING:
     from novamind.features.user.services.user_service import UserService
 
-security = HTTPBearer()
+# 必选认证 bearer：缺 Authorization 头时抛 401（AuthenticationError 语义）。
+# auto_error=True 的 FastAPI 默认行为是 403，与认证失败的 401 语义不一致
+# （前端按 401 触发静默刷新/跳登录），改为 auto_error=False + 显式抛错。
+security = HTTPBearer(auto_error=False)
 # 可选认证 bearer：缺 token 不报错（由依赖自行决定匿名放行）
 _optional_security = HTTPBearer(auto_error=False)
 
@@ -135,7 +137,7 @@ async def _resolve_user_from_token(
 
 async def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     resolver=Depends(get_user_status_resolver),
 ) -> dict:
     """获取当前用户（带数据库状态验证）。
@@ -147,6 +149,9 @@ async def get_current_user(
         AuthenticationError/AuthorizationError: 认证授权失败
         PasswordChangeRequiredError: 强制改密状态访问非豁免端点
     """
+    if credentials is None:
+        # 缺 Authorization 头：401（而非 FastAPI HTTPBearer 默认的 403）
+        raise AuthenticationError("缺少认证凭证")
     user = await _resolve_user_from_token(
         credentials.credentials, resolver,
         enforce_password_change=True, request=request,
@@ -172,13 +177,6 @@ async def get_current_user_optional(
     return await _resolve_user_from_token(credentials.credentials, resolver)
 
 
-def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """管理员权限检查（仅 role_code 为 'admin' 的用户）。"""
-    if current_user.get("role_code") != "admin":
-        raise PermissionDeniedError(message="需要管理员权限")
-    return current_user
-
-
 def require_active_user(current_user: dict = Depends(get_current_user)) -> dict:
     """活跃用户检查（状态检查已在 get_current_user 中完成）。
 
@@ -190,7 +188,6 @@ def require_active_user(current_user: dict = Depends(get_current_user)) -> dict:
 __all__ = [
     "get_current_user",
     "get_current_user_optional",
-    "require_admin",
     "require_active_user",
     "get_user_status_resolver",
 ]

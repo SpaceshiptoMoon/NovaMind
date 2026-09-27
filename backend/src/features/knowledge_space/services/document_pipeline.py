@@ -17,6 +17,7 @@
 对 ``media_processing`` 的调用（视频/音频/语义切分）保持延迟导入，避免顶层循环 import。
 """
 
+import asyncio
 import re
 import tempfile
 from pathlib import Path
@@ -213,9 +214,13 @@ async def execute_document_pipeline(
     kb_config = ctx.pipeline_config
     splitting_config = kb_config.get("splitting", {})
     suffix = f".{document.file_type}"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(file_content)
-        tmp_path = tmp.name
+    # 写盘入线程池：嵌入式 worker 与 API 共享事件循环，最大 100MB 的同步写
+    # 会卡住全部并发请求（评审 P2-2）。
+    def _write_tmp() -> str:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_content)
+            return tmp.name
+    tmp_path = await asyncio.to_thread(_write_tmp)
 
     # 断点续跑：解析指纹匹配即复用快照，跳过昂贵解析（VLM/OCR 可能已付费成功）。
     # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。

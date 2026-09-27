@@ -241,10 +241,10 @@ async def process_document_task(
                     )
 
                 try:
-                    from novamind.shared.storage.client_factory import ClientFactory
                     from novamind.features.knowledge_space.exceptions import (
                         PermanentProcessingError,
                     )
+                    from novamind.shared.storage.client_factory import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()
                     await es_client.delete_document_chunks(
                         space_id=space_id,

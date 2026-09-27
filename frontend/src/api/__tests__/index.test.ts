@@ -230,7 +230,9 @@ describe('api/index', () => {
       response: { status: 401 },
     }
 
-    await expect(responseErrorHandler?.(error)).rejects.toBe(error)
+    // 953872a：刷新失败后 reject 的是 refreshError（真实失败原因），
+    // 而非原请求 error——调用方能感知刷新失败的根因
+    await expect(responseErrorHandler?.(error)).rejects.toThrow('refresh failed')
     expect(tokenManager.getToken()).toBeNull()
     expect(tokenManager.getRefreshToken()).toBeNull()
     expect(window.location.href).toBe('/login')

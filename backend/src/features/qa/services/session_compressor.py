@@ -82,11 +82,22 @@ class TextCompressor:
         new_messages: list[dict[str, Any]],
         target_tokens: int = 500,
     ) -> CompressionResult:
+        """增量压缩：把新消息融合进旧摘要。
+
+        有 LLM 时走 ``qa_compression_merge`` 模板做融合摘要（摘要长度有界，
+        不会随轮次无界膨胀）；LLM 缺席（纯本地降级）时退回字符串拼接，此时
+        调用方应注意拼接结果的 token 会随新消息增长。
+        """
         existing = base_summary.strip()
         summary = existing
         if new_messages:
             added_text = "\n".join(self._message_text(msg) for msg in new_messages)
-            summary = f"{existing}\n{added_text}".strip() if existing else added_text
+            if existing and self.llm_client is not None:
+                summary = await self._merge_summary(
+                    existing, added_text, target_tokens=target_tokens,
+                )
+            else:
+                summary = f"{existing}\n{added_text}".strip() if existing else added_text
         compressed_tokens = self.token_counter.count_tokens(summary)
         original_tokens = self._messages_tokens(new_messages)
         return CompressionResult(
@@ -96,6 +107,36 @@ class TextCompressor:
             kept_messages=list(new_messages),
             compression_ratio=(compressed_tokens / max(original_tokens, 1)),
         )
+
+    async def _merge_summary(
+        self, existing_summary: str, new_text: str, *, target_tokens: int = 500,
+    ) -> str:
+        """LLM 融合摘要：新消息并入旧摘要，输出长度受 target_tokens 约束。
+
+        LLM 调用失败时降级为拼接（宁可摘要偏长也不丢上下文），由调用方的
+        超阈值重压路径兜底收敛。
+        """
+        try:
+            prompt = PromptManager.format_prompt(
+                "qa_compression_merge",
+                target_tokens=target_tokens,
+            )
+            merged = await self.llm_client.generate_text(
+                prompt=(
+                    f"{prompt}\n\n"
+                    f"## EXISTING SUMMARY\n{existing_summary}\n\n"
+                    f"## NEW MESSAGES\n{new_text}"
+                ),
+                max_tokens=max(256, min(target_tokens, 1024)),
+            )
+            if merged and merged.strip():
+                return merged.strip()
+        except Exception as merge_err:
+            self.logger.warning(
+                "增量摘要 LLM 融合失败，降级为拼接",
+                error=str(merge_err),
+            )
+        return f"{existing_summary}\n{new_text}".strip()
 
     async def compress_with_strategy(
         self,

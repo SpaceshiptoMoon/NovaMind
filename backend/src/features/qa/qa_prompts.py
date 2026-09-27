@@ -24,6 +24,22 @@ TEMPLATES = {
         "- Output the summary directly with no prefix, greeting, or explanation"
     ),
 
+    # 增量压缩：旧摘要已存在时，把新消息融合进旧摘要而非全量重压（省 token 且连贯）。
+    # 与 qa_compression_summary 的区别：明确给出已有摘要，要求融合而非重述。
+    "qa_compression_merge": (
+        "You are updating an existing conversation summary with new messages from the same conversation.\n\n"
+        "## Task\n"
+        "Merge the NEW MESSAGES into the EXISTING SUMMARY, producing one updated summary.\n"
+        "Do not restate the existing summary verbatim — integrate its key points and add "
+        "whatever the new messages contribute. Drop duplicated or superseded details.\n\n"
+        "## Requirements\n"
+        "- Keep the same structure and language as the existing summary\n"
+        "- If the merged result would exceed ~{target_tokens} tokens, compress aggressively: "
+        "collapse older, less relevant detail first; keep recent topics and pending actions\n"
+        "- NEVER include API keys, passwords, tokens, or credentials — replace with [REDACTED]\n"
+        "- Output the updated summary directly with no prefix, greeting, or explanation"
+    ),
+
     "qa_ai_chat_system": (
         "You are an intelligent AI assistant. You are helpful, knowledgeable, and direct.\n\n"
         "Behavioral guidelines:\n"

@@ -719,7 +719,11 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         "novamind.features.knowledge_space.services.pipeline_steps.generate_embeddings",
         AsyncMock(return_value=[None]),
     )
-    fake_es_client = SimpleNamespace(bulk_index_chunks=AsyncMock(return_value=1))
+    # delete-before-write 失败会中止索引（可重试），桩必须可 await 且成功
+    fake_es_client = SimpleNamespace(
+        bulk_index_chunks=AsyncMock(return_value=1),
+        delete_document_chunks=AsyncMock(return_value=None),
+    )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.pipeline_steps.get_es_client",
         AsyncMock(return_value=fake_es_client),

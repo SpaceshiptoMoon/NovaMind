@@ -130,6 +130,8 @@ def _tail_patches(minio, split_mock, embed_mock):
     """tail 全部外部依赖的 patch 集合。"""
     es_client = MagicMock()
     es_client.bulk_index_chunks = AsyncMock(return_value=3)
+    # delete-before-write 失败会中止索引（可重试），桩必须可 await 且成功
+    es_client.delete_document_chunks = AsyncMock(return_value=None)
     return [
         patch(
             "novamind.shared.storage.client_factory.ClientFactory", _FakeCF,
@@ -183,6 +185,8 @@ def _do_run(document, task, session, *, parse_fp, minio,
 
     es_client = MagicMock()
     es_client.bulk_index_chunks = AsyncMock(return_value=es_indexed)
+    # delete-before-write 失败会中止索引（可重试），桩必须可 await 且成功
+    es_client.delete_document_chunks = AsyncMock(return_value=None)
 
     _FakeCF.minio = minio
 

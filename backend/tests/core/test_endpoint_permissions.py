@@ -91,6 +91,13 @@ def _make_app(
     app.add_exception_handler(
         PermissionDeniedError, create_error_handler(403, "权限不足")
     )
+    # get_current_user 缺 Authorization 头时显式抛 401（此前由 HTTPBearer
+    # auto_error 转 403，语义修复后需注册 AuthenticationError handler）
+    from novamind.core.auth.exceptions import AuthenticationError
+
+    app.add_exception_handler(
+        AuthenticationError, create_error_handler(401, "未认证")
+    )
 
     if override_current_user:
         app.dependency_overrides[get_current_user] = lambda: {
