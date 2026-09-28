@@ -66,6 +66,11 @@ async def run_stream_to_ws(
             await send(event)
     except WebSocketDisconnect:
         pass
+    except OSError:
+        # 客户端 TCP 猝死（移动端切网、无 close frame）时 uvicorn 的 send 抛
+        # ClientDisconnected（OSError 子类，非 WebSocketDisconnect）——同为断连
+        # 语义，静默退出；finally 的 aclose 照常触发 generator 内清理
+        pass
     finally:
         await event_gen.aclose()
 

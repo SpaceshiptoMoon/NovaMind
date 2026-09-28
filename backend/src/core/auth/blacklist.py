@@ -1,6 +1,10 @@
 """Token / 用户级黑名单查询原语（认证基础设施，归 core/auth）。
 
 只依赖 shared 缓存客户端，不 import 任何 feature / ORM；用户级黑名单检查 fail-close——Redis 异常时按拒绝处理。
+
+注意：必须走 ``_raw_redis()`` 拿裸 redis-py 客户端，不能用 ``RedisCache`` 的
+包装方法——后者的 get/exists 内部吞 ``RedisError`` 返回 None/0（缓存降级语义），
+会让本模块的 fail-close/Raise 承诺在「Redis 运行中掉线」场景整体失效。
 """
 from __future__ import annotations
 
@@ -22,6 +26,29 @@ class AuthBlacklistError(Exception):
     """黑名单访问异常（core/auth 级，user 层转发时包装为业务异常）。"""
 
 
+async def get_raw_redis():
+    """取裸 redis-py 异步客户端（绕过 RedisCache 吞异常的包装层）。
+
+    黑名单读/写路径统一经由本函数：RedisCache 的 set/get/exists/scan_iter 在
+    Redis 异常时静默降级（返回 False/None/0），会让「撤销失败必须报错」与
+    「fail-close」语义失效。缓存类消费方继续用 RedisCache 包装，安全类消费方用裸客户端。
+
+    Returns:
+        redis.asyncio.Redis 实例；未连接时先触发一次 connect。
+
+    Raises:
+        Exception: Redis 无法连接时原样上抛（由调用方决定 fail 方向）。
+    """
+    cache = await get_redis_client()
+    if not cache.redis_client:
+        await cache.connect()
+    return cache.redis_client
+
+
+# 兼容别名：模块内部历史命名
+_raw_redis = get_raw_redis
+
+
 async def is_token_revoked(jti: str) -> bool:
     """检查 token jti 是否已被撤销（在 token 级黑名单中）。
 
@@ -37,7 +64,7 @@ async def is_token_revoked(jti: str) -> bool:
     if not jti:
         return False
     try:
-        redis_client = await get_redis_client()
+        redis_client = await _raw_redis()
         cache_key = f"{TOKEN_BLACKLIST_PREFIX}{jti}"
         result = await redis_client.exists(cache_key)
         return result > 0
@@ -57,7 +84,7 @@ async def is_user_blacklisted(user_id: int, token_iat: int | None = None) -> boo
     安全策略：fail-close——Redis 异常时返回 True（拒绝访问）。
     """
     try:
-        redis_client = await get_redis_client()
+        redis_client = await _raw_redis()
         key = f"{USER_BLACKLIST_PREFIX}{user_id}"
         result = await redis_client.get(key)
         if result is None:
@@ -81,6 +108,7 @@ __all__ = [
     "USER_BLACKLIST_PREFIX",
     "BLACKLIST_DEFAULT_TTL",
     "AuthBlacklistError",
+    "get_raw_redis",
     "is_token_revoked",
     "is_user_blacklisted",
 ]

@@ -135,5 +135,9 @@ async def notification_ws(
                 await send_event(websocket, envelope("pong", {}))
     except WebSocketDisconnect:
         pass
+    except OSError:
+        # TCP 猝死时 send 抛 ClientDisconnected（OSError 子类，非 WebSocketDisconnect）：
+        # 同为断连语义，静默退出，finally 清理照常
+        pass
     finally:
         await ws_manager.disconnect(user_id, websocket)

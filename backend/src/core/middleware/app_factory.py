@@ -82,7 +82,12 @@ def _add_middleware(app: FastAPI, config):
     # 1. Trace ID 中间件（最后添加，最先执行）
     app.add_middleware(TraceIDMiddleware)
 
-    # 2. CORS 中间件
+    # 2. 应用门禁中间件：先于 CORS 添加（add_middleware 是 insert(0)，后添加的在
+    #    更外层），CORS 成为最外层后，AppGate 的 403 短路响应回程会经过 CORS、
+    #    带上 CORS 头，前端拦截器能正常读取错误体
+    app.add_middleware(AppGateMiddleware)
+
+    # 3. CORS 中间件（最后添加 → 最外层，包裹包括 AppGate 403 在内的全部响应）
     cors_origins = _get_cors_origins(config)
 
     # 安全检查：通配符与 credentials 组合不安全
@@ -113,10 +118,6 @@ def _add_middleware(app: FastAPI, config):
         expose_headers=["X-Request-ID", "X-Trace-ID"],
         max_age=600,
     )
-
-    # 3. 应用门禁中间件（CORS 之后添加 → 先于 CORS 执行、被 CORS 响应包裹：
-    #    403 拒绝响应也会带上 CORS 头，前端拦截器能正常读取错误体）
-    app.add_middleware(AppGateMiddleware)
 
 
 def _register_routes(app: FastAPI, router_manager: RouterManager):

@@ -389,10 +389,13 @@ class AuthService:
         ttl = expires_seconds or cls.BLACKLIST_DEFAULT_TTL
 
         try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
+            # 裸客户端：RedisCache.set 吞 RedisError 返回 False（缓存降级语义），
+            # 撤销失败必须报错而非静默成功
+            from novamind.core.auth.blacklist import get_raw_redis
+
+            raw_client = await get_raw_redis()
             cache_key = f"{cls.TOKEN_BLACKLIST_PREFIX}{jti}"
-            await redis_client.set(cache_key, "1", expire=ttl)
+            await raw_client.setex(cache_key, ttl, "1")
             cls._logger.debug("Token 已撤销", jti=jti[:8] + "...")
         except Exception as e:
             cls._logger.error("撤销 Token 失败", jti=jti[:8] + "...", error=str(e))
@@ -451,15 +454,19 @@ class AuthService:
             int: 撤销的 token 数量
         """
         try:
-            get_redis = cls._get_redis_client()
-            redis_cache = await get_redis()
+            # 裸客户端：scan_iter 在 RedisCache 包装下吞 RedisError 静默返回空，
+            # 会让「撤销全部会话」在 Redis 故障时假成功
+            from novamind.core.auth.blacklist import get_raw_redis
+
+            raw_client = await get_raw_redis()
             pattern = f"{cls.USER_TOKENS_PREFIX}{user_id}:*"
 
-            # 第一步：收集所有匹配的 key
+            # 第一步：收集所有匹配的 key（裸客户端 decode_responses=False，键为 bytes）
             jtis = []
             keys_to_delete = []
-            async for key in redis_cache.scan_iter(match=pattern, count=100):
-                jti = key.split(":")[-1]
+            async for key in raw_client.scan_iter(match=pattern, count=100):
+                key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+                jti = key_str.split(":")[-1]
                 jtis.append(jti)
                 keys_to_delete.append(key)
 
@@ -468,7 +475,6 @@ class AuthService:
 
             # 第二步：使用 Pipeline 批量 SET 黑名单
             ttl = cls.BLACKLIST_DEFAULT_TTL
-            raw_client = redis_cache.redis_client
             async with raw_client.pipeline(transaction=False) as pipe:
                 for jti in jtis:
                     blacklist_key = f"{cls.TOKEN_BLACKLIST_PREFIX}{jti}"
@@ -476,7 +482,7 @@ class AuthService:
                 await pipe.execute()
 
             # 第三步：批量删除匹配的 key
-            await redis_cache.delete(*keys_to_delete)
+            await raw_client.delete(*keys_to_delete)
 
             cls._logger.info("已撤销用户所有会话", user_id=user_id, count=len(jtis))
             return len(jtis)
@@ -497,10 +503,12 @@ class AuthService:
             ttl: 过期时间（秒）
         """
         try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
+            # 裸客户端：写记录失败必须报错（RedisCache.set 静默降级返回 False）
+            from novamind.core.auth.blacklist import get_raw_redis
+
+            raw_client = await get_raw_redis()
             key = f"{cls.USER_TOKENS_PREFIX}{user_id}:{jti}"
-            await redis_client.set(key, "1", expire=ttl)
+            await raw_client.setex(key, ttl, "1")
         except Exception as e:
             cls._logger.error("添加用户 token 记录失败", user_id=user_id, error=str(e))
             raise TokenInvalidError(f"添加用户 token 记录失败: {str(e)}")
@@ -521,11 +529,14 @@ class AuthService:
             user_id: 用户 ID
         """
         try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
+            # 裸客户端：黑名单写入失败必须报错（停用/删除用户时写失败被吞
+            # 等于没拉黑，全部存量 token 继续有效）
+            from novamind.core.auth.blacklist import get_raw_redis
+
+            raw_client = await get_raw_redis()
             key = f"{cls.USER_BLACKLIST_PREFIX}{user_id}"
             # 存储黑名单时间戳，过期时间与 Refresh Token 最长有效期一致（7天）
-            await redis_client.set(key, str(int(time.time())), expire=cls.BLACKLIST_DEFAULT_TTL)
+            await raw_client.setex(key, cls.BLACKLIST_DEFAULT_TTL, str(int(time.time())))
             cls._logger.info("已将用户所有 Token 纳入黑名单", user_id=user_id)
         except Exception as e:
             cls._logger.error("用户级 Token 黑名单设置失败", user_id=user_id, error=str(e))
@@ -540,10 +551,12 @@ class AuthService:
             user_id: 用户 ID
         """
         try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
+            # 裸客户端：清除失败必须报错（RedisCache.delete 静默降级返回 0）
+            from novamind.core.auth.blacklist import get_raw_redis
+
+            raw_client = await get_raw_redis()
             key = f"{cls.USER_BLACKLIST_PREFIX}{user_id}"
-            await redis_client.delete(key)
+            await raw_client.delete(key)
             cls._logger.info("已清除用户级黑名单", user_id=user_id)
         except Exception as e:
             cls._logger.error("清除用户级黑名单失败", user_id=user_id, error=str(e))

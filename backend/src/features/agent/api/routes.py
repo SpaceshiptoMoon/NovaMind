@@ -175,7 +175,8 @@ async def chat_ws(
 
     try:
         msg = await websocket.receive_json()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, OSError):
+        # OSError 兜 TCP 猝死：uvicorn send/receive 抛 ClientDisconnected（OSError 子类）
         return
 
     if not isinstance(msg, dict) or msg.get("action") != "chat":
@@ -226,7 +227,7 @@ async def chat_ws(
         while True:
             try:
                 msg = await websocket.receive_json()
-            except WebSocketDisconnect:
+            except (WebSocketDisconnect, OSError):
                 break
             if isinstance(msg, dict) and msg.get("action") == "approval":
                 registry.resolve(

@@ -175,8 +175,14 @@ class AppLifespanManager:
         self.logger.info("检查 Redis 配置", enabled=config.redis.enabled)
 
         if not config.redis.enabled:
-            self.logger.info("Redis 缓存已禁用")
-            return
+            # JWT 黑名单（token 级 + 用户级）硬依赖 Redis：禁用后 fail-close 会把
+            # 所有合法请求拒成 401/500。与其让配置错误表现为启动「成功」后全员
+            # 认证失败（排障成本极高），不如启动期直接失败并说明原因。
+            raise RuntimeError(
+                "redis.enabled=false 与认证体系不兼容：JWT 黑名单硬依赖 Redis，"
+                "禁用后所有认证请求将失败。请启用 Redis 或在配置层显式接受该约束"
+                "（当前无 Redis-free 认证实现）。"
+            )
 
         try:
             self.logger.info(

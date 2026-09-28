@@ -77,6 +77,12 @@ def get_limiter() -> Limiter:
                     default_limits=["100/minute"],
                     storage_uri=_get_rate_limit_storage_uri(),
                     storage_options=_get_rate_limit_storage_options(),
+                    # Redis 存储故障时降级进程内存而非全站 429：slowapi 默认
+                    # 存储异常直接 re-raise，Redis 掉线会让所有请求先挂 5s
+                    # socket_timeout 再全部 429，与 health_check 把 Redis 标为
+                    # 非关键组件的语义矛盾。代价：降级窗口内限流计数不跨实例共享。
+                    in_memory_fallback_enabled=True,
+                    in_memory_fallback=["100/minute"],
                 )
     return _limiter
 
