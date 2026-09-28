@@ -29,18 +29,34 @@ class McpServerService:
         self.repo = McpServerRepository(db)
         self.mcp_manager = mcp_client_manager
 
+    # stdio 传输会在后端主机上执行任意本地命令（等价 shell），多用户生产环境
+    # 下属管理员专属能力；HTTP 传输已有 SSRF 防护（StreamableHttpConfig.validate_url），
+    # 防护必须对称。门禁在 service 层统一施加，create/test/update 三条路径共用。
+    def _ensure_stdio_admin(self, transport_type: str, *, is_admin: bool) -> None:
+        """stdio 传输可执行任意本地命令，属管理员专属能力，非管理员抛 McpServerError。"""
+        if transport_type == "stdio" and not is_admin:
+            raise McpServerError(
+                message="注册/测试/更新 stdio 类型 MCP 服务器需要管理员权限",
+                code="MCP_SERVER_ADMIN_REQUIRED",
+            )
+
     async def create_server(
-        self, user_id: int | None, data: McpServerCreate
+        self, user_id: int | None, data: McpServerCreate, *, is_admin: bool = False
     ) -> McpServerResponse:
         """落库 MCP 服务器配置并提交；enabled 时自动连接，连接失败仅告警不回滚。
 
         Args:
             user_id: 属主用户 ID，None 表示系统级预置服务器。
             data: 创建参数（名称/传输类型/连接配置/enabled 等）；connection_config 已由 schema 层完成加密。
+            is_admin: 是否管理员；stdio 传输须为 True，默认 False。
 
         Returns:
             新建服务器的详情响应（status 反映自动连接结果）。
+
+        Raises:
+            McpServerError: 非管理员注册 stdio 传输类型。
         """
+        self._ensure_stdio_admin(data.transport_type, is_admin=is_admin)
         server = await self.repo.create(
             user_id=user_id,
             name=data.name,
@@ -103,11 +119,23 @@ class McpServerService:
             更新后的详情响应。
 
         Raises:
-            McpServerError: 系统级服务器非管理员操作。
+            McpServerError: 系统级服务器非管理员操作，或非管理员新建/修改 stdio 传输。
             McpServerNotFoundError: 不存在或私有服务器非属主。
         """
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         update_data = data.model_dump(exclude_unset=True)
+
+        # stdio 门禁：改 transport_type 为 stdio、或对既有 stdio server 换 connection_config
+        # （等价改写要执行的本地命令），均需管理员
+        if not is_admin:
+            new_transport = update_data.get("transport_type", server.transport_type)
+            if new_transport == "stdio" and (
+                new_transport != server.transport_type or "connection_config" in update_data
+            ):
+                raise McpServerError(
+                    message="注册/测试/更新 stdio 类型 MCP 服务器需要管理员权限",
+                    code="MCP_SERVER_ADMIN_REQUIRED",
+                )
 
         # 如果连接配置变更，需要重连
         need_reconnect = (
@@ -224,15 +252,23 @@ class McpServerService:
         await self.db.commit()
         return tools
 
-    async def test_connection(self, data: McpServerCreate) -> dict:
+    async def test_connection(
+        self, data: McpServerCreate, *, is_admin: bool = False
+    ) -> dict:
         """测试 MCP 连接（不保存）。
 
         Args:
             data: 待测试的连接参数（传输类型/连接配置），仅临时建连不断言归属。
+            is_admin: 是否管理员；stdio 传输须为 True，默认 False。
 
         Returns:
             success=True 时附 tools_count 与工具名列表；失败时 success=False 并带提示。
+
+        Raises:
+            McpServerError: 非管理员测试 stdio 传输类型。
         """
+        # test-connection 不落库即可建连，必须与 create 走同一门禁，防止绕过注册直接执行命令
+        self._ensure_stdio_admin(data.transport_type, is_admin=is_admin)
         try:
             config = McpConnectionConfig.from_db_config(
                 data.transport_type, data.connection_config

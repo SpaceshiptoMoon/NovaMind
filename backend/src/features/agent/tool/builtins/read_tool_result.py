@@ -91,6 +91,18 @@ class ReadToolResultTool(BaseTool):
         if not tc:
             return json.dumps({"error": f"未找到工具调用记录: {tc_id}"})
 
+        # 归属校验：工具调用必须属于当前用户自己的会话（agent_tool_calls.id 自增可枚举，
+        # 无归属校验时用户 A 可借自家 agent 枚举读取他人会话的完整工具结果）。
+        # 越权与未找到同文案，防 ID 枚举探测。
+        from novamind.features.agent.models.session import AgentSession
+
+        sess_result = await db.execute(
+            select(AgentSession).where(AgentSession.id == tc.conversation_id)
+        )
+        session_row = sess_result.scalar_one_or_none()
+        if not session_row or session_row.user_id != context.get("user_id"):
+            return json.dumps({"error": f"未找到工具调用记录: {tc_id}"})
+
         content = tc.result or "(空结果)"
         total_length = len(content)
 

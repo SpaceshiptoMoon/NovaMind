@@ -349,9 +349,10 @@ async def get_system_prompt(
 async def create_mcp_server(
     data: McpServerCreate,
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: McpServerService = Depends(get_mcp_server_service),
 ):
-    return await service.create_server(user_id, data)
+    return await service.create_server(user_id, data, is_admin=_is_admin(current_user))
 
 
 @router.get(
@@ -454,9 +455,10 @@ async def refresh_mcp_tools(
 async def test_mcp_connection(
     data: McpServerCreate,
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: McpServerService = Depends(get_mcp_server_service),
 ):
-    return await service.test_connection(data)
+    return await service.test_connection(data, is_admin=_is_admin(current_user))
 
 
 # ==================== 工具管理 ====================
