@@ -42,12 +42,19 @@ def normalize_video_for_frame_extraction(source_path: str) -> str:
         output_path,
     ]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # timeout 兜底：畸形/超长视频可让 ffmpeg 无限挂起 to_thread 线程；
+    # 超时按转换失败处理（对照 doc_converter 的 120s 先例，归一化耗时更长取 600s）
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        Path(output_path).unlink(missing_ok=True)
+        raise VideoNormalizationError(f"ffmpeg 归一化超时（600s）：{Path(input_path).name}")
     if result.returncode != 0 or not Path(output_path).exists() or Path(output_path).stat().st_size == 0:
         Path(output_path).unlink(missing_ok=True)
         stderr = (result.stderr or "").strip()

@@ -223,6 +223,28 @@ class SessionRepository:
         )
         await self.session.flush()
 
+    async def increment_stats(self, conversation_id: int, tokens: int) -> None:
+        """原子累加会话消息数与 token 用量（SQL 侧表达式自增，flush 不 commit）。
+
+        读-改-写两步在并发消息（同会话多标签页）下丢更新，必须走 SQL 表达式。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            tokens: 本次新增 token 数。
+
+        Returns:
+            无。
+        """
+        await self.session.execute(
+            update(AgentSession)
+            .where(AgentSession.id == conversation_id)
+            .values(
+                message_count=AgentSession.message_count + 1,
+                total_tokens_used=AgentSession.total_tokens_used + tokens,
+            )
+        )
+        await self.session.flush()
+
     async def delete(self, session_id: str, user_id: int) -> bool:
         """软删会话（status=deleted），须同时匹配 session_id 与 user_id，返回是否命中。
 

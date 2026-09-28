@@ -312,11 +312,12 @@ class WikiPageService:
         return issue
 
     async def update_issue_status(
-        self, *, issue_id: str, status: str
+        self, *, kb_id: int, issue_id: str, status: str
     ):
         """流转问题状态（pending/ignored/resolved 映射到对应方法），非法状态抛参数错误。
 
         Args:
+            kb_id: 问题所属知识库 ID，用于归属校验（裸 UUID 直查可跨空间改写他人 issue）。
             issue_id: 问题 UUID。
             status: 目标状态：pending/ignored/resolved。
 
@@ -334,7 +335,7 @@ class WikiPageService:
 
         repo = WikiIssueRepository(self.db)
         issue = await repo.get_by_id(issue_id)
-        if not issue:
+        if not issue or issue.kb_id != kb_id:
             raise KnowledgeSpaceError(
                 "问题 " + issue_id + " 不存在", code="WIKI_ISSUE_NOT_FOUND"
             )

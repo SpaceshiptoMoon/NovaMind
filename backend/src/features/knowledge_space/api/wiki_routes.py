@@ -443,5 +443,5 @@ async def update_issue_status(
 
     await get_kb_or_fail(db, kb_id, space_id)
     return await WikiPageService(db).update_issue_status(
-        issue_id=issue_id, status=body.status
+        kb_id=kb_id, issue_id=issue_id, status=body.status
     )

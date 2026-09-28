@@ -101,8 +101,10 @@ def _convert_doc_to_docx_sync(file_bytes: bytes, filename: str) -> bytes:
                 if result:
                     logger.info("Legacy .doc converted to .docx", filename=filename, converter=converter.__name__)
                     return result
-            except DocConversionError:
-                raise
+            except DocConversionError as exc:
+                # 转换失败（区别于未安装）：soffice 已装但对个别 .doc 转换失败时，
+                # 应落入下一个转换器而非短路——与 docstring「全部不可用才抛」一致
+                logger.warning("DOC converter failed, trying next", filename=filename, converter=converter.__name__, error=str(exc))
             except Exception as exc:  # pragma: no cover - defensive fallback
                 logger.warning("DOC converter failed unexpectedly", filename=filename, converter=converter.__name__, error=str(exc))
 

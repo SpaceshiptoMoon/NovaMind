@@ -72,6 +72,15 @@ def _map_status_to_schema(status: ModelResearchStatus) -> ResearchStatus:
     return _STATUS_TO_SCHEMA.get(status, ResearchStatus.PENDING)
 
 
+def _safe_enum(enum_cls, value, default):
+    """存量数据兜底：DB 中遗留非法枚举值时降级为默认而非让列表/详情接口 500
+    （对照 model_config 侧 model_type_int_to_str 的降级先例）。"""
+    try:
+        return enum_cls(value)
+    except ValueError:
+        return default
+
+
 # ==================== 辅助函数 ====================
 
 def _get_research_topic(research) -> str | None:
@@ -363,7 +372,7 @@ async def list_researches(
                 query=item.query,
                 research_topic=_get_research_topic(item),
                 status=_map_status_to_schema(item.status),
-                research_mode=ResearchMode(item.mode),
+                research_mode=_safe_enum(ResearchMode, item.mode, ResearchMode.STANDARD),
                 created_at=item.created_at,
                 completed_at=item.completed_at,
             )
@@ -411,8 +420,8 @@ async def get_research(
     return ResearchResponse(
         session_id=research.session_id,
         query=research.query,
-        research_mode=ResearchMode(research.mode),
-        search_source=SearchSource(research.search_source),
+        research_mode=_safe_enum(ResearchMode, research.mode, ResearchMode.STANDARD),
+        search_source=_safe_enum(SearchSource, research.search_source, SearchSource.HYBRID),
         external_provider=external_provider,
         status=_map_status_to_schema(research.status),
         research_topic=_get_research_topic(research),

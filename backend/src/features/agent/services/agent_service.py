@@ -546,11 +546,8 @@ class AgentService:
         conv = await self.session_repo.get_by_id(conversation_id)
         if not conv:
             return
-        await self.session_repo.update(
-            conversation_id,
-            message_count=conv.message_count + 1,
-            total_tokens_used=conv.total_tokens_used + tokens,
-        )
+        # SQL 表达式原子自增：读-改-写两步在并发消息下丢计数/丢 token 统计
+        await self.session_repo.increment_stats(conversation_id, tokens)
 
     # ==================== 记忆管理 ====================
 

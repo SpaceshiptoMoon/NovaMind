@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import pkgutil
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -41,12 +42,18 @@ def _load_feature_manifests() -> list[FeatureManifest]:
             continue  # feature 必须是子包
         module_name = f"{_FEATURES_PACKAGE}.{name}.manifest"
         try:
-            mod = importlib.import_module(module_name)
-        except ImportError:
+            spec = importlib.util.find_spec(module_name)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is None:
             # 该 feature 暂无 manifest.py，跳过
             continue
-        except Exception as e:  # manifest 模块自身报错：记警告，不阻断其余
-            logger.warning("feature manifest 加载失败", feature=name, error=str(e))
+        try:
+            mod = importlib.import_module(module_name)
+        except Exception as e:
+            # manifest.py 存在但 import 失败：几乎必然是模块内部写错，
+            # 静默吞掉会让整个 feature 的路由/init/模型无声消失，必须大声失败
+            logger.error("feature manifest import 失败，该 feature 全部能力不可用", feature=name, error=str(e))
             continue
         factory = getattr(mod, "manifest", None)
         if factory is None:

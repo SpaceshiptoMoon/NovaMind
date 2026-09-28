@@ -412,8 +412,15 @@ class SkillMarketplaceService:
             return
         skill = await self.skill_repo.get_by_id(skill_id)
         enabled = list(agent.enabled_tools or [])
-        skill_ref = f"skill__{skill_id}_{skill.name}" if skill else f"skill__{skill_id}"
-        enabled = [s for s in enabled if s != skill_ref]
+        # 软删技能 get_by_id 返回 None（拿不到 name），此时两种已写入形态
+        # （skill__{id}_{name} / skill__{id}）按前缀双形态剥离，保证残留可回收
+        if skill:
+            skill_refs = {f"skill__{skill_id}_{skill.name}", f"skill__{skill_id}"}
+        else:
+            skill_refs = {
+                s for s in enabled if s == f"skill__{skill_id}" or s.startswith(f"skill__{skill_id}_")
+            }
+        enabled = [s for s in enabled if s not in skill_refs]
         # 清理安装时追加的 allowed_tools，仅移除当前技能对应且不属于其他已安装技能的工具
         if skill and skill.allowed_tools:
             other_skills = await self.install_repo.list_by_agent(agent_id)

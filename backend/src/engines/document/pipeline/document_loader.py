@@ -205,12 +205,15 @@ class DocumentLoader:
         reader = self.readers[extension]
         documents = await reader.load_data(str(file_path))
         
-        # 如果没有指定切分器，根据文件类型设置默认切分器
-        if self.splitter is None:
-            self.splitter = await self._get_default_splitter_for_extension(extension)
-        
+        # 如果没有指定切分器，按文件类型选默认切分器——只作用于本次调用，
+        # 绝不写回 self.splitter（实例级写回会让 load_multiple_files 里
+        # 第一个文件的切分器污染后续所有不同类型文件）
+        splitter = self.splitter
+        if splitter is None:
+            splitter = await self._get_default_splitter_for_extension(extension)
+
         # 切分文档
-        split_documents = await self.splitter.split(documents)
+        split_documents = await splitter.split(documents)
         
         return split_documents
 

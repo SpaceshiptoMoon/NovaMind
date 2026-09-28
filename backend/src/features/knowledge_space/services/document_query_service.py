@@ -148,7 +148,9 @@ class DocumentQueryService:
         )
 
         _task_repo = DocumentTaskRepository(self.session)
-        active_task = await _task_repo.get_active_by_document_id(document_id)
+        # 锁读（FOR UPDATE）与入队/重试路径同款：RR 快照下普通读看不到并发刚提交的
+        # PENDING 任务行，会让「删除 vs 刚入队」竞态放行删除、产生可检索的幽灵 chunk
+        active_task = await _task_repo.lock_active_by_document_id(document_id)
         if active_task:
             raise DocumentAlreadyProcessingError(document_id)
 
