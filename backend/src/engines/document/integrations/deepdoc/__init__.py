@@ -1,9 +1,4 @@
-"""DeepDoc 文档解析引擎（vendored，自包含）——多格式文档解析、OCR、版面分析、表格识别。
-
-门面只暴露外部生产消费面（document_loader / document_pipeline）：
-引擎、运行时解析器、结果模型、位置标记清洗。诊断与各格式解析器走深路径
-import（`core.capabilities` / `diagnostics.*` / `parsers.<format>`）。
-"""
+"""DeepDoc 文档解析引擎（vendored，自包含）门面：只暴露外部生产消费面（引擎/运行时解析器/结果模型/位置标记清洗），诊断与各格式解析器走深路径 import。"""
 from __future__ import annotations
 
 from importlib import import_module

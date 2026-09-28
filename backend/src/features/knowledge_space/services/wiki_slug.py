@@ -1,9 +1,6 @@
-"""Wiki slug 规范化（纯函数）。
-
-中立模块：repository / services / api / agent 工具此前从
-``wiki_ingest_service`` 懒 import ``normalize_slug``，导致
-repository → services 回边成环（R1 无环门禁）；纯函数下沉到无依赖
-中立位后，四方单向引用，环消除。
+"""Wiki slug 规范化纯函数（中立位）：repository/services/api/agent
+工具四方单向引用，消除 repository 到 services 的回边
+（R1 无环门禁）。
 """
 from __future__ import annotations
 

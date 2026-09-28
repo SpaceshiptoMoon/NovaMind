@@ -1,15 +1,4 @@
-"""计划反馈注册表（deer-flow human_feedback 对齐）。
-
-WS 双向计划确认：service 管线生成计划后注册 pending feedback → 经 event_sink
-发 ``plan_generated`` 给前端 → ``await wait()`` 挂起管线；前端用户决策 → WS 发
-``{action: plan_feedback, decision, feedback}`` → WS handler 调 ``resolve()`` →
-``wait()`` 返回决策（accepted 继续执行 / edit_plan 携反馈重规划）。
-
-超时语义与 agent ApprovalRegistry 的 fail-closed deny 相反：**超时 auto-accept**
-（计划非危险产物，已花掉 background+planner 成本，取消纯属浪费；等价 deer-flow
-``auto_accepted_plan=true`` 退化路径）。断连走 GeneratorExit → 既有 CANCELLED
-分支，与超时区分。
-"""
+"""计划反馈注册表：超时 auto-accept（与 agent 审批 fail-closed deny 相反）；断连走 GeneratorExit 进 CANCELLED，与超时区分。"""
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +16,7 @@ class PlanFeedbackRegistry:
     """单次 WS 连接的计划反馈注册表（per-connection，一次研究一个待决计划）。"""
 
     def __init__(self) -> None:
+        """初始化空 pending 状态：无事件、无决策，等待 register() 挂起首个计划。"""
         self._event: asyncio.Event | None = None
         self._decision: str = ""
         self._feedback: str = ""

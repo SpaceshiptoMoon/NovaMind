@@ -1,22 +1,4 @@
-"""Deep Research 数据源注册表（feature 侧装配）。
-
-管理"数据源类型 → 工厂"映射，供 service 装配点按启用的源类型构造绑定实例。
-工厂无状态（``Callable[[SearchSourceContext], SearchSourcePort]``），租户上下文与
-请求级配置全部经 ``SearchSourceContext`` 传入，每请求 build 出新 port 实例
-（绑定 space_id/user_id/config），不跨请求复用。
-
-新增一种数据源的接入点（目标：四处收敛）：
-
-1. engines 侧：实现 ``SearchSourcePort`` 同形 search（若为 Web 类可包 ``WebSearchPort``）
-2. feature 侧：本模块 ``register_source_factory(type, factory)`` 注册工厂 + 适配器
-   （归一化为统一 dict 形状，见 ``engines/deep_research/sources.py`` 契约）
-3. schema 侧：请求级配置段（``SourcesConfig.extra`` 透传，无需改 schema 时零改动）
-4. 前端：源选择选项数组加一行
-
-builtin 注册在模块加载期执行（``register_builtin_sources``）：internal/external
-两工厂各一行。工厂抛 engines 中立异常（``WebSearchProviderNotConfiguredError`` 等）
-在 ``build`` 处捕获映射为 feature API 异常（异常镜像模式）。
-"""
+"""Deep Research 数据源注册表：工厂每请求 build 新 port 实例，不跨请求复用；新源接入点四处收敛（engines/本模块/schema/前端）。"""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -40,6 +22,7 @@ class DataSearchSourceRegistry:
     """
 
     def __init__(self) -> None:
+        """初始化空工厂与显示名映射，builtin 源在模块加载期注册。"""
         self._factories: dict[str, SourceFactory] = {}
         self._display_names: dict[str, str] = {}
 
@@ -50,12 +33,15 @@ class DataSearchSourceRegistry:
             self._display_names[source_type] = display_name
 
     def get_factory(self, source_type: str) -> SourceFactory | None:
+        """按源类型取注册工厂，未注册返回 None。"""
         return self._factories.get(source_type)
 
     def known_types(self) -> tuple[str, ...]:
+        """返回已注册源类型的有序元组，供前端选项与校验。"""
         return tuple(sorted(self._factories))
 
     def display_name(self, source_type: str) -> str:
+        """返回源类型的展示名，未注册回退为类型名本身。"""
         return self._display_names.get(source_type, source_type)
 
     def build(self, source_type: str, context: SearchSourceContext) -> SearchSourcePort:

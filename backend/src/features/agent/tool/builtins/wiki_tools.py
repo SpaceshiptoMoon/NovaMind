@@ -1,13 +1,5 @@
-"""
-Wiki Agent 工具
-
-让智能体读取、搜索、撰写 wiki 页面并报告页面问题：
-- wiki_read_page   按 slug 批量读页面全文
-- wiki_search      正则/LIKE 搜索页面
-- wiki_write_page  创建/整页覆盖（限 synthesis/comparison 类型，管道不自动生成）
-- wiki_flag_issue  标记页面问题（供人/Agent 处理闭环）
-
-权限模型：用户可访问的空间内的 KB 才能读写；写操作校验空间 EDITOR+ 角色。
+"""Wiki Agent 工具：读页/搜索/写页/标记问题/文本替换/重命名/问题读写共 8 个函数共用一个工具类。
+权限模型：用户可访问空间内的 KB 才能读；写操作须空间 EDITOR+ 角色（委托 access_service 判定）。
 """
 import json
 import re
@@ -23,6 +15,7 @@ _MAX_PAGE_CONTENT_CHARS = 12000
 
 
 def _err(message: str) -> str:
+    """把错误消息序列化为约定 JSON（含 error 字段）作为工具输出。"""
     return json.dumps({"error": message}, ensure_ascii=False)
 
 
@@ -38,6 +31,7 @@ class WikiTool(BaseTool):
         return "读取、搜索、撰写知识库 Wiki 页面并标记问题"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """声明 8 个 wiki 函数 schema：读页/搜索/写页/标记问题/替换文本/重命名/读问题/更新问题状态。"""
         return [
             {
                 "type": "function",
@@ -225,6 +219,7 @@ class WikiTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """按函数名分发到对应实现；缺 db 会话或 user_id 上下文直接返回错误 JSON。"""
         db = context.get("db_session")
         user_id = context.get("user_id")
         if not db or user_id is None:
@@ -256,6 +251,7 @@ class WikiTool(BaseTool):
     # ==================== 工具实现 ====================
 
     async def _read_pages(self, db, user_id: int, args: dict[str, Any]) -> str:
+        """按 slug 批量读页面元数据与正文（单页正文截断到 12000 字符并附截断标记）。"""
         kb_id = args.get("kb_id")
         slugs = args.get("slugs") or []
         if not kb_id or not slugs:
@@ -289,6 +285,7 @@ class WikiTool(BaseTool):
         return json.dumps({"pages": results}, ensure_ascii=False)
 
     async def _search(self, db, user_id: int, args: dict[str, Any]) -> str:
+        """排序搜索页面（标题/摘要/slug/别名参与匹配），返回轻量条目与匹配片段。"""
         kb_id = args.get("kb_id")
         query = (args.get("query") or "").strip()
         limit = min(int(args.get("limit") or 10), 30)
@@ -320,6 +317,7 @@ class WikiTool(BaseTool):
         }, ensure_ascii=False)
 
     async def _write_page(self, db, user_id: int, args: dict[str, Any]) -> str:
+        """创建或整页覆盖 synthesis/comparison 页面：写权限校验、slug 清洗、[[链接]] 提取（无效链接静默降级纯文本）、快照落库。"""
         kb_id = args.get("kb_id")
         raw_slug = (args.get("slug") or "").strip()
         title = (args.get("title") or "").strip()
@@ -388,6 +386,7 @@ class WikiTool(BaseTool):
             return _err(f"页面写入失败：{e}")
 
     async def _flag_issue(self, db, user_id: int, args: dict[str, Any]) -> str:
+        """在指定页面登记内容问题（描述截断 2000 字符），reported_by 记为 agent:{user_id}。"""
         kb_id = args.get("kb_id")
         slug = (args.get("slug") or "").strip()
         issue_type = args.get("issue_type")

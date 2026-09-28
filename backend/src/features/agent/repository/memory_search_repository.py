@@ -1,12 +1,5 @@
-"""
-Agent 长期记忆 ES 向量检索仓储
-
-每个 Agent 独立索引 `agent_memory_{agent_id}`，支持：
-- Hybrid 搜索（向量 cosine + BM25）
-- 纯 BM25 fallback
-- 按文档 ID 删除
-
-MySQL 是 source of truth，ES 是检索加速层。ES 不可用时降级到 MySQL LIKE。
+"""Agent 长期记忆 ES 向量检索仓储：每 Agent 独立索引 agent_memory_{agent_id}，Hybrid（KNN+BM25 RRF）检索、BM25 降级、按记忆 ID 删除。
+MySQL 是 source of truth，ES 仅检索加速层；ES 失败路径全部降级返回空/False，不抛错。
 """
 from datetime import datetime
 from typing import Any
@@ -25,6 +18,7 @@ class MemorySearchRepository:
         es_client: AsyncElasticsearch,
         embedding_dim: int = 1536,
     ):
+        """es_client 必传；embedding_dim 仅作无向量上下文时的兜底默认，真实维度以向量长度自愈并缓存。"""
         self._es = es_client
         # 仅作 fallback：真实维度优先取自向量长度（index_memory/search 收到的 embedding），
         # 避免硬编码维度与实际 embedding 模型不一致（见 ES KNN 维度不匹配降级问题）
@@ -33,6 +27,7 @@ class MemorySearchRepository:
         self._index_dims: dict[str, int] = {}
 
     def _index_name(self, agent_id: int) -> str:
+        """按 Agent ID 生成 ES 索引名 agent_memory_{id}。"""
         return f"agent_memory_{agent_id}"
 
     async def _get_index_dims(self, index_name: str) -> int | None:

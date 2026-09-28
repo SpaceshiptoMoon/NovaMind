@@ -1,9 +1,4 @@
-"""
-权限检查服务
-
-处理空间成员的权限检查
-基于 SpaceRole 枚举实现简单权限判断，支持 custom_permissions 字段覆盖角色默认权限
-"""
+"""权限检查服务：基于 SpaceRole 的权限判定，custom_permissions 字段可覆盖角色默认权限。"""
 
 
 from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole

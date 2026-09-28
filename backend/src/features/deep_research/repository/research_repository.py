@@ -33,6 +33,7 @@ class ResearchRepository:
     """研究会话仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级异步会话，本仓储全部查询经该会话执行。"""
         self.session = session
 
     async def create(

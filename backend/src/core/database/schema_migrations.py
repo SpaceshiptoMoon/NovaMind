@@ -1,16 +1,6 @@
 """幂等启动期迁移注册表。
 
-``create_all()`` 只创建不存在的表，不会给已存在的表 ``ALTER ADD COLUMN`` 或
-调整索引/约束。本模块集中维护启动期迁移清单，由
-``startup_manager._run_schema_migrations`` 在启动期逐条检测后执行（幂等可重复）。
-
-两张注册表：
-
-- ``SCHEMA_MIGRATIONS``：新增列 ``(表名, 列名, ALTER DDL)``，检测 ``SHOW COLUMNS``
-  缺列则补建。结构由 ``tests/core/test_schema_migrations.py`` 校验。
-- ``CONSTRAINT_MIGRATIONS``：唯一约束/索引变更 ``(表名, 待删旧索引, 待建新索引,
-  ADD DDL)``，检测新索引存在则跳过；不存在则先 drop 旧索引（若有）再按 DDL 建
-  新索引。用于约束口径变更（如去重范围调整）时同步存量库。
+create_all 不给已存在的表做 ALTER，本模块集中维护补列与约束迁移清单，由 startup_manager 在启动期逐条检测后执行，幂等可重复。
 """
 from __future__ import annotations
 

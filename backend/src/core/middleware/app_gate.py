@@ -1,19 +1,7 @@
 """AppGateMiddleware：应用级权限门禁（纯 ASGI 中间件）。
 
-三级权限模型的应用层执行点——管理员可禁用普通用户的具体应用
-（qa/agent/skill/app），被禁应用的 HTTP 与 WebSocket 请求在此拦截。
-
-为什么是纯 ASGI 中间件而不是 router 级 ``dependencies``：agent/qa
-的 WebSocket 端点用 subprotocol ``bearer.<jwt>`` 认证（浏览器 WS 无法带
-Authorization 头），FastAPI router 级依赖里的 ``HTTPBearer`` 会拒绝 WS 握手；
-纯 ASGI 中间件按 ``scope["type"]`` 分流，http/websocket 各自提取 token，
-单一收口点覆盖两个传输层，四个 feature 的路由文件零改动。
-
-安全语义：门禁是产品可见性控制，不是安全边界——认证/撤销检查仍在端点依赖
-链（get_current_user / ws_authenticate），空间内容权限仍在 space_members 表。
-检查异常时 fail-open 放行并记 error 日志。admin 角色按 JWT claims 直通
-（claims 有 ≤30 分钟陈旧性：刚降级的管理员最长残留一个 access token 周期；
-撤销类检查不受影响，仍由端点认证层强制）。
+管理员禁用的应用（qa/agent/skill/app）其 HTTP 与 WS 请求在此拦截；门禁是产品可见性控制，不是安全边界。
+检查异常时 fail-open 放行并记 error；admin 按 JWT claims 直通（claims 允许 ≤30 分钟陈旧，撤销类检查仍由端点认证层强制）。
 """
 from __future__ import annotations
 
@@ -34,9 +22,11 @@ class AppGateMiddleware:
     """应用门禁中间件（挂载于 app_factory._add_middleware，CORS 内层）。"""
 
     def __init__(self, app):
+        """保存下游 ASGI 应用引用（标准中间件构造约定）。"""
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        """按 scope 分流拦截：命中的应用被禁用时 HTTP 回 403 JSON、WS 直接拒绝握手；检查异常 fail-open 放行。"""
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return

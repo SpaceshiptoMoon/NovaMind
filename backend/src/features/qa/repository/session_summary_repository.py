@@ -14,6 +14,7 @@ class SessionSummaryRepository:
     """会话摘要仓库"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
         self.logger = get_logger(__name__)
 

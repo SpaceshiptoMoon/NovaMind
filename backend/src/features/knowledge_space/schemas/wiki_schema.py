@@ -54,6 +54,7 @@ class WikiPageListItem(BaseModel):
 
 
 class WikiPageListResponse(BaseModel):
+    """页面列表分页响应。"""
     pages: list[WikiPageListItem]
     total: int
     page: int
@@ -78,6 +79,7 @@ class WikiIndexResponse(BaseModel):
 
 
 class WikiStatsResponse(BaseModel):
+    """KB 统计响应（页数/类型分布/链接数/孤儿数）。"""
     total_pages: int
     pages_by_type: dict[str, int] = {}
     total_links: int
@@ -107,6 +109,7 @@ class WikiPageSourcesResponse(BaseModel):
 
 
 class WikiPageSearchItem(BaseModel):
+    """搜索命中条目（含加权 rank 与前后 60 字符摘要）。"""
     model_config = ConfigDict(from_attributes=True)
 
     slug: str
@@ -120,6 +123,7 @@ class WikiPageSearchItem(BaseModel):
 
 
 class WikiSearchResponse(BaseModel):
+    """页面搜索响应。"""
     items: list[WikiPageSearchItem]
     total: int
     query: str
@@ -154,11 +158,13 @@ class WikiPageUpdateRequest(BaseModel):
 
 
 class WikiRevertRequest(BaseModel):
+    """回滚请求：目标 slug 与版本号。"""
     slug: str = Field(..., min_length=1, max_length=255)
     version: int = Field(..., ge=1)
 
 
 class WikiRevertResponse(BaseModel):
+    """回滚结果：回滚到的版本与产生的新版本号。"""
     slug: str
     reverted_to_version: int
     new_version: int
@@ -174,6 +180,7 @@ class WikiRebuildRequest(BaseModel):
 
 
 class WikiGraphNode(BaseModel):
+    """链接图节点（slug/标题/类型/链接数）。"""
     slug: str
     title: str
     page_type: str
@@ -181,11 +188,13 @@ class WikiGraphNode(BaseModel):
 
 
 class WikiGraphEdge(BaseModel):
+    """链接图有向边（source 指向 target）。"""
     source: str
     target: str
 
 
 class WikiGraphMeta(BaseModel):
+    """图响应元信息（模式/总量/返回数/截断标记/ego 参数）。"""
     mode: str
     total: int
     returned: int
@@ -195,6 +204,7 @@ class WikiGraphMeta(BaseModel):
 
 
 class WikiGraphResponse(BaseModel):
+    """链接图响应（节点+边+元信息）。"""
     nodes: list[WikiGraphNode]
     edges: list[WikiGraphEdge]
     meta: WikiGraphMeta
@@ -216,6 +226,7 @@ class WikiLintIssueItem(BaseModel):
 
 
 class WikiLintResponse(BaseModel):
+    """巡检响应：问题列表、检查页数、健康分与摘要。"""
     issues: list[WikiLintIssueItem]
     checked_pages: int
     # 0-100 健康分（对齐 WeKnora HealthScore）
@@ -240,6 +251,7 @@ class WikiIssueCreateRequest(BaseModel):
 
 
 class WikiIssueResponse(BaseModel):
+    """问题登记响应。"""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -252,4 +264,5 @@ class WikiIssueResponse(BaseModel):
 
 
 class WikiIssueStatusUpdateRequest(BaseModel):
+    """问题状态流转请求（pending/ignored/resolved）。"""
     status: str = Field(..., description="pending/ignored/resolved")

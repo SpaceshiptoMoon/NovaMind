@@ -13,6 +13,7 @@ from novamind.shared.utils.text_utils.token_counter import TokenCounter
 
 
 class CompressionStrategy(str, Enum):
+    """会话压缩策略枚举：摘要/滑动窗口/保留最近/截断。"""
     SUMMARY = "summary"
     SLIDING_WINDOW = "sliding_window"
     KEEP_RECENT = "keep_recent"
@@ -21,6 +22,7 @@ class CompressionStrategy(str, Enum):
 
 @dataclass
 class CompressionResult:
+    """压缩结果：摘要文本、前后 token 数、保留消息与压缩比。"""
     summary: str
     compressed_tokens: int
     original_tokens: int
@@ -29,11 +31,13 @@ class CompressionResult:
 
 
 class TextCompressor:
+    """会话上下文压缩器：按策略把超限消息压成摘要或截断窗口。"""
     def __init__(
         self,
         llm_client: BaseLLM | None = None,
         custom_prompt: str | None = None,
     ):
+        """注入可选 LLM 客户端与自定义摘要提示词（LLM 缺席时降级为拼接）。"""
         self.llm_client = llm_client
         self.custom_prompt = custom_prompt
         self.token_counter = TokenCounter()
@@ -41,11 +45,13 @@ class TextCompressor:
 
     @property
     def summary_prompt(self) -> str:
+        """摘要提示词：自定义优先，否则取注册模板。"""
         return self.custom_prompt or PromptManager.get_template(
             "qa_compression_summary"
         )
 
     def _message_text(self, message: dict[str, Any]) -> str:
+        """提取消息文本，兼容纯字符串与多模态分段列表两种 content 形态。"""
         content = message.get("content", "")
         if isinstance(content, str):
             return content
@@ -60,6 +66,7 @@ class TextCompressor:
         return str(content)
 
     def _messages_tokens(self, messages: list[dict[str, Any]]) -> int:
+        """统计整组消息的 token 总数。"""
         return self.token_counter.count_messages_tokens(messages)
 
     async def compress_messages(
@@ -69,6 +76,7 @@ class TextCompressor:
         target_tokens: int = 500,
         keep_recent: int = 4,
     ) -> CompressionResult:
+        """按摘要策略压缩消息列表（默认入口，参数透传给通用策略接口）。"""
         return await self.compress_with_strategy(
             messages,
             strategy=CompressionStrategy.SUMMARY.value,
@@ -146,6 +154,7 @@ class TextCompressor:
         target_tokens: int = 500,
         keep_recent: int = 4,
     ) -> CompressionResult:
+        """按指定策略压缩：截断/滑窗只保留消息，摘要策略另调 LLM 生成摘要。"""
         original_tokens = self._messages_tokens(messages)
         if not messages:
             return CompressionResult("", 0, 0, [], 0.0)
@@ -173,6 +182,7 @@ class TextCompressor:
         )
 
     def _truncate_to_target(self, messages: list[dict[str, Any]], target_tokens: int) -> list[dict[str, Any]]:
+        """从最新消息倒序保留至 token 预算用尽，至少保留一条，按时间序返回。"""
         kept: list[dict[str, Any]] = []
         total = 0
         for msg in reversed(messages):
@@ -186,6 +196,7 @@ class TextCompressor:
         return list(reversed(kept))
 
     async def _build_summary(self, messages: list[dict[str, Any]]) -> str:
+        """对被压缩的消息生成摘要：无 LLM 时降级为原文拼接。"""
         if not messages:
             return ""
         if self.llm_client is None:

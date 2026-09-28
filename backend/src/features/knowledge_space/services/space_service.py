@@ -1,9 +1,4 @@
-"""
-空间管理服务
-
-处理知识空间的创建、更新、删除等操作
-支持多租户和 RBAC 权限控制
-"""
+"""知识空间管理服务：空间的生命周期管理（创建/更新/删除/统计）。"""
 
 from typing import Any
 
@@ -51,6 +46,7 @@ class SpaceService:
         minio_client: MinioClient = None,
         model_config_service: ModelConfigService | None = None,
     ):
+        """构造注入会话与可选的 ES/MinIO/模型配置服务。"""
         self.session = session
         self.space_repo = SpaceRepository(session)
         self.member_repo = MemberRepository(session)

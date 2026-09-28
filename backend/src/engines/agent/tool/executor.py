@@ -1,14 +1,4 @@
-"""
-工具执行器
-
-统一的工具执行入口，支持：
-1. 内置工具 + MCP 工具路由
-2. 生命周期钩子链（before/after）
-3. 结构化结果 ToolResult
-4. ToolDefinition 类型化工具定义
-5. 超时保护（基于 ToolDefinition.timeout_ms）
-6. 钩子异常隔离
-"""
+"""工具执行器：内置与 MCP 工具统一路由，经 before/after 钩子链执行，钩子异常隔离并带超时保护。"""
 import asyncio
 import time
 from collections import OrderedDict
@@ -45,6 +35,7 @@ class ToolExecutor:
         mcp_client_manager: McpClientManager,
         hooks: list[ToolHook] | None = None,
     ):
+        """注入工具注册表、MCP 管理器与钩子链；工具定义缓存上限 256 条，防长会话无限增长。"""
         self._tool_registry = tool_registry
         self._mcp_manager = mcp_client_manager
         self._hooks = hooks or []

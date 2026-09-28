@@ -35,6 +35,7 @@ class AppLifespanManager:
     """应用生命周期管理器"""
 
     def __init__(self):
+        """初始化生命周期管理器状态（redis_connected 标记初始为未连接）。"""
         self.redis_connected = False
         self.logger = logger
 

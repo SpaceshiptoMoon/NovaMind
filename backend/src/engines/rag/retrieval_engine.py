@@ -29,6 +29,7 @@ class RetrievalResult:
     __slots__ = ("results", "cached")
 
     def __init__(self, results: list[dict[str, Any]], cached: bool) -> None:
+        """记录检索结果列表与是否命中缓存。"""
         self.results = results
         self.cached = cached
 
@@ -85,6 +86,7 @@ class RetrievalQuery:
         user_id: int | None = None,
         wiki_boost_factor: float = 1.0,
     ) -> None:
+        """汇集影响纯检索结果的全部字段（空间/KB 定位、查询串、模式与权重、rerank 配置）；赋值即冻结入参。"""
         self.space_id = space_id
         self.kb_id = kb_id
         self.query = query
@@ -123,6 +125,7 @@ class RetrievalEngine:
         logger: Any | None = None,
         cache_port: Any | None = None,
     ) -> None:
+        """注入 ES 客户端与可选日志、缓存端口；缓存未注入时读写一律 no-op 降级。"""
         self.es_client = es_client
         self.logger = logger or get_logger(__name__)
         # 检索缓存：装配点注入 RedisCache（R4 直收具体类，None 降级）。

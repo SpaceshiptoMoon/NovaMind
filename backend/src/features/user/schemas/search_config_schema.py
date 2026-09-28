@@ -1,13 +1,4 @@
-"""
-用户搜索配置 Pydantic Schema
-
-设计原则对齐 ``model_config_schema``：
-- 凭证分离：只存 provider 凭证（api_key），业务参数进 extra_config
-- api_key 响应脱敏（``****`` if set else ``""``），对齐
-  ``model_config_service._build_response``（:908-919）
-- provider 白名单校验 ``{tavily, serpapi, duckduckgo}``
-- 更新时 api_key 留空（None）= 不改，与 model_config 约定一致
-"""
+"""用户搜索配置 Schema：api_key 响应脱敏（****）、更新留空 None=不改、provider 白名单校验。"""
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -104,6 +95,7 @@ class SearchTestRequest(BaseModel):
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v: str) -> str:
+        """校验搜索服务商属白名单（tavily/serpapi/duckduckgo）并归一为小写。"""
         allowed = {"tavily", "serpapi", "duckduckgo"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的搜索服务商: {v}")

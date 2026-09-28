@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def get_user_service(db: AsyncSession = Depends(get_db)):
+    """装配用户服务（请求级 DB 会话 + 用户仓储）。"""
     user_repository = UserRepository(db)
     return UserService(user_repository)
 

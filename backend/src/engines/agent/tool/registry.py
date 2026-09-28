@@ -14,6 +14,7 @@ class ToolInfo:
     """工具元信息"""
 
     def __init__(self, tool: BaseTool):
+        """从工具实例提取名称、描述、OpenAI 工具定义与系统提示片段，构成只读元信息。"""
         self.name = tool.name
         self.description = tool.description
         self.tools = tool.get_tools()
@@ -24,6 +25,7 @@ class ToolRegistry:
     """工具注册表"""
 
     def __init__(self):
+        """初始化工具提供者表与 OpenAI tool 名到提供者名的二级索引。"""
         self._tools: dict[str, BaseTool] = {}
         self._tool_name_to_provider: dict[str, str] = {}  # tool_name -> provider_name
 

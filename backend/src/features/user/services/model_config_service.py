@@ -1,11 +1,4 @@
-"""
-用户模型配置服务
-
-核心职责：
-1. 模型配置的 CRUD 操作
-2. 根据模型名称获取对应的凭证（核心方法）
-3. 模型连接测试
-"""
+"""用户模型配置服务：模型凭证查询、配置 CRUD 与连接测试。"""
 import asyncio
 import time
 from typing import Any
@@ -105,6 +98,7 @@ class ModelConfigService:
         self,
         db: AsyncSession,
     ):
+        """绑定数据库会话与模型配置仓储（凭证查询入口）。"""
         self.db = db
         self.repo = ModelConfigRepository(db)
         # 删除 embedding 模型配置时的空间绑定查询端口（解 :999 反向依赖）

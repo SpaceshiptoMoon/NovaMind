@@ -1,13 +1,4 @@
-"""
-知识库模型
-
-核心新增表：一个空间下可以有多个知识库，每个知识库有独立的切分/解析/向量化/检索配置
-
-Embedding 模型配置存储在 config.embedding 中：
-- embedding_model: 绑定的模型名称
-- embedding_config_version: 配置版本号
-- vector_index_status: 向量索引状态
-"""
+"""知识库模型：空间下多知识库层级，每库独立切分/解析/向量化/检索配置；embedding 模型配置存 config.embedding。"""
 from enum import IntEnum
 
 from novamind.core.database.base import BaseModel

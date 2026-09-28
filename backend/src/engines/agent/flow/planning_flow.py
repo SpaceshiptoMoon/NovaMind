@@ -1,16 +1,5 @@
-"""Plan-and-Execute 流（E7）。
-
-双层循环（参考 OpenManus PlanningFlow）：
-- 外层：``_create_initial_plan``（LLM 生成步骤列表）→ 逐步取下一步 → mark
-  in_progress → 调内层 ``AgentEngine.run(step_prompt)`` → mark completed
-- 内层：``AgentEngine.run`` 跑该步的 ReAct 工具调用
-
-完成所有步骤后 ``_finalize``（LLM 总结）产出最终答案。事件流加 ``plan.*`` 事件
-（plan.created / plan.step_started / plan.step_completed / plan.completed）供前端
-展示计划进度。
-
-动态重规划：步骤执行中 agent 可经 step_prompt 自检（提示「如需调整计划请说明」），
-本版 plan 在 PlanningFlow 内维护（内存），不单独暴露 PlanningTool 给 LLM 调用。
+"""Plan-and-Execute 流：外层 LLM 生成计划并逐步推进，内层 AgentEngine 跑各步 ReAct；完成后总结产出最终答案，事件流带 plan.* 进度事件。
+plan 在本流内存维护，不暴露 PlanningTool 给 LLM（当前实现边界）。
 """
 from __future__ import annotations
 
@@ -46,6 +35,7 @@ class PlanningFlow:
     """Plan-and-Execute 编排流。"""
 
     def __init__(self, agent_engine: AgentEngine) -> None:
+        """注入内层 ReAct 引擎；计划本身在本流内存中维护。"""
         self._agent_engine = agent_engine
 
     async def execute(

@@ -48,6 +48,7 @@ async def upload_resume(
     model_config_service: ModelConfigService = Depends(get_model_config_service),
 ):
     # 解析 LLM 模型：前端传入 > 用户默认
+    """上传简历并创建解析会话（校验扩展名/大小/config JSON），入队后台 S1-S12 流程后立即返回。"""
     model = llm_model or await model_config_service.get_user_default_model_name(user_id, "llm")
     if not model:
         raise ResumeParseError("未配置 LLM 模型")
@@ -117,6 +118,7 @@ async def list_resume_sessions(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    """分页列出当前用户的简历会话（可按状态筛选）。"""
     sessions, total = await ResumeSessionService(db).list_user_sessions(
         user_id, limit, offset, status=status
     )
@@ -132,6 +134,7 @@ async def get_resume_session(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    """查单个简历会话详情（校验归属）。"""
     session = await ResumeSessionService(db).get_owned_session(session_id, user_id)
     return _to_session_response(session)
 
@@ -194,6 +197,7 @@ async def cancel_resume_session(
 # ==================== Helper ====================
 
 def _to_session_response(session) -> ResumeSessionResponse:
+    """ORM 会话对象转响应模型（时间戳转 ISO 字符串）。"""
     sr = session.structured_resume
     return ResumeSessionResponse(
         id=session.id,

@@ -1,8 +1,6 @@
 """System manifest：系统级路由（健康检查等），非 feature。
 
-由 manifest_loader 单独加载（不扫描 features/ 目录）。order=0 保证其在拓扑
-排序中位列最前，对应原 router_manager.get_all_routers() 中 health 路由无版本
-前缀、最先注册的行为。
+order=0 保证其在拓扑排序中位列最前。
 """
 from __future__ import annotations
 
@@ -10,6 +8,7 @@ from novamind.core.middleware.manifest import FeatureManifest, RouterSpec
 
 
 def manifest() -> FeatureManifest:
+    """构造系统 manifest：挂载健康检查路由（无版本前缀），order=0 保证拓扑排序最前。"""
     from novamind.core.middleware.health_check import router as health_router
 
     return FeatureManifest(

@@ -54,6 +54,7 @@ async def get_qa_service(
     cache_service: QACacheService = Depends(get_qa_cache_service),
     model_config_service=Depends(get_model_config_service),
 ) -> QAService:
+    """装配 QAService（各仓储共享同一 DB 会话保证事务原子性）。"""
     return QAService(
         repository=repository,
         session_config_repo=session_config_repo,

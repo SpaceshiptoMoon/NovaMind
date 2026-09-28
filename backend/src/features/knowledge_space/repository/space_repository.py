@@ -1,9 +1,4 @@
-"""
-知识空间仓储
-
-处理知识空间的数据访问操作
-支持 Redis 缓存
-"""
+"""知识空间仓储：空间的 CRUD 与 Redis 缓存。"""
 
 from typing import Any
 

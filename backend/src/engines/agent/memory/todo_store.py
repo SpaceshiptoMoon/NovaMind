@@ -17,6 +17,7 @@ class TodoStore:
     """压缩后存活的任务跟踪器"""
 
     def __init__(self) -> None:
+        """初始化内存任务表（key 为 conversation_id），仅进程内有效、不持久化。"""
         self._store: dict[int, list[dict[str, str]]] = {}
 
     def write(

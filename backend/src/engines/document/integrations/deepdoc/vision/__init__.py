@@ -1,9 +1,5 @@
 """DeepDoc 视觉模块：OCR 识别 / 版面分析 / 表格结构识别 / 模型管理。
-
-包级导出面只保留 vendor stub 装载层
-（`vendor/ragflow/__init__.py` 的 `local_vision.<attr>` 属性读取）与
-Recognizer（几何工具测试）。模型管理/状态查询走深路径
-（`vision.model_manager` / `vision.package_status`）。
+导出面限定为 stub 装载层符号与 Recognizer；模型管理/状态查询走深路径 vision.model_manager / vision.package_status。
 """
 from __future__ import annotations
 

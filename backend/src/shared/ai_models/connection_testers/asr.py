@@ -1,10 +1,6 @@
-"""ASR 连通测试器（local / openai / dashscope 三协议，从 user service 下沉）。
+"""ASR 连通测试器（local / openai / dashscope 三协议）。
 
-行为语义原样保留：
-- local：检查 faster-whisper tiny 模型目录与文件完整性 + 可加载性（不实际推理）；
-- openai：发 0.1s 最小静音 WAV 到 ``/audio/transcriptions``，2xx/4xx 均视为可达，
-  401/403/5xx 抛 ValueError；
-- dashscope：官方示例音频 URL → async_call → wait 全链路验证。
+local 只验模型目录与文件完整性及可加载性，不实际推理；openai 发 0.1s 静音 WAV，2xx/4xx 均视为服务可达（401/403/5xx 报错）。
 """
 from __future__ import annotations
 
@@ -22,6 +18,7 @@ class ASRConnectionTester:
     """ASR 连接测试（按协议路由）。请求字段（model/api_key/base_url/protocol）由调用方传入。"""
 
     async def test(self, *, protocol: str | None, model: str, api_key: str, base_url: str | None) -> None:
+        """按协议路由到对应连通测试，失败抛 ValueError（携带可操作指引）；未知协议按 openai 处理。"""
         p = protocol or "openai"
         if p == "local":
             await self._test_local()

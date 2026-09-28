@@ -1,16 +1,5 @@
-"""Wiki 管道句柄表
-
-移植自 WeKnora 的 modelcontext.HandleTable（wiki_slug_handles.go / wiki_ingest_cite.go）：
-LLM 常常在复述高熵 ID 时打错一个字符（尤其 UUID 型 summary slug 与 chunk UUID），
-句柄机制把「让模型复述 ID」改成「让模型抄短句柄」，从源头消除这类错误。
-
-- chunk 句柄（c000/c001/…）：引文标注批次内每个 chunk 一个句柄，模型返回句柄，
-  代码还原为真实 chunk_id；未知句柄直接丢弃。
-- slug 句柄（ref-1/ref-2/…）：Reduce 阶段的 valid_links 清单以 ref-N = real slug
-  形式喂给模型，模型写 [[ref-3|显示名]]，生成后 decode 还原；无映射句柄落入
-  常规死链清理。
-
-句柄表是纯内存 dict，生命周期 = 单次 ingest 任务，无需持久化。
+"""Wiki 管道句柄表：把「让 LLM 复述高熵 ID」改为「让 LLM 抄短句柄」（chunk 句柄 c000…、slug 句柄 ref-N…），从源头消除复述错字。未知句柄直接丢弃（chun
+k 引用）或落入常规死链清理（slug 链接）；句柄表纯内存 dict，生命周期等于单次 ingest 任务，不持久化。
 """
 import re
 

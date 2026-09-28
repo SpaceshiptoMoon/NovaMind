@@ -59,6 +59,7 @@ class FeatureManifest:
 
     def __post_init__(self) -> None:
         # route_order 未显式指定时回退到 init 拓扑序 order
+        """route_order 未显式指定时回退到 init 拓扑序 order。"""
         if self.route_order is None:
             self.route_order = self.order
 

@@ -1,15 +1,6 @@
-"""
-知识库管理路由
+"""知识库管理路由：创建/更新/删除等操作。
 
-处理知识库的创建、更新、删除等操作
-支持多租户和 RBAC 权限控制
-
-路由前缀: /api/v1/spaces/{space_id}/knowledge-bases
-
-权限要求:
-- 查看知识库列表/详情: VIEWER(0)+
-- 创建/编辑知识库: EDITOR(1)+
-- 删除知识库: ADMIN(2)
+路由前缀 /api/v1/spaces/{space_id}/knowledge-bases。权限：查看列表/详情 VIEWER+，创建/编辑 EDITOR+，删除 ADMIN。
 """
 
 from typing import Annotated

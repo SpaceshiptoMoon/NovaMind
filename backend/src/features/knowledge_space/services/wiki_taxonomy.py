@@ -1,14 +1,6 @@
-"""Wiki 批级目录规划（taxonomy）——移植自 WeKnora wiki_ingest_taxonomy.go
+"""Wiki 批级目录规划：整批 entity/concept 用一次 LLM 调用分配不超过 2 级的 category_path，整批收敛到同一棵目录树并复用已有目录。
 
-对整批 entity/concept 用**一次 LLM 调用**（60 条/批，feed-forward 收敛）
-分配 ≤2 级 category_path，整批落在同一棵目录树上并复用已有目录。取代
-逐页并行发明 category 的做法——后者无法收敛（尤其 KB 首批无目录锚点时）。
-
-只对尚无 category 的页面生效（reduce 应用时跳过已有目录的页面），用户
-手工摆放不被覆盖。
-
-简化（有意，标注于代码）：WeKnora 在文件夹池 >60 时用 embedding 余弦
-相似度筛相关子集；NovaMind 目录规模小，直接 cap 截断。
+只对尚无 category 的页面生效（不覆盖用户手工摆放）。cap 截断替代 embedding 相似度筛目录池是有意简化（目录规模小）。
 """
 from collections.abc import Sequence
 from typing import Any

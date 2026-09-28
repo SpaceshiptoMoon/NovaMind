@@ -53,6 +53,7 @@ MAX_ZIP_SIZE = 50 * 1024 * 1024
 
 
 async def get_current_user_id(current_user: dict = Depends(get_current_user)) -> int:
+    """从认证上下文提取当前用户 ID（依赖函数，非路由）。"""
     return current_user["id"]
 
 
@@ -71,6 +72,7 @@ async def upload_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """上传技能 ZIP 包（校验扩展名与 50MB 上限，交服务层解析落库并触发后台审查）。"""
     if not file.filename or not file.filename.endswith(".zip"):
         raise InvalidSkillFormatError("请上传 .zip 格式的文件")
 
@@ -94,6 +96,7 @@ async def update_skill_version(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """为已有技能上传新版本 ZIP（校验扩展名与大小上限后交服务层更新）。"""
     if not file.filename or not file.filename.endswith(".zip"):
         raise InvalidSkillFormatError("请上传 .zip 格式的文件")
 
@@ -118,6 +121,7 @@ async def list_my_skills(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """我的技能列表（分页，可按状态筛选），附带批量解析作者名。"""
     skills, total = await service.list_my_skills(user_id, status, limit, offset)
     user_ids = list({s.user_id for s in skills if s.user_id})
     user_map = await _batch_get_usernames(service.db, user_ids)
@@ -140,6 +144,7 @@ async def list_marketplace(
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """广场浏览已发布技能（关键词/分类/标签过滤 + 排序 + 分页）。"""
     skills, total = await service.list_marketplace(keyword, category, tags, sort, limit, offset)
     user_ids = list({s.user_id for s in skills if s.user_id})
     user_map = await _batch_get_usernames(service.db, user_ids)
@@ -156,6 +161,7 @@ async def list_marketplace(
 async def list_categories(
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """返回广场全部去重分类列表。"""
     cats = await service.list_categories()
     return SkillCategoriesResponse(categories=cats)
 
@@ -169,6 +175,7 @@ async def list_categories(
 async def list_tags(
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """返回广场常用标签（按出现频率降序，默认上限 50）。"""
     tags = await service.list_tags()
     return SkillTagsResponse(tags=tags)
 
@@ -184,6 +191,7 @@ async def ai_search(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """AI 语义搜索技能：LLM 解析自然语言意图后结构化检索。"""
     result = await service.ai_search(
         query=data.query,
         user_id=user_id,
@@ -214,6 +222,7 @@ async def list_installed(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """列出 Agent 已安装的技能（校验 Agent 归属）。"""
     return await service.list_installed(agent_id, user_id)
 
 
@@ -231,6 +240,7 @@ async def validate_skill(
     data: SkillValidateRequest,
     current_user: dict = Depends(require_active_user),
 ):
+    """校验技能 ZIP 包（不解压落库，只做格式与内容校验）。"""
     result = validate_skill_md(data.content)
     return SkillValidateResponse(
         valid=result.valid,
@@ -250,6 +260,7 @@ async def validate_skill(
 async def get_admin_settings(
     _admin: dict = Depends(require_permission("skill.config")),
 ):
+    """读取管理员审查设置（是否启用 LLM 审查、审查模型）。"""
     return await get_llm_review_settings()
 
 
@@ -263,6 +274,7 @@ async def update_admin_settings(
     data: SkillAdminSettingsUpdate,
     _admin: dict = Depends(require_permission("skill.config")),
 ):
+    """更新管理员审查设置（仅管理员）。"""
     await update_llm_review_settings(data.llm_review_enabled, data.llm_review_model)
     return await get_llm_review_settings()
 
@@ -278,6 +290,7 @@ async def list_review_models(
     _admin: dict = Depends(require_permission("skill.config")),
     db: AsyncSession = Depends(get_db),
 ):
+    """列出可用的 LLM 审查候选模型（管理员视角）。"""
     from novamind.features.user.services.model_config_service import ModelConfigService
 
     result = await ModelConfigService(db).list_configs(admin_user_id, "llm")
@@ -296,6 +309,7 @@ async def list_pending_reviews(
     _admin: dict = Depends(require_permission("skill.config")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """分页列出待审查技能队列。"""
     skills, total = await service.list_pending_review(limit, offset)
     user_ids = list({s.user_id for s in skills if s.user_id})
     user_map = await _batch_get_usernames(service.db, user_ids)
@@ -316,6 +330,7 @@ async def approve_skill(
     _admin: dict = Depends(require_permission("skill.review")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """管理员审批通过技能（附审批意见）。"""
     updated = await service.approve_skill(skill_id)
     return SkillReviewActionResultResponse(success=True, review_status=updated.review_status)
 
@@ -332,6 +347,7 @@ async def reject_skill(
     _admin: dict = Depends(require_permission("skill.review")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """管理员驳回技能（附驳回原因）。"""
     reason = body.reason if body else None
     updated = await service.reject_skill(skill_id, reason)
     return SkillReviewActionResultResponse(success=True, review_status=updated.review_status)
@@ -349,6 +365,7 @@ async def get_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """查技能详情；私有技能仅所有者可见。"""
     skill = await service.get_skill(skill_id, user_id)
     if not skill:
         raise SkillNotFoundError(skill_id)
@@ -370,6 +387,7 @@ async def delete_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """删除本人技能（软删，仅所有者）。"""
     await service.delete_skill(user_id, skill_id)
     return {"success": True, "message": "技能已删除"}
 
@@ -386,6 +404,7 @@ async def download_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """下载技能 ZIP 包（校验可见性与发布状态）。"""
     zip_bytes = await service.download_skill(skill_id, user_id)
     return Response(
         content=zip_bytes,
@@ -407,6 +426,7 @@ async def publish_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """发布本人技能（草稿转为已发布）。"""
     return await service.publish_skill(user_id, skill_id)
 
 
@@ -421,6 +441,7 @@ async def unpublish_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """下架本人技能（已发布转回草稿）。"""
     return await service.unpublish_skill(user_id, skill_id)
 
 
@@ -439,6 +460,7 @@ async def install_skill(
     current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """把已发布技能安装到指定 Agent（校验发布状态、安装去重与 Agent 归属）。"""
     return await service.install_skill(
         user_id, skill_id, data.agent_id,
         is_admin=current_user.get("is_admin", False),
@@ -458,6 +480,7 @@ async def uninstall_skill(
     current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """从 Agent 卸载技能（移除安装记录并递减计数）。"""
     await service.uninstall_skill(
         user_id, skill_id, agent_id,
         is_admin=current_user.get("is_admin", False),
@@ -479,6 +502,7 @@ async def create_review(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """对技能创建/更新评价（幂等覆盖）并重算评分。"""
     return await service.create_review(user_id, skill_id, data.rating, data.content)
 
 
@@ -494,6 +518,7 @@ async def list_reviews(
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """分页列出技能评价。"""
     reviews, total = await service.list_reviews(skill_id, limit, offset)
     # 批量填充 user_name
     reviewer_ids = list({r.user_id for r in reviews if r.user_id})
@@ -515,6 +540,7 @@ async def delete_review(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
+    """删除本人对技能的评价并重算评分。"""
     await service.delete_review(user_id, skill_id)
     return {"success": True, "message": "评价已删除"}
 

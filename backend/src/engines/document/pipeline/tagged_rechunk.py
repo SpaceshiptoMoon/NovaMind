@@ -1,30 +1,5 @@
-"""哨兵标记重切（tagged rechunk）：让 DeepDoc 版面坐标穿越用户配置的切分器。
-
-背景与动机
-----------
-DeepDoc full 模式解析 PDF 后，每个版面元素（文本行/表格/图片）的页码与坐标
-只存在于 ``metadata.reading_order[]`` 的 position_tag / bbox 里；
-``full_text`` 本身是干净的（无坐标标记）。当 loader 按用户切分配置对
-full_text 重新切分（rechunk）时，重切出的 chunks 与原 chunk_structure
-条数不再对应，页码坐标随之丢失（下游 ES ``chunk_pages`` 为空、QA 引用
-无页码）。
-
-原始 ``@@<page>\t<x0>\t<x1>\t<top>\t<bottom>##`` 标记无法直接喂给切分器：
-recursive splitter 的分隔符含 ``.``（会切碎浮点坐标）且 ``text.split()``
-丢弃分隔符字符。因此采用 **PUA 哨兵字符编码**：
-
-1. 每个 reading_order entry 映射一个私有区单字符 ``U+E000 + i``
-   （哨兵是不含任何分隔符的单字符，recursive/fixed/semantic/markdown
-   四种切分器都无法把它切断，最多整体随文本移动或被丢进某个 chunk）；
-2. ``tagged_text = 哨兵 + entry文本``，entries 间以 ``\\n\\n`` 连接——
-   与 full_text 的构建方式（``_reading_order_entry_text`` join）逐 entry
-   对齐，切分器看到的文本结构与真实全文一致；
-3. 切完后在每个 chunk 里按 ``ord(c)`` 找回哨兵，聚合出该 chunk 覆盖的
-   pages / source_ids / kinds / bboxes，再剥哨兵得到干净正文。
-
-容量：U+E000–U+F7FF 共 6400 个码位。超限（整页位图 PDF 的 entry 数可能
-极大）降级：超出的 entry 不编码哨兵，对应 chunk 无坐标——记 WARNING，
-不中断解析。
+"""哨兵标记重切（tagged rechunk）：把 DeepDoc 版面坐标编码为 PUA 哨兵单字符随文本穿越用户配置的切分器，切完按码位聚合出各 chunk 的页码/坐标后剥哨兵。
+哨兵占 U+E000–U+F7FF（Private Use Area）共 6400 码位；超限时超出部分不编码哨兵（对应 chunk 无坐标），记 WARNING 不中断解析。
 """
 from __future__ import annotations
 

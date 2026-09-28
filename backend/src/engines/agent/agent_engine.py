@@ -1,10 +1,4 @@
-"""
-ReAct 循环引擎
-
-实现 Agent 的 Think -> Act -> Observe -> Respond 循环。
-支持流式（逐 token）和非流式（完整响应）两种模式。
-内置 LLM 调用重试（jittered backoff）和单工具故障隔离。
-"""
+"""ReAct 循环引擎：Think-Act-Observe-Respond 循环，支持流式与非流式，内置 LLM 重试与单工具故障隔离。"""
 import asyncio
 import json
 import time
@@ -60,6 +54,7 @@ class AgentEngine:
         retry_config: RetryConfig | None = None,
         loop_detection: LoopDetectionConfig | None = None,
     ):
+        """注入工具执行器，初始化重试与循环检测配置（均可用默认值）；引擎无状态，LLM 客户端按 run 调用注入。"""
         self.tool_executor = tool_executor
         self._retry_config = retry_config or RetryConfig()
         self._loop_detection = loop_detection

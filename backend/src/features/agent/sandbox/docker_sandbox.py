@@ -45,6 +45,7 @@ class DockerSandbox:
     """
 
     def __init__(self, config: SandboxConfig):
+        """初始化空沙箱状态：Docker 客户端延迟创建，各语言长驻容器与执行计数待 start 填充。"""
         self.config = config
         self._client: Any = None
         self._containers: dict[str, Any] = {}
@@ -54,6 +55,7 @@ class DockerSandbox:
 
     @property
     def is_started(self) -> bool:
+        """沙箱是否已完成启动（容器预创建就绪）。"""
         return self._started
 
     def _get_client(self) -> Any:

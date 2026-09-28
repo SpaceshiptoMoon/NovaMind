@@ -1,10 +1,4 @@
-"""
-Deep Research module prompt templates
-
-Covers: research topic analysis, task decomposition, report generation (stream/non-stream),
-iterative retrieval reflection (query evolution + sufficiency, aligned with deer-flow) and
-per-task finding summarization
-"""
+"""Deep Research prompt 模板：主题分析、结构化规划、报告生成（流/非流）、迭代检索反思与单任务发现摘要。"""
 
 TEMPLATES = {
     "research_analyze_query": (

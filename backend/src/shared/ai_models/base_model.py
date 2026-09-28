@@ -107,6 +107,7 @@ class BaseLLM(ABC):
         max_concurrent: int = 10,
         **kwargs,
     ):
+        """初始化公共客户端字段与并发上限（Semaphore 延迟到事件循环内创建）。"""
         self.api_key = api_key
         self.base_url = base_url
         self.model = model_name
@@ -291,6 +292,7 @@ class BaseEmbedding(ABC):
         max_concurrent: int = 5,
         **kwargs,
     ):
+        """初始化公共客户端字段、可选期望维度与并发上限（同步原语延迟到事件循环内创建）。"""
         self.api_key = api_key
         self.base_url = base_url
         self.model = model_name
@@ -368,6 +370,7 @@ class BaseRerank(ABC):
         max_retries: int = 3,
         max_concurrent: int = 5,
     ):
+        """初始化公共客户端字段与并发上限（HTTP 客户端与锁延迟到事件循环内创建）。"""
         self.api_key = api_key
         self.base_url = base_url
         self.model = model_name

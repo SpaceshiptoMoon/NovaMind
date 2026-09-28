@@ -46,11 +46,13 @@ class ProviderWebSearchPort:
 
     def __init__(self, service: object | None = None):
         # service 应为 ExternalSearchService 实例。
+        """注入已构造的底层搜索 service（应为 ExternalSearchService 实例）；None 时 search 抛 WebSearchError。"""
         self._service = service
 
     async def search(
         self, query: str, max_results: int = 5
     ) -> list[WebSearchResult]:
+        """委托底层 service 搜索并把结果归一化为 WebSearchResult（service 未注入时抛 WebSearchError）。"""
         if self._service is None:
             from novamind.engines.search.errors import WebSearchError
 

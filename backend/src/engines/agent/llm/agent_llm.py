@@ -1,19 +1,5 @@
-"""
-Agent 专用 LLM 封装
-
-组合持有 BaseLLM 实例（而非继承），提供 Agent 友好的接口：
-- generate(): 非流式生成（委托给 BaseLLM）
-- generate_stream(): 真正的流式输出（委托给 BaseLLM.generate_with_tools_stream + 降级策略）
-
-选择组合而非继承的理由：
-- BaseLLM 是 shared 层通用抽象，不应被 Agent 专用需求污染
-- Agent 特有的流式工具调用逻辑封装在 feature 层
-
-设计说明：本类只依赖 BaseLLM 抽象与 base_model.ToolStreamEvent，不对具体实现类
-（如 OpenAICompatibleLLM）做 isinstance 判断，也不访问其私有属性
-（_get_semaphore/client）。OpenAI 原生流式工具调用逻辑下沉为
-BaseLLM.generate_with_tools_stream，由具体后端实现；不支持流式的后端会抛
-NotImplementedError，本类降级为非流式。
+"""Agent 专用 LLM 封装：组合持有 BaseLLM（非继承），提供流式生成与流式工具调用收集。
+只依赖 BaseLLM 抽象：不 isinstance 具体实现、不碰其私有属性；后端不支持流式抛 NotImplementedError 时本类降级非流式。
 """
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
@@ -73,14 +59,17 @@ class AgentLLM:
     """
 
     def __init__(self, base_llm: BaseLLM):
+        """组合持有 BaseLLM 实例（非继承），Agent 专用流式与工具调用逻辑建在其上。"""
         self._llm = base_llm
 
     @property
     def model_name(self) -> str:
+        """返回底层 LLM 的模型名。"""
         return self._llm.model
 
     @property
     def base_llm(self) -> BaseLLM:
+        """暴露底层 BaseLLM 实例（供需要原生接口的调用方使用）。"""
         return self._llm
 
     async def generate(

@@ -62,6 +62,7 @@ class AgentService:
     # ==================== Agent CRUD ====================
 
     async def create_agent(self, user_id: int, data: AgentCreate) -> AgentDetailResponse:
+        """创建 Agent 并提交事务，返回详情响应。"""
         agent = await self.agent_repo.create(
             user_id=user_id,
             name=data.name,
@@ -81,6 +82,7 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def get_agent(self, user_id: int, agent_id: int) -> AgentDetailResponse:
+        """按归属校验取 Agent 详情响应，未命中或非本人抛 AgentNotFoundError。"""
         agent = await self.get_agent_or_fail(user_id, agent_id)
         return AgentDetailResponse.model_validate(agent)
 
@@ -91,6 +93,7 @@ class AgentService:
         return await self.get_agent_or_fail(user_id, agent_id)
 
     async def get_agent_or_fail(self, user_id: int, agent_id: int) -> "AgentDefinition":
+        """取 Agent ORM 实体并做归属校验（系统级对所有用户可见），失败抛 AgentNotFoundError。"""
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent or (agent.user_id is not None and agent.user_id != user_id):
             raise AgentNotFoundError(agent_id)
@@ -116,6 +119,7 @@ class AgentService:
     async def list_agents(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> AgentListResponse:
+        """分页列出系统级与用户自有的 Agent，返回含总数的列表响应。"""
         agents, total = await self.agent_repo.list_by_user(user_id, limit, offset)
         return AgentListResponse(
             items=[AgentResponse.model_validate(a) for a in agents],
@@ -127,6 +131,7 @@ class AgentService:
     async def update_agent(
         self, user_id: int, agent_id: int, data: AgentUpdate, is_admin: bool = False
     ) -> AgentDetailResponse:
+        """更新 Agent（系统级仅管理员、普通仅属主），空更新直接返回当前详情。"""
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
             raise AgentNotFoundError(agent_id)
@@ -145,6 +150,7 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def delete_agent(self, user_id: int, agent_id: int, is_admin: bool = False) -> None:
+        """删除 Agent 并级联清理工具调用、消息、会话与长期记忆，最后提交事务。"""
         from novamind.features.agent.models.agent import AgentMessage, AgentSession
         from novamind.features.agent.models.memory import AgentMemory
         from novamind.features.agent.models.tool_call import AgentToolCall
@@ -185,6 +191,7 @@ class AgentService:
     async def get_or_create_session(
         self, user_id: int, agent_id: int, session_id: str | None = None
     ) -> AgentSession:
+        """带 session_id 时校验归属、所属 Agent 与 active 状态（任一不符抛 SessionNotFoundError），缺省新建会话。"""
         if session_id:
             conv = await self.session_repo.get_by_session_id(session_id)
             if not conv:
@@ -208,6 +215,7 @@ class AgentService:
         limit: int = 20,
         offset: int = 0,
     ) -> AgentSessionListResponse:
+        """分页列出用户会话（仅 active），可按 Agent 过滤，返回含总数的列表响应。"""
         convs, total = await self.session_repo.list_by_user(
             user_id, agent_id, limit, offset
         )
@@ -219,12 +227,14 @@ class AgentService:
         )
 
     async def get_session(self, user_id: int, session_id: str) -> AgentSession:
+        """按 session_id 取会话并校验归属与 active 状态，失败抛 SessionNotFoundError。"""
         conv = await self.session_repo.get_by_session_id(session_id)
         if not conv or conv.user_id != user_id or conv.status != "active":
             raise SessionNotFoundError(session_id)
         return conv
 
     async def delete_session(self, user_id: int, session_id: str) -> None:
+        """软删会话（status=deleted），未命中抛 SessionNotFoundError。"""
         deleted = await self.session_repo.delete(session_id, user_id)
         if not deleted:
             raise SessionNotFoundError(session_id)
@@ -244,6 +254,7 @@ class AgentService:
         reasoning: str | None = None,
         iteration: int | None = None,
     ) -> AgentMessage:
+        """落库一条对话消息（flush 不 commit，随对话事务统一提交），返回消息实体。"""
         msg = await self.msg_repo.create(
             conversation_id=conversation_id,
             role=role,
@@ -261,6 +272,7 @@ class AgentService:
     async def get_messages(
         self, user_id: int, session_id: str, limit: int = 50, offset: int = 0
     ) -> MessageListResponse:
+        """分页取会话消息，附全量工具调用记录，并把压缩摘要按时间窗合并为 compaction 标记行。"""
         conv = await self.get_session(user_id, session_id)
         messages, total = await self.msg_repo.list_by_conversation(
             conv.id, limit, offset
@@ -323,6 +335,7 @@ class AgentService:
     async def update_session_stats(
         self, conversation_id: int, tokens: int
     ) -> None:
+        """累加会话消息数与 token 用量，会话不存在时静默跳过。"""
         conv = await self.session_repo.get_by_id(conversation_id)
         if not conv:
             return

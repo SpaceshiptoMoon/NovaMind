@@ -1,8 +1,5 @@
-"""
-Wiki 页面仓储
-
-处理 wiki_pages / wiki_page_revisions / wiki_ingest_records 的数据访问。
-写操作遵循 begin_nested() SAVEPOINT 约定（见 docs/transaction-boundary-conventions.md）。
+"""Wiki 页面仓储：wiki_pages / wiki_page_revisions / wiki_ingest_records 的数据访问。写操作遵循 begin_nested() SAVE
+POINT 约定（见 docs/transaction-boundary-conventions.md）。
 """
 import re
 from typing import Any
@@ -733,12 +730,14 @@ class WikiIngestRecordRepository:
         self.logger = logger
 
     async def create(self, data: dict[str, Any]) -> WikiIngestRecord:
+        """创建生成履历行（默认 PENDING 状态）并 flush。"""
         record = WikiIngestRecord(**data)
         self.session.add(record)
         await self.session.flush()
         return record
 
     async def get_by_id(self, record_id: int) -> WikiIngestRecord | None:
+        """按自增主键查履历，不存在返回 None。"""
         result = await self.session.execute(
             select(WikiIngestRecord).where(WikiIngestRecord.id == record_id)
         )
@@ -755,6 +754,7 @@ class WikiIngestRecordRepository:
         return result.scalar_one_or_none()
 
     async def list_by_kb(self, kb_id: int, limit: int = 20) -> list[WikiIngestRecord]:
+        """按 ID 降序列出 KB 最近生成履历，默认 20 条。"""
         result = await self.session.execute(
             select(WikiIngestRecord)
             .where(WikiIngestRecord.kb_id == kb_id)

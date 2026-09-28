@@ -1,17 +1,7 @@
 """FastAPI 认证依赖项（归 core/auth）。
 
-``get_current_user`` / ``get_current_user_optional`` / ``require_active_user`` /
-``require_active_user`` 原住 ``features/user/api/auth.py``，被 9 个 feature 跨
-feature 直连 import。归位 core/auth 后切断了 feature 对 user 内部的直接依赖：
-认证是横切基础设施，本属 core。
-
-依赖链：
-  HTTPBearer 凭证 → ``core/auth/token.decode_access_token`` 解码 →
-  ``core/auth/blacklist.is_user_blacklisted`` 用户级黑名单 →
-  ``UserService.get_auth_status`` 取 DB 最新用户状态。
-
-``get_user_status_resolver`` 直接构造 user feature 的 ``UserService``
-（懒 import 防 core 启动链成环，枚举语义留在 user 侧计算）。
+依赖链：Bearer 凭证 → token 解码 → token 级黑名单 → 用户级黑名单 → DB 最新用户状态。
+用户状态解析懒 import user feature 的 UserService 直构，防 core 启动链成环。
 """
 from __future__ import annotations
 

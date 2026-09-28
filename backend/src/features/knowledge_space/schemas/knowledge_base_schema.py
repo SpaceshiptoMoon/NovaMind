@@ -1,10 +1,4 @@
-"""
-Knowledge base schemas.
-
-This module defines the request/response models for knowledge-base config and
-provides the new parsing config structure with backward-compatible migration
-from the legacy flat parsing layout.
-"""
+"""知识库请求/响应 Schema：切分/解析配置结构（含旧扁平配置的向后兼容迁移）。"""
 
 from datetime import datetime
 from typing import Any, Literal
@@ -78,6 +72,7 @@ class SplittingConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy_strategy(cls, value):
+        """迁移旧切分策略别名到现名（before 校验器，就地改写 dict）。"""
         return _migrate_legacy_splitting_strategy(value)
 
 
@@ -141,6 +136,7 @@ class PdfParsingConfig(TextTypeParsingConfig):
         # default 时未显式清 parser，旧值残留；运行时本就忽略该字段，此处自动
         # 清空而非报错，避免 update 返回时 response 构造触发 500（KB 配置
         # update 实测）。parser 原值仍在 DB，切回 deepdoc 时恢复。
+        """strategy=default 时自动清空残留 parser 字段（防旧值触发响应构造 500）。"""
         if self.strategy == "default" and self.parser is not None:
             self.parser = None
         return self
@@ -249,6 +245,7 @@ class ParsingConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_parsing(cls, value):
+        """迁移旧扁平解析配置到按模态分组的新结构（before 校验器）。"""
         if not isinstance(value, dict):
             return value
 
@@ -506,6 +503,7 @@ class KnowledgeBaseResponse(BaseModel):
 
     @field_serializer("status")
     def serialize_status(self, value) -> int:
+        """状态枚举序列化为 int（None 兜底 1）。"""
         if hasattr(value, "value"):
             return value.value
         return int(value) if value is not None else 1

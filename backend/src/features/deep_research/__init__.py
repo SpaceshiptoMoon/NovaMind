@@ -1,12 +1,4 @@
-"""
-深度研究模块
-
-基于 RAG 的深度研究功能，支持：
-- 内部知识库检索（RAG）
-- 外部 Web 搜索（Tavily/SerpAPI/DuckDuckGo）
-- 混合检索策略
-- 流式/非流式响应
-"""
+"""深度研究模块：内部 KB 检索 + 外部 Web 搜索（Tavily/SerpAPI/DuckDuckGo）的 RAG 型深度研究，支持流式输出。"""
 
 # 数据模型
 from novamind.features.deep_research.models import (

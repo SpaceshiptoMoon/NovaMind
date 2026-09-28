@@ -19,12 +19,14 @@ class WikiIssueRepository:
         self.logger = logger
 
     async def create(self, data: dict) -> WikiPageIssue:
+        """创建问题登记行并 flush。"""
         issue = WikiPageIssue(**data)
         self.session.add(issue)
         await self.session.flush()
         return issue
 
     async def get_by_id(self, issue_id: str) -> WikiPageIssue | None:
+        """按 UUID 主键查问题，不存在返回 None。"""
         result = await self.session.execute(
             select(WikiPageIssue).where(WikiPageIssue.id == issue_id)
         )
@@ -37,6 +39,7 @@ class WikiIssueRepository:
         status: str | None = None,
         limit: int = 50,
     ) -> list[WikiPageIssue]:
+        """分页列出 KB 内问题，可按状态过滤（按 ID 降序）。"""
         conditions = [WikiPageIssue.kb_id == kb_id]
         if status:
             conditions.append(WikiPageIssue.status == status)

@@ -7,23 +7,29 @@ from sqlalchemy.orm import selectinload
 
 
 class RoleRepository:
+    """角色与权限数据访问：角色 CRUD、角色-权限映射全量替换、权限定义查询。"""
     def __init__(self, db: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.db = db
 
     async def get_role_by_id(self, role_id: int) -> Role | None:
+        """按 ID 查角色，无则 None。"""
         return await self.db.get(Role, role_id)
 
     async def get_role_by_code(self, code: str) -> Role | None:
+        """按编码查角色，无则 None。"""
         stmt = select(Role).where(Role.code == code)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_roles(self) -> list[Role]:
+        """列出全部角色（预加载权限关联），按 ID 排序。"""
         stmt = select(Role).order_by(Role.id).options(selectinload(Role.permissions))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
     async def create_role(self, data: dict) -> Role:
+        """创建角色（begin_nested 写入；SQLite 下手动分配自增 ID）。"""
         role = Role(
             code=data["code"],
             name=data["name"],
@@ -42,6 +48,7 @@ class RoleRepository:
         return role
 
     async def update_role(self, role_id: int, data: dict) -> Role | None:
+        """更新角色名称与描述（None 字段跳过），角色不存在返回 None。"""
         role = await self.get_role_by_id(role_id)
         if role is None:
             return None
@@ -57,6 +64,7 @@ class RoleRepository:
         return role
 
     async def delete_role(self, role_id: int) -> bool:
+        """物理删除角色，角色不存在返回 False。"""
         role = await self.get_role_by_id(role_id)
         if role is None:
             return False
@@ -67,6 +75,7 @@ class RoleRepository:
         return True
 
     async def set_role_permissions(self, role_id: int, permission_codes: list[str]) -> None:
+        """全量替换角色的权限映射（先校验权限码存在，再删旧建新，单个 SAVEPOINT）。"""
         if permission_codes:
             # 校验所有 code 必须存在，避免静默遗漏
             stmt = select(Permission).where(Permission.code.in_(permission_codes))
@@ -91,6 +100,7 @@ class RoleRepository:
                 await self.db.flush()
 
     async def list_permissions(self) -> list[Permission]:
+        """列出全部权限定义（按模块与编码排序）。"""
         stmt = select(Permission).order_by(Permission.module, Permission.code)
         result = await self.db.execute(stmt)
         return result.scalars().all()

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, field_seriali
 
 # 延迟导入以避免循环依赖
 def _get_document_task_response_type():
+    """延迟导入 DocumentTaskResponse，避免 schema 模块间的循环依赖。"""
     from novamind.features.knowledge_space.schemas.document_task_schema import DocumentTaskResponse
     return DocumentTaskResponse
 

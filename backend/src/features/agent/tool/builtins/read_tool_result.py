@@ -22,6 +22,7 @@ class ReadToolResultTool(BaseTool):
         return "读取之前被截断的工具调用完整结果"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """声明 read_tool_result 函数 schema：必填 tool_call_id，可选 offset/limit 分页参数。"""
         return [
             {
                 "type": "function",
@@ -59,6 +60,7 @@ class ReadToolResultTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """按 tool_call_id 从 agent_tool_calls 表取回原始结果，超长按 offset/limit 切片并附 has_more 标记。"""
         tc_id = arguments.get("tool_call_id")
         offset = arguments.get("offset", 0)
         limit = arguments.get("limit", 10000)
@@ -99,4 +101,5 @@ class ReadToolResultTool(BaseTool):
         return content
 
     def get_system_prompt_fragment(self) -> str:
+        """不注入系统提示片段。"""
         return ""

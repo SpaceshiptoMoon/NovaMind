@@ -1,11 +1,5 @@
-"""视频帧去重引擎：none / frame_diff（直方图相似度）/ embedding（预留）。
-
-纯逻辑层，不 import features/setting/ORM。``dedup_frame_diff`` 用相邻帧归一化灰度直方图
-卡方距离判断相似度，相似帧丢弃后者、保留组首；去重后 frame_idx 重映射为连续序号，
-与后续 ``format_time_anchor(ts, idx)`` 锚点对齐。
-
-去重在「描述」之前执行，因此重映射后的连续 idx 即锚点 ``#idx``，``align_chunk_times``
-反查时一一对应。``dedup_embedding`` 为预留枚举位，待图像 embedding 模型类型引入后实现。
+"""视频帧去重引擎：none / frame_diff（相邻帧直方图相似度）/ embedding（预留）。
+去重后 frame_idx 重映射为连续序号，与 format_time_anchor 锚点 #idx 一一对应，保证 align_chunk_times 反查一致。
 """
 from __future__ import annotations
 

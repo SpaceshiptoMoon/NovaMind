@@ -1,9 +1,4 @@
-"""危险操作模式（E4 危险审批）。
-
-针对 ``code_execution`` 工具的代码内容（Python/shell）做模式检测。两层：
-- ``HARDLINE``：不可恢复的灾难性操作，直接拒绝（工具不执行）
-- ``DANGEROUS``：可恢复但代价高，告警放行（完整异步审批见 E5 二期）
-"""
+"""危险操作模式检测（针对 code_execution 代码内容）两级语义：HARDLINE 不可恢复直接拒绝，DANGEROUS 可恢复告警放行（完整异步审批见 approval.py）。"""
 from __future__ import annotations
 
 import re

@@ -34,6 +34,7 @@ class FeaturesConfig:
 
 @dataclass
 class MinioConfig:
+    """minio 段：对象存储端点、凭据与桶名；public_endpoint 为外部可达的公网地址（生成预签名 URL 用）。"""
     endpoint: str = "localhost:9000"
     public_endpoint: str | None = None  # 外部服务可访问的公网地址，如 https://minio.example.com
     access_key: str = ""
@@ -45,6 +46,7 @@ class MinioConfig:
 
 @dataclass
 class ElasticsearchConfig:
+    """elasticsearch 段：ES 集群地址、凭据、索引前缀、默认向量维度与中文分词器配置。"""
     hosts: list[str] = field(default_factory=lambda: ["http://localhost:9200"])
     username: str | None = None
     password: str | None = None
@@ -57,11 +59,13 @@ class ElasticsearchConfig:
 
 @dataclass
 class VectorDbConfig:
+    """vector_db 段：向量库类型（默认 elasticsearch，预留其他实现）。"""
     type: str = "elasticsearch"
 
 
 @dataclass
 class SplittingConfig:
+    """knowledge_base.splitting 段：文档分块策略、块大小与重叠、分隔符及块大小上下限。"""
     strategy: str = "recursive"
     chunk_size: int = 500
     chunk_overlap: int = 50
@@ -72,6 +76,7 @@ class SplittingConfig:
 
 @dataclass
 class ParsingConfig:
+    """knowledge_base.parsing 段：解析开关（图片/表格/OCR/结构保留/VLM 描述）与本地 whisper、视频 VLM 并发等媒体参数。"""
     extract_images: bool = False
     extract_tables: bool = True
     ocr_enabled: bool = False
@@ -93,6 +98,7 @@ class ParsingConfig:
 
 @dataclass
 class HybridSearchConfig:
+    """knowledge_base.retrieval.hybrid_search 段：混合检索开关与向量/文本得分权重。"""
     enabled: bool = True
     vector_weight: float = 0.7
     text_weight: float = 0.3
@@ -100,6 +106,7 @@ class HybridSearchConfig:
 
 @dataclass
 class RetrievalConfig:
+    """knowledge_base.retrieval 段：检索条数 top_k、得分阈值、重排开关及内嵌混合检索配置。"""
     top_k: int = 5
     score_threshold: float = 0.7
     rerank_enabled: bool = False
@@ -108,6 +115,7 @@ class RetrievalConfig:
 
 @dataclass
 class KnowledgeBaseConfig:
+    """knowledge_base 段：知识库级切分、解析、检索三类配置的聚合。"""
     splitting: SplittingConfig = field(default_factory=SplittingConfig)
     parsing: ParsingConfig = field(default_factory=ParsingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
@@ -115,6 +123,7 @@ class KnowledgeBaseConfig:
 
 @dataclass
 class DatabaseConfig:
+    """database 段：MySQL 连接参数、连接池容量/超时/回收策略与 SSL 开关。"""
     host: str = "localhost"
     port: int = 3306
     user: str = "root"
@@ -129,6 +138,7 @@ class DatabaseConfig:
 
     @property
     def url(self) -> str:
+        """拼装 aiomysql 异步连接串（密码经 URL 编码，强制 utf8mb4 字符集）。"""
         return (
             f"mysql+aiomysql://{self.user}:{quote_plus(self.password)}"
             f"@{self.host}:{self.port}/{self.database}?charset=utf8mb4"
@@ -137,6 +147,7 @@ class DatabaseConfig:
 
 @dataclass
 class RedisConfig:
+    """redis 段：连接参数、连接池上限及哨兵/集群地址（单机、哨兵、集群三种部署形态互斥）。"""
     enabled: bool = False
     host: str = "localhost"
     port: int = 6379
@@ -150,6 +161,7 @@ class RedisConfig:
 
 @dataclass
 class LLMConfig:
+    """llm 段：会话上下文压缩策略、触发阈值、保留最近消息数与目标压缩 token 数。"""
     compression_strategy: str = "summary"
     compression_threshold: int = 70000
     keep_recent_messages: int = 6
@@ -160,12 +172,14 @@ class LLMConfig:
 
 @dataclass
 class RerankSettings:
+    """rerank 段：全局重排开关与默认返回条数。"""
     enabled: bool = False
     default_top_k: int = 3
 
 
 @dataclass
 class AdminConfig:
+    """admin 段：启动期初始化管理员的账号信息与创建/重置密码行为开关。"""
     username: str = "admin"
     email: str = "admin@example.com"
     password: str = ""
@@ -176,6 +190,7 @@ class AdminConfig:
 
 @dataclass
 class SecurityConfig:
+    """security 段：JWT 签名密钥与算法、access token 有效期、数据加密密钥（API Key 加密用）。"""
     secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
@@ -184,6 +199,7 @@ class SecurityConfig:
 
 @dataclass
 class TavilyConfig:
+    """external_search.tavily 段：Tavily 搜索的 API Key、结果数、搜索深度与超时。"""
     api_key: str = ""
     max_results: int = 10
     search_depth: str = "basic"
@@ -192,6 +208,7 @@ class TavilyConfig:
 
 @dataclass
 class SerpAPIConfig:
+    """external_search.serpapi 段：SerpAPI 的 API Key、结果数、超时与底层搜索引擎。"""
     api_key: str = ""
     max_results: int = 10
     timeout: int = 30
@@ -200,12 +217,14 @@ class SerpAPIConfig:
 
 @dataclass
 class DuckDuckGoConfig:
+    """external_search.duckduckgo 段：免费搜索的结果数与超时（无需 API Key）。"""
     max_results: int = 10
     timeout: int = 15
 
 
 @dataclass
 class ExternalSearchConfig:
+    """external_search 段：tavily / serpapi / duckduckgo 三个外部搜索源配置的聚合。"""
     tavily: TavilyConfig = field(default_factory=TavilyConfig)
     serpapi: SerpAPIConfig = field(default_factory=SerpAPIConfig)
     duckduckgo: DuckDuckGoConfig = field(default_factory=DuckDuckGoConfig)
@@ -253,12 +272,14 @@ class AgentConfig:
 
 @dataclass
 class DeepResearchModeConfig:
+    """deep_research.modes.<mode> 段：单个深度研究模式的搜索深度与迭代轮数。"""
     depth: int = 3
     iterations: int = 5
 
 
 @dataclass
 class DeepResearchModesConfig:
+    """deep_research.modes 段：quick / standard / deep 三档深度研究模式参数。"""
     quick: DeepResearchModeConfig = field(
         default_factory=lambda: DeepResearchModeConfig(depth=2, iterations=3)
     )
@@ -272,11 +293,13 @@ class DeepResearchModesConfig:
 
 @dataclass
 class DeepResearchConfig:
+    """deep_research 段：深度研究功能的模式配置集合。"""
     modes: DeepResearchModesConfig = field(default_factory=DeepResearchModesConfig)
 
 
 @dataclass
 class ProjectConfig:
+    """project 段：项目名、版本与描述（健康检查与根路径信息展示用）。"""
     name: str = "novamind"
     version: str = "0.1.0"
     description: str = "novamind backend"
@@ -284,6 +307,7 @@ class ProjectConfig:
 
 @dataclass
 class TaskQueueConfig:
+    """task_queue 段：arq 任务队列的并发上限、单任务超时、重试次数与退避基数。"""
     max_jobs: int = 3
     job_timeout: int = 1800
     max_tries: int = 3
@@ -293,6 +317,7 @@ class TaskQueueConfig:
 
 @dataclass
 class SmtpConfig:
+    """smtp 段：邮件服务器连接参数、发件人与 TLS 开关（通知邮件发送用）。"""
     enabled: bool = False
     host: str = ""
     port: int = 587
@@ -304,6 +329,7 @@ class SmtpConfig:
 
 @dataclass
 class AppConfig:
+    """全量配置根：聚合全部配置节，是 get_config() 返回的强类型配置对象。"""
     environment: str = "development"
     project: ProjectConfig = field(default_factory=ProjectConfig)
     minio: MinioConfig = field(default_factory=MinioConfig)

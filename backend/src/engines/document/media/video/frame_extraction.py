@@ -1,11 +1,5 @@
-"""视频帧提取引擎：固定间隔抽帧 + 场景切换抽帧。
-
-纯逻辑层，不 import features/setting/ORM。``extract_frames_fixed`` 是现有
-``extract_video_frames`` 的策略化别名（保留原函数不破坏存量 import）；
-``extract_frames_scene`` 按 PIL/numpy 灰度直方图卡方距离检测场景切换点抽帧。
-
-场景抽帧的核心判断（直方图距离 + 切换点选择）抽成纯函数，便于不依赖视频解码的单元测试；
-IO 部分（写临时文件、normalize 兜底、逐帧解码）复用 ``video_utils`` 同子包内的私有 helper。
+"""视频帧提取引擎：固定间隔抽帧 + 场景切换抽帧（灰度直方图卡方距离检测切换点）。
+extract_frames_fixed 是旧函数 extract_video_frames 的策略化别名，原函数保留不破坏存量 import。
 """
 from __future__ import annotations
 

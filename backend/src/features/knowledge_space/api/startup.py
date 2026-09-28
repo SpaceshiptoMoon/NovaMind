@@ -1,8 +1,4 @@
-"""
-模块初始化
-
-知识空间模块的启动初始化
-"""
+"""知识空间模块启动初始化：注册异常处理器并执行模块组件初始化。"""
 
 from fastapi import FastAPI
 from novamind.core.middleware.base_exception_handler import register_module_exceptions

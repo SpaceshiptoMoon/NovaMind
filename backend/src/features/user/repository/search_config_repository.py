@@ -1,12 +1,4 @@
-"""
-用户搜索配置仓储
-
-处理用户搜索配置的数据访问操作，每条配置绑定具体用户。
-
-**写操作一律用 ``async with self.db.begin_nested():`` 包裹（SAVEPOINT）**，遵守
-``docs/transaction-boundary-conventions.md`` 铁律——``model_config_repository`` 未用
-SAVEPOINT 是历史偏离特例，不照抄。
-"""
+"""用户搜索配置仓储；写操作一律 begin_nested()（SAVEPOINT）。"""
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.user_search_config import UserSearchConfig
@@ -24,6 +16,7 @@ class SearchConfigRepository:
     """用户搜索配置仓储"""
 
     def __init__(self, db: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.db = db
 
     # ========== 基础查询 ==========

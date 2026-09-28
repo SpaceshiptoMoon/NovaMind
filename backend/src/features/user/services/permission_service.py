@@ -1,10 +1,4 @@
-"""RbacPermissionService：系统级 RBAC 权限码查询实现。
-
-注意与 ``knowledge_space/services/permission_service.py`` 的
-``SpaceAccessChecker`` 区分：本类查「用户 → 角色 → 权限码」（平台管理面，
-如 user.manage/role.manage），后者查「空间成员角色」（空间资源面，
-VIEWER/EDITOR/ADMIN）。二者语义与数据源完全不同。
-"""
+"""RbacPermissionService：平台管理面 RBAC 权限码查询（用户→角色→权限码），与空间资源面 SpaceAccessChecker 区分。"""
 
 from novamind.features.user.models.user import User
 from sqlalchemy import select
@@ -21,11 +15,13 @@ class RbacPermissionService:
     """
 
     def __init__(self, db: AsyncSession, redis_client=None):
+        """绑定数据库会话与可选 Redis 客户端（未装配时降级直查 DB）。"""
         self.db = db
         self.redis = redis_client
 
     async def get_user_permissions(self, user_id: int) -> set[str]:
         # 1. Redis 缓存
+        """查用户权限码集合：admin 角色直接放行全部，其余按角色映射；结果缓存 5 分钟（空集不缓存）。"""
         if self.redis:
             cached = await self.redis.get(f"{ROLE_PERM_CACHE_PREFIX}{user_id}")
             if cached is not None:
@@ -54,5 +50,6 @@ class RbacPermissionService:
         return perms
 
     async def invalidate(self, user_id: int) -> None:
+        """失效用户的权限码缓存（Redis 未装配时静默跳过）。"""
         if self.redis:
             await self.redis.delete(f"{ROLE_PERM_CACHE_PREFIX}{user_id}")

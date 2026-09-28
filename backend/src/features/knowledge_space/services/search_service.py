@@ -1,11 +1,6 @@
-"""
-检索服务。
+"""检索服务：向量/全文/混合检索与多目标检索，分块数据仅存 Elasticsearch。
 
-处理知识库的向量检索、全文检索和混合检索，支持多租户和知识库层级。
-使用 Elasticsearch 统一向量和全文检索，分块数据仅存储在 Elasticsearch 中。
-
-模型配置：Embedding 从知识库字段获取，Rerank 从请求参数获取，
-通过 ModelConfigService 获取凭证并创建客户端。
+embedding 模型从知识库字段获取，rerank 模型从请求参数获取，凭证经 ModelConfigService 解析。
 """
 
 import time
@@ -78,6 +73,7 @@ class SearchService:
         model_config_service: ModelConfigService | None = None,  # ModelConfigService
         retrieval_engine: RetrievalEngine | None = None,
     ):
+        """构造注入会话与 ES 客户端；embedding 凭证取自 KB 字段、rerank 取自请求参数。"""
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
         self.member_repo = MemberRepository(session)

@@ -1,24 +1,6 @@
-"""Wiki 质量检查与自动修复——对齐 WeKnora wiki_lint.go
-
-六类问题（WeKnora WikiLintIssueType）：
-- orphan_page        孤儿页（无入链；排除 index 页）      warning
-- broken_link        出链指向不存在 slug                  error   可自动修
-- stale_ref          source_ref 指向已删文档              error   可自动修
-- missing_cross_ref  正文提及他页标题但未链               info
-- empty_content      正文过短（<50 字符）                 warning 可自动修
-- duplicate_slug     重复 slug（MySQL 唯一约束下不可达，保留常量壳）
-
-HealthScore 0-100（WeKnora 扣分规则）：
-- orphan 比例 >25% -10、>50% -25（不叠加取大）
-- broken_link 每个 ×5
-- 无任何链接的 KB -15
-- empty_content 每个 ×3
-
-AutoFix（对齐 WeKnora AutoFix）：
-- broken_link → [[target]]/[[target| 替换为纯文本（机器写通道）
-- empty_content → 归档（index 页除外）
-- stale_ref → 剥 source_ref；无剩余来源则整页软删
-- 修后重建全 KB 链接
+"""Wiki 质量检查与自动修复（对齐 WeKnora wiki_lint.go）。六类问题：orphan_page / broken_link / stale_ref /
+missing_cross_ref / empty_content / duplicate_slug(不可达常量壳)，按 severity 分级，HealthScore 0-100 扣分制。
+AutoFix：死链替换为纯文本；空页归档（index 页除外）；失效来源剥 source_ref（无来源整页软删）；修后重建全 KB 链接。
 """
 import re
 from typing import Any
@@ -66,6 +48,7 @@ class WikiLintIssue:
 
     def __init__(self, issue_type: str, severity: str, slug: str,
                  description: str, target_slug: str = "", auto_fixable: bool = False):
+        """构造单条 lint 结果（类型/严重度/页面/描述/关联目标/可自动修）。"""
         self.issue_type = issue_type
         self.severity = severity
         self.slug = slug
@@ -78,6 +61,7 @@ class WikiLintService:
     """wiki 健康巡检 + 自动修复"""
 
     def __init__(self, session: AsyncSession, *, kb_id: int, space_id: int):
+        """绑定会话与 KB/空间上下文，内部持有页面仓储。"""
         self.session = session
         self.kb_id = kb_id
         self.space_id = space_id
@@ -211,6 +195,7 @@ class WikiLintService:
 
     @staticmethod
     def _summary(n_pages: int, issues: list[WikiLintIssue], score: int) -> str:
+        """拼装「页数/健康分/错误警告数」的单行巡检摘要。"""
         if not n_pages:
             return "知识库暂无 Wiki 页面"
         errors = sum(1 for i in issues if i.severity == "error")

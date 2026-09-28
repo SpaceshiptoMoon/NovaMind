@@ -1,19 +1,6 @@
-"""
-Deep Research 核心引擎：可复用的研究机制（查询分析/任务分解/迭代检索/综合）。
-
-本模块为纯逻辑层，不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索数据源、日志均按调用注入
-（AgentEngine 风格）；引擎类无状态。
-
-- 纯模块函数：检索结果清洗/充分性/去重/关键来源/上下文格式化/观察摘要/
-  query 决策解析/计划解析 + 常量 + prompt key。
-- ``DeepResearchEngine`` 类：``analyze_query``/``analyze_plan``（deer-flow planner
-  对齐）/``synthesize_report[_stream]``（按调用接 llm_client + prompt_provider）+
-  ``background_investigation``（规划前单轮背景检索）+ ``search``（迭代检索循环，
-  AsyncIterator[SearchEvent]，按调用接 ``sources: List[SearchSourceBinding]``——
-  可插拔数据源，每轮迭代查全部启用源；llm_client/prompt_provider 可选注入——
-  注入即启用 deer-flow 对齐的观察驱动模式；循环内按 step_type 路由
-  research/processing 步骤）。
+"""Deep Research 核心引擎：查询分析/计划规划/迭代检索/综合报告的可复用机制，纯逻辑层。
+不得 import features.* / setting.* / ORM 模型 / core.database。
+LLM/prompt/数据源/日志均按调用注入，引擎无状态；search 返回 AsyncIterator[SearchEvent] 事件流，数据源可插拔。
 """
 from __future__ import annotations
 
@@ -342,6 +329,7 @@ class DeepResearchEngine:
     """
 
     def __init__(self, *, logger: Logger | None = None):
+        """仅注入可选日志器；LLM 客户端、prompt 提供者、数据源全部按调用注入，引擎无状态。"""
         self._logger = logger
 
     async def analyze_query(

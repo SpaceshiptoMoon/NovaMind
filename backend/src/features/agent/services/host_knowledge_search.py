@@ -1,10 +1,5 @@
-"""
-HostKnowledgeSearchPort 宿主适配器：为 agent 引擎提供空间/知识库发现与检索。
-
-跨 feature 消费走 knowledge_space 公共面（R2）：权限判定走
-``services/access_service.check_space_access``，空间/KB/文档发现走
-SpaceService/KnowledgeBaseService/DocumentQueryService 公共方法，
-检索委托 SearchService——不直接触碰对方 repository。
+"""HostKnowledgeSearchPort 宿主适配器：为 agent 引擎提供空间/知识库发现与检索。
+跨 feature 走 knowledge_space 公共面（R2）：权限走 access_service，发现/检索走 services 公共方法，不触碰对方 repository。
 """
 from typing import Any
 
@@ -34,6 +29,7 @@ class HostKnowledgeSearchPort:
     # ==================== 内部装配 ====================
 
     async def _get_es_client(self) -> Any:
+        """懒取 ES 客户端并在实例内缓存，后续调用复用。"""
         if self._es_client is None:
             from novamind.shared.storage.client_factory import get_elasticsearch_client
 
@@ -41,6 +37,7 @@ class HostKnowledgeSearchPort:
         return self._es_client
 
     async def _build_search_service(self) -> Any:
+        """组装 knowledge_space 的 SearchService（db + ES + 模型配置）。"""
         from novamind.features.knowledge_space.services.search_service import (
             SearchService,
         )
@@ -49,6 +46,7 @@ class HostKnowledgeSearchPort:
         return SearchService(self._db, es_client, self._mcs)
 
     def _space_service(self) -> Any:
+        """构造 SpaceService（跨 feature 只走公共面，函数内懒 import 防环）。"""
         from novamind.features.knowledge_space.services.space_service import (
             SpaceService,
         )
@@ -56,6 +54,7 @@ class HostKnowledgeSearchPort:
         return SpaceService(self._db)
 
     def _kb_service(self) -> Any:
+        """构造 KnowledgeBaseService（仅 KB 发现面使用，minio/es 传 None）。"""
         from novamind.features.knowledge_space.services.knowledge_base_service import (
             KnowledgeBaseService,
         )
@@ -63,6 +62,7 @@ class HostKnowledgeSearchPort:
         return KnowledgeBaseService(self._db, es_client=None, minio_client=None)
 
     def _doc_query_service(self) -> Any:
+        """构造 DocumentQueryService（仅 KB 文档查询面使用，minio/es 传 None）。"""
         from novamind.features.knowledge_space.services.document_query_service import (
             DocumentQueryService,
         )
@@ -83,6 +83,7 @@ class HostKnowledgeSearchPort:
     # ==================== 空间与知识库发现 ====================
 
     async def list_spaces(self, user_id: int) -> list[SpaceInfo]:
+        """列出用户可访问的空间，映射为引擎侧 SpaceInfo。"""
         spaces = await self._space_service().get_user_spaces(user_id)
         return [
             SpaceInfo(
@@ -96,6 +97,7 @@ class HostKnowledgeSearchPort:
     async def list_knowledge_bases(
         self, space_id: int, user_id: int
     ) -> list[KbInfo]:
+        """列出空间下 ACTIVE 状态的知识库，映射为引擎侧 KbInfo。"""
         from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
@@ -114,6 +116,7 @@ class HostKnowledgeSearchPort:
         ]
 
     async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
+        """遍历用户全部空间汇总 ACTIVE 知识库，附带所属空间名。"""
         from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
@@ -151,6 +154,7 @@ class HostKnowledgeSearchPort:
         kb_id: int | None = None,
         score_threshold: float | None = None,
     ) -> list[KnowledgeSearchItem]:
+        """按模式检索知识库内容；指定 kb_id 单库检索，缺省时取空间前 3 个 KB 跨库检索按分数合并取 top_k；单库失败静默跳过。"""
         from novamind.features.knowledge_space.schemas.search_schema import (
             SearchRequest,
         )
@@ -213,6 +217,7 @@ class HostKnowledgeSearchPort:
         page: int = 1,
         page_size: int = 20,
     ) -> DocumentListResult:
+        """分页列出知识库文档并返回总数，映射为引擎侧 DocumentListResult。"""
         doc_service = self._doc_query_service()
         skip = (page - 1) * page_size
         documents = await doc_service.get_kb_documents(kb_id=kb_id, skip=skip, limit=page_size)

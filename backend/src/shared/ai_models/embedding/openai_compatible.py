@@ -108,6 +108,7 @@ class EmbeddingDimensionError(Exception):
     """向量维度不匹配错误"""
 
     def __init__(self, expected: int, actual: int, model: str):
+        """记录期望维度、实际维度与模型名，并生成用户可读的错误消息。"""
         self.expected = expected
         self.actual = actual
         self.model = model

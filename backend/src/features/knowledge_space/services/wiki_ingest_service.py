@@ -1,14 +1,6 @@
-"""
-Wiki 生成管道服务
+"""Wiki 生成管道服务：Map-Reduce 四阶段（候选 slug 抽取 → 分块引文标注 → 按 slug 并发写页 → 链接重建/死链清理）。
 
-移植自 WeKnora 的 wiki ingest（Map-Reduce 四阶段）：
-  Pass 0   候选 slug 抽取（全文一遍，只出骨架 JSON）
-  Pass 1   分块引文标注（chunk 先标注、写作只用已标注 chunk，杜绝幻觉）
-  Reduce   按 slug 并发写页（增量合并 + 版本快照）
-  Finalize 链接重建 / 死链清理 / 快照裁剪（纯代码，不调 LLM）
-
-依赖经构造注入：feature 层允许持有 ORM 会话与具体客户端；
-不 import setting，不反向依赖其它 feature。
+依赖经构造注入：feature 层允许持有 ORM 会话与具体客户端；不 import setting，不反向依赖其它 feature。
 """
 import asyncio
 import re
@@ -125,6 +117,7 @@ class WikiIngestService:
         space_id: int,
         document_id: int,
     ):
+        """依赖经构造注入（LLM/MinIO/ES 客户端与配置），内部建并发信号量限制 LLM 并发。"""
         self.session = session
         self.llm = llm_client
         self.minio = minio_client
@@ -350,6 +343,7 @@ class WikiIngestService:
         custom_instructions: str,
         outcome: IngestOutcome,
     ) -> list[ExtractedItem]:
+        """Pass 0：调 LLM 从全文抽取候选 slug 骨架（实体/概念），补全类型前缀并清洗。"""
         prev_text = "\n".join(f"- {s}" for s in old_slugs) if old_slugs else "(none — this is a new document)"
         prompt = PromptManager.format_prompt(
             "wiki_candidate_slug_user",
@@ -543,6 +537,7 @@ class WikiIngestService:
 
     @staticmethod
     def _item_dict(c: ExtractedItem) -> dict[str, Any]:
+        """ExtractedItem 序列化为可 JSON 落库的字典。"""
         return {
             "type": c.type, "name": c.name, "slug": c.slug,
             "aliases": list(c.aliases), "description": c.description,
@@ -551,6 +546,7 @@ class WikiIngestService:
 
     @staticmethod
     def _dict_item(d: dict[str, Any]) -> ExtractedItem:
+        """字典反序列化回 ExtractedItem（缺省字段按类型补默认值）。"""
         return ExtractedItem(
             type=d.get("type") or "concept", name=d.get("name") or "",
             slug=d.get("slug") or "", aliases=d.get("aliases") or [],
@@ -689,6 +685,7 @@ class WikiIngestService:
 
     @staticmethod
     def _build_citation_batches(chunks: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+        """按字符预算把 chunk 切成引文标注批次（不拆单块）。"""
         batches: list[list[dict[str, Any]]] = []
         current: list[dict[str, Any]] = []
         current_chars = 0
@@ -981,10 +978,12 @@ class WikiIngestService:
         return record
 
     def bind_record(self, record: Any) -> None:
+        """绑定生成履历行，供管道各阶段即时写入进度。"""
         self._ingest_record = record
 
     @staticmethod
     def _record_guard() -> Any:
+        """未绑定履历时返回空操作守卫对象（步骤记录全部 no-op）。"""
         class _Noop:
             def start_step(self, *a, **k): pass
             def finish_step(self, *a, **k): pass

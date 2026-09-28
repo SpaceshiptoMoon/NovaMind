@@ -55,6 +55,7 @@ async def extract_video_frames(
 
 
 def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -> list[tuple[bytes, float, int]]:
+    """按固定间隔解码视频并编码 JPEG，返回帧列表；单帧失败跳过，全部失败抛 RuntimeError。"""
     metadata = read_video_metadata(filepath)
     duration = metadata.get("duration", 0) or 0
     fps = metadata.get("fps", 30) or 30
@@ -111,6 +112,7 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
 
 
 def read_video_metadata(filepath: str) -> dict:
+    """经 imageio/pyav 探测视频时长、帧率与总帧数；探测失败抛 VideoMetadataError。"""
     import imageio.v3 as iio
 
     try:
@@ -126,6 +128,7 @@ def read_video_metadata(filepath: str) -> dict:
 
 
 def read_frame_at(filepath: str, timestamp: float, fps: float):
+    """读取指定时间戳所在帧并返回 PIL Image；解码失败返回 None 跳帧（不兜底取第 0 帧，防锚点时间轴错位）。"""
     import imageio.v3 as iio
     import numpy as np
     from PIL import Image

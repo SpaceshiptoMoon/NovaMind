@@ -1,15 +1,6 @@
-"""
-Wiki 页面模型
-
-文档解析完成后，由 LLM 管道把知识库文档整理成互相链接、带引用溯源的
-Markdown wiki 页面（实体页/概念页/摘要页）。移植自 WeKnora 的 wiki 机制，
-按 NovaMind 的 MySQL + 特征分层做了适配：
-
-- 软删唯一约束：WeKnora 用 Postgres partial unique index（WHERE deleted_at IS NULL），
-  MySQL 不支持，改用 deleted_flag（0=存活，删除时写时间戳）纳入唯一键。
-- 目录树：MVP 不建 wiki_folders 表，页面携带扁平 category_path（JSON 数组）。
-- 版本快照：当前版本只存 wiki_pages；页面被覆盖前，旧版本整份快照进
-  wiki_page_revisions，(page_id, version) 唯一约束 + 冲突跳过保证写路径幂等。
+"""Wiki 页面模型：文档解析后由 LLM 管道生成互相链接、带引用溯源的 Markdown wiki 页面。软删唯一约束用 deleted_flag（0=存活，删除写微秒时间戳）替代 Post
+gres partial unique index；(page_id, version) 唯一约束 + 冲突跳过保证「先快照再更新」写路径幂等；目录树 MVP 用扁平 category_pat
+h（JSON 数组）不建文件夹表。
 """
 import uuid
 from enum import IntEnum
@@ -41,6 +32,7 @@ class WikiPageType:
 
     @classmethod
     def all_types(cls) -> tuple:
+        """全部五种页面类型（含仅 Agent 可建的类型）。"""
         return (cls.SUMMARY, cls.ENTITY, cls.CONCEPT, cls.SYNTHESIS, cls.COMPARISON)
 
     @classmethod
@@ -132,6 +124,7 @@ class WikiPage(BaseModel):
 
     @property
     def is_deleted(self) -> bool:
+        """页面是否已软删（deleted_flag 非零）。"""
         return self.deleted_flag != 0
 
     def source_document_ids(self) -> list:
@@ -221,10 +214,12 @@ class WikiIngestRecord(BaseModel):
     )
 
     def mark_running(self) -> None:
+        """标记生成任务开始并写入开始时间。"""
         self.status = WikiIngestStatus.RUNNING
         self.started_at = now_china()
 
     def mark_done(self, pages_created: int, pages_updated: int) -> None:
+        """标记生成完成并记录新建/更新页面数、清空错误信息。"""
         self.status = WikiIngestStatus.DONE
         self.pages_created = pages_created
         self.pages_updated = pages_updated
@@ -232,6 +227,7 @@ class WikiIngestRecord(BaseModel):
         self.error_message = None
 
     def mark_failed(self, error_message: str) -> None:
+        """标记生成失败并记录失败原因。"""
         self.status = WikiIngestStatus.FAILED
         self.completed_at = now_china()
         self.error_message = error_message
@@ -289,10 +285,13 @@ class WikiPageIssue(BaseModel):
     )
 
     def resolve(self) -> None:
+        """标记问题已解决。"""
         self.status = "resolved"
 
     def ignore(self) -> None:
+        """标记问题已忽略（不处理）。"""
         self.status = "ignored"
 
     def reopen(self) -> None:
+        """重新打开已处理/已忽略的问题。"""
         self.status = "pending"

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 
 class ResumeSessionResponse(BaseModel):
+    """简历会话响应模型（含结构化简历与报告链接）。"""
     id: str
     user_id: int
     resume_filename: str = ""
@@ -21,5 +22,6 @@ class ResumeSessionResponse(BaseModel):
 
 
 class ResumeSessionListResponse(BaseModel):
+    """简历会话列表响应（含总数）。"""
     sessions: list[ResumeSessionResponse]
     total: int

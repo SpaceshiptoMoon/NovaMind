@@ -192,6 +192,7 @@ class EvaluationTaskListItem(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
         return _status_to_str(v)
 
 
@@ -219,6 +220,7 @@ class EvaluationTaskDetailResponse(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
         return _status_to_str(v)
 
 
@@ -235,6 +237,7 @@ class EvaluationReportResponse(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
         return _status_to_str(v)
 
 

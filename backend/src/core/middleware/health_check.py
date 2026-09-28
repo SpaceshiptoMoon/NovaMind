@@ -1,12 +1,4 @@
-"""
-健康检查模块
-
-提供多种健康检查端点
-- /health - 基础健康检查
-- /health/detailed - 详细组件状态
-- /health/ready - Kubernetes 就绪检查
-- /health/live - Kubernetes 存活检查
-"""
+"""健康检查路由：/health 基础探活、/health/detailed 组件级、/health/ready、/health/live。"""
 
 import asyncio
 from typing import Any

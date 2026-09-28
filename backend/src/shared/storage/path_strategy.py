@@ -51,24 +51,31 @@ class DefaultPathStrategy:
     def document_object_name(
         self, space_id: int, kb_id: int, document_id: int, storage_name: str
     ) -> str:
+        """文档对象名：spaces/{space_id}/kbs/{kb_id}/documents/{doc_id}/{storage_name}。"""
         return f"spaces/{space_id}/kbs/{kb_id}/documents/{document_id}/{storage_name}"
 
     def document_prefix_for_kb(self, space_id: int, kb_id: int) -> str:
+        """知识库列表前缀：spaces/{space_id}/kbs/{kb_id}/。"""
         return f"spaces/{space_id}/kbs/{kb_id}/"
 
     def document_prefix_for_space(self, space_id: int) -> str:
+        """空间列表前缀：spaces/{space_id}/。"""
         return f"spaces/{space_id}/"
 
     def avatar_object_name(self, user_id: int, extension: str) -> str:
+        """头像对象名：avatars/{user_id}/avatar.{extension}。"""
         return f"avatars/{user_id}/avatar.{extension}"
 
     def avatar_prefix_for_user(self, user_id: int) -> str:
+        """头像列表前缀：avatars/{user_id}/。"""
         return f"avatars/{user_id}/"
 
     def temp_object_name(self, session_id: str, filename: str) -> str:
+        """临时对象名：temp/{session_id}/{filename}。"""
         return f"temp/{session_id}/{filename}"
 
     def temp_prefix_for_session(self, session_id: str) -> str:
+        """会话临时文件列表前缀：temp/{session_id}/。"""
         return f"temp/{session_id}/"
 
 

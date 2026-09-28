@@ -1,10 +1,4 @@
-"""
-Embedding 客户端包
-
-提供多协议的文本向量化功能，统一接口规范。
-支持协议: OpenAI 兼容、Ollama、Transformers 本地推理。
-R5 工厂自注册：client 类挂 ``_FACTORY_PROTOCOL`` 入注册表（见 llm/__init__.py 同款）。
-"""
+"""Embedding 客户端包：多协议统一构造入口（R5 工厂自注册，见 llm 包同款）。"""
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding

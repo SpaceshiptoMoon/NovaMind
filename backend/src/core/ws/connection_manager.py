@@ -1,11 +1,7 @@
 """per-user WebSocket 连接注册表（通知常驻订阅通道）。
 
-连接按认证后的 user_id 归组（同一用户多标签页 = 多连接，推送全达）。
-推送失败静默摘除断连——DB 是事实源，WS 只是加速器，30s 轮询兜底。
-
-多进程演进注记：当前单进程架构（arq worker 内嵌主进程），send_notification
-所在进程与持连进程相同，进程内单例直接可达；将来 ``--workers > 1`` 时需在
-``send_to_user`` 后接 Redis pub/sub 跨进程广播。
+推送失败静默摘除断连——DB 是事实源、WS 只是加速器（30s 轮询兜底）。
+当前单进程架构进程内单例直达；多进程部署（--workers > 1）时需在 send_to_user 后接 Redis pub/sub 跨进程广播。
 """
 from __future__ import annotations
 
@@ -22,6 +18,7 @@ class ConnectionManager:
     """user_id → WebSocket 集合的进程内注册表。"""
 
     def __init__(self) -> None:
+        """初始化空连接注册表与增删互斥锁（同一事件循环内实际无竞争，防御性）。"""
         self._connections: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()  # 注册表增删互斥（同一事件循环内实际无竞争，防御性）
 

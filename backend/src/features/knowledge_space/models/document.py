@@ -1,9 +1,4 @@
-"""
-文档模型
-
-存储上传到知识空间的文档元数据。
-处理状态与生命周期追踪已迁移至 DocumentTaskItem 模型。
-"""
+"""文档模型：上传文档的元数据与 MinIO 存储信息（处理状态已迁至 DocumentTask）。"""
 from enum import IntEnum
 
 from novamind.core.database.base import BaseModel

@@ -10,6 +10,7 @@ class RouterManager:
     """路由管理器"""
 
     def __init__(self):
+        """初始化空路由表（manifest 为唯一路径，聚合在 get_all_routers 时按需进行）。"""
         self.routers: dict[str, APIRouter] = {}
         # manifest 路径无需在此预加载 router 对象；get_all_routers 时按需聚合
         # （批次 6.2：NOVAMIND_LEGACY_MANIFEST 双路径已删，manifest 为唯一路径）

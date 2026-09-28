@@ -1,10 +1,4 @@
-"""孤儿聊天附件清理（cron 任务）。
-
-背景：chat-attachments 上传即落库落 MinIO，用户取消发送/发送失败时无人回收，
-存储与表只增不减。判定口径：上传超过 ORPHAN_CUTOFF_DAYS 天、且从未被任何
-消息 extra 引用的附件视为孤儿（附件与消息无外键，引用只经 JSON extra 传递——
-agent_messages.extra 与 question_answer.extra 两处，形态均为 {"attachments": [{"id": ...}]}）。
-"""
+"""孤儿聊天附件清理（cron 任务）：清理上传超过宽限期且从未被任何消息 extra 引用的附件（DB 记录 + MinIO 对象）。"""
 from datetime import UTC, datetime, timedelta
 from typing import Any
 

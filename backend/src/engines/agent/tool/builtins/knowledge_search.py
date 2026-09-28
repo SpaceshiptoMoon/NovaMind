@@ -23,6 +23,7 @@ class KnowledgeSearchTool(BaseTool):
         return "知识库检索工具集：发现空间、浏览知识库、搜索文档内容"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回知识库检索工具集定义：空间发现、KB 浏览、文档检索、文档列表。"""
         return [
             {
                 "type": "function",
@@ -163,6 +164,7 @@ class KnowledgeSearchTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """校验 context 中的检索端口后按工具名分发执行；端口未配置返回错误 JSON。"""
         port = context.get("knowledge_search_port")
         if port is None:
             return json.dumps(
@@ -358,6 +360,7 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"获取文档列表失败：{str(e)}"}, ensure_ascii=False)
 
     def get_system_prompt_fragment(self) -> str:
+        """返回知识库检索的使用指导片段（先发现后检索、按需换词换库）。"""
         return (
             "## Knowledge Search\n"
             "When the user's question relates to their stored documents:\n"

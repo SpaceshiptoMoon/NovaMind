@@ -1,6 +1,4 @@
-"""
-文档处理 arq 任务函数与宿主编排。
-"""
+"""文档处理 arq 任务函数与宿主编排：入队/重试观测/终态通知/自愈对账。"""
 import traceback
 from datetime import timedelta
 from typing import Any
@@ -28,6 +26,7 @@ def _get_task_queue_retry_delay_seconds() -> int:
 
 
 def _build_retry_observability(max_tries: int, retry_count: int) -> dict:
+    """组装重试观测字段（最大次数/已试/剩余/延迟秒数），写入任务进度便于排查。"""
     retry_delay_seconds = _get_task_queue_retry_delay_seconds()
     remaining_retry_count = max(max_tries - retry_count, 0)
     return {

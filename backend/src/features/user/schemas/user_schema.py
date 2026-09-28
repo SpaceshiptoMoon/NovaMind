@@ -407,6 +407,7 @@ class UserAppAccessUpdateRequest(UserAppAccessBase):
     @field_validator("disabled_apps")
     @classmethod
     def validate_app_codes(cls, v: list[str]) -> list[str]:
+        """校验应用代码合法且无重复，非法值直接报错。"""
         from novamind.core.authorization.app_codes import AppCode
 
         allowed = set(AppCode.ALL)

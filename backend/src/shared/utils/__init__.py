@@ -9,6 +9,7 @@ __all__ = []
 
 
 def __getattr__(name):
+    """模块级懒加载属性访问（按导出映射 import 对应子模块后取属性）。"""
     target = _EXPORT_MAP.get(name)
     if target is None:
         raise AttributeError(name)

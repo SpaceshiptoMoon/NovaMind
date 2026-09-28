@@ -1,10 +1,6 @@
-"""
-文档管理路由
+"""文档管理路由：上传/列表/详情/下载/删除等操作。
 
-处理文档的上传和管理操作
-支持多租户和知识库层级
-
-路由前缀: /api/v1/spaces/{space_id}/knowledge-bases
+路由前缀 /api/v1/spaces/{space_id}/knowledge-bases（另含空间级扁平路由）。
 """
 import mimetypes
 import os

@@ -1,8 +1,6 @@
-"""Wiki 页面领域服务（批次 4.1 从 wiki_routes 下沉）。
+"""Wiki 页面写域服务：创建/更新（乐观锁）/软删/回滚/重建/问题登记的写编排。
 
-厚路由时代的 8 个写 handler（create/update/delete/revert/rebuild/issue×2）
-业务逻辑集中于此；路由层只保留参数解析 + Depends 鉴权 + 调本服务。
-写路径事务边界遵守规范：service 内 commit/rollback，repository 用 begin_nested。
+事务边界：service 内 commit/rollback，repository 用 begin_nested。
 """
 from __future__ import annotations
 
@@ -41,6 +39,7 @@ class WikiPageService:
     """Wiki 页面写域服务（每请求一实例，绑定调用方 session）。"""
 
     def __init__(self, db: AsyncSession):
+        """每请求一实例：绑定调用方 session 并持有页面仓储。"""
         self.db = db
         self.repo = WikiPageRepository(db)
 
@@ -58,6 +57,7 @@ class WikiPageService:
         category_path: list[str] | None,
         user_id: int,
     ) -> WikiPage:
+        """人工/Agent 新建页面：slug 清洗与类型校验、冲突检查、写版本快照、commit 后返回。"""
         slug = normalize_slug(slug_raw)
         if not slug:
             raise InvalidParameterError("slug 清洗后为空", field="slug")
@@ -102,6 +102,7 @@ class WikiPageService:
         expected_version: int,
         user_id: int,
     ) -> WikiPage:
+        """更新页面（乐观锁：expected_version 不符抛 409 异常），仅用户可见字段变化才递增版本。"""
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -134,6 +135,7 @@ class WikiPageService:
         return page
 
     async def delete_page(self, *, kb_id: int, slug: str) -> None:
+        """软删页面并跑 finalize（清理死链、重对齐 in_links）。"""
         from novamind.features.knowledge_space.services.wiki_graph_service import (
             finalize_links,
         )
@@ -216,6 +218,7 @@ class WikiPageService:
         reported_by: str,
         user_id: int,
     ):
+        """登记页面问题（校验问题类型白名单与页面存在），commit 后返回。"""
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )
@@ -247,6 +250,7 @@ class WikiPageService:
     async def update_issue_status(
         self, *, issue_id: str, status: str
     ):
+        """流转问题状态（pending/ignored/resolved 映射到对应方法），非法状态抛参数错误。"""
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )

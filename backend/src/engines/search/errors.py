@@ -1,11 +1,4 @@
-"""
-联网搜索引擎中立异常类。
-
-引擎内部预期错误继承 ``WebSearchError``；宿主装配点捕获后映射为对应宿主
-``BaseAPIError``（如 features/user 的 ``SearchConfigTestFailedError``）。与
-``engines/rag/errors.py`` 同构：engines 层只抛中立异常，不依赖宿主异常体系，
-由 features 装配点决定如何呈现给 API 调用方。
-"""
+"""联网搜索引擎中立异常：engines 层只抛 WebSearchError 及其子类，宿主装配点捕获后映射为对应 BaseAPIError。"""
 from __future__ import annotations
 
 __all__ = [

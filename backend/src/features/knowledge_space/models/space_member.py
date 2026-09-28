@@ -1,9 +1,4 @@
-"""
-空间成员模型
-
-存储知识空间成员的角色和权限信息
-支持角色枚举（简单场景）和 RBAC（复杂场景）两种模式
-"""
+"""空间成员模型：成员角色、状态与邀请信息，支持角色枚举加 custom_permissions 覆盖。"""
 
 import secrets
 from datetime import timedelta

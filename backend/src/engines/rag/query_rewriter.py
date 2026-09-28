@@ -1,11 +1,5 @@
-"""
-可插拔的检索前查询改写引擎组件（Query Rewriting，批次 5.2 迁 engines/rag）
-
-支持 4 种改写策略，一次选择一个。
-通过 session_config.kb_bindings.query_rewriting 配置。
-
-提示词统一托管在中央注册表（shared.prompts），见 features/qa/qa_prompts.py 的
-qa_rw_completion / qa_rw_synonym / qa_rw_decompose / qa_rw_hyde。
+"""检索前查询改写引擎组件：补全/同义词/分解/HyDE 四种策略一次选一，配置入口 session_config.kb_bindings.query_rewriting。
+prompt 统一托管在 shared.prompts 中央注册表。
 """
 import re
 from dataclasses import dataclass, field
@@ -56,6 +50,7 @@ class QueryRewriter:
     """可插拔的检索前查询改写组件"""
 
     def __init__(self, llm_client: BaseLLM):
+        """注入 LLM 客户端并构建策略到处理方法的分发表。"""
         self._llm = llm_client
         # 策略 → 处理方法查表（_completion 需 history 参数，调用处单独传参）
         self._strategies = {
@@ -79,6 +74,7 @@ class QueryRewriter:
 
     async def _completion(self, query: str, history: list[dict]) -> RewriteResult:
         # 只取最近 3 轮对话作为上下文
+        """基于最近 3 轮对话历史补全指代，改写为独立可检索的查询。"""
         recent = history[-6:] if len(history) > 6 else history
         formatted = "\n".join(
             f"{'User' if m.get('role') == 'user' else 'Assistant'}: {m.get('content', '')}"
@@ -96,6 +92,7 @@ class QueryRewriter:
         )
 
     async def _synonym(self, query: str) -> RewriteResult:
+        """同义词扩展改写：生成同义表述扩大召回面。"""
         prompt = PromptManager.format_prompt("qa_rw_synonym", query=query)
         rewritten = await self._call_llm(prompt)
         return RewriteResult(
@@ -106,6 +103,7 @@ class QueryRewriter:
         )
 
     async def _decompose(self, query: str) -> RewriteResult:
+        """查询分解：把复合问题拆成多个子问题，清洗编号与标题行后返回子查询列表。"""
         prompt = PromptManager.format_prompt("qa_rw_decompose", query=query)
         result = await self._call_llm(prompt)
         if result:
@@ -125,6 +123,7 @@ class QueryRewriter:
         )
 
     async def _hyde(self, query: str) -> RewriteResult:
+        """HyDE 假设文档：生成假设性答案文本用于向量检索。"""
         prompt = PromptManager.format_prompt("qa_rw_hyde", query=query)
         hypothetical = await self._call_llm(prompt)
         return RewriteResult(

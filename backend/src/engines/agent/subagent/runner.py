@@ -1,14 +1,4 @@
-"""子 agent 委派 runner（E6）。
-
-主 agent 经 ``TaskTool`` 调用 ``run_subagent``，启动一个独立子 ReAct 循环：
-- 独立 messages（只含 prompt，不继承父对话上下文）
-- 裁剪工具集（exclude task/todo，防递归 + 避免改全局 todo）
-- 复用父 context 的端口（web_search/knowledge_search/memory 等）
-- 跑完取 ``done`` 事件 full_response 作为 summary 返回
-
-子 agent 不再委派（工具集已裁剪 task + context subagent_runner=None 双保险）。
-首版不持久化子 session（session_id=None），parent_session_id 预留待后续。
-"""
+"""子 agent 委派 runner：独立 messages 启动子 ReAct 循环，工具集裁剪（exclude task/todo）防递归；首版不持久化子 session。"""
 from __future__ import annotations
 
 from typing import Any
@@ -38,6 +28,7 @@ class SubAgentRunner:
         enabled_mcp_ids: list[int],
         parent_context: dict[str, Any],
     ) -> None:
+        """注入父引擎、工具端口与模型配置服务；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。"""
         self._agent_engine = agent_engine
         self._tool_executor = tool_executor
         self._mcs = model_config_service

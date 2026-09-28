@@ -1,10 +1,4 @@
-"""
-音视频文档处理管道
-
-处理流程：
-- 视频: 提取关键帧 → VLM逐帧描述 → MD文本 → 统一文本切分 → Embedding → ES
-- 音频: ASR转写 → MD文本 → 统一文本切分 → Embedding → ES
-"""
+"""音视频文档处理管道：视频走关键帧提取加 VLM 逐帧描述，音频走 ASR 转写，之后统一文本切分、embedding 与 ES 入库。"""
 
 from typing import Any
 

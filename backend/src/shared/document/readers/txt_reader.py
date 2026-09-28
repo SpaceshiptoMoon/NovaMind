@@ -12,6 +12,7 @@ class TxtReader(BaseReader):
     """TXT文档读取器"""
 
     def __init__(self):
+        """初始化基类公共字段（编码列表、logger）。"""
         super().__init__()
 
     def _read_with_encoding_sync(self, file_path: str) -> str:

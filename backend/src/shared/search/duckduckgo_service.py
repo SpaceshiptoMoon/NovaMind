@@ -33,6 +33,7 @@ class DuckDuckGoSearchService(ExternalSearchService):
         config: DuckDuckGoSearchConfig | None = None,
         logger=None,
     ):
+        """应用配置（缺省用默认配置），HTTP 客户端延迟到首次搜索时创建。"""
         self.logger = logger or get_logger(__name__)
         cfg = config or DuckDuckGoSearchConfig()
         self.max_results = cfg.max_results
@@ -41,6 +42,7 @@ class DuckDuckGoSearchService(ExternalSearchService):
 
     @property
     def provider_name(self) -> str:
+        """provider 标识（注册表与日志用）。"""
         return "duckduckgo"
 
     def is_available(self) -> bool:

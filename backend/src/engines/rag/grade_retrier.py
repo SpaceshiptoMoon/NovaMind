@@ -30,6 +30,7 @@ class GradeRetrier:
         prompt_provider: PromptManager,
         logger: Logger,
     ):
+        """注入 LLM 客户端、prompt 提供者与日志器；打分与重试决策按调用执行。"""
         self._llm = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger

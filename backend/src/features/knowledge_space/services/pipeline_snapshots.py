@@ -1,17 +1,6 @@
-"""文档管道步骤快照：指纹计算 + MinIO 快照存取 + 级联失效。
-
-为「断点续跑」提供基础设施：管道每完成一个可缓存步骤（parse/split/embed），
-把产物快照到 MinIO，并在 ``document.storage["pipeline_snapshots"]`` 记录指纹指针；
-重试时重新计算指纹，匹配则直接复用快照，跳过已成功的昂贵步骤（VLM/OCR/ASR/Embedding）。
-
-指纹链：parse_fp → split_fp → embed_fp，上级指纹进入下级指纹计算，
-任一环配置变化即从该环级联失效下游（parse 变 → 全部重做；split 变 → split+embed 重做）。
-指纹等价是复用的唯一判据：失效清理只是存储卫生，清不掉也不会导致错误复用
-（resume 前总会用当前配置重算指纹并比对）。
-
-- 快照挂 document.storage JSON 列 + MinIO 对象，无 DB 迁移。
-- 全链路 fail-open：快照缺失/损坏/上传失败只降级为全量重跑，绝不因快照让任务失败。
-- 本模块属 feature 层：依赖 Document.storage 语义，minio_client/session 由调用方注入。
+"""文档管道步骤快照：指纹计算 + MinIO 快照存取 + 级联失效，支撑断点续跑（parse/split/embed 三级指纹链，上级指纹进下级，任一环配置变化级联失效下游）。指纹等价是复用的
+唯一判据（失效清理只是存储卫生，清不掉也不会错误复用）；全链路 fail-open：快照缺失/损坏/上传失败只降级全量重跑，绝不因快照让任务失败。快照挂 document.storage JS
+ON 列 + MinIO 对象无 DB 迁移；minio_client/session 由调用方注入。
 """
 
 import hashlib
@@ -116,25 +105,30 @@ def compute_embed_fingerprint(split_fingerprint: str, embedding_config: dict[str
 
 
 def _snapshot_state(document: Document) -> dict[str, Any]:
+    """读取 document.storage 里的快照指针字典，缺失或非 dict 返回空 dict。"""
     storage = getattr(document, "storage", None) or {}
     state = storage.get(SNAPSHOT_STORAGE_KEY)
     return state if isinstance(state, dict) else {}
 
 
 def _base_object_name(document: Document) -> str:
+    """取文档在 MinIO 的基础对象名（快照对象名的前缀）。"""
     storage = getattr(document, "storage", None) or {}
     return storage.get("minio_object_name", "") or ""
 
 
 def parse_meta_object_name(document: Document) -> str:
+    """解析元数据快照的对象名（parsed/parse_meta.json）。"""
     return f"{_base_object_name(document)}_parsed/parse_meta.json"
 
 
 def chunks_object_name(document: Document) -> str:
+    """分块快照的对象名（artifacts/chunks.json）。"""
     return f"{_base_object_name(document)}_artifacts/chunks.json"
 
 
 def embeddings_object_name(document: Document) -> str:
+    """向量快照的对象名（artifacts/embeddings.json）。"""
     return f"{_base_object_name(document)}_artifacts/embeddings.json"
 
 
@@ -154,6 +148,7 @@ def snapshot_fingerprint(document: Document, level: str) -> str:
 
 
 async def _upload_json(minio_client, object_name: str, payload: dict[str, Any]) -> None:
+    """把 dict 序列化为 UTF-8 JSON 上传 MinIO（fail-open，异常由调用方吞并降级）。"""
     data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     await minio_client.upload_file(object_name, data, "application/json; charset=utf-8")
 

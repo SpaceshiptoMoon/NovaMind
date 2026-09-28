@@ -1,10 +1,4 @@
-"""
-通用 Rerank 客户端
-
-覆盖所有使用标准 /rerank 端点的服务商：
-硅基流动、智谱 AI、阿里云 DashScope 等。
-注意：OpenAI 官方不提供 Rerank API，此客户端不调用 OpenAI 服务。
-"""
+"""通用 Rerank 客户端：适配标准 /rerank 端点的第三方服务商（硅基流动、智谱、DashScope 等；OpenAI 官方无 Rerank API）。"""
 
 from typing import Any
 

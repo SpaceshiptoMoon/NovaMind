@@ -1,12 +1,5 @@
-"""
-Wiki 生成 arq 任务
-
-- process_wiki_ingest_task：单文档 wiki 生成（四阶段管道宿主）
-- enqueue_wiki_ingest：入队（WikiIngestRecord 行 + arq job 原子提交）
-
-触发点在 document_tasks 的成功分支（文档终态落库、ES 可检索之后）。
-并发模型：per-KB Redis 锁串行化同 KB 的 wiki 生成；拿不到锁抛
-TransientBusyError 延后重入队（复用文档任务已有的拥塞语义）。
+"""Wiki 生成 arq 任务：单文档四阶段管道宿主与入队（履历行 + arq job 原子提交）。触发点在文档终态落库、ES 可检索之后；并发模型为 per-KB Redis 锁串行化同 KB
+ 生成，拿不到锁抛 TransientBusyError 延后重入队。
 """
 
 from novamind.core.middleware.structured_logging import get_logger

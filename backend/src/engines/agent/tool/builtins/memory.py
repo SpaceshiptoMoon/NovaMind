@@ -27,6 +27,7 @@ class MemoryTool(BaseTool):
         return "长期记忆管理工具"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 memory 工具定义（add/replace/remove 三操作与四类记忆类别）。"""
         return [
             {
                 "type": "function",
@@ -85,6 +86,7 @@ class MemoryTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """校验 context 中的记忆存储端口后按 action 分发执行；写入前经安全扫描。"""
         if tool_name != "memory":
             return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 
@@ -256,6 +258,7 @@ class MemoryTool(BaseTool):
         )
 
     def get_system_prompt_fragment(self) -> str:
+        """返回记忆工具使用指导片段（何时主动存、存什么、陈述式写法）。"""
         return (
             "You have persistent memory across sessions. Save durable facts using the memory "
             "tool: user preferences, environment details, tool quirks, and stable conventions. "

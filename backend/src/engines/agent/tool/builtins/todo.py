@@ -17,6 +17,7 @@ class TodoTool(BaseTool):
     """任务管理工具"""
 
     def __init__(self, todo_store):
+        """注入任务存储（TodoStore），读写均绑定该存储实例。"""
         self._todo_store = todo_store
 
     @property
@@ -28,6 +29,7 @@ class TodoTool(BaseTool):
         return "任务清单管理工具"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 todo 工具定义（items 写入与 merge 合并模式；无参数调用为读模式）。"""
         return [
             {
                 "type": "function",
@@ -99,6 +101,7 @@ class TodoTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """按会话 ID 读或写任务清单：无 items 时读当前列表，有 items 时按 merge 写入并返回统计。"""
         conversation_id = context.get("conversation_id")
 
         if not conversation_id:
@@ -128,4 +131,5 @@ class TodoTool(BaseTool):
 
     def get_system_prompt_fragment(self) -> str:
         # Hermes 设计：行为指导全部放在 schema description 中
+        """故意返回空串：行为指导全部放在工具 schema description 中（Hermes 设计）。"""
         return ""

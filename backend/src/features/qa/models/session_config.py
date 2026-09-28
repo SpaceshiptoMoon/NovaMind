@@ -85,26 +85,32 @@ class SessionConfig(BaseModel):
 
     @property
     def enable_compression(self) -> bool:
+        """是否启用会话压缩（JSON 配置字段，缺省开启）。"""
         return self.get_compression_config().get("enable_compression", True)
 
     @property
     def compression_strategy(self) -> str:
+        """压缩策略：summary/sliding_window/keep_recent/truncate。"""
         return self.get_compression_config().get("strategy", "summary")
 
     @property
     def compression_threshold(self) -> int:
+        """触发压缩的上下文 token 阈值。"""
         return self.get_compression_config().get("threshold", 70000)
 
     @property
     def compression_target_tokens(self) -> int:
+        """压缩后摘要的目标 token 数上限。"""
         return self.get_compression_config().get("target_tokens", 2000)
 
     @property
     def keep_recent_messages(self) -> int:
+        """压缩时保留的最近消息条数。"""
         return self.get_compression_config().get("keep_recent", 6)
 
     @property
     def custom_summary_prompt(self) -> str | None:
+        """自定义压缩摘要提示词（None 用内置模板）。"""
         return self.get_compression_config().get("custom_prompt")
 
     # ========== 知识库绑定访问方法（会话级自动 RAG） ==========
@@ -115,23 +121,28 @@ class SessionConfig(BaseModel):
 
     @property
     def auto_rag(self) -> bool:
+        """是否启用会话级自动 RAG（发消息前自动检索注入）。"""
         return self.get_kb_bindings().get("auto_rag", False)
 
     @property
     def rag_space_id(self) -> int | None:
+        """自动 RAG 绑定的知识空间 ID（None 未绑定）。"""
         return self.get_kb_bindings().get("space_id")
 
     @property
     def rag_kb_ids(self) -> list:
+        """自动 RAG 绑定的知识库 ID 列表（空列表未绑定）。"""
         return self.get_kb_bindings().get("kb_ids", []) or []
 
     @property
     def rag_refusal_enabled(self) -> bool:
+        """是否启用分级拒答（检索为空拒答、低分标记）。"""
         return self.get_kb_bindings().get("refusal_enabled", False)
 
     @property
     def rag_score_threshold(self) -> float:
         # null 也兜底默认（避免 top_score < None 比较报错）
+        """低置信度阈值，检索最高分低于它时标记（None 兜底 0.3）。"""
         val = self.get_kb_bindings().get("score_threshold")
         return val if val is not None else 0.3
 
@@ -141,35 +152,42 @@ class SessionConfig(BaseModel):
 
     @property
     def rag_search_mode(self) -> str:
+        """检索模式；旧版非法值 vector/bm25 读侧迁移为合法枚举。"""
         mode = self.get_kb_bindings().get("search_mode", "content_hybrid")
         return self._LEGACY_SEARCH_MODE.get(mode, mode)
 
     @property
     def rag_top_k(self) -> int:
+        """检索返回条数（缺省 5）。"""
         return self.get_kb_bindings().get("top_k", 5)
 
     @property
     def rag_vector_weight(self) -> float:
         # hybrid 类模式向量检索权重；null 兜底默认 0.7（与下游 SearchRequest.weights=None 兜底一致）
+        """hybrid 模式向量检索权重（None 兜底 0.7）。"""
         val = self.get_kb_bindings().get("vector_weight")
         return val if val is not None else 0.7
 
     @property
     def rag_bm25_weight(self) -> float:
         # hybrid 类模式 BM25 检索权重；null 兜底默认 0.3，与 rag_vector_weight 之和需=1.0
+        """hybrid 模式 BM25 检索权重（None 兜底 0.3，与向量权重和为 1）。"""
         val = self.get_kb_bindings().get("bm25_weight")
         return val if val is not None else 0.3
 
     @property
     def rag_query_rewriting(self) -> str:
+        """检索前查询改写策略：none/completion/synonym/decompose/hyde。"""
         return self.get_kb_bindings().get("query_rewriting", "none")
 
     @property
     def rag_grade_retry_enabled(self) -> bool:
+        """是否启用检索后自评估重试。"""
         return self.get_kb_bindings().get("grade_retry_enabled", False)
 
     @property
     def rag_grade_retry_passing_score(self) -> int:
+        """检索及格分数（1-10），低于则触发重试。"""
         return self.get_kb_bindings().get("grade_retry_passing_score", 5)
 
     # ========== 模型生成参数访问方法（会话级持久化） ==========
@@ -181,22 +199,26 @@ class SessionConfig(BaseModel):
     @property
     def llm_max_tokens(self) -> int:
         # null 也兜底默认（用户在弹窗清空时存 null）
+        """会话级最大生成 token 数（None 兜底默认值）。"""
         val = self.get_llm_config().get("max_tokens")
         return val if val is not None else DEFAULT_MAX_TOKENS
 
     @property
     def llm_temperature(self) -> float:
+        """会话级采样温度（None 兜底默认值）。"""
         val = self.get_llm_config().get("temperature")
         return val if val is not None else DEFAULT_TEMPERATURE
 
     @property
     def llm_top_p(self) -> float:
+        """会话级核采样概率（None 兜底默认值）。"""
         val = self.get_llm_config().get("top_p")
         return val if val is not None else DEFAULT_TOP_P
 
     @property
     def llm_system_prompt(self) -> str | None:
         # None 是合法值，表示「用后端 QA 模板」，不兜底
+        """会话级系统提示词（None 表示用后端 QA 模板，是合法值不兜底）。"""
         return self.get_llm_config().get("system_prompt")
 
     # ========== 联网搜索引擎配置访问方法（会话级持久化） ==========
@@ -208,10 +230,12 @@ class SessionConfig(BaseModel):
     @property
     def web_search_provider(self) -> str | None:
         # None 是合法值，表示「自动择优」（用户首选 → YAML 兜底），不兜底
+        """联网搜索引擎（None 表示自动择优，是合法值不兜底）。"""
         return self.get_web_search_config().get("provider")
 
     @property
     def web_search_max_results(self) -> int:
+        """联网搜索返回条数（None 兜底 5）。"""
         val = self.get_web_search_config().get("max_results")
         return val if val is not None else 5
 

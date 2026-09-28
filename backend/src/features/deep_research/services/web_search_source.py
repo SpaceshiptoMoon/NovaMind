@@ -1,14 +1,4 @@
-"""
-deep_research 外部数据源（SearchSourcePort）实现。
-
-- ``WebSearchSourceAdapter``：包装 ``WebSearchPort`` 满足引擎统一 ``SearchSourcePort``
-  （归一化 ``WebSearchResult`` → 统一 dict：source_type=external，content/url/title/score），
-  外部数据源接入点；``close`` 委托底层 port 释放 HTTP client。
-- ``build_web_search_source(ctx)``：数据源注册表工厂。provider 构造委托
-  ``shared/search/web_search_factory.build_web_search_port_from_provider``（R3 唯一构造点），
-  本函数只负责 YAML 凭据提取、请求级 ``search_depth`` 合并、以及中立异常到 feature
-  异常的镜像映射（``WebSearchProviderNotConfiguredError`` → ``SearchProviderNotConfiguredError``）。
-"""
+"""外部数据源适配器：provider 构造委托 web_search_factory（R3 唯一构造点）；引擎中立异常在此镜像映射为 feature 异常。"""
 from typing import Any
 
 from novamind.engines.deep_research.sources import (
@@ -39,9 +29,11 @@ class WebSearchSourceAdapter:
     """
 
     def __init__(self, web_port: WebSearchPort):
+        """持有按请求构造的底层 WebSearchPort，生命周期由 service cleanup 统一管理。"""
         self._web_port = web_port
 
     async def search(self, query: str, *, top_k: int) -> list[dict[str, Any]]:
+        """执行外部 Web 搜索并把结果归一化为统一 dict（source_type=external，content/url/title/score）。"""
         raw = await self._web_port.search(query, max_results=top_k)
         return [
             {

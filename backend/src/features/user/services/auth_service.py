@@ -1,12 +1,4 @@
-"""
-认证服务
-
-负责 JWT Token 的生成和验证
-支持：
-- Access Token（短期，30分钟）
-- Refresh Token（长期，7天）
-- Token 黑名单（使用 Redis 存储，支持多实例部署）
-"""
+"""认证服务：JWT 访问/刷新令牌签发与校验，黑名单走 Redis 支持多实例部署。"""
 
 import secrets
 import time

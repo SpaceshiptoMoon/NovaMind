@@ -1,14 +1,6 @@
-"""文档查询服务（从 document_service.py 巨石抽出的 CRUD/查询职责）。
+"""文档查询服务：读取、下载（MinIO 预签名）、ES 分块分页与级联删除（DB + ES 分块 + MinIO 文件 + 失效搜索缓存）。
 
-集中承载文档的读取、下载与级联删除：
-- ``count_kb_documents`` / ``get_kb_documents`` / ``get_document``：列表与单查
-- ``get_document_chunks``：从 Elasticsearch 取分块（分页）
-- ``download_document`` / ``get_parsed_text`` / ``get_document_frames``：MinIO 下载与预签名
-- ``delete_document``：级联删 DB + ES 分块 + MinIO 文件 + 失效搜索缓存
-
-构造器精简为 ``(session, minio_client, es_client)``——查询/下载/删除不触碰模型配置，
-任务编排由 ``DocumentTaskService``、上传由 ``DocumentUploadService``、管道执行由
-``document_pipeline.execute_document_pipeline`` 分别承担。
+构造契约 (session, minio_client, es_client)：查询/下载/删除不触碰模型配置；任务编排、上传、管道执行分别由专职服务承担。
 """
 
 from typing import Any
@@ -71,6 +63,7 @@ class DocumentQueryService:
         minio_client: MinioClient,
         es_client: ElasticsearchClient,
     ):
+        """构造契约 (session, minio_client, es_client)：查询/下载/删除不触碰模型配置。"""
         self.session = session
         self.doc_repo = DocumentRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)

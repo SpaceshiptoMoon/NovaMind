@@ -1,24 +1,7 @@
-"""DashScope Paraformer ASR 客户端胶水（批次 5 收敛）。
+"""DashScope Paraformer ASR 协议胶水（提交/轮询/解析的唯一实现）。
 
-此前 ``engines/document/media/audio/audio_utils.transcribe_audio_with_dashscope``
-与 ``shared/ai_models/connection_testers/asr.py._test_dashscope`` 各写一份
-逐字级重复的协议胶水（api_key/base_url 归一 + async_call 提交 + wait 轮询 +
-output dict 兼容解析）。本模块成为唯一实现，两消费方改调此处。
-
-- ``configure_dashscope(api_key, base_url)``：设置 SDK 全局 key 与百炼 base URL
-  （剥离误填的 /compatible-mode/v1、补 /api/v1 后缀）
-- ``submit_transcription(model, file_urls, language_hints)``：提交任务，失败抛
-  ``DashScopeTranscriptionError``
-- ``await_transcription(task_id)``：轮询等待，返回统一 dict 化的 output
-  （同步阻塞——SDK ``Transcription.wait`` 是 ``while True + time.sleep`` 的
-  同步轮询且无总超时，**不得**在事件循环内直接调用）
-- ``await_transcription_async(task_id, timeout_seconds)``：async 包装——轮询经
-  ``asyncio.to_thread`` 下放线程池 + asyncio.timeout 总超时（防长音频转写冻结
-  worker/API 事件循环，2026-09 链路审计 P0）。所有 async 调用方必须用它。
-- ``extract_segments(output_dict)``：句子级时间戳解析（含无 sentences 的整段回退）
-
-转写的编排（临时文件/MinIO 上传/清理）仍留在 audio_utils——那是文档管道职责，
-本模块只管 DashScope 协议本身。
+await_transcription 同步阻塞（SDK wait 无总超时），不得在事件循环内直调；
+async 调用方必须改用 await_transcription_async（to_thread 隔离 + 总超时）。
 """
 from __future__ import annotations
 

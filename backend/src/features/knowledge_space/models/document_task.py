@@ -1,9 +1,6 @@
-"""
-Document task item model.
+"""文档任务项模型：单个文档一次处理的执行履历（状态机/步骤进度/管线结果）。
 
-Compatibility note:
-- class name remains `DocumentTask` for existing service code
-- real table name is `document_task_items`
+兼容命名：类名保留 DocumentTask，真实表名为 document_task_items。
 """
 from enum import IntEnum
 
@@ -23,6 +20,7 @@ from sqlalchemy import (
 
 
 class TaskStatus(IntEnum):
+    """任务项状态机：PENDING 到 PROCESSING 到终态（COMPLETED/FAILED/CANCELLED）。"""
     PENDING = 0
     PROCESSING = 1
     COMPLETED = 2
@@ -31,12 +29,14 @@ class TaskStatus(IntEnum):
 
 
 class TaskProcessMode(IntEnum):
+    """处理模式：PROCESS 首发、REPROCESS 全量重跑、RETRY 失败重试。"""
     PROCESS = 0
     REPROCESS = 1
     RETRY = 2
 
 
 class DocumentTask(BaseModel):
+    """文档任务项（类名保留 DocumentTask，真实表名为 document_task_items）。"""
     __tablename__ = "document_task_items"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment="Task item ID")
@@ -78,13 +78,16 @@ class DocumentTask(BaseModel):
 
     @property
     def task_id(self) -> int:
+        """父批次 ID 的兼容别名（列名仍为 task_id）。"""
         return self.batch_id
 
     def mark_processing(self) -> None:
+        """标记开始处理并写开始时间。"""
         self.status = TaskStatus.PROCESSING
         self.started_at = now_china()
 
     def mark_completed(self, result: dict | None = None) -> None:
+        """标记完成并写完成时间、清空旧错误信息、合并结果字典。"""
         self.status = TaskStatus.COMPLETED
         self.completed_at = now_china()
         # 成功完成即清空先前残留的瞬时错误（如 ASR 忙碌延后、自动重试记录），
@@ -94,11 +97,13 @@ class DocumentTask(BaseModel):
             self.pipeline_result = {**(self.pipeline_result or {}), **result}
 
     def mark_failed(self, error_message: str) -> None:
+        """标记失败并写完成时间与错误信息。"""
         self.status = TaskStatus.FAILED
         self.completed_at = now_china()
         self.error_message = error_message
 
     def mark_cancelled(self) -> None:
+        """标记取消并写完成时间。"""
         self.status = TaskStatus.CANCELLED
         self.completed_at = now_china()
 
@@ -111,6 +116,7 @@ class DocumentTask(BaseModel):
 
     @staticmethod
     def _duration_ms_from(started_at_str, now_dt) -> int | None:
+        """由 ISO 起始时间串计算毫秒耗时，解析失败返回 None。"""
         if not started_at_str:
             return None
         try:
@@ -121,6 +127,7 @@ class DocumentTask(BaseModel):
             return None
 
     def _set_node(self, step_name: str, **fields) -> None:
+        """按步骤名合并更新进度节点字段（保留既有值）。"""
         progress = dict(self.step_progress or {})
         prev = progress.get(step_name)
         base = prev if isinstance(prev, dict) else {}

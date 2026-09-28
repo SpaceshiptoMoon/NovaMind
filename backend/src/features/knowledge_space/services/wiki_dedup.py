@@ -1,22 +1,6 @@
-"""Wiki 候选去重（dedup）——移植自 WeKnora wiki_ingest_dedup.go
-
-目标：新抽取的实体/概念若与 KB 内已有页面指同一现实事物，归并到已有页
-而非新建第二页。三层机制：
-
-1. **相似度预筛**（select_dedup_candidate_pages）：char-bigram Jaccard 与
-   slug kebab-token Jaccard 取 max，快速缩小 LLM 候选集。MySQL 无 pg_trgm，
-   纯 Python 计算（单 KB 页面量级 + 单文档 ingest 持锁串行，可承受）。
-   语料超过 HARD_LIMIT 时退化为仅 exact-title 归并（保守不误并）。
-2. **exact-title 确定性归并**（exact_identity_target）：同类型+归一化标题
-   完全一致直接绑到已有页，免 LLM。
-3. **LLM 语义判断**（dedup prompt，逐 item 候选分组）+ 双守卫
-   （merge_reject_reason）：目标必须在**该条目自己的**候选集内 + 类型前缀
-   一致——防弱模型跨 item 错配（WeKnora 观测案例：entity/tencent-open →
-   entity/hiring-agent，无任何相似信号却被配对）。
-
-与 WeKnora 的分歧（有意）：WeKnora 用 Redis claim 让跨批并发 worker 收敛
-到同一 slug；NovaMind 的 ingest 有 per-KB Redis 锁串行化（同一时刻只有
-一个文档在生成），批内 dict 足够，不移植 Redis claim。
+"""Wiki 候选去重：新抽取条目与 KB 已有页面指同一现实事物时归并到已有页。三层：Jaccard 相似度预筛缩小 LLM 候选集（超 HARD_LIMIT 退化为仅 exact-title 
+归并，保守不误并）、exact-title 确定性归并免 LLM、LLM 语义判断加双守卫（目标须在该条目自己的候选集内 + 类型前缀一致，防跨 item 错配）。与 WeKnora 分歧（有
+意）：不移植 Redis claim——本工程 ingest 有 per-KB 锁串行化，批内 dict 足够。
 """
 import re
 from collections.abc import Iterable, Sequence
@@ -78,6 +62,7 @@ def slug_base_tokens(slug: str) -> set[str]:
 
 
 def grams_per_surface(surfaces: Iterable[str]) -> list[set[str]]:
+    """批量计算各 surface（标题+别名）的 bigram 集合，空集合剔除。"""
     return [g for g in (surface_grams(s) for s in surfaces) if g]
 
 
@@ -104,6 +89,7 @@ class DedupCandidate:
     __slots__ = ("slug", "title", "aliases", "page_type")
 
     def __init__(self, slug: str, title: str, aliases: list[str], page_type: str):
+        """从页面行投影出轻量字段（不拉正文 content）。"""
         self.slug = slug
         self.title = title
         self.aliases = aliases or []
@@ -210,6 +196,7 @@ def merge_reject_reason(src_slug: str, dst_slug: str, src_candidates: set[str]) 
 
 
 def append_unique(values: list[str], value: str) -> list[str]:
+    """去重追加非空字符串到列表（原地修改并返回）。"""
     value = (value or "").strip()
     if value and value not in values:
         values.append(value)

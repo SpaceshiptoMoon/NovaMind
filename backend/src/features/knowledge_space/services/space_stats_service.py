@@ -1,22 +1,6 @@
-"""空间知识缺口看板服务（批次 2b）。
-
-聚合 QA 回答的零命中/低分/点踩信号，供空间洞察页识别知识缺口：
-- KPI：问答量/点踩率/零命中率/低分率
-- 趋势：按日问答数 + 零命中数
-- 明细：零命中问题 Top N、点踩/低分消息列表
-- 维度：KB 聚合
-
-口径（与 space_stats_repository 对齐）：
-- 零命中 = ``extra.retrieval.result_count == 0`` 或 ``answer_status=='refused'``
-  （批次 2b 前 _build_ai_extra 零命中返回 None 无痕，历史数据无 retrieval
-  键——按 sources 空 + refused 兜底判读，兼容降级）
-- 低分 = ``extra.retrieval.max_score < low_score_threshold``（API 参数，默认 0.35）
-  或被点踩
-- 点踩来自 qa_message_feedback（批次 2a）
-
-性能注记：JSON 谓词聚合走 space_id 索引 + 时间窗限定；数据量大时
-（>10万 assistant 消息/空间）建议升级 MySQL 生成列 + 二级索引，
-v1 不做。
+"""空间知识缺口看板服务：聚合 QA 回答的零命中/低分/点踩信号（KPI/趋势/明细/KB 维度）。口径：零命中 = retrieval.result_count==0 或 refused（历史
+数据无 retrieval 键按 sources 空 + refused 兜底）；低分 = max_score 低于阈值或被点踩。性能注记：JSON 谓词聚合走 space_id 索引 + 时
+间窗，>10 万 assistant 消息/空间时建议升级 MySQL 生成列 + 二级索引。
 """
 from __future__ import annotations
 
@@ -43,6 +27,7 @@ class SpaceStatsService:
     """空间知识缺口统计服务"""
 
     def __init__(self, session: AsyncSession):
+        """绑定会话并持有统计与知识库仓储。"""
         self.session = session
         self.stats_repo = SpaceStatsRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)

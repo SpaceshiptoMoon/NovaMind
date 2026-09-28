@@ -24,6 +24,7 @@ class GenerationEvaluator:
         prompt_provider: PromptManager,
         logger: Logger,
     ):
+        """注入 LLM 客户端与可选的 embedding 评估器、claim 拆解器，缺失的子评估器对应策略跳过。"""
         self.llm_client = llm_client
         self.embedding_evaluator = embedding_evaluator
         self.claim_decomposer = claim_decomposer

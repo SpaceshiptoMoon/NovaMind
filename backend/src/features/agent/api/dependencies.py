@@ -28,28 +28,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def get_tool_registry(request: Request) -> ToolRegistry:
+    """提供应用级单例工具注册表（app.state.agent_tool_registry）。"""
     return request.app.state.agent_tool_registry
 
 
 def get_mcp_client_manager(request: Request) -> McpClientManager:
+    """提供应用级单例 MCP 客户端管理器（app.state.agent_mcp_manager）。"""
     return request.app.state.agent_mcp_manager
 
 
 def get_agent_engine(request: Request) -> AgentEngine:
+    """提供应用级单例 Agent 引擎（app.state.agent_engine）。"""
     return request.app.state.agent_engine
 
 
 def get_todo_store(request: Request) -> TodoStore:
+    """提供应用级单例 todo 存储（app.state.agent_todo_store）。"""
     return request.app.state.agent_todo_store
 
 
 # WebSocket 版：WS 端点无法注入 HTTP Request，改从 websocket.app.state 取。
 # FastAPI WS 依赖会注入 websocket: WebSocket 参数（类比 HTTP 的 request: Request）。
 def get_agent_engine_ws(websocket: WebSocket) -> AgentEngine:
+    """WebSocket 版引擎获取：从 websocket.app.state 取应用级单例（WS 端点无法注入 HTTP Request）。"""
     return websocket.app.state.agent_engine
 
 
 def get_todo_store_ws(websocket: WebSocket) -> TodoStore:
+    """WebSocket 版 todo 存储获取：从 websocket.app.state 取应用级单例。"""
     return websocket.app.state.agent_todo_store
 
 
@@ -81,12 +87,14 @@ async def get_memory_search_repo() -> MemorySearchRepository | None:
 async def get_model_config_service(
     db: AsyncSession = Depends(get_db),
 ) -> ModelConfigService:
+    """提供请求级 ModelConfigService（绑定当前请求的 db 会话）。"""
     return ModelConfigService(db)
 
 
 async def get_agent_service(
     db: AsyncSession = Depends(get_db),
 ) -> AgentService:
+    """提供请求级 AgentService（绑定当前请求的 db 会话）。"""
     return AgentService(db)
 
 
@@ -155,6 +163,7 @@ async def get_agent_chat_service(
     memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
     minio_client: Any | None = None,
 ) -> AgentChatService:
+    """装配请求级 AgentChatService（引擎端口在此构造后注入，user_id 取自当前认证用户）。"""
     return await build_agent_chat_service(
         db, user_id, agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, minio_client,
@@ -165,4 +174,5 @@ async def get_mcp_server_service(
     db: AsyncSession = Depends(get_db),
     mcp_client_manager: McpClientManager = Depends(get_mcp_client_manager),
 ) -> McpServerService:
+    """提供请求级 McpServerService（绑定 db 会话与应用级 MCP 客户端管理器）。"""
     return McpServerService(db=db, mcp_client_manager=mcp_client_manager)

@@ -41,6 +41,7 @@ class RagBindingConfig(BaseModel):
     @model_validator(mode="after")
     def _check_weights_sum(self) -> "RagBindingConfig":
         # schema 层统一校验，避免脏值落库；service 层另在 hybrid 模式触发时再校验
+        """校验 hybrid 模式下向量与 BM25 权重之和为 1（容差 0.01），拦截脏值落库。"""
         if abs(self.vector_weight + self.bm25_weight - 1.0) > 0.01:
             raise ValueError(
                 f"向量权重({self.vector_weight}) 与 BM25 权重({self.bm25_weight}) 之和必须等于 1.0，当前为 {round(self.vector_weight + self.bm25_weight, 4)}"

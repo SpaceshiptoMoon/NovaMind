@@ -30,6 +30,7 @@ class BaseAPIError(Exception):
     _serializable_attrs: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, message: str, code: str = "UNKNOWN_ERROR", details: dict[str, Any] = None):
+        """初始化错误信封：message 为用户可读文案，code 为错误码（驱动状态码后缀映射），details 为可选结构化上下文。"""
         self.message = message
         self.code = code
         self.details = details or {}

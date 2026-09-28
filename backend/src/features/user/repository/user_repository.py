@@ -26,11 +26,13 @@ logger = get_logger(__name__)
 class UserRepository:
     # 允许通过 update_user 更新的字段白名单
     # 注意：role_id 不从此处开放，角色分配由专用端点/Task 8 负责，防止客户端直接注入提权
+    """用户数据访问：查询/更新/状态管理，附 Redis 缓存（角色分配不经此处防提权）。"""
     _UPDATABLE_FIELDS = frozenset({
         "username", "email", "phone", "status",
     })
 
     def __init__(self, db: AsyncSession = None):
+        """绑定数据库会话，缓存客户端懒加载。"""
         self.db = db
         self._cache = None
 

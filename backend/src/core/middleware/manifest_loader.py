@@ -1,21 +1,7 @@
-"""Feature Manifest 发现与拓扑排序
+"""Feature manifest 发现与拓扑排序。
 
-替代 `router_manager._register_routers` 的硬编码路由表与 `startup_manager` 的
-硬编码 `_feature_initializers` / `_import_models`：
-
-1. `discover_feature_manifests()`：扫描 `features/*/manifest.py`，调用各模块的
-   `manifest()` 工厂函数收集 `FeatureManifest`；并附带 `system_manifest`（健康检查
-   等系统路由）。
-2. 从 `FeaturesConfig` 解析 `enabled` 注入每个 manifest。
-3. Kahn 拓扑排序 + 环检测，按 `order` 升序作稳定 tiebreaker。
-
-`get_sorted_manifests()` 返回拓扑有序的 `FeatureManifest` 列表，供：
-- `router_manager.get_all_routers()` 聚合路由；
-- `startup_manager._init_features()` 按序执行 init_hook；
-- `startup_manager._import_models()` 调各 `models_loader`。
-
-依赖边由 manifest 的 `depends_on` 声明；`order` 仅作 tiebreaker，不改变拓扑
-正确性。缺失的依赖名（声明的 depends_on 不存在）记为警告但不阻断（容错）。
+扫描 features/*/manifest.py 收集清单并注入 enabled，Kahn 拓扑排序供初始化与路由注册使用；order 仅作排序 tiebreaker，不影响拓扑正确性。
+声明的依赖缺失或被禁用时记警告并忽略该依赖边，不阻断启动；检测到环抛 RuntimeError fail-fast。
 """
 from __future__ import annotations
 

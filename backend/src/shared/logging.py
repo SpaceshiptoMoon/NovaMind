@@ -45,6 +45,7 @@ class StdLogger:
     __slots__ = ("_logger",)
 
     def __init__(self, name: str) -> None:
+        """按名字绑定 stdlib logger 实例。"""
         self._logger = logging.getLogger(name)
 
     @staticmethod
@@ -55,22 +56,27 @@ class StdLogger:
         return extra, stdlib_kw
 
     def debug(self, event: Any, *args: Any, **kwargs: Any) -> None:
+        """输出 debug 级事件（kwargs 拆为 extra 结构化字段与 stdlib 原生关键字）。"""
         extra, stdlib_kw = self._split(kwargs)
         self._logger.debug(event, *args, extra=extra, **stdlib_kw)
 
     def info(self, event: Any, *args: Any, **kwargs: Any) -> None:
+        """输出 info 级事件（kwargs 拆为 extra 结构化字段与 stdlib 原生关键字）。"""
         extra, stdlib_kw = self._split(kwargs)
         self._logger.info(event, *args, extra=extra, **stdlib_kw)
 
     def warning(self, event: Any, *args: Any, **kwargs: Any) -> None:
+        """输出 warning 级事件（kwargs 拆为 extra 结构化字段与 stdlib 原生关键字）。"""
         extra, stdlib_kw = self._split(kwargs)
         self._logger.warning(event, *args, extra=extra, **stdlib_kw)
 
     def error(self, event: Any, *args: Any, **kwargs: Any) -> None:
+        """输出 error 级事件（kwargs 拆为 extra 结构化字段与 stdlib 原生关键字）。"""
         extra, stdlib_kw = self._split(kwargs)
         self._logger.error(event, *args, extra=extra, **stdlib_kw)
 
     def critical(self, event: Any, *args: Any, **kwargs: Any) -> None:
+        """输出 critical 级事件（kwargs 拆为 extra 结构化字段与 stdlib 原生关键字）。"""
         extra, stdlib_kw = self._split(kwargs)
         self._logger.critical(event, *args, extra=extra, **stdlib_kw)
 

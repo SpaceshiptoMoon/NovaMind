@@ -1,15 +1,4 @@
-"""
-知识空间模块 - Pydantic Schema 层
-
-包含:
-- space_schema: 空间请求/响应模型
-- document_schema: 文档请求/响应模型
-- member_schema: 成员请求/响应模型
-- search_schema: 检索请求/响应模型
-- knowledge_base_schema: 知识库请求/响应模型
-
-注意：异常类定义在 api/exceptions.py 中
-"""
+"""知识空间模块 Pydantic Schema 层公共导出。"""
 
 from novamind.features.knowledge_space.schemas.document_schema import (
     ChunkResponse,

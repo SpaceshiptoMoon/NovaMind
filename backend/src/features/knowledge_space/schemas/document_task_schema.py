@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class DocumentTaskItemResponse(BaseModel):
+    """文档任务项响应（document_task_items 行 + 后端填充的文档名）。"""
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="任务项ID")
@@ -30,12 +31,14 @@ class DocumentTaskItemResponse(BaseModel):
 
     @field_serializer("status")
     def serialize_status(self, value) -> int:
+        """状态枚举序列化为 int（None 兜底 0）。"""
         if hasattr(value, "value"):
             return value.value
         return int(value) if value is not None else 0
 
 
 class DocumentTaskResponse(BaseModel):
+    """文档任务批次响应（document_tasks 行 + 子任务项列表）。"""
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="任务ID")
@@ -58,30 +61,36 @@ class DocumentTaskResponse(BaseModel):
 
     @field_serializer("action", "status")
     def serialize_int_enum(self, value) -> int:
+        """action/status 枚举序列化为 int（None 兜底 0）。"""
         if hasattr(value, "value"):
             return value.value
         return int(value) if value is not None else 0
 
 
 class DocumentTaskListResponse(BaseModel):
+    """批次列表分页响应。"""
     items: list[DocumentTaskResponse] = Field(..., description="任务列表")
     total: int = Field(..., description="总数")
 
 
 class DocumentTaskItemListResponse(BaseModel):
+    """任务项列表分页响应。"""
     items: list[DocumentTaskItemResponse] = Field(..., description="任务项列表")
     total: int = Field(..., description="总数")
 
 
 class DocumentTaskBatchResponse(DocumentTaskResponse):
+    """批次响应别名（与 DocumentTaskResponse 结构一致，兼容旧调用方）。"""
     pass
 
 
 class DocumentTaskBatchListResponse(DocumentTaskListResponse):
+    """批次列表响应别名。"""
     pass
 
 
 class TaskStatusResponse(BaseModel):
+    """单文档当前处理状态响应（轮询用）。"""
     document_id: int = Field(..., description="文档ID")
     status: int = Field(..., description="当前状态")
     status_name: str = Field(..., description="状态名")

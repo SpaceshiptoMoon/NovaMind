@@ -5,6 +5,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
+    """懒加载本 feature 全部 ORM 模型，供建表注册扫描。"""
     from novamind.features.qa.models.qa_feedback import MessageFeedback  # noqa: F401
     from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
@@ -12,6 +13,7 @@ def _import_models() -> None:
 
 
 def manifest() -> FeatureManifest:
+    """声明 qa feature 的路由、依赖与加载顺序。"""
     from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
     from novamind.features.qa.api.qa_routes import router as qa_router
     from novamind.features.qa.api.session_config_routes import router as session_config_router

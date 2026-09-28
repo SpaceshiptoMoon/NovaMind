@@ -26,6 +26,7 @@ class TaskTool(BaseTool):
         return "子 agent 委派工具"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 task 工具定义（委派描述、子任务指令与子 agent 类型参数）。"""
         return [
             {
                 "type": "function",
@@ -66,6 +67,7 @@ class TaskTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """校验 context 中的子 agent runner 后启动独立子 ReAct 循环并返回其 summary。"""
         if tool_name != "task":
             return f"未知工具：{tool_name}"
         runner = context.get("subagent_runner")

@@ -1,12 +1,6 @@
 """JWT 解码原语（认证基础设施，归 core/auth）。
 
-只依赖 ``jwt`` 库与 ``setting.yaml_config``，不 import 任何 feature / ORM，
-供 ``core/auth/dependencies.py`` 的认证依赖与 ``features/user`` 的 AuthService 复用。
-
-历史：从 ``features/user/services/auth_service.py`` 的 ``verify_token`` /
-``_decode_token`` 下沉而来——JWT 解码是横切认证基础设施，不是 user 业务逻辑，
-归 core/auth 后切断了 core → features.user 的反向依赖。Token 生成（登录业务）
-仍留在 user/AuthService。
+只依赖 jwt 库与 setting，不 import 任何 feature / ORM；供认证依赖与 user feature 的 AuthService 复用。
 """
 from __future__ import annotations
 

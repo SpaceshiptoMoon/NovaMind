@@ -1,12 +1,6 @@
-"""文档上传服务（从 document_service.py 巨石抽出的上传职责）。
+"""文档上传服务：上传校验与 MinIO 落库，不触发解析（.doc 自动转 .docx）。
 
-集中承载文档上传校验与 MinIO 落库（不触发解析）：
-- ``upload_document`` / ``upload_documents``：单/批量上传，仅存 MinIO，不触发解析
-- ``_normalize_upload_file``：.doc → .docx 自动转换
-- ``_get_file_type`` / ``_get_max_file_size`` / ``_get_allowed_file_types``：上传校验三件套
-- ``_compute_sha256``：文件哈希（CPU 密集，调用方放线程池）
-
-文件类型常量与模态映射收敛到 ``document_file_types``（中立模块）。
+_compute_sha256 为 CPU 密集操作，须由调用方放线程池执行。
 """
 
 import asyncio
@@ -61,6 +55,7 @@ class DocumentUploadService:
     _MODALITY_MAX_SIZE_MB = {"text": 100, "image": 100, "video": 500, "audio": 200}
 
     def __init__(self, session: AsyncSession, minio_client: MinioClient):
+        """构造注入会话与 MinIO 客户端，内置仓储与权限检查器。"""
         self.session = session
         self.doc_repo = DocumentRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -440,6 +435,7 @@ class DocumentUploadService:
         return valid_files, failed_list
 
     async def _normalize_upload_file(self, filename: str, file_content: bytes) -> tuple[str, bytes]:
+        """.doc 自动转 .docx（OLE2 魔数前置校验），其余原样返回。"""
         ext = self._get_file_type(filename)
         if ext != "doc":
             return filename, file_content

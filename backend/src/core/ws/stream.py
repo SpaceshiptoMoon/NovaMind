@@ -1,10 +1,7 @@
-"""WebSocket 流式推送工具。
+"""WebSocket 流式推送工具（agent/qa/deep_research 聊天流式端点共用）。
 
-把 ``async generator`` yield 的事件 dict 推到 WebSocket；客户端断连时
-``aclose`` generator 在挂起点抛 ``GeneratorExit``（async generator 的 aclose
-抛 GeneratorExit 而非 CancelledError），触发 service 内
-``except (asyncio.CancelledError, GeneratorExit)`` 做清理。
-3 个聊天流式端点（agent/qa/deep_research）共用此工具。
+客户端断连时 finally 中的 aclose 在挂起点向 service generator 抛 GeneratorExit（非 CancelledError），
+触发其内部清理（事务回滚/状态标记）。
 """
 from __future__ import annotations
 

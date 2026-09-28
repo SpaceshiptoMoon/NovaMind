@@ -1,12 +1,4 @@
-"""异步审批决策注册表（E5）。
-
-WS 双向审批：``ApprovalHook`` 检测到 DANGEROUS 操作 → 注册 pending approval
-→ 经 event_sink 发 ``approval_request`` 给前端 → ``await wait()`` 阻塞工具执行；
-前端用户决策 → WS 发 ``{action:approval, approval_id, decision}`` → WS handler
-调 ``resolve()`` → ``wait()`` 返回决策（approve/deny），工具放行或拒绝。
-
-超时 fail-closed（默认 120s → deny）。
-"""
+"""异步审批决策注册表（WS 双向审批）：等待用户决策，超时 fail-closed 默认 120s 按 deny 处理。"""
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +12,7 @@ class ApprovalRegistry:
     """单次 WS 连接的审批决策注册表（per-connection，非线程共享）。"""
 
     def __init__(self) -> None:
+        """初始化 pending 审批表；实例绑定单个 WS 连接，非线程共享。"""
         self._pending: dict[str, dict] = {}
 
     def register(self, approval_id: str) -> asyncio.Event:
@@ -54,6 +47,7 @@ class ApprovalRegistry:
         self._pending.pop(approval_id, None)
 
     def has_pending(self) -> bool:
+        """报告是否存在待决审批。"""
         return bool(self._pending)
 
 

@@ -1,15 +1,4 @@
-"""
-五阶段结构化上下文压缩器
-
-替代 PriorityBasedCompression，参照 Hermes ContextCompressor 设计：
-  Phase 1: 工具结果信息性剪枝（按工具类型生成摘要、去重、参数截断）
-  Phase 2: Token 预算尾部保护（确保最近用户消息在保护区内）
-  Phase 3: 结构化 LLM 摘要（13 章节模板，敏感数据脱敏）
-  Phase 4: 迭代更新（融合旧摘要 + 新内容）
-  Phase 5: 工具对清理（sanitise_tool_pairs）
-
-容错：反抖动保护、摘要模型降级、失败冷却、静态降级标记
-"""
+"""五阶段结构化上下文压缩器（剪枝/预算保护/LLM 摘要/迭代融合/工具对清理），带反抖动、降级与冷却容错。"""
 import hashlib
 import html
 import json
@@ -56,6 +45,7 @@ class ContextCompressor(ICompressionStrategy):
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
     ):
+        """注入 LLM 工厂、摘要/任务存储等依赖，并初始化迭代摘要与反抖动、冷却状态。"""
         self._llm_factory = llm_client_factory
         self._aux_llm_factory = auxiliary_llm_factory
         self._tail_ratio = tail_ratio

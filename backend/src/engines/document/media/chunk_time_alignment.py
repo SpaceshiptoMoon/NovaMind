@@ -1,12 +1,5 @@
 """媒体 chunk 时间元数据对齐引擎（音视频通用，纯逻辑，无 feature 依赖）。
-
-拼接 md 时每帧/段首带双锚点 ``[HH:MM:SS#idx]``：时间戳给人看，``#idx``（帧/segment 序号）
-给机器唯一反查（避免 ``frame_interval < 1s`` 时 int 秒时间戳撞锚点）。通用切分器切字符串后，
-:func:`align_chunk_times` 正则提取 ``#idx`` → 查 timeline_map → 填 ``start_time``/``end_time``/
-``frame_indices`` + 剥离锚点，得到进 embedding 的纯描述 content（消除时间戳噪声污染）。
-
-本模块属 engines 纯逻辑层，不 import features/setting/ORM；timeline_map 由 features 装配点
-（媒体解析流程）构建后注入。
+双锚点 [HH:MM:SS#idx]：时间戳给人看，#idx 防帧间隔小于 1 秒时秒级时间戳撞锚点；切分后按 #idx 反查 timeline_map 回填时间区间并剥离锚点。
 """
 import re
 from typing import Any

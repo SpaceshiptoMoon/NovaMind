@@ -1,12 +1,4 @@
-"""Wiki 读侧查询服务（批次 4 从 wiki_routes 下沉）。
-
-浏览层读编排集中于此：页面列表/详情/搜索/索引/统计/生成状态/来源证据/版本历史。
-路由层只保留参数解析 + Depends 鉴权 + 调本服务。
-
-- ``get_kb_or_fail``：KB 归属校验（原路由 ``_get_kb_or_404``，读侧共享）
-- ``get_page_sources``：来源证据展开（文档批量化查询，消除 N+1）
-- ``get_index``：按类型分组索引 + 生成状态 + index intro 组装
-"""
+"""Wiki 读侧查询服务：页面列表/详情/搜索/索引/统计/生成状态/来源证据/版本历史的读编排，路由层只保留参数解析与鉴权。"""
 from __future__ import annotations
 
 from novamind.features.knowledge_space.exceptions import (
@@ -41,6 +33,7 @@ _STATUS_NAMES = {
 
 
 def _to_list_item(page: WikiPage) -> WikiPageListItem:
+    """把页面 ORM 行投影为列表项 Schema（不含正文）。"""
     return WikiPageListItem(
         id=page.id, slug=page.slug, title=page.title,
         page_type=page.page_type, status=page.status,
@@ -66,6 +59,7 @@ async def get_kb_or_fail(db: AsyncSession, kb_id: int, space_id: int):
 
 
 def status_name(status: WikiIngestStatus) -> str:
+    """生成状态枚举转小写状态名，未知值回退 unknown。"""
     return _STATUS_NAMES.get(status, "unknown")
 
 
@@ -73,6 +67,7 @@ class WikiQueryService:
     """Wiki 读域服务（每请求一实例，绑定调用方 session）。"""
 
     def __init__(self, db: AsyncSession):
+        """每请求一实例：绑定调用方 session 并持有页面与履历仓储。"""
         self.db = db
         self.repo = WikiPageRepository(db)
         self.record_repo = WikiIngestRecordRepository(db)
@@ -88,6 +83,7 @@ class WikiQueryService:
         category: str | None,
         q: str | None,
     ):
+        """分页列出页面（支持类型/状态/目录/关键词过滤），返回（列表项，总数）。"""
         pages, total = await self.repo.list_pages(
             kb_id, page_type=page_type, status=status, category_label=category,
             query=q, page=page, page_size=page_size,
@@ -95,12 +91,14 @@ class WikiQueryService:
         return [_to_list_item(p) for p in pages], total
 
     async def get_page(self, *, kb_id: int, slug: str):
+        """按 slug 取存活页面，不存在抛 WikiPageNotFoundError。"""
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
         return page
 
     async def search_pages(self, *, kb_id: int, q: str, limit: int):
+        """按关键词搜索页面（标题/slug/摘要/正文加权排序）。"""
         return await self.repo.search_pages_ranked(kb_id, q, limit=limit)
 
     async def get_index(self, *, kb_id: int, per_page: int):
@@ -126,12 +124,14 @@ class WikiQueryService:
         return groups, is_active, intro
 
     async def get_stats(self, *, kb_id: int):
+        """返回 KB 统计与是否生成中（最新履历处于 PENDING/RUNNING）。"""
         stats = await self.repo.get_stats(kb_id)
         latest = await self.record_repo.get_latest_for_kb(kb_id)
         is_active = bool(latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING))
         return stats, is_active
 
     async def get_ingest_status(self, *, kb_id: int):
+        """返回 KB 最新一次生成履历（可能为 None）。"""
         return await self.record_repo.get_latest_for_kb(kb_id)
 
     async def get_page_sources(self, *, kb_id: int, slug: str):
@@ -171,6 +171,7 @@ class WikiQueryService:
         return page, source_documents, page.chunk_refs or []
 
     async def get_revision(self, *, kb_id: int, slug: str, version: int):
+        """取页面指定版本快照，页面或版本缺失抛 WikiPageNotFoundError。"""
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -180,6 +181,7 @@ class WikiQueryService:
         return revision
 
     async def list_revisions(self, *, kb_id: int, slug: str):
+        """返回页面与其全部版本快照（按版本降序）。"""
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -187,6 +189,7 @@ class WikiQueryService:
         return page, revisions
 
     async def list_issues(self, *, kb_id: int, status: str | None, limit: int):
+        """分页列出 KB 问题登记，可按状态过滤。"""
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )

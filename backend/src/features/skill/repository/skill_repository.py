@@ -38,9 +38,11 @@ class SkillRepository:
     ]
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create(self, **kwargs) -> SkillDefinition:
+        """创建技能记录（begin_nested 写入，同名唯一约束冲突抛已存在异常）。"""
         from novamind.features.skill.exceptions import SkillAlreadyExistsError
         async with self.session.begin_nested():
             skill = SkillDefinition(**kwargs)
@@ -53,6 +55,7 @@ class SkillRepository:
         return skill
 
     async def get_by_id(self, skill_id: int) -> SkillDefinition | None:
+        """按 ID 查技能，自动过滤已软删除记录，无则 None。"""
         result = await self.session.execute(
             select(SkillDefinition).where(
                 SkillDefinition.id == skill_id,
@@ -72,6 +75,7 @@ class SkillRepository:
         )
 
     async def get_by_name(self, user_id: int | None, name: str) -> SkillDefinition | None:
+        """按名称查技能（过滤软删）；user_id 为 None 时只匹配系统预置技能。"""
         query = select(SkillDefinition).where(
             SkillDefinition.name == name,
             SkillDefinition.deleted_at.is_(None),
@@ -87,6 +91,7 @@ class SkillRepository:
         self, user_id: int, status: int | None = None,
         limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
+        """分页列出用户自己的技能（过滤软删，可按状态筛选），返回 (列表, 总数)。"""
         base = select(SkillDefinition).where(
             SkillDefinition.user_id == user_id,
             SkillDefinition.deleted_at.is_(None),
@@ -235,6 +240,7 @@ class SkillRepository:
         return result.scalars().all(), total
 
     async def update(self, skill_id: int, **kwargs) -> SkillDefinition | None:
+        """按白名单字段更新技能（未命中字段静默忽略），技能不存在返回 None。"""
         skill = await self.get_by_id(skill_id)
         if not skill:
             return None
@@ -246,6 +252,7 @@ class SkillRepository:
         return skill
 
     async def soft_delete(self, skill_id: int) -> bool:
+        """软删除技能：置 deleted_at 并重命名释放唯一约束，返回是否实际删除。"""
         from novamind.shared.utils.time_utils import now_china
         ts = int(now_china().timestamp())
         result = await self.session.execute(
@@ -256,6 +263,7 @@ class SkillRepository:
         return result.rowcount > 0
 
     async def increment_install_count(self, skill_id: int) -> None:
+        """安装计数加一。"""
         await self.session.execute(
             update(SkillDefinition)
             .where(SkillDefinition.id == skill_id)
@@ -263,6 +271,7 @@ class SkillRepository:
         )
 
     async def decrement_install_count(self, skill_id: int) -> None:
+        """安装计数减一（下限 0，不为负）。"""
         await self.session.execute(
             update(SkillDefinition)
             .where(SkillDefinition.id == skill_id)
@@ -270,6 +279,7 @@ class SkillRepository:
         )
 
     async def get_published_by_name(self, name: str) -> SkillDefinition | None:
+        """按名称查已发布且未删除的技能，无则 None。"""
         result = await self.session.execute(
             select(SkillDefinition).where(
                 SkillDefinition.name == name,
@@ -407,9 +417,11 @@ class SkillVersionRepository:
     """技能版本仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create(self, **kwargs) -> SkillVersion:
+        """创建技能版本记录（只 flush，事务由服务层提交）。"""
         version = SkillVersion(**kwargs)
         self.session.add(version)
         await self.session.flush()
@@ -419,6 +431,7 @@ class SkillVersionRepository:
     async def list_by_skill(
         self, skill_id: int, limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillVersion], int]:
+        """分页列出技能的版本历史（按版本号降序），返回 (列表, 总数)。"""
         base = select(SkillVersion).where(SkillVersion.skill_id == skill_id)
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
@@ -431,6 +444,7 @@ class SkillVersionRepository:
         return result.scalars().all(), total
 
     async def get_version(self, skill_id: int, version: int) -> SkillVersion | None:
+        """查技能的指定版本号记录，无则 None。"""
         result = await self.session.execute(
             select(SkillVersion).where(
                 SkillVersion.skill_id == skill_id,
@@ -444,11 +458,13 @@ class SkillReviewRepository:
     """技能评价仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create_or_update(
         self, skill_id: int, user_id: int, rating: int, content: str | None,
     ) -> SkillReview:
+        """创建或更新评价（同用户同技能幂等覆盖）。"""
         existing = await self.get_by_user_and_skill(user_id, skill_id)
         if existing:
             existing.rating = rating
@@ -465,6 +481,7 @@ class SkillReviewRepository:
         return review
 
     async def get_by_user_and_skill(self, user_id: int, skill_id: int) -> SkillReview | None:
+        """查用户对某技能的现存评价，无则 None。"""
         result = await self.session.execute(
             select(SkillReview).where(
                 SkillReview.user_id == user_id,
@@ -476,6 +493,7 @@ class SkillReviewRepository:
     async def list_by_skill(
         self, skill_id: int, limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillReview], int]:
+        """分页列出技能的全部评价（按时间降序），返回 (列表, 总数)。"""
         base = select(SkillReview).where(SkillReview.skill_id == skill_id)
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
@@ -488,6 +506,7 @@ class SkillReviewRepository:
         return result.scalars().all(), total
 
     async def delete_review(self, user_id: int, skill_id: int) -> bool:
+        """删除用户对技能的评价，返回是否实际删除。"""
         result = await self.session.execute(
             delete(SkillReview).where(
                 SkillReview.user_id == user_id,
@@ -497,6 +516,7 @@ class SkillReviewRepository:
         return result.rowcount > 0
 
     async def get_rating_stats(self, skill_id: int) -> tuple[float, int]:
+        """聚合技能评分，返回 (平均分, 评价数)，无评价返回 (0.0, 0)。"""
         result = await self.session.execute(
             select(
                 func.avg(SkillReview.rating),
@@ -511,9 +531,11 @@ class SkillInstallationRepository:
     """技能安装仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create(self, **kwargs) -> SkillInstallation:
+        """创建技能安装记录（只 flush，事务由服务层提交）。"""
         installation = SkillInstallation(**kwargs)
         self.session.add(installation)
         await self.session.flush()
@@ -521,6 +543,7 @@ class SkillInstallationRepository:
         return installation
 
     async def get_by_skill_and_agent(self, skill_id: int, agent_id: int) -> SkillInstallation | None:
+        """查某 Agent 对某技能的安装记录，无则 None。"""
         result = await self.session.execute(
             select(SkillInstallation).where(
                 SkillInstallation.skill_id == skill_id,
@@ -530,12 +553,14 @@ class SkillInstallationRepository:
         return result.scalar_one_or_none()
 
     async def list_by_agent(self, agent_id: int) -> list[SkillInstallation]:
+        """列出 Agent 已安装的全部技能。"""
         result = await self.session.execute(
             select(SkillInstallation).where(SkillInstallation.agent_id == agent_id)
         )
         return result.scalars().all()
 
     async def delete_installation(self, skill_id: int, agent_id: int) -> bool:
+        """删除 Agent 的技能安装记录，返回是否实际删除。"""
         result = await self.session.execute(
             delete(SkillInstallation).where(
                 SkillInstallation.skill_id == skill_id,

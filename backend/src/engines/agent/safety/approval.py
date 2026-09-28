@@ -1,15 +1,4 @@
-"""危险操作审批 hook（E4 + E5 异步审批）。
-
-``ApprovalHook`` 在 ``code_execution`` 工具执行前检测代码内容——
-- HARDLINE 模式 → ``raise ApprovalRejectedError``，``ToolExecutor`` 捕获转为
-  ``ToolResult(ERROR)``，工具不执行，LLM 收到「已阻止危险操作」结果
-- DANGEROUS 模式 → E5 异步审批：从 context 取 ``approval_registry`` + ``event_sink``，
-  发 ``approval_request`` 事件给前端 → ``await registry.wait()`` 阻塞工具执行；
-  用户 approve → 放行；deny/超时 → raise（fail-closed）。无审批通道（非 WS 调用）
-  → 告警放行（fallback E4 行为）。
-
-接入：``ToolExecutor`` hooks 链（``before_execute``）。
-"""
+"""危险操作审批 hook：code_execution 执行前检测，HARDLINE 直接拒绝；DANGEROUS 异步审批，deny/超时拒绝，无审批通道（非 WS）告警放行。"""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -41,6 +30,7 @@ class ApprovalHook(ToolHook):
         target_tools: tuple = ("code_execution",),
         approval_timeout: float = 120.0,
     ) -> None:
+        """记录生效的目标工具集合与审批超时时长（超时经 registry 按 deny fail-closed 处理）。"""
         self._targets = set(target_tools)
         self._timeout = approval_timeout
 
@@ -50,6 +40,7 @@ class ApprovalHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """执行前检测代码内容：HARDLINE 抛 ApprovalRejectedError 拒绝；DANGEROUS 异步审批，deny/超时拒绝，无审批通道告警放行。"""
         if tool.name not in self._targets:
             return None
         code = arguments.get("code") or ""
@@ -99,6 +90,7 @@ class ApprovalHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
+        """执行后钩子：原样透传工具结果，本 hook 无后处理语义。"""
         return result
 
 

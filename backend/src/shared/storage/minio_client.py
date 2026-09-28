@@ -1,22 +1,6 @@
-"""
-MinIO 客户端封装
+"""MinIO 客户端封装。
 
-提供对象存储功能，用于文件上传、下载和管理。
-所有公开方法均为异步，通过 asyncio.to_thread 包装同步 MinIO SDK 调用，
-避免阻塞 asyncio 事件循环。
-
-MinIO 存储路径规范:
-├── bucket: novamind-dev                            # 统一桶
-│   ├── spaces/                                    # 空间目录
-│   │   └── {space_id}/                            # 空间 ID
-│   │       └── kbs/                               # 知识库目录
-│   │           └── {kb_id}/                        # 知识库 ID
-│   │               ├── documents/                  # 文档目录
-│   │               │   └── {doc_id}/               # 文档 ID
-│   │               │       └── {sha256(path)}.ext    # 路径哈希 + 扩展名，原始文件名存 MySQL
-│   │               └── exports/                    # 导出文件
-│   ├── avatars/                                   # 用户头像
-│   └── temp/                                      # 临时文件
+路径契约：文档对象名以 {sha256(path)}.ext 命名，原始文件名存 MySQL；所有公开方法均为 async（to_thread 包装同步 SDK，不阻塞事件循环）。
 """
 
 import asyncio

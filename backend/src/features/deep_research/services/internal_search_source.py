@@ -1,12 +1,4 @@
-"""InternalSearchPort 宿主适配器。
-
-引擎 ``DeepResearchEngine.search`` 经本宿主类调多租户 KB 检索（批次 3.4 去 Protocol，直收 SearchService），
-切断引擎对 ORM/setting/knowledge_space 的依赖。本适配器下沉所有跨 feature / ORM import
-（``knowledge_space`` models/schemas/repository、``KnowledgeBaseStatus``、
-``SearchRequest``/``WeightConfig``/``RerankConfig``/``SearchMode``），引擎层零宿主依赖。
-
-每请求构造（绑定 ``space_id``/``user_id``/``internal_config``），不跨请求复用。
-"""
+"""内部检索宿主适配器：每请求构造并绑定 space_id/user_id，不跨请求复用；下沉全部跨 feature import，引擎层零宿主依赖。"""
 from typing import Any
 
 from novamind.engines.deep_research.sources import (
@@ -47,6 +39,7 @@ class HostInternalSearchPort:
         internal_config: InternalSearchConfig,
         logger: object | None = None,
     ):
+        """绑定检索服务、KB 仓储与 space_id/user_id/internal_config，每请求构造、不跨请求复用。"""
         self._search_port = search_port
         self._kb_repo = kb_repo
         self._space_id = space_id

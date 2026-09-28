@@ -1,9 +1,4 @@
-"""用户应用禁用表（应用级权限门禁，deny-list 语义）。
-
-三级权限模型中的应用层：默认全开放，管理员可禁用普通用户的具体应用——
-表里只存「被禁用」的记录，无记录 = 可用。应用相互隔离；知识空间不进
-此表（入口人人可见，内容靠空间成员角色）。
-"""
+"""用户应用禁用表（应用级权限门禁，deny-list 语义：只存被禁用记录，无记录=可用）。"""
 from novamind.core.database.base import BaseModel
 from sqlalchemy import BigInteger, Column, ForeignKey, String, UniqueConstraint
 

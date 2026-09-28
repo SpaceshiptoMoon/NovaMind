@@ -1,12 +1,6 @@
-"""
-LLM 客户端包
+"""LLM 客户端包：多协议统一构造入口。
 
-提供多协议的文本生成功能，统一接口规范。
-支持协议: OpenAI 兼容、Anthropic、Ollama、Transformers 本地推理。
-
-R5 工厂自注册：client 类挂 ``_FACTORY_PROTOCOL`` 属性入注册表，
-``create_llm_client`` 查表构造；新增协议 = 新 client 文件 + 类挂属性，
-不再维护 if-elif 分支链。
+R5 工厂自注册：client 类挂 _FACTORY_PROTOCOL 属性入注册表，create_llm_client 查表构造，新增协议不改分支链。
 """
 
 from novamind.shared.ai_models.base_model import BaseLLM

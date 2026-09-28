@@ -2,6 +2,7 @@
 
 
 class SystemPermission:
+    """系统功能权限码常量集（封闭集合，管理员只能将其组合到角色，不可新增）。"""
     USER_MANAGE = "user.manage"
     SKILL_REVIEW = "skill.review"
     SKILL_CONFIG = "skill.config"

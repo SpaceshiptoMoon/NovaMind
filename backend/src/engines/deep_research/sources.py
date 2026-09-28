@@ -1,26 +1,6 @@
-"""
-Deep Research 数据源抽象（可插拔检索源）。
-
-引擎侧统一检索源协议：所有数据源（内部知识库/外部 Web/未来 Confluence、DB 直查、
-MCP 数据源等）经同一 ``SearchSourcePort`` 注入引擎，``search`` 迭代循环对源数量
-无感知——每轮迭代逐 ``SearchSourceBinding`` 查询、去重，单源失败降级不中断。
-
-本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-（R1 无环约束下的引擎层边界说明，端口化已在迁移批次 3 移除）。
-
-结果 dict 形状契约（与纯函数 ``deduplicate_results`` / ``extract_citations`` /
-``format_search_context`` 的 ``.get`` 宽松访问一致）：
-
-- 必填：``content``（str）、``score``（float）
-- 标识：``source_type``（str，建议用 ``types.SourceType`` 值；新源可自定义字符串，
-  引擎不枚举校验）
-- 可选：``url`` / ``title``（外部源去重与引用）；``chunk_id`` / ``document_id`` /
-  ``document_name`` / ``kb_id`` / ``kb_name``（内部源去重与引用兜底）
-
-装配链路（host 侧）：feature 装配点按启用的源类型逐个调注册表工厂
-``factory(SearchSourceContext) -> SearchSourcePort``，构造 ``SearchSourceBinding``
-列表注入 ``DeepResearchEngine.search``；工厂无状态、每请求构造绑定实例（租户上下文
-经 Context 传入，引擎不持有）。
+"""Deep Research 可插拔数据源抽象：所有检索源经同一 SearchSourcePort 注入引擎，搜索循环对源数量无感知，单源失败降级不中断。
+结果 dict 契约：content 与 score 必填；url/title 与 chunk_id/kb_id 等标识可选，供去重与引用。
+本模块不得 import novamind.features.* / novamind.setting.*（引擎层边界）。
 """
 from __future__ import annotations
 

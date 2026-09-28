@@ -1,13 +1,6 @@
-"""空间/知识库访问判定服务（批次 4.2 权限收编）。
+"""空间/知识库访问判定服务：Depends 链与 agent 工具共用的可调用实现。
 
-此前 agent 的 wiki_tools 自带一套平行权限实现（``_check_kb_access`` +
-``_is_admin``），与路由层 Depends 链各写一遍。本服务成为可调用共享实现，
-Depends 链与 agent 工具按同一逻辑判定。
-
-返回约定（供工具层使用错误消息而非异常）：
-``check_kb_access(db, kb_id, user_id, write) -> (kb, error_msg)``
-- (kb, None)：通过
-- (None, msg)：拒绝（kb 不存在/无空间权限/写权限不足）
+check_kb_access 返回 (kb, error_msg)——工具层用错误消息不用异常：通过为 (kb, None)，拒绝为 (None, 消息)（kb 不存在/无空间权限/写权限不足）。
 """
 from __future__ import annotations
 

@@ -17,11 +17,13 @@ logger = get_logger(__name__)
 
 
 class DocumentTaskBatchRepository:
+    """文档批次仓储：document_tasks 表的 CRUD 与子任务汇总刷新。"""
     def __init__(self, session: AsyncSession):
         self.session = session
         self.logger = logger
 
     async def create(self, data: dict[str, Any]) -> DocumentTaskBatch:
+        """创建批次行并 flush 取自增 ID。"""
         batch = DocumentTaskBatch(**data)
         self.session.add(batch)
         await self.session.flush()
@@ -29,10 +31,12 @@ class DocumentTaskBatchRepository:
         return batch
 
     async def get_by_id(self, batch_id: int) -> DocumentTaskBatch | None:
+        """按主键查批次，不存在返回 None。"""
         result = await self.session.execute(select(DocumentTaskBatch).where(DocumentTaskBatch.id == batch_id))
         return result.scalar_one_or_none()
 
     async def delete(self, batch_id: int) -> bool:
+        """删除批次行（子任务级联删除），批次不存在返回 False。"""
         batch = await self.get_by_id(batch_id)
         if not batch:
             return False
@@ -41,6 +45,7 @@ class DocumentTaskBatchRepository:
         return True
 
     async def list_by_kb(self, kb_id: int, skip: int = 0, limit: int = 50) -> list[DocumentTaskBatch]:
+        """分页列出 KB 内至少含一个子任务的批次（按 ID 降序）。"""
         result = await self.session.execute(
             select(DocumentTaskBatch)
             .where(DocumentTaskBatch.kb_id == kb_id)
@@ -56,6 +61,7 @@ class DocumentTaskBatchRepository:
         return list(result.scalars().all())
 
     async def count_by_kb(self, kb_id: int) -> int:
+        """统计 KB 内至少含一个子任务的批次总数。"""
         result = await self.session.execute(
             select(func.count(DocumentTaskBatch.id))
             .where(DocumentTaskBatch.kb_id == kb_id)
@@ -68,6 +74,7 @@ class DocumentTaskBatchRepository:
         return result.scalar() or 0
 
     async def refresh_summary(self, batch_id: int) -> DocumentTaskBatch | None:
+        """按子任务状态聚合刷新批次计数、汇总与状态机，含终态时间戳写入，flush-only。"""
         batch = await self.get_by_id(batch_id)
         if not batch:
             return None

@@ -40,6 +40,7 @@ class ShortTermMemory(IShortTermMemory):
         compression_strategy: ICompressionStrategy,
         summary_store: Any = None,  # ContextSummaryStorePort
     ):
+        """注入消息/工具调用/会话三个仓储与预算、压缩策略；摘要存储可选，缺省跳过摘要续接。"""
         self._msg_repo = message_repository
         self._tc_repo = tool_call_repository
         self._session_repo = session_repository

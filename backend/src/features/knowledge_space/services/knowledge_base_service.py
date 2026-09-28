@@ -1,9 +1,4 @@
-"""
-知识库管理服务
-
-处理知识库的创建、更新、删除等操作
-支持多租户和 RBAC 权限控制
-"""
+"""知识库管理服务：知识库的创建、更新、删除与配置生命周期管理。"""
 
 import copy
 from typing import Any
@@ -65,6 +60,7 @@ class KnowledgeBaseService:
         minio_client: MinioClient,
         model_config_service: ModelConfigService | None = None,
     ):
+        """构造注入会话、ES/MinIO 客户端与可选的模型配置服务。"""
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
         self.doc_repo = DocumentRepository(session)

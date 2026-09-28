@@ -1,14 +1,4 @@
-"""
-API 速率限制中间件
-
-使用 slowapi 实现 API 请求速率限制，防止：
-1. 暴力破解攻击
-2. DDoS 攻击
-3. 资源滥用
-
-安装依赖:
-    uv add slowapi
-"""
+"""API 速率限制中间件（slowapi；认证用户按 user_id 限流，未认证按 IP）。"""
 
 import re
 import threading

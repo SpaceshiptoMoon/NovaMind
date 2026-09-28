@@ -195,6 +195,7 @@ class DocumentProcessor:
     """
 
     def __init__(self, embedding_client: BaseEmbedding | None = None):
+        """初始化读取器注册表与 DeepDoc 解析引擎；embedding 客户端可选，仅 semantic 切分需要，缺省时该策略回退 recursive。"""
         self.embedding_client = embedding_client
         self._deepdoc_parser = DeepDocParser()
         self._deepdoc_engine = DeepDocEngine(parser=self._deepdoc_parser)
@@ -265,6 +266,7 @@ class DocumentProcessor:
 
     @staticmethod
     def _ocr_pdf_text_sync(file_path: Path) -> str:
+        """扫描版 PDF 的 OCR 兜底（fitz + Tesseract）；缺 Tesseract 抛错，页级失败记 WARNING 跳过。"""
         try:
             import fitz
         except Exception:
@@ -395,6 +397,7 @@ class DocumentProcessor:
         parsing_config: dict[str, object] | None = None,
         splitting_config: dict[str, object] | None = None,
     ) -> tuple[str, list[str]]:
+        """解析文档并切分，返回 (full_text, chunks) 二元组；完整元数据请用 parse_document_result。"""
         result = await self.parse_document_result(
             file_path,
             parsing_config=parsing_config,
@@ -408,6 +411,7 @@ class DocumentProcessor:
         parsing_config: dict[str, object] | None = None,
         splitting_config: dict[str, object] | None = None,
     ) -> DeepDocParseResult:
+        """主解析入口：deepdoc 策略走 DeepDoc 引擎加哨兵重切，默认策略走 reader+splitter；返回全文、分块与元数据。"""
         parsing_config = dict(parsing_config or {})
         splitting_config = dict(splitting_config or {})
         parsing_strategy = str(parsing_config.get("strategy", "default"))

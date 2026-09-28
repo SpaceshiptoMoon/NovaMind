@@ -30,12 +30,15 @@ class ToolContext:
         self._extra: dict[str, Any] = {}
 
     def set(self, key: str, value: Any) -> None:
+        """写入扩展上下文字段（自定义端口/配置等经此处挂载，供工具执行时取用）。"""
         self._extra[key] = value
 
     def get(self, key: str, default: Any = None) -> Any:
+        """读取扩展上下文字段，缺省返回 default。"""
         return self._extra.get(key, default)
 
     def to_dict(self) -> dict[str, Any]:
+        """合并固定字段与扩展字段为单层 dict，即工具执行时的 context 形态。"""
         d: dict[str, Any] = {
             "db_session": self.db_session,
             "user_id": self.user_id,

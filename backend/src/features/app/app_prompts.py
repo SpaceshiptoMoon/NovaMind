@@ -1,17 +1,4 @@
-"""
-Resume mining module prompt templates (V2)
-
-三阶段框架：
-  Part 1: 技术前置学习 (resume_prefix_knowledge)
-  Part 2: 项目深度追问（核心）(resume_probing_strategy + resume_probe_first_round + resume_probe_follow_up)
-  Part 3: 简历优化建议 (resume_optimization_advice + resume_probe_evaluation)
-
-辅助步骤：
-  S2-S4: 简历解析（7 个模板不变）
-  S4.5-S5: 简历概述 + JD 分析（不变）
-  S6-NEW: 上下文合并 (resume_work_context_enrichment)
-  S7-NEW: 复杂度评估 (resume_complexity_assessment)
-"""
+"""简历挖掘模块提示词模板：S1-S12 解析/概述/追问/优化全流程模板注册表（三阶段面试追问框架 + 解析辅助步骤）。"""
 
 TEMPLATES = {
     # ==================== S1: Section Splitting (不变) ====================

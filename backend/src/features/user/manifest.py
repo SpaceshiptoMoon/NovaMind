@@ -5,6 +5,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
+    """懒加载本 feature 全部 ORM 模型，供建表注册扫描。"""
     from novamind.features.user.models.user import User  # noqa: F401
     from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
@@ -12,12 +13,14 @@ def _import_models() -> None:
 
 
 async def _init(app) -> None:
+    """feature 初始化钩子：执行用户模块启动组件装配。"""
     from novamind.features.user.api.startup import init_user_components
 
     await init_user_components()
 
 
 def manifest() -> FeatureManifest:
+    """声明 user feature 的路由、初始化钩子与加载顺序。"""
     from novamind.features.user.api.model_config_routes import router as model_config_router
     from novamind.features.user.api.role_routes import router as role_router
     from novamind.features.user.api.search_config_routes import router as search_config_router

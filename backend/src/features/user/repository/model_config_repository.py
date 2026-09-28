@@ -65,6 +65,7 @@ class ModelConfigRepository:
     """用户模型配置仓储"""
 
     def __init__(self, db: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.db = db
 
     # ========== 基础查询 ==========

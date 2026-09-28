@@ -18,6 +18,7 @@ class McpClientManager:
     """MCP 客户端管理器"""
 
     def __init__(self):
+        """初始化空会话表、工具缓存与连接配置表；asyncio.Lock 保护并发连接与重连。"""
         self._sessions: dict[int, Any] = {}  # server_id -> ClientSession
         self._exit_stacks: dict[int, AsyncExitStack] = {}
         self._tools_cache: dict[int, list[dict]] = {}

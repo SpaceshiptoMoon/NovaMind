@@ -1,7 +1,4 @@
-"""空间统计看板路由（批次 2b：知识缺口看板）。
-
-路由前缀: /api/v1/spaces/{space_id}/stats
-"""
+"""空间统计看板路由：知识缺口看板数据（KPI/趋势/明细/KB 维度）。路由前缀 /api/v1/spaces/{space_id}/stats。"""
 from __future__ import annotations
 
 from datetime import datetime

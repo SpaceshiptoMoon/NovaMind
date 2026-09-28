@@ -1,11 +1,4 @@
-"""Compatibility package for the new novamind import root.
-
-``backend/src/novamind/__init__.py`` 把 ``__path__`` 扩展到 ``backend/src/``，
-使 ``novamind.core.* / novamind.features.* / novamind.shared.*`` 解析到对应的
-``backend/src/<area>/`` 目录。
-
-``novamind.shared`` 是命名空间包（无 ``__init__.py``）。
-"""
+"""兼容包：扩展 __path__ 使 novamind.core/features/shared/setting 解析到 backend/src/<area>/（novamind.shared 为命名空间包）。"""
 from __future__ import annotations
 
 from pathlib import Path

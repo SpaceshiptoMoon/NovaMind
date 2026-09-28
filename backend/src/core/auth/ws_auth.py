@@ -1,14 +1,7 @@
 """WebSocket 认证（subprotocol 子协议传 JWT）。
 
-浏览器 ``new WebSocket(url, ['bearer.<jwt>'])`` 把 JWT 放进 ``Sec-WebSocket-Protocol``
-子协议头（不进 URL，避免代理日志/浏览器历史泄漏）。本模块在 WS 握手阶段解析
-子协议、复用 ``core/auth`` 的 ``decode_access_token`` + ``is_user_blacklisted`` +
-``UserStatusResolver`` 校验链，与 HTTP ``get_current_user`` 等价。
-
-认证失败返回 ``(None, close_code)``，**不在本函数内 close**——由调用方先
-``websocket.accept()`` 再 ``websocket.close(code=close_code)``。原因：accept 前
-``websocket.close`` 会被 uvicorn 转成 HTTP 403 握手拒绝，close code 不作为 WS
-close frame 传到客户端；accept 后 close 才能把 4401/4403 精准传给前端。
+认证失败返回 (None, close_code) 且不在本函数内 close；调用方必须先 accept() 再 close(code)。
+accept 前 close 会被 uvicorn 转成 HTTP 403，close code 无法作为 WS close frame 传到前端。
 """
 from __future__ import annotations
 

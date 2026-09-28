@@ -1,10 +1,4 @@
-"""
-测评模块仓储层
-
-两个仓储类：
-- EvaluationTestSetRepository: 测试集 CRUD
-- EvaluationTaskRepository: 测评任务 CRUD
-"""
+"""测评模块仓储层：测试集与测评任务的数据库读写。"""
 from datetime import timedelta
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -25,6 +19,7 @@ class EvaluationTestSetRepository:
     """测试集仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级异步会话，本仓储全部查询经该会话执行。"""
         self.session = session
 
     async def create(
@@ -40,6 +35,7 @@ class EvaluationTestSetRepository:
         storage: dict,
         total_cases: int,
     ) -> EvaluationTestSet:
+        """持久化新测试集并回填自增 ID（flush 不提交，提交由调用方控制）。"""
         test_set = EvaluationTestSet(
             space_id=space_id,
             kb_id=kb_id,
@@ -63,6 +59,7 @@ class EvaluationTestSetRepository:
         space_id: int | None = None,
         kb_id: int | None = None,
     ) -> EvaluationTestSet | None:
+        """按 ID 查测试集，可选叠加空间/知识库过滤做归属收窄。"""
         query = select(EvaluationTestSet).where(EvaluationTestSet.id == test_set_id)
         if space_id is not None:
             query = query.where(EvaluationTestSet.space_id == space_id)
@@ -74,6 +71,7 @@ class EvaluationTestSetRepository:
     async def get_by_id_and_kb(
         self, test_set_id: int, space_id: int, kb_id: int
     ) -> EvaluationTestSet | None:
+        """按 ID + 空间 + 知识库三元组查测试集，供路由层归属校验。"""
         result = await self.session.execute(
             select(EvaluationTestSet).where(
                 EvaluationTestSet.id == test_set_id,
@@ -90,6 +88,7 @@ class EvaluationTestSetRepository:
         skip: int = 0,
         limit: int = 20,
     ) -> list[EvaluationTestSet]:
+        """分页列出知识库下测试集，按创建时间倒序。"""
         result = await self.session.execute(
             select(EvaluationTestSet)
             .where(
@@ -103,6 +102,7 @@ class EvaluationTestSetRepository:
         return list(result.scalars().all())
 
     async def count_by_kb(self, kb_id: int, space_id: int) -> int:
+        """统计知识库下测试集总数，与分页列表配对使用。"""
         result = await self.session.execute(
             select(func.count(EvaluationTestSet.id)).where(
                 EvaluationTestSet.kb_id == kb_id,
@@ -125,6 +125,7 @@ class EvaluationTestSetRepository:
         return result.scalar_one() > 0
 
     async def delete(self, test_set_id: int) -> bool:
+        """删除测试集记录，目标存在返回 True（提交由调用方控制）。"""
         test_set = await self.get_by_id(test_set_id)
         if test_set:
             await self.session.delete(test_set)
@@ -137,6 +138,7 @@ class EvaluationTaskRepository:
     """测评任务仓储"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级异步会话，本仓储全部查询经该会话执行。"""
         self.session = session
 
     async def create(
@@ -146,6 +148,7 @@ class EvaluationTaskRepository:
         name: str,
         config: dict | None = None,
     ) -> EvaluationTask:
+        """创建 PENDING 状态测评任务并回填自增 ID（flush 不提交）。"""
         task = EvaluationTask(
             test_set_id=test_set_id,
             user_id=user_id,
@@ -159,6 +162,7 @@ class EvaluationTaskRepository:
         return task
 
     async def get_by_id(self, task_id: int) -> EvaluationTask | None:
+        """按 ID 查任务并预加载关联测试集，供报告与对比读取归属信息。"""
         result = await self.session.execute(
             select(EvaluationTask)
             .options(selectinload(EvaluationTask.test_set))
@@ -169,6 +173,7 @@ class EvaluationTaskRepository:
     async def get_by_id_and_kb(
         self, task_id: int, space_id: int, kb_id: int
     ) -> EvaluationTask | None:
+        """join 测试集按 ID + 空间 + 知识库查任务，供路由层归属校验。"""
         result = await self.session.execute(
             select(EvaluationTask)
             .join(EvaluationTestSet)
@@ -189,6 +194,7 @@ class EvaluationTaskRepository:
         limit: int = 20,
         status: int | None = None,
     ) -> list[EvaluationTask]:
+        """分页列出知识库下任务，可按状态过滤，按创建时间倒序。"""
         query = (
             select(EvaluationTask)
             .join(EvaluationTestSet)
@@ -210,6 +216,7 @@ class EvaluationTaskRepository:
         space_id: int,
         status: int | None = None,
     ) -> int:
+        """统计知识库下任务总数，可按状态过滤，与分页列表配对使用。"""
         query = (
             select(func.count(EvaluationTask.id))
             .join(EvaluationTestSet)
@@ -224,24 +231,28 @@ class EvaluationTaskRepository:
         return result.scalar_one()
 
     async def update_status(self, task_id: int, status: EvaluationStatus) -> None:
+        """更新任务状态，任务不存在时静默跳过（flush 不提交）。"""
         task = await self.get_by_id(task_id)
         if task:
             task.status = status
             await self.session.flush()
 
     async def update_progress(self, task_id: int, progress: dict) -> None:
+        """更新任务进度 current/total，任务不存在时静默跳过。"""
         task = await self.get_by_id(task_id)
         if task:
             task.progress = progress
             await self.session.flush()
 
     async def update_result_storage(self, task_id: int, result_storage: dict) -> None:
+        """回写结果文件 MinIO 存储信息，任务不存在时静默跳过。"""
         task = await self.get_by_id(task_id)
         if task:
             task.result_storage = result_storage
             await self.session.flush()
 
     async def update_error(self, task_id: int, error_message: str) -> None:
+        """记录错误信息并把任务标记为 FAILED（提交由调用方控制）。"""
         task = await self.get_by_id(task_id)
         if task:
             task.error_message = error_message
@@ -249,6 +260,7 @@ class EvaluationTaskRepository:
             await self.session.flush()
 
     async def delete(self, task_id: int) -> bool:
+        """删除任务记录，目标存在返回 True。"""
         task = await self.get_by_id(task_id)
         if task:
             await self.session.delete(task)

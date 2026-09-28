@@ -1,9 +1,6 @@
-"""
-Document task parent model.
+"""文档任务批次模型：一次批量操作（含多个文档任务项）的父记录与汇总。
 
-Compatibility note:
-- class name remains `DocumentTaskBatch` for existing service code
-- real table name is `document_tasks`
+兼容命名：类名保留 DocumentTaskBatch，真实表名为 document_tasks。
 """
 from enum import IntEnum
 
@@ -23,12 +20,14 @@ from sqlalchemy import (
 
 
 class BatchAction(IntEnum):
+    """批次动作：PROCESS 首发、REPROCESS 全量重跑、RETRY 失败重试。"""
     PROCESS = 0
     REPROCESS = 1
     RETRY = 2
 
 
 class BatchStatus(IntEnum):
+    """批次状态机：PENDING 到 PROCESSING 到终态（COMPLETED/FAILED/PARTIAL_FAILED/CANCELLED）。"""
     PENDING = 0
     PROCESSING = 1
     COMPLETED = 2
@@ -38,6 +37,7 @@ class BatchStatus(IntEnum):
 
 
 class DocumentTaskBatch(BaseModel):
+    """文档任务批次（类名保留 DocumentTaskBatch，真实表名为 document_tasks）。"""
     __tablename__ = "document_tasks"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment="Task ID")
@@ -61,19 +61,23 @@ class DocumentTaskBatch(BaseModel):
     )
 
     def mark_processing(self) -> None:
+        """标记批次开始处理，仅首次写入 started_at（重试不覆盖）。"""
         self.status = BatchStatus.PROCESSING
         if self.started_at is None:
             self.started_at = now_china()
 
     def mark_completed(self, has_failed: bool = False) -> None:
+        """标记批次完成（有失败项时为 PARTIAL_FAILED）。"""
         self.status = BatchStatus.PARTIAL_FAILED if has_failed else BatchStatus.COMPLETED
         self.completed_at = now_china()
 
     def mark_failed(self, error_message: str) -> None:
+        """标记批次整体失败并写错误信息。"""
         self.status = BatchStatus.FAILED
         self.error_message = error_message
         self.completed_at = now_china()
 
     def mark_cancelled(self) -> None:
+        """标记批次取消。"""
         self.status = BatchStatus.CANCELLED
         self.completed_at = now_china()

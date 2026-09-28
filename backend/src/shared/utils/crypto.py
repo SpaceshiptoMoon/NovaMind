@@ -1,12 +1,6 @@
-"""
-AES 加解密工具
+"""AES 加解密工具。
 
-当前版本：AES-256-GCM + HKDF-SHA256 密钥派生（v2）。
-向后兼容：可解密旧版 AES-256-CBC + SHA-256 派生加密的数据（无前缀旧格式）。
-
-格式：
-  - 新（v2）：v2:Base64(IV 12B + ciphertext + GCM tag 16B)
-  - 旧（v1）：Base64(IV 16B + ciphertext) — 仅解密，不再写入
+格式契约：v2 为 v2:Base64(IV 12B + ciphertext + GCM tag 16B)；v1 旧格式（Base64(IV 16B + ct)）仅解密兼容、不再写入。
 """
 import asyncio
 import base64

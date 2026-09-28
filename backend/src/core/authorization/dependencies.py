@@ -1,8 +1,6 @@
-"""RBAC 授权依赖项（归 core/authorization）。
+"""RBAC 授权依赖项（归 core/authorization）：require_permission 权限码路由守卫。
 
-``require_permission`` 提供基于权限码的路由守卫。权限查询直构 user feature 的
-``RbacPermissionService``（R4 去端口：懒 import 防 core 启动链成环，与
-core/auth 的 ``get_user_status_resolver`` 同款先例）。
+权限查询懒 import user feature 的 RbacPermissionService 直构，防 core 启动链成环。
 """
 from __future__ import annotations
 

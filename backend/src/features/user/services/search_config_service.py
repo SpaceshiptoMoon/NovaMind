@@ -1,15 +1,4 @@
-"""
-用户搜索配置服务
-
-核心职责：
-1. 搜索配置 CRUD（加密入库 / 解密读取 / 脱敏响应）
-2. 提供 ``get_primary_search_config``
-   返回解密后凭证，供宿主构造 ``WebSearchPort``
-3. 搜索连接测试（调 ``engines.build_web_search_port_from_provider`` 实搜验证）
-
-加密：复用 ``shared/utils/crypto.py`` 的 ``encrypt_api_key_async`` /
-``decrypt_api_key_async``（AES-256-GCM + HKDF-SHA256），与模型配置同套机制。
-"""
+"""用户搜索配置服务：配置 CRUD（加密入库/解密读取/脱敏响应）、首选凭证查询与连接测试；加密复用 shared/utils/crypto 同套机制（AES-256-GCM）。"""
 import time
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -48,6 +37,7 @@ class SearchConfigService:
     """
 
     def __init__(self, db: AsyncSession):
+        """绑定数据库会话与搜索配置仓储。"""
         self.db = db
         self.repo = SearchConfigRepository(db)
 

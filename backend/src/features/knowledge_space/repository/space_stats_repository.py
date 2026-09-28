@@ -1,15 +1,6 @@
-"""空间知识缺口统计仓库（批次 2b 看板）。
-
-跨 feature 读 QA 数据，按 R2 防环细则：**import ``qa.models`` 直查**，
-不 import qa repository（qa service 已依赖 knowledge_space）。
-
-只读 JSON 谓词聚合：
-- 零命中 = ``extra.retrieval.result_count == 0`` 或 ``answer_status == 'refused'``
-- 低分 = ``extra.retrieval.max_score < 阈值``
-- 点踩 = 反馈表 rating='down'
-全部走时间窗 + space_id 索引限定（qa_message_feedback 有真索引；
-question_answers 走 space_id 索引 + created_at 谓词）。MySQL 生成列
-升级路径见 service docstring 注记。
+"""空间知识缺口统计仓库：跨 feature 只读聚合 QA 数据。R2 防环：import qa.models 直查，不 import qa repository/service（qa serv
+ice 已依赖 knowledge_space）。零命中 = result_count==0 或 refused；低分 = max_score 低于阈值；点踩 = 反馈表 rating=dow
+n；全部走时间窗 + space_id 索引限定。
 """
 from __future__ import annotations
 

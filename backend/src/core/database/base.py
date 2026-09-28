@@ -27,6 +27,7 @@ def _get_china_now() -> datetime.datetime:
 
 
 class BaseModel(Base):
+    """业务模型公共抽象基类：自动携带 created_at / updated_at 中国时间时间戳列与统一表名推导。"""
     __abstract__ = True
     created_at = Column(DateTime, default=_get_china_now, nullable=False)
     updated_at = Column(DateTime,
@@ -36,6 +37,7 @@ class BaseModel(Base):
 
     @declared_attr
     def __tablename__(cls) -> str:
+        """表名推导：类名小写 + s（未显式声明 __tablename__ 时的默认）。"""
         return cls.__name__.lower() + "s"
 
     def to_dict(self) -> dict:

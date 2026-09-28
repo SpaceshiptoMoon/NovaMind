@@ -42,11 +42,14 @@ from .config import (
 
 
 class ConfigLoader:
+    """YAML 配置加载器：default → <env> → local 三层深度合并后解析 ${VAR} 环境占位符。"""
     def __init__(self, config_dir: Path | None = None):
+        """指定配置目录（默认包内 yaml/ 目录），便于测试注入临时配置。"""
         self.config_dir = config_dir or Path(__file__).parent / "yaml"
         self._config: dict[str, Any] = {}
 
     def load(self, environment: str | None = None) -> dict[str, Any]:
+        """按环境加载并合并 YAML，解析占位符后返回配置 dict；环境取参数或 ENVIRONMENT 环境变量，缺省 development。"""
         env = environment or os.getenv("ENVIRONMENT", "development")
         # 加载仓库根 .env 作为占位符取值源（幂等：已存在的进程环境变量优先）。
         # 本地开发时密钥只写 .env 一份，YAML 侧用 ${VAR} 占位符引用；
@@ -82,6 +85,7 @@ class ConfigLoader:
             pass
 
     def _load_yaml(self, filename: str) -> dict[str, Any]:
+        """读取单个 YAML 文件为 dict；文件不存在或为空返回空 dict。"""
         filepath = self.config_dir / filename
         if filepath.exists():
             with open(filepath, encoding="utf-8") as f:
@@ -90,6 +94,7 @@ class ConfigLoader:
         return {}
 
     def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """递归深度合并：override 中的 dict 逐键覆盖 base，非 dict 值整体替换。"""
         result = base.copy()
         for key, value in override.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -99,6 +104,7 @@ class ConfigLoader:
         return result
 
     def _replace_env_vars(self, config: Any) -> Any:
+        """递归替换 ${VAR} / ${VAR:默认值} 占位符为环境变量取值；反斜杠转义的占位符保留为字面量。"""
         if isinstance(config, str):
             placeholder = "\x00ESCAPED_DOLLAR_BRACE\x00"
             escaped = re.sub(r"\\\$\{", placeholder, config)
@@ -118,6 +124,7 @@ class ConfigLoader:
         return config
 
     def get(self, key: str, default: Any = None) -> Any:
+        """按点号路径读取已加载配置 dict 的嵌套值，任一层缺失返回 default。"""
         value: Any = self._config
         for part in key.split("."):
             if isinstance(value, dict) and part in value:
@@ -128,6 +135,7 @@ class ConfigLoader:
 
 
 def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
+    """把原始配置 dict 映射为强类型 AppConfig（逐节构造 dataclass，未提供的键用默认值；生产环境 MinIO 未开 SSL 时强制纠正并告警）。"""
     config = AppConfig()
     config.environment = data.get("environment", "development")
     config.cors_origins = data.get("cors_origins", "*")
@@ -389,6 +397,7 @@ _config_lock = threading.Lock()
 
 
 def set_environment(env: str) -> None:
+    """预设环境名并清空全部已加载缓存，下次 get_config 按新环境重新加载（须在首次 get_config 前调用才生效）。"""
     global _environment, _loader, _config_dict, _config
     with _config_lock:
         _environment = env
@@ -398,10 +407,12 @@ def set_environment(env: str) -> None:
 
 
 def get_environment() -> str | None:
+    """返回 set_environment 设置的环境名；未设置返回 None（get_config 会回落 ENVIRONMENT 环境变量）。"""
     return _environment
 
 
 def get_config() -> AppConfig:
+    """全局配置单例入口：首次调用时惰性加载并构造 AppConfig，进程内缓存复用；加载过程持锁保证并发安全，仅初始化一次。"""
     global _loader, _config_dict, _config, _environment
     if _config is None:
         with _config_lock:
@@ -414,11 +425,13 @@ def get_config() -> AppConfig:
 
 
 def get_config_dict() -> dict[str, Any]:
+    """返回 get_config 加载后的原始配置 dict（占位符已解析）；未加载时先触发加载。"""
     get_config()
     return _config_dict or {}
 
 
 def get_config_value(key: str, default: Any = None) -> Any:
+    """按点号路径读取单个配置项；必要时先触发全局配置加载。"""
     global _loader
     if _loader is None:
         get_config()
@@ -426,6 +439,7 @@ def get_config_value(key: str, default: Any = None) -> Any:
 
 
 def reload_config(environment: str | None = None) -> AppConfig:
+    """强制重新加载配置（可指定新环境）并刷新全局单例，返回新 AppConfig；持锁执行避免并发加载撕裂。"""
     global _loader, _config_dict, _config
     with _config_lock:
         _loader = ConfigLoader()

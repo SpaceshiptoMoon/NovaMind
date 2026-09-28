@@ -22,7 +22,9 @@ from sqlalchemy.orm import selectinload
 
 
 class RoleService:
+    """角色管理业务服务：角色 CRUD、权限绑定与用户角色分配（变更后失效权限缓存）。"""
     def __init__(self, db: AsyncSession, permission_checker: "PermissionService | None"):
+        """绑定数据库会话与可选 RBAC 权限服务（用于角色变更后失效用户权限缓存）。"""
         self.db = db
         self.repo = RoleRepository(db)
         self.checker = permission_checker
@@ -30,6 +32,7 @@ class RoleService:
 
     async def _get_role_with_permissions(self, role_id: int) -> Role | None:
         # 若 identity map 中已有对象，先移除以强制重新加载 selectin 关系
+        """强制重载角色及其权限关联（绕开 identity map 的 selectin 缓存）。"""
         existing = await self.db.get(Role, role_id)
         if existing is not None:
             self.db.expunge(existing)
@@ -48,6 +51,7 @@ class RoleService:
         description: str | None = None,
         permission_codes: list[str] | None = None,
     ) -> Role:
+        """创建角色（编码唯一）并绑定初始权限，返回带权限关联的角色。"""
         existing = await self.repo.get_role_by_code(code)
         if existing:
             raise UserOperationError(f"角色编码 '{code}' 已存在")
@@ -73,6 +77,7 @@ class RoleService:
         description: str | None = None,
         permission_codes: list[str] | None = None,
     ) -> Role:
+        """更新角色基础字段与权限；权限变更后失效该角色所有用户的权限缓存。"""
         role = await self.repo.get_role_by_id(role_id)
         if role is None:
             raise RoleNotFoundError(role_id=role_id)
@@ -106,6 +111,7 @@ class RoleService:
             await self.checker.invalidate(uid)
 
     async def delete_role(self, role_id: int) -> None:
+        """删除角色；系统内置角色与仍被用户绑定的角色拒绝删除。"""
         role = await self.repo.get_role_by_id(role_id)
         if role is None:
             raise RoleNotFoundError(role_id=role_id)
@@ -123,6 +129,7 @@ class RoleService:
         await self.repo.delete_role(role_id)
 
     async def assign_user_role(self, user_id: int, role_id: int) -> None:
+        """为用户分配角色（最高管理员拒绝降级），并失效该用户权限缓存。"""
         user = await self.db.get(User, user_id)
         if user is None:
             raise UserNotFoundError(user_id=user_id)
@@ -144,7 +151,9 @@ class RoleService:
             await self.checker.invalidate(user_id)
 
     async def list_roles(self) -> list[Role]:
+        """列出全部角色及其权限。"""
         return await self.repo.list_roles()
 
     async def list_permissions(self) -> list[Permission]:
+        """列出全部权限定义。"""
         return await self.repo.list_permissions()

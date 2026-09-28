@@ -64,6 +64,7 @@ class LoggingHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """记录工具调用开始日志；不修改参数。"""
         logger.info(
             "工具调用开始",
             tool_name=tool.name,
@@ -78,6 +79,7 @@ class LoggingHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
+        """记录工具调用完成日志（状态与耗时）；不修改结果。"""
         logger.info(
             "工具调用完成",
             tool_name=tool.name,
@@ -95,6 +97,7 @@ class ResultTruncationHook(ToolHook):
     """
 
     def __init__(self, max_result_chars: int = 8000):
+        """记录结果字符上限（默认 8000），超限硬截断防撑爆上下文。"""
         self._max_chars = max_result_chars
 
     async def before_execute(
@@ -103,6 +106,7 @@ class ResultTruncationHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """前置无操作，原样放行。"""
         return None
 
     async def after_execute(
@@ -112,6 +116,7 @@ class ResultTruncationHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
+        """结果超上限时硬截断并追加截断标记，metadata 记录原长度。"""
         if len(result.content) > self._max_chars:
             original_length = len(result.content)
             result.content = result.content[: self._max_chars] + "\n...[结果已截断]"
@@ -127,6 +132,7 @@ class ResultBudgetHook(ToolHook):
     """
 
     def __init__(self, preview_threshold: int = 10_000, preview_chars: int = 1_500):
+        """记录超大结果预览阈值（默认 1 万字符）与预览长度（1500 字符）。"""
         self._preview_threshold = preview_threshold
         self._preview_chars = preview_chars
 
@@ -136,6 +142,7 @@ class ResultBudgetHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """前置无操作，原样放行。"""
         return None
 
     async def after_execute(
@@ -145,6 +152,7 @@ class ResultBudgetHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
+        """结果超阈值时仅在 metadata 标记 oversized 并生成行边界预览，不截断正文。"""
         if len(result.content) > self._preview_threshold:
             preview = result.content[:self._preview_chars]
             last_nl = preview.rfind("\n")
@@ -175,6 +183,7 @@ class ToolOutputBudgetHook(ToolHook):
         head_ratio: float = 0.6,
         exempt_tools: tuple = ("knowledge_search",),
     ) -> None:
+        """记录 token 预算（按约 4 字符/token 折算）、head 占比与豁免工具集合。"""
         self._max_tokens = max_tokens
         self._max_chars = max_tokens * 4  # 粗估 4 字符/token
         self._head_ratio = head_ratio
@@ -186,6 +195,7 @@ class ToolOutputBudgetHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """前置无操作，原样放行。"""
         return None
 
     async def after_execute(
@@ -195,6 +205,7 @@ class ToolOutputBudgetHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
+        """输出超预算时 head/tail 双端截断（吸附行边界）并注明省略量；豁免工具原样透传。"""
         if tool.name in self._exempt:
             return result
         content = result.content

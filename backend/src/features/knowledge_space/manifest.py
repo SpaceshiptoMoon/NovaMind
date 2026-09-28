@@ -1,10 +1,11 @@
-"""knowledge_space feature manifest"""
+"""knowledge_space feature 清单：路由注册、模型加载与初始化钩子的声明入口。"""
 from __future__ import annotations
 
 from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, RouterSpec
 
 
 def _import_models() -> None:
+    """导入全部 ORM 模型以注册建表元数据（仅副作用，无返回值）。"""
     from novamind.features.knowledge_space.models.document import Document  # noqa: F401
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
     from novamind.features.knowledge_space.models.knowledge_space import (
@@ -21,12 +22,14 @@ def _import_models() -> None:
 
 
 async def _init(app) -> None:
+    """feature 初始化钩子：委托 api/startup 的组件初始化。"""
     from novamind.features.knowledge_space.api.startup import init_knowledge_space_components
 
     await init_knowledge_space_components(app)
 
 
 def manifest() -> FeatureManifest:
+    """声明 feature 路由表、依赖与加载顺序（惰性 import 路由防环）。"""
     from novamind.features.knowledge_space.api.document_routes import (
         flat_router as document_flat_router,
     )

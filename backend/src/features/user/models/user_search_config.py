@@ -1,14 +1,4 @@
-"""
-用户搜索配置 ORM 模型
-
-存储用户自定义的联网搜索 provider 凭证（Tavily/SerpAPI/DuckDuckGo），
-每条记录绑定具体用户。
-
-与 ``user_model_configs`` 分表的原因：provider 与 model_type/protocol 字段语义不同，
-塞进模型表需要扩 ModelType IntEnum + 改 schema/repo/service/routes/manifest 五层，
-技术债更大；搜索配置字段集（provider/api_key/extra_config/is_primary）独立且更简单，
-单建表更清晰。
-"""
+"""用户搜索配置 ORM 模型：存储用户级联网搜索 provider 凭证；与模型配置分表因 provider/字段语义不同，单建表更清晰。"""
 from novamind.core.database.base import BaseModel
 from sqlalchemy import JSON, BigInteger, Boolean, Column, ForeignKey, Index, String
 

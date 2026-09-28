@@ -1,8 +1,4 @@
-"""Wiki 图谱/链接域服务（批次 4.1 从 wiki_routes 下沉）。
-
-- ``finalize_links``：软删页后的死链清理 + in/out 双向对齐
-- ``WikiGraphService``：get_graph 的 ego BFS / overview 连通度排序、get_stats
-"""
+"""Wiki 图谱/链接域服务：软删后的死链清理与 in/out 双向对齐（finalize_links）、链接图构造（overview 连通度排序 / ego BFS）与统计。"""
 from __future__ import annotations
 
 from collections import deque
@@ -45,6 +41,7 @@ class WikiGraphService:
     """Wiki 链接图/统计读服务。"""
 
     def __init__(self, db: AsyncSession):
+        """绑定会话并持有页面仓储。"""
         self.db = db
         self.repo = WikiPageRepository(db)
 

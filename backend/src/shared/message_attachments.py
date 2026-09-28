@@ -1,10 +1,4 @@
-"""qa ↔ agent 消息附件 extra JSON 契约（批次 4.3 常量化）。
-
-此前 agent 写 ``AgentMessage.extra``、qa 写 ``QuestionAnswer.extra``，
-attachment_cleanup 解析两方 extra——键名 ``"attachments"`` 是跨 feature
-隐式契约（内容耦合）。本模块成为唯一契约源：写方与读方全部改走此处，
-键漂移在编译期即暴露。
-"""
+"""qa 与 agent 消息附件 extra JSON 的键名契约常量（附件清理解析两方 extra 的唯一契约源）。"""
 from __future__ import annotations
 
 ATTACHMENT_EXTRA_KEY = "attachments"

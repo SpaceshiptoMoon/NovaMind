@@ -1,22 +1,6 @@
-"""
-Deep Research 引擎核心数据类型。
-
-承载可复用研究机制的纯数据契约：检索来源枚举、引擎研究参数、搜索事件流变体。
-本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-（R1 无环约束下的引擎层边界说明，端口化已在迁移批次 3 移除）。
-
-- ``SearchSource``：检索来源枚举（internal/external/hybrid）。此前定义在 ORM 模型
-  ``features/deep_research/models/research_session.py``，但它是引擎决策
-  （``should_use_external_search``）依赖的纯枚举，不接 ORM，故迁入引擎层；
-  feature 侧 ORM 模型 / schemas / repository 经 re-export 反向引用（feature -> engine 合法）。
-- ``EngineResearchParams``：纯 dataclass 研究参数，**无 Any / feature DTO**，引擎无状态
-  方法按调用接收。
-- ``SearchEvent`` 变体：``DeepResearchEngine.search`` 产出的异步事件流，host 消费后持久化。
-  ``SearchComplete.all_results`` 为 ``List[Dict[str, Any]]``（归一化检索结果字典），
-  与纯函数 ``deduplicate_results`` / ``format_search_context`` / ``extract_key_sources``
-  （dict ``.get`` 访问）及 feature 侧持久化（repo 存 dict、synthesize_report 自持久化
-  dict 经 format_search_context 派生上下文）一致——全程统一用 dict，避免反复转换
-  （R1：忠实复现原非流语义，最低风险）。
+"""Deep Research 引擎核心数据类型：检索来源枚举、引擎研究参数、搜索事件流变体等纯数据契约，不得 import features/setting。
+SearchSource 原属 feature ORM 模型，因被引擎决策依赖迁入本层；feature 侧经 re-export 反向引用（合法方向）。
+SearchEvent 变体为引擎 search 产出的异步事件流，SearchComplete.all_results 统一用归一化结果 dict（.get 宽松访问）。
 """
 from __future__ import annotations
 

@@ -16,6 +16,7 @@ class MessageFeedbackRepository:
     """
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话（写操作走 begin_nested，事务由服务层提交）。"""
         self.session = session
 
     async def get_by_message_and_user(

@@ -1,16 +1,6 @@
-"""公式识别模型：pix2text-mfr（TrOCR 架构），equation 区域图片 → LaTeX。
+"""公式识别引擎：pix2text-mfr 模型把 equation 区域图片转为 LaTeX（纯 onnxruntime 推理，可选本地 INT8 量化）。
 
-模型：``breezedeus/pix2text-mfr``（DeiT encoder 12 层 + TrOCR decoder 6 层，
-词表仅 1200，自带 fp32 ONNX 权重，112 MB）。下载后做 INT8 动态量化
-（112 MB → 29.9 MB），推理优先用 INT8；量化需 `onnx` 包（deepdoc-vision
-extras 提供），缺失时跳过并继续用 fp32，不阻断。
-
-纯 onnxruntime + tokenizers 推理，零 PyTorch/transformers 依赖。2026-09-15
-spike 实测：INT8 与 fp32 输出 76% 逐字一致（编辑距离 6%，差异均为渲染等价的
-表面 token），62 个真实论文公式质量可用。
-
-模型缺失时的降级口径与 layout/text_concat 一致：WARNING 可见 + 跳过公式识别
-（公式区域保留 OCR 文本），不阻断解析。
+模型或量化依赖缺失时降级：公式区域保留 OCR 文本并记 WARNING，不阻断解析。
 """
 from __future__ import annotations
 

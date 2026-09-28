@@ -17,6 +17,7 @@ class ResumeSessionService:
     """简历会话创建/删除的多步编排（MinIO 副作用 + DB 写入，commit 在此收口）"""
 
     def __init__(self, db: AsyncSession):
+        """绑定数据库会话与简历会话仓储。"""
         self.db = db
         self.repo = ResumeSessionRepository(db)
 

@@ -60,6 +60,7 @@ class SecurityConfigValidator:
     ]
 
     def __init__(self):
+        """初始化校验器（issues 清单在每次 validate 时重置）。"""
         self.logger = get_logger(__name__)
         self.issues: list[SecurityIssue] = []
 

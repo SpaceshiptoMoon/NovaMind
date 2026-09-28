@@ -9,10 +9,12 @@ from sqlalchemy import JSON, BigInteger, Column, ForeignKey, Index, Integer, Str
 
 
 def _gen_uuid():
+    """生成 UUID 字符串作为会话主键默认值。"""
     return str(uuid.uuid4())
 
 
 class ResumeSessionStatus(IntEnum):
+    """简历会话状态机：草稿/解析/分析/就绪/追问/完成/失败。"""
     DRAFT = 0
     PARSING = 1
     ANALYZING = 2

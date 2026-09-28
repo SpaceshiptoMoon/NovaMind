@@ -32,6 +32,7 @@ class ResumeAnalyzer:
         logger: Logger,
         web_search_port: WebSearchPort | None = None,
     ):
+        """注入 LLM、prompt 提供者与日志器；联网搜索端口可选，缺省时公司背景降级纯 LLM 推断。"""
         self.llm = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger
@@ -136,6 +137,7 @@ class ResumeAnalyzer:
     # ==================== S5: JD 技术图谱 ====================
 
     async def _extract_jd_analysis(self, jd_text: str) -> JDAnalysis:
+        """调 LLM 从 JD 文本提取结构化技术图谱（JDAnalysis）。"""
         prompt = self._prompt_provider.format("resume_jd_analysis", jd_text=jd_text)
         response = await self.llm.generate_text(
             prompt=prompt,
@@ -657,6 +659,7 @@ class ResumeAnalyzer:
         return "\n".join(parts)
 
     def _calc_jd_relevance(self, tech: str, jd: JDAnalysis | None) -> float:
+        """计算单条技术与 JD 的相关性得分（精确匹配 1.0 到无关 0.1 分档）。"""
         if not jd:
             return 0.5
         tech_lower = tech.lower()
@@ -673,6 +676,7 @@ class ResumeAnalyzer:
         return 0.1
 
     def _calc_project_jd_relevance(self, proj, jd: JDAnalysis | None) -> float:
+        """计算项目与 JD 的相关性（取项目技术栈中最高单项得分）。"""
         if not jd:
             return 0.5
         all_tech = []
@@ -684,6 +688,7 @@ class ResumeAnalyzer:
         return max(relevances)
 
     def _calc_resume_depth(self, proj) -> float:
+        """按背景/架构/挑战/成果的完整度累加计算项目简历深度分（封顶 1.0）。"""
         score = 0.0
         if proj.background:
             score += 0.2
@@ -696,6 +701,7 @@ class ResumeAnalyzer:
         return min(score, 1.0)
 
     def _calc_weight(self, jd_rel: float, depth: float, has_jd: bool, is_project: bool = False) -> float:
+        """融合 JD 相关性与简历深度计算追问权重，项目类条目乘 1.5 加成。"""
         base = 0.0
         if has_jd:
             base = jd_rel * 0.5 + depth * 0.3 + 0.2
@@ -715,6 +721,7 @@ class ResumeAnalyzer:
         jd_analysis: JDAnalysis | None,
         breadth: int,
     ) -> ProbingPlan:
+        """调 LLM 按知识点与工作单元生成追问计划（轮数分配与优先级排序）。"""
         sorted_points = sorted(knowledge_points, key=lambda p: p.probing_weight, reverse=True)
 
         resume_summary = resume.resume_summary or self._make_resume_summary(resume)
@@ -799,6 +806,7 @@ class ResumeAnalyzer:
         )
 
     def _make_resume_summary(self, resume: StructuredResume) -> str:
+        """程序化拼接简历概要文本（候选人/工作/项目/论文各一行），作 LLM 摘要的兜底输入。"""
         lines = []
         lines.append(f"候选人: {resume.personal_info.name}")
         lines.append(f"简介: {resume.personal_info.summary}")
@@ -814,6 +822,7 @@ class ResumeAnalyzer:
     # ==================== S8: 技术前置学习 ====================
 
     async def _generate_prefix_knowledge(self, top_points: list[KnowledgePoint]) -> list[PrefixKnowledge]:
+        """对技术类知识点逐个调 LLM 生成面试前置知识包，单点失败记 WARNING 跳过。"""
         tech_list = []
         seen = set()
         for p in top_points:
@@ -856,6 +865,7 @@ class ResumeAnalyzer:
         work_units: list[WorkProjectUnit],
         prefix_knowledge: list[PrefixKnowledge],
     ) -> str:
+        """组装三段式中间 MD 报告（技术前置学习/项目深度追问/优化建议占位）。"""
         parts = []
         pi = resume.personal_info
 
@@ -987,6 +997,7 @@ class ResumeAnalyzer:
         return "\n".join(parts)
 
     def _calc_match_score(self, resume: StructuredResume, jd: JDAnalysis) -> int:
+        """计算简历技术栈与 JD 必备技能的命中率百分制匹配分。"""
         if not jd.required_skills:
             return 80
         all_resume_tech = set()

@@ -11,6 +11,7 @@ class TransientBusyError(Exception):
     """
 
     def __init__(self, message: str = "", defer_seconds: int = 30):
+        """记录消息与延迟重入队秒数（worker 据此 defer）。"""
         self.message = message
         self.defer_seconds = defer_seconds
         super().__init__(self.message)

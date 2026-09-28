@@ -1,15 +1,6 @@
-"""文档任务/批次服务（从 document_service.py 巨石抽出的任务编排职责）。
+"""文档任务/批次服务：批量触发解析、单文档重试、取消处理（Redis 取消标记 + arq abort）、批次概览与状态查询。
 
-集中承载文档处理的任务编排与批次管理：
-- ``process_kb_documents``：批量触发拆分解析
-- ``retry_document``：单文档重试（FAILED/COMPLETED/CANCELLED）
-- ``cancel_processing``：取消处理（Redis 取消标记 + arq abort）
-- ``list_batch_overview`` / ``get_active_processing_count`` / ``get_processing_status``：状态查询
-- ``_enqueue_document_processing`` / ``_enqueue_precreated_tasks`` /
-  ``_cancel_batch_enqueue`` / ``_validate_document_not_processing``：入队与校验内部助手
-
-构造器精简为 ``(session)``——任务编排不触碰 MinIO/ES/模型配置，管道执行由
-``document_pipeline.execute_document_pipeline`` 在 worker 侧经端口注入完成。
+构造器精简为 (session)——任务编排不触碰 MinIO/ES/模型配置，管道执行由 document_pipeline 在 worker 侧经端口注入完成。
 """
 
 from typing import TYPE_CHECKING, Any
@@ -46,6 +37,7 @@ class DocumentTaskService:
     """文档任务/批次服务：处理编排、入队、取消与状态查询。"""
 
     def __init__(self, session: AsyncSession):
+        """构造器精简为 (session)：任务编排不触碰 MinIO/ES/模型配置。"""
         self.session = session
         self.doc_repo = DocumentRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -516,6 +508,7 @@ class DocumentTaskService:
         )
 
     async def _enqueue_precreated_tasks(self, tasks: list["DocumentTask"]) -> dict[int, str]:
+        """批量入队已预创建的任务项：enqueue 失败回滚入队映射，并返回各文档的 job ID。"""
         from arq.jobs import Job
         from novamind.features.knowledge_space.services.document_task_tracking import (
             bind_job_to_document,
@@ -571,6 +564,7 @@ class DocumentTaskService:
     async def _cancel_batch_enqueue(
         self, batch_id: int, task_ids: list[int], error_message: str
     ) -> None:
+        """入队失败兜底：用独立会话把批次与任务项标记 CANCELLED 并写错误信息。"""
         from novamind.core.database.database import get_db_session
         from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
         from novamind.features.knowledge_space.models.document_task_batch import (

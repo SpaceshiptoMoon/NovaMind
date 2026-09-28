@@ -7,19 +7,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ResumeSessionRepository:
+    """简历会话数据访问：CRUD 与分页查询（写操作只 flush，commit 由服务层收口）。"""
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create(self, data: dict) -> ResumeSession:
+        """创建会话记录（只 flush，事务由服务层提交）。"""
         obj = ResumeSession(**data)
         self.session.add(obj)
         await self.session.flush()
         return obj
 
     async def get_by_id(self, session_id: str) -> ResumeSession | None:
+        """按 ID 查会话，无则 None。"""
         return await self.session.get(ResumeSession, session_id)
 
     async def delete_by_id(self, session_id: str) -> bool:
+        """物理删除会话，返回是否实际删除。"""
         stmt = delete(ResumeSession).where(ResumeSession.id == session_id)
         result = await self.session.execute(stmt)
         await self.session.flush()
@@ -28,6 +33,7 @@ class ResumeSessionRepository:
     async def list_by_user(
         self, user_id: int, limit: int = 20, offset: int = 0, status: int | None = None,
     ) -> tuple[list[ResumeSession], int]:
+        """分页列出用户会话（可按状态筛选，按创建时间降序），返回 (列表, 总数)。"""
         conditions = [ResumeSession.user_id == user_id]
         if status is not None:
             conditions.append(ResumeSession.status == status)
@@ -45,6 +51,7 @@ class ResumeSessionRepository:
         return list(result.scalars().all()), total
 
     async def update(self, session_id: str, data: dict) -> ResumeSession:
+        """按字段字典更新会话并返回刷新后的实体。"""
         stmt = update(ResumeSession).where(ResumeSession.id == session_id).values(**data)
         await self.session.execute(stmt)
         await self.session.flush()

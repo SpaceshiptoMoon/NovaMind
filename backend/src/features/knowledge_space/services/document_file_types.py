@@ -1,12 +1,4 @@
-"""文档文件类型常量（中立模块）。
-
-被三方共用，避免 service 之间互相依赖：
-- 上传校验（DocumentUploadService 按模态校验文件类型 + 大小上限）
-- 管道分流（execute_document_pipeline 按模态路由到文本/图片/视频/音频分支）
-- 路由白名单（document_routes 派生 ALLOWED_FILE_EXTENSIONS）
-
-收敛到唯一定义，避免常量在 service / route / pipeline 各写一份而漂移。
-"""
+"""文档文件类型常量（中立模块）：上传校验、管道模态分流与路由白名单三方共用的唯一定义，避免常量漂移。"""
 
 from novamind.shared.document.file_types import IMAGE_FILE_TYPES
 

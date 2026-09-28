@@ -25,6 +25,7 @@ class PromptManager:
 
     @classmethod
     def is_registered(cls, key: str) -> bool:
+        """判断模板键是否已注册（供启动期装配断言，避免请求期才发现缺模板）。"""
         return key in cls._templates
 
     @classmethod
@@ -46,9 +47,11 @@ class PromptManager:
     # 实例方法（引擎消费面统一走 .get()/.format()；批次 2.3 起消费引擎直收
     # PromptManager 实例，不再经 HostPromptProvider 适配器）
     def get(self, key: str) -> str:
+        """实例入口：按模板键取模板文本（委托 get_template，键不存在抛 ValueError）。"""
         return self.get_template(key)
 
     def format(self, key: str, **kwargs: str) -> str:
+        """实例入口：取模板并按 kwargs 渲染（委托 format_prompt，缺参抛 ValueError）。"""
         return self.format_prompt(key, **kwargs)
 
 

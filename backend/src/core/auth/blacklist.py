@@ -1,9 +1,6 @@
 """Token / 用户级黑名单查询原语（认证基础设施，归 core/auth）。
 
-只依赖 ``shared/cache/redis_client``，不 import 任何 feature / ORM。
-get_current_user 认证链路需要这两个读操作；token 撤销等写操作属 user 业务，
-留在 ``features/user/services/auth_service.py``，但复用此处导出的前缀常量
-保证键命名单一来源、不漂移。
+只依赖 shared 缓存客户端，不 import 任何 feature / ORM；用户级黑名单检查 fail-close——Redis 异常时按拒绝处理。
 """
 from __future__ import annotations
 

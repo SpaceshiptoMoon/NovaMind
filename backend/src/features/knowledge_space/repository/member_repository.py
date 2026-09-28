@@ -1,8 +1,4 @@
-"""
-空间成员仓储
-
-处理空间成员的数据访问操作
-"""
+"""空间成员仓储：成员的增删查与角色/状态管理。"""
 
 from datetime import timedelta
 from typing import Any

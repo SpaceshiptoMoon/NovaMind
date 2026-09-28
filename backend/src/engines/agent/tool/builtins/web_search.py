@@ -24,6 +24,7 @@ class WebSearchTool(BaseTool):
         return "使用 DuckDuckGo 搜索引擎搜索互联网信息"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 web_search 工具定义（查询词与结果数上限参数）。"""
         return [
             {
                 "type": "function",
@@ -62,6 +63,7 @@ class WebSearchTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """路由 web_search 调用并格式化结果；结束后关闭端口释放 HTTP 连接。"""
         if tool_name == "web_search":
             return await self._search(arguments, context)
         return f"未知工具：{tool_name}"
@@ -114,6 +116,7 @@ class WebSearchTool(BaseTool):
                     pass
 
     def get_system_prompt_fragment(self) -> str:
+        """返回联网搜索使用纪律片段（何时搜索、如何构造查询、引用来源）。"""
         return (
             "## Web Search\n"
             "Use web_search when:\n"

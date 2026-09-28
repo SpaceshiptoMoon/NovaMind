@@ -48,6 +48,7 @@ class AutoProbingEngine:
         fallback_llm_provider: ModelConfigService | None = None,
         max_concurrent: int = 3,
     ):
+        """注入 LLM、prompt/日志依赖与可选降级模型工厂；并发受信号量限制，追问轮内策略按调用执行。"""
         self.llm = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger

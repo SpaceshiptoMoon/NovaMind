@@ -359,6 +359,7 @@ class DeepResearchService:
         search_service: SearchService | None = None,
         es_client: Any | None = None,
     ):
+        """装配请求级会话、仓储与延迟检索服务，构造引擎与 PromptProvider；web 适配器按请求构造、cleanup 统一关闭。"""
         self.session = session
         self.research_repo = ResearchRepository(session)
         self._es_client = es_client

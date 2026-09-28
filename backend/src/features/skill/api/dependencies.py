@@ -60,6 +60,7 @@ async def _get_review_model_owner_id() -> int | None:
 
 
 def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
+    """装配用户模型配置服务（请求级 DB 会话）。"""
     return ModelConfigService(db)
 
 
@@ -68,6 +69,7 @@ async def get_skill_service(
     user_id: int = Depends(get_current_user_id),
     model_config_service: ModelConfigService = Depends(get_model_config_service),
 ) -> SkillMarketplaceService:
+    """装配技能广场服务（DB 会话 + MinIO + 安全检查器 + 可选 LLM 审查依赖）。"""
     minio = await get_minio_client()
 
     # 条件注入 LLM 审查：端口 prompt_provider + logger 始终注入（默认无 LLM 时

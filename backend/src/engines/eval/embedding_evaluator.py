@@ -10,6 +10,7 @@ class EmbeddingEvaluator:
     """Embedding 评估器"""
 
     def __init__(self, embedding_client: BaseEmbedding):
+        """注入 embedding 客户端，相似度计算全部经它取向量。"""
         self.embedding_client = embedding_client
 
     async def compute_similarity(self, text_a: str, text_b: str) -> float:

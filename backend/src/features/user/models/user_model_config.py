@@ -1,13 +1,4 @@
-"""
-用户模型配置 ORM 模型
-
-存储用户自定义的 LLM/Embedding/Rerank 模型配置
-每条记录必须绑定具体用户。
-
-设计原则：
-- 凭证分离：只存储连接凭证（api_key、base_url），不存储业务参数
-- 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
-"""
+"""用户模型配置 ORM 模型：凭证分离——只存 api_key/base_url，前端传模型名称后端按名称查凭证。"""
 from enum import IntEnum
 from typing import Any
 

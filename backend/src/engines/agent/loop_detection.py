@@ -1,13 +1,4 @@
-"""ReAct 循环检测（E3 loop_detection）。
-
-检测 Agent 重复调用相同工具（相同显著参数），防卡死：
-- 第 1 层：相同 (tool_name + 显著参数) hash 在窗口内出现 ``warn_threshold`` 次 →
-  向 messages 注入警告，提示模型停止重复调用、给出最终答案
-- 第 2 层：出现 ``hard_limit`` 次 → 强制结束 ReAct 循环（进最终摘要）
-
-显著参数分桶：只取 ``query/command/path/url/content/code`` 等关键字段做 hash，
-避免无关参数噪声；附近行号/数值小差异不分桶（防 read_file 误判）。
-"""
+"""ReAct 循环检测：两层阈值，warn 次数注入提示引导收敛，hard_limit 次数强制结束循环；显著参数分桶只取关键字段 hash，防无关参数噪声误判。"""
 from __future__ import annotations
 
 import json
@@ -34,6 +25,7 @@ class LoopDetector:
     """单次 ReAct run 的循环检测器（per-run 状态，非线程共享）。"""
 
     def __init__(self, config: LoopDetectionConfig | None = None) -> None:
+        """按配置初始化阈值与滑动窗口；窗口内计数，per-run 独立实例。"""
         cfg = config or LoopDetectionConfig()
         self._warn = cfg.warn_threshold
         self._hard = cfg.hard_limit

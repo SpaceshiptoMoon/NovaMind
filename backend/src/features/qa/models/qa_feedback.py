@@ -1,10 +1,4 @@
-"""
-消息反馈模型
-
-用户对 AI 回答的点赞/点踩反馈（知识缺口看板数据源，批次 2a）。
-独立表而非写入 question_answers.extra：extra 是创建时快照且零来源
-answered 消息为 NULL；独立表可建真索引支撑聚合查询。
-"""
+"""消息反馈模型：用户对 AI 回答的点赞/点踩（知识缺口看板数据源）。独立表而非写入 question_answers.extra——extra 是创建时快照，独立表可建真索引支撑聚合查询。"""
 from novamind.core.database.base import BaseModel
 from sqlalchemy import BigInteger, Column, ForeignKey, Index, String, Text, UniqueConstraint
 

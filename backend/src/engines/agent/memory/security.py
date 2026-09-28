@@ -36,10 +36,12 @@ class MemorySecurityScanResult:
     """安全扫描结果"""
 
     def __init__(self, is_safe: bool, threats: list[str] = None):
+        """记录安全性结论与威胁 ID 列表（threats 缺省视为空）。"""
         self.is_safe = is_safe
         self.threats = threats or []
 
     def __bool__(self) -> bool:
+        """直接以 is_safe 作为真值，供调用方 if result 判断放行。"""
         return self.is_safe
 
 

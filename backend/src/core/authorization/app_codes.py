@@ -1,11 +1,6 @@
 """应用代码注册表（应用级权限门禁）。
 
-三级权限模型的应用层：可被管理员禁用的应用清单及其 API 路由前缀。
-前缀来自各 feature manifest 的 ``API_V1_PREFIX`` 挂载路径，两处需同步维护
-（新增 feature 或改挂载前缀时更新 ``GATED_APP_PREFIXES``）。
-
-注意：知识空间（spaces）、深研究、测评不进应用门禁——前两者属空间功能，
-内容权限由空间成员角色控制；通知/个人设置人人可用。
+GATED_APP_PREFIXES 前缀与各 feature manifest 的挂载前缀两处需同步维护：新增 feature 或改挂载路径时更新此表。
 """
 
 

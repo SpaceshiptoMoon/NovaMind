@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ==================== 结构化简历数据模型 ====================
 
 class PersonalInfo(BaseModel):
+    """候选人基本信息（姓名/联系方式/所在地/个人简介/求职意向/社交链接）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -23,6 +24,7 @@ class PersonalInfo(BaseModel):
 
 
 class EducationExperience(BaseModel):
+    """单段教育经历（学校/专业/学位/GPA/论文/核心课程）。"""
     model_config = ConfigDict(extra="ignore")
 
     school: str = ""
@@ -40,6 +42,7 @@ class EducationExperience(BaseModel):
 
 
 class Achievement(BaseModel):
+    """单条量化成果（描述/指标/影响）。"""
     model_config = ConfigDict(extra="ignore")
 
     description: str = ""
@@ -48,6 +51,7 @@ class Achievement(BaseModel):
 
 
 class WorkProjectRef(BaseModel):
+    """工作经历内嵌项目的轻量引用（名称/角色/简述）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -56,6 +60,7 @@ class WorkProjectRef(BaseModel):
 
 
 class Promotion(BaseModel):
+    """单次晋升记录（时间/前后职级/理由）。"""
     model_config = ConfigDict(extra="ignore")
 
     date: str = ""
@@ -65,6 +70,7 @@ class Promotion(BaseModel):
 
 
 class WorkExperience(BaseModel):
+    """单段工作经历（公司/职位/时间/职责要点/关键项目/晋升史/离职原因）。"""
     model_config = ConfigDict(extra="ignore")
 
     company: str = ""
@@ -87,6 +93,7 @@ class WorkExperience(BaseModel):
 
 
 class TechStackDetail(BaseModel):
+    """分类技术栈明细（语言/框架/中间件/基础设施/工具）。"""
     model_config = ConfigDict(extra="ignore")
 
     languages: list[str] = []
@@ -97,6 +104,7 @@ class TechStackDetail(BaseModel):
 
 
 class Challenge(BaseModel):
+    """单条挑战应对（挑战/解决方案/结果）。"""
     model_config = ConfigDict(extra="ignore")
 
     challenge: str = ""
@@ -105,6 +113,7 @@ class Challenge(BaseModel):
 
 
 class ProjectExperience(BaseModel):
+    """单段项目经历（背景/角色/技术栈/职责/挑战/成果/亮点/可追问方向）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -127,6 +136,7 @@ class ProjectExperience(BaseModel):
 
 
 class SkillItem(BaseModel):
+    """单条技能项（名称/熟练度/年限/来源项目）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -136,6 +146,7 @@ class SkillItem(BaseModel):
 
 
 class SkillGroup(BaseModel):
+    """按类别聚合的技能组（类别/标签/技能项列表）。"""
     model_config = ConfigDict(extra="ignore")
 
     category: str = ""
@@ -144,6 +155,7 @@ class SkillGroup(BaseModel):
 
 
 class Certification(BaseModel):
+    """单条职业认证（名称/获得时间）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -151,6 +163,7 @@ class Certification(BaseModel):
 
 
 class LanguageSkill(BaseModel):
+    """单条语言能力（语言/熟练度/证书）。"""
     model_config = ConfigDict(extra="ignore")
 
     language: str = ""
@@ -159,6 +172,7 @@ class LanguageSkill(BaseModel):
 
 
 class SkillsData(BaseModel):
+    """技能总览（技能组/认证/语言能力三类聚合）。"""
     model_config = ConfigDict(extra="ignore")
 
     skill_groups: list[SkillGroup] = []
@@ -167,6 +181,7 @@ class SkillsData(BaseModel):
 
 
 class Paper(BaseModel):
+    """单篇论文（标题/作者排序/发表载体/引用数/个人贡献/关联项目）。"""
     model_config = ConfigDict(extra="ignore")
 
     title: str = ""
@@ -185,6 +200,7 @@ class Paper(BaseModel):
 
 
 class Patent(BaseModel):
+    """单项专利（类型/号/状态/申请时间/发明人排序/简述）。"""
     model_config = ConfigDict(extra="ignore")
 
     title: str = ""
@@ -198,6 +214,7 @@ class Patent(BaseModel):
 
 
 class TechnicalWriting(BaseModel):
+    """单篇技术文章（平台/链接/发布时间/浏览与点赞数）。"""
     model_config = ConfigDict(extra="ignore")
 
     title: str = ""
@@ -209,6 +226,7 @@ class TechnicalWriting(BaseModel):
 
 
 class PublicationsData(BaseModel):
+    """学术成果总览（论文/专利/技术文章三类聚合）。"""
     model_config = ConfigDict(extra="ignore")
 
     papers: list[Paper] = []
@@ -217,6 +235,7 @@ class PublicationsData(BaseModel):
 
 
 class ResumeMetadata(BaseModel):
+    """解析元数据（源文件/总工作月数/公司与项目等计数）。"""
     model_config = ConfigDict(extra="ignore")
 
     parse_time: str = ""
@@ -229,6 +248,7 @@ class ResumeMetadata(BaseModel):
 
 
 class ValidationWarning(BaseModel):
+    """交叉校验警告（类型/消息/严重度/追问建议）。"""
     model_config = ConfigDict(extra="ignore")
 
     type: str = ""
@@ -238,6 +258,7 @@ class ValidationWarning(BaseModel):
 
 
 class StructuredResume(BaseModel):
+    """结构化简历聚合根：个人信息 + 教育/工作/项目经历 + 技能与学术成果 + 校验警告。"""
     model_config = ConfigDict(extra="ignore")
 
     personal_info: PersonalInfo = Field(default_factory=PersonalInfo)
@@ -254,6 +275,7 @@ class StructuredResume(BaseModel):
 # ==================== JD 分析模型 ====================
 
 class JDSkill(BaseModel):
+    """JD 中的单条技能要求（名称/类别/必需或优选/程度要求）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -264,6 +286,7 @@ class JDSkill(BaseModel):
 
 
 class JDAnalysis(BaseModel):
+    """JD 结构化分析（岗位/公司/年资要求/必备与优选技能/软素质/职责）。"""
     model_config = ConfigDict(extra="ignore")
 
     position_title: str = ""
@@ -316,6 +339,7 @@ class WorkProjectUnit(BaseModel):
 # ==================== 追问计划模型 ====================
 
 class KnowledgePoint(BaseModel):
+    """可追问知识点（类别/来源/JD 相关性与简历深度加权/分配轮数/追问链）。"""
     model_config = ConfigDict(extra="ignore")
 
     id: str = ""
@@ -337,6 +361,7 @@ class KnowledgePoint(BaseModel):
 
 
 class ProjectPriority(BaseModel):
+    """项目优先级条目（名称/权重/分配轮数）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -345,6 +370,7 @@ class ProjectPriority(BaseModel):
 
 
 class ProbingPlan(BaseModel):
+    """追问总体计划（知识点/工作单元/项目优先级/总轮数与分布）。"""
     model_config = ConfigDict(extra="ignore")
 
     knowledge_points: list[KnowledgePoint] = []
@@ -358,6 +384,7 @@ class ProbingPlan(BaseModel):
 # ==================== 前缀知识模型 ====================
 
 class ComparisonItem(BaseModel):
+    """技术对比条目（名称/优点/缺点）。"""
     model_config = ConfigDict(extra="ignore")
 
     name: str = ""
@@ -366,6 +393,7 @@ class ComparisonItem(BaseModel):
 
 
 class TopicWithAnswer(BaseModel):
+    """带参考答案的面试话题（话题/答案）。"""
     model_config = ConfigDict(extra="ignore")
 
     topic: str = ""
@@ -373,6 +401,7 @@ class TopicWithAnswer(BaseModel):
 
 
 class QuestionWithAnswer(BaseModel):
+    """带参考答案的问答对（问题/答案）。"""
     model_config = ConfigDict(extra="ignore")
 
     question: str = ""
@@ -380,6 +409,7 @@ class QuestionWithAnswer(BaseModel):
 
 
 class PrefixKnowledge(BaseModel):
+    """单技术点的前缀知识包（核心概念/常见话题/关键问题/学习问答/踩坑/对比）。"""
     model_config = ConfigDict(extra="ignore")
 
     tech_name: str = ""

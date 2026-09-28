@@ -1,15 +1,6 @@
-"""Wiki 页 ES 同步——对齐 WeKnora 的 wiki_page chunk 机制
-
-wiki 页以 ``chunk_type="wiki_page"`` 文档同步进 ES 向量库参与检索：
-
-- chunk_id 约定 ``wp-{page_id}``（对齐 WeKnora ``wp-`` 前缀）
-- document_id 用哨兵 0（无真实文档归属；消费端按 chunk_type 分支展示，
-  避免按 document_id 跳文档详情 404）
-- content = title + summary + 正文（进 ES 全文与向量字段）
-- KB 级 ``delete_by_query(kb_id)`` 天然覆盖 wiki 文档清理（无额外工作）
-
-无 embedding 模型（space.embedding_config["dimension"] 缺失）时优雅跳过
-并 warn——对齐 WeKnora chunkRepo 可空的「可装配」语义。
+"""Wiki 页 ES 同步：wiki 页以 chunk_type=wiki_page 文档进 ES 向量库参与检索。chunk_id 约定 wp-{page_id}；document_id 用哨
+兵 0（无真实文档归属，消费端按 chunk_type 分支避免跳转 404）；KB 级 delete_by_query 天然覆盖清理。无 embedding 配置时优雅跳过并 warn（可装
+配语义）。
 """
 from typing import Any
 
@@ -22,6 +13,7 @@ WIKI_CHUNK_ID_PREFIX = "wp-"
 
 
 def wiki_chunk_id(page_id: str) -> str:
+    """wiki 页在 ES 中的 chunk ID（wp- 前缀 + 页面 UUID）。"""
     return f"{WIKI_CHUNK_ID_PREFIX}{page_id}"
 
 
@@ -29,6 +21,7 @@ class WikiEsSyncService:
     """wiki 页 → ES 文档同步"""
 
     def __init__(self, session: Any, es_client: Any):
+        """绑定会话与 ES 客户端（embedding 维度运行时从空间配置解析）。"""
         self.session = session
         self.es = es_client
 

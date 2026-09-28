@@ -1,16 +1,6 @@
 """PUA（Private Use Area，私用区）字符出口归一化。
 
-PDF 文字层残留的低密度 PUA 字形——嵌入字体 CMap 把空格/分隔符/句读占位
-字形映射到私用区码点（U+E000-F8FF），密度远低于框级乱码阈值时文字层仍被
-采用，这些字符就原样透传进 MD/chunks（doc583 实测 4 个码点 4298 个、密度
-5.22%，全为空格/填空栏占位）。PUA 对 embedding/检索/LLM 均为不可恢复噪声，
-出口统一归一（语境化规则见 ``replace_pua``）；数学符号类 PUA 保留同样是
-噪声，归一是安全退化方向。
-
-接入点（三个解析出口共用同一规则）：
-- ``engines/.../deepdoc/parsers/pdf.py`` ``_assemble_box_text``（full 模式逐框出口）
-- ``engines/.../deepdoc/parsers/pdf_plain.py`` ``__call__``（plain 模式逐行出口）
-- ``shared/document/readers/pdf_reader.py``（pypdf 通用阅读器页级出口）
+deepdoc full/plain 两解析出口与通用 pdf_reader 页级出口共用同一语境化规则（normalize_pua_text），数学符号类 PUA 一并归一是安全退化方向。
 """
 from __future__ import annotations
 
@@ -28,6 +18,7 @@ CJK_FULLWIDTH_PATTERN = re.compile(
 
 
 def is_cjk_like(ch: str) -> bool:
+    """判断字符是否属 CJK 语境（含扩展A、兼容表意、全角标点；全角 ASCII 不算）。"""
     return bool(CJK_FULLWIDTH_PATTERN.match(ch))
 
 

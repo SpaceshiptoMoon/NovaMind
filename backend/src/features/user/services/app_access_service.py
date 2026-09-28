@@ -1,12 +1,4 @@
-"""AppAccessService：用户应用级权限（deny-list）查询与替换。
-
-应用门禁的数据面：``user_disabled_apps`` 表只存被禁用的应用（无记录=可用，
-默认全开放），管理员经 ``PUT /users/{id}/app-access`` 全量替换。
-
-与 ``RbacPermissionService`` 的区别：后者查平台管理面权限码（user.manage 等），
-本类查应用入口可见性（qa/agent/skill/app）。缓存模式互相独立
-（``appgate:disabled:{uid}`` vs ``rbac:user_perms:{uid}``）。
-"""
+"""AppAccessService：用户应用级权限（deny-list，无记录=可用）查询与全量替换；缓存键与 RbacPermissionService 互相独立。"""
 from __future__ import annotations
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -22,6 +14,7 @@ class AppAccessService:
     """应用禁用查询/替换服务（Redis 缓存，未装配 Redis 时直查 DB）。"""
 
     def __init__(self, db: AsyncSession, redis_client=None):
+        """绑定数据库会话与可选 Redis 客户端（未装配时降级直查 DB）。"""
         self.db = db
         self.redis = redis_client
         self.logger = get_logger(__name__)
@@ -101,5 +94,6 @@ class AppAccessService:
     # ==================== 缓存 ====================
 
     async def invalidate(self, user_id: int) -> None:
+        """失效用户的应用门禁缓存（Redis 未装配时静默跳过）。"""
         if self.redis:
             await self.redis.delete(f"{APPGATE_CACHE_PREFIX}{user_id}")

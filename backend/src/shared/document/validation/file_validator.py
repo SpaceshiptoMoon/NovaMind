@@ -141,10 +141,12 @@ class FileValidator:
     }
 
     def __init__(self, max_file_size: int = 100 * 1024 * 1024):
+        """设置大小上限；libmagic 探测器延迟到首次校验时初始化。"""
         self.max_file_size = max_file_size
         self._magic = None
 
     def _get_magic(self):
+        """懒加载 libmagic 探测器；缺失时告警并回落内置签名表检测。"""
         if self._magic is None:
             try:
                 import magic
@@ -158,6 +160,7 @@ class FileValidator:
         return self._magic
 
     def detect_mime_by_magic(self, content: bytes) -> str | None:
+        """libmagic 探测前 2KB 内容的真实 MIME；不可用或失败返回 None（由调用方回落签名表）。"""
         magic = self._get_magic()
         if magic:
             try:
@@ -192,14 +195,17 @@ class FileValidator:
         return None
 
     def get_extension_from_filename(self, filename: str) -> str:
+        """取文件名小写扩展名；无点号返回空串。"""
         if "." not in filename:
             return ""
         return filename.rsplit(".", 1)[-1].lower()
 
     def is_dangerous_extension(self, extension: str) -> bool:
+        """判断扩展名是否属于可执行/脚本类黑名单（exe/bat/js/py 等）。"""
         return extension.lower() in self.DANGEROUS_EXTENSIONS
 
     def is_office_document(self, content: bytes) -> tuple[bool, str | None]:
+        """解压 zip 容器读 [Content_Types].xml 判定 docx/xlsx/pptx 具体类型；声明解压体积超限直接拒绝（zip 炸弹防护）。"""
         import io
         import zipfile
 
@@ -239,6 +245,11 @@ class FileValidator:
         filename: str,
         allowed_extensions: list | None = None,
     ) -> FileInfo:
+        """完整校验：大小/空文件/危险扩展名/白名单 → 魔数探测真实 MIME（libmagic 优先、内置签名表兜底，
+        不信任扩展名）→ 扩展名与实际类型比对。
+
+        文本类无魔数按扩展名放行；二进制类两级探测均失败则拒绝（防伪装/损坏文件凭扩展名入库）。
+        """
         extension = self.get_extension_from_filename(filename)
         file_size = len(content)
         info = FileInfo(filename=filename, size=file_size, extension=extension)
@@ -330,6 +341,7 @@ class FileValidator:
 
     @classmethod
     def _is_textual_extension(cls, extension: str) -> bool:
+        """判断扩展名是否属于无固定魔数的文本类（txt/md/csv/html/json/xml）。"""
         return extension.lower() in cls._TEXTUAL_EXTENSIONS
 
 

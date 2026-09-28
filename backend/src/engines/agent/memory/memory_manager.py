@@ -40,6 +40,7 @@ class MemoryManager:
         summary_store: HostMemoryStorePort,
         message_repository: Any,
     ):
+        """组装短期/长期记忆与消息仓储；冻结快照缓存避免同会话重复构建快照。"""
         self._short_term = short_term
         self._long_term = long_term
         self._long_term_store = long_term_store

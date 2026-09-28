@@ -1,32 +1,15 @@
-"""Wiki 自动互链（linkify）——逐函数移植自 WeKnora wiki_linkify.go
-
-纯文本替换（无 LLM）：扫描正文中其他页面标题/别名的提及，注入
-``[[slug|matchText]]`` 交叉链接。
-
-保护范围（禁区，不做注入）：
-- 围栏代码块（``` / ~~~）
-- 行内代码（匹配长度的反引号 run）
-- 已有 ``[[slug|...]]`` wiki 链接（其 slug 记入 used，调用方跳过）
-- 行内 markdown 链接 ``[text](url)`` 与图片 ``![alt](url)``
-- 引用式链接 ``[text][label]`` 与引用定义 ``[label]: url``
-- autolink ``<scheme://...>``
-
-匹配规则：
-- matchText 按**长度降序**处理，长名优先（"北京邮电大学" 优先于 "北京"）
-- 每个 ref 只包**首个**安全命中
-- ASCII 字母开/结尾的 matchText 要求词边界；CJK 视为边界
-  （"北京" 可嵌入 "北京邮电大学" 命中，冲突由长名优先解决）
-- 已链到该 slug 的 ref 跳过
-
-索引语义：Go 版按字节偏移，Python 版按字符偏移——对 UTF-8 文本两者
-在「同一字符边界切分」的意义上行为等价（ASCII 词边界判定用 ord<128）。
+"""Wiki 自动互链（纯文本替换无 LLM）：为正文中其他页面标题/别名的提及注入 [[slug|matchText]] 链接。禁区：围栏/行内代码、既有 wiki 链接（slug 记入 use
+d）、markdown 链接与图片、引用式链接与定义、autolink；匹配：matchText 长度降序长名优先、每个 ref 只取首个安全命中、ASCII 首尾须词边界（CJK 视为边界，
+冲突由长名优先消解）、已链到该 slug 的 ref 跳过。Go 版字节偏移与 Python 版字符偏移对 UTF-8 在字符边界意义上等价。
 """
 
 
 class _Span:
+    """字符区间（start 含、end 不含），用于禁区标记与位移。"""
     __slots__ = ("start", "end")
 
     def __init__(self, start: int, end: int):
+        """记录区间起止字符偏移。"""
         self.start = start
         self.end = end
 
@@ -112,6 +95,7 @@ def _has_ascii_letter_edge(s: str) -> bool:
 
 
 def _is_ascii_word_rune(ch: str) -> bool:
+    """字符是否为 ASCII 词字符（字母/数字/下划线），用于词边界判定。"""
     if ord(ch) > 127:
         return False
     return ch == "_" or ch.isdigit() or ch.isalpha()
@@ -131,10 +115,12 @@ def _has_word_boundary(s: str, pos: int, end: int) -> bool:
 
 
 def _span_contains(spans: list[_Span], pos: int, end: int) -> bool:
+    """判断区间是否与任一禁区相交。"""
     return any(pos < sp.end and end > sp.start for sp in spans)
 
 
 def _shift_spans_after(spans: list[_Span], pivot: int, delta: int) -> list[_Span]:
+    """把 pivot 之后的禁区整体平移 delta（注入链接后同步坐标）。"""
     if delta == 0:
         return spans
     for sp in spans:
@@ -145,6 +131,7 @@ def _shift_spans_after(spans: list[_Span], pivot: int, delta: int) -> list[_Span
 
 
 def _sort_spans(spans: list[_Span]) -> None:
+    """禁区按起点（次按终点）排序。"""
     spans.sort(key=lambda sp: (sp.start, sp.end))
 
 
@@ -319,6 +306,7 @@ def _is_fence_start(s: str, i: int) -> bool:
 
 
 def _fence_run(s: str, i: int) -> tuple[int, str]:
+    """计算位置 i 处围栏标记符的连续长度并返回（长度与字符）。"""
     c = s[i]
     j = i
     while j < len(s) and s[j] == c:

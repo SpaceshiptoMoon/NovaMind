@@ -38,6 +38,7 @@ class TraceIDMiddleware:
     SKIP_PATH_PREFIXES = ["/health", "/metrics", "/favicon.ico"]
 
     def __init__(self, app: ASGIApp) -> None:
+        """保存下游 ASGI 应用引用（标准中间件构造约定）。"""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

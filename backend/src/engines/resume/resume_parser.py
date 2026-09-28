@@ -26,6 +26,7 @@ class ResumeParser:
         prompt_provider: PromptManager,
         logger: Logger,
     ):
+        """注入 LLM、prompt 提供者与日志器，解析各阶段均经它们执行。"""
         self.llm = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger
@@ -102,6 +103,7 @@ class ResumeParser:
     # ==================== S1: 文本提取 ====================
 
     async def _extract_text(self, file_bytes: bytes, filename: str) -> str:
+        """按扩展名分派 reader 提取简历纯文本（白名单校验，临时文件落地后即删）。"""
         ext = os.path.splitext(filename)[1].lower()
 
         # 扩展名白名单校验，防止临时文件安全风险
@@ -134,6 +136,7 @@ class ResumeParser:
 
     async def _split_sections(self, raw_text: str) -> dict[str, str]:
         # 生成带行号的文本
+        """调 LLM 对带行号文本做章节切割，返回章节类型到内容片段的映射。"""
         lines = raw_text.split("\n")
         numbered_text = "\n".join(f"[{i+1}] {lines[i]}" for i in range(len(lines)))
 
@@ -157,6 +160,7 @@ class ResumeParser:
     # ==================== S3: 并行深度解析 ====================
 
     async def _parse_section(self, section_type: str, content: str, template_name: str) -> dict | list:
+        """调 LLM 深度解析单章节为结构化数据；JSON 失败重试一次，仍失败返回该章节默认值。"""
         if not content.strip():
             return {} if section_type in ("personal_info", "skills", "publications") else []
 
@@ -237,6 +241,7 @@ class ResumeParser:
         skills_data: dict,
         publications: dict,
     ) -> StructuredResume:
+        """清洗并归一化各章节数据后组装 StructuredResume，计算总工作月数与公司数。"""
         from novamind.engines.resume.schemas import (
             EducationExperience,
             PersonalInfo,
@@ -290,6 +295,7 @@ class ResumeParser:
         return resume
 
     def _cross_validate(self, resume: StructuredResume) -> StructuredResume:
+        """交叉校验简历一致性（成果缺量化指标等），生成 ValidationWarning 列表挂到简历上。"""
         from novamind.engines.resume.schemas import ValidationWarning
 
         warnings = []

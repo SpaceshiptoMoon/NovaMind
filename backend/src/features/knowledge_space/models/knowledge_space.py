@@ -1,8 +1,4 @@
-"""
-知识空间模型
-
-存储知识空间的基本信息和配置
-"""
+"""知识空间模型：空间基本信息、配置（JSON）与可见性/状态。"""
 from enum import IntEnum
 
 from novamind.core.database.base import BaseModel

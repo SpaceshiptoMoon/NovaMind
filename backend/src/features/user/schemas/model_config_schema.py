@@ -1,11 +1,4 @@
-"""
-用户模型配置 Pydantic Schema
-
-设计原则：
-- 凭证分离：只存储连接凭证（api_key、base_url），不存储业务参数
-- 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
-- 扩展配置存储在 extra_config 中（如 dimension、timeout 等）
-"""
+"""用户模型配置 Schema：凭证分离设计，模型名称引用 + extra_config 扩展。"""
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -132,6 +125,7 @@ class ModelTestRequest(BaseModel):
     @field_validator('model_type')
     @classmethod
     def validate_model_type(cls, v: str) -> str:
+        """校验模型类型属白名单（llm/embedding/rerank/vlm/asr）并归一为小写。"""
         allowed = {"llm", "embedding", "rerank", "vlm", "asr"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的模型类型: {v}")

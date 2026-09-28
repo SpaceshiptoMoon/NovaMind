@@ -1,14 +1,6 @@
-"""
-Wiki 路由（P1 只读 + P2 编辑/版本/回滚 + P3 图谱/lint 闭环）
+"""Wiki 路由：浏览层（列表/详情/索引/搜索/统计/生成状态/来源证据）、写层（创建/更新乐观锁/软删/版本历史/回滚/存量重建）与图谱/lint 闭环。
 
-浏览层接口：页面列表/详情/索引/搜索/统计/生成状态/来源证据。
-写接口：创建/更新（乐观锁）/软删/版本历史/回滚/存量重建。
-图谱与质量：链接图（overview/ego）、lint 检测、问题登记与状态流转。
-读操作走 validate_space_access + validate_kb_access；
-写操作走 validate_kb_writable（额外拒归档 KB）。
-
-路由层只做参数解析 + Depends 鉴权 + 调 service（批次 4 读侧下沉
-wiki_query_service，写侧此前已下沉 wiki_page_service/wiki_graph_service）。
+读操作走 validate_space_access + validate_kb_access；写操作走 validate_kb_writable（额外拒归档 KB）。
 """
 from typing import Annotated
 

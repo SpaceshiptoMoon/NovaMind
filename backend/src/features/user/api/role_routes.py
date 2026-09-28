@@ -24,6 +24,7 @@ router = APIRouter()
     dependencies=[Depends(require_permission("role.manage"))],
 )
 async def list_roles(svc: Annotated[RoleService, Depends(get_role_service)]):
+    """列出全部角色及其权限（需 role.manage 权限）。"""
     return await svc.list_roles()
 
 
@@ -39,6 +40,7 @@ async def create_role(
     req: Annotated[RoleCreate, Body(...)],
     svc: Annotated[RoleService, Depends(get_role_service)],
 ):
+    """创建角色并绑定初始权限（需 role.manage 权限）。"""
     return await svc.create_role(
         code=req.code,
         name=req.name,
@@ -59,6 +61,7 @@ async def update_role(
     req: Annotated[RoleUpdate, Body(...)],
     svc: Annotated[RoleService, Depends(get_role_service)],
 ):
+    """更新角色基础信息与权限映射（需 role.manage 权限）。"""
     return await svc.update_role(
         role_id=role_id,
         name=req.name,
@@ -77,6 +80,7 @@ async def delete_role(
     role_id: Annotated[int, Path(gt=0, description="角色ID")],
     svc: Annotated[RoleService, Depends(get_role_service)],
 ):
+    """删除角色（非系统内置且无用户绑定，需 role.manage 权限）。"""
     await svc.delete_role(role_id)
     return {"success": True}
 
@@ -89,6 +93,7 @@ async def delete_role(
     dependencies=[Depends(require_permission("role.manage"))],
 )
 async def list_permissions(svc: Annotated[RoleService, Depends(get_role_service)]):
+    """列出系统全部权限定义（需 role.manage 权限）。"""
     return await svc.list_permissions()
 
 
@@ -103,5 +108,6 @@ async def assign_user_role(
     body: Annotated[UserRoleAssignRequest, Body(...)],
     svc: Annotated[RoleService, Depends(get_role_service)],
 ):
+    """为用户分配角色并失效其权限缓存（需 role.manage 权限）。"""
     await svc.assign_user_role(user_id, body.role_id)
     return {"success": True}

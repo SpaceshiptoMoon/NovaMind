@@ -12,6 +12,7 @@ _encoders: dict[str, tiktoken.Encoding] = {}
 
 
 def _get_encoder(model_name: str | None = None) -> tiktoken.Encoding:
+    """按模型名前缀选 tiktoken 编码器并进程内缓存（未知模型回落 cl100k_base）。"""
     prefix_map = [
         ("gpt-4o", "o200k_base"),
         ("o1", "o200k_base"),
@@ -44,16 +45,19 @@ class TokenCounter:
     """Token 计数器。"""
 
     def __init__(self, model_name: str = "gpt-3.5-turbo"):
+        """按模型名解析并缓存编码器实例。"""
         self.model_name = model_name
         self.encoder = _get_encoder(model_name)
         self.logger = get_logger(__name__)
 
     def count_tokens(self, text: str) -> int:
+        """计单段文本 token 数（空文本返回 0）。"""
         if not text:
             return 0
         return len(self.encoder.encode(text))
 
     def count_messages_tokens(self, messages: list[dict[str, Any]]) -> int:
+        """计消息列表总 token 数（多模态内容取文本部分；每条消息加 4 的对话开销近似）。"""
         total = 0
         for msg in messages:
             content = msg.get("content", "")

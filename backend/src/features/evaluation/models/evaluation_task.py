@@ -1,10 +1,4 @@
-"""
-测评模块 ORM 模型
-
-两张表：
-- evaluation_test_sets: 测试集（可复用，文件存 MinIO）
-- evaluation_tasks: 测评任务（每次执行一条记录，结果存 MinIO）
-"""
+"""测评模块 ORM 模型：evaluation_test_sets 测试集表（文件存 MinIO）与 evaluation_tasks 测评任务表（结果存 MinIO）。"""
 from enum import IntEnum
 
 from novamind.core.database.base import BaseModel
@@ -69,12 +63,15 @@ class EvaluationTestSet(BaseModel):
         return f"<EvaluationTestSet(id={self.id}, name='{self.name}', cases={self.total_cases})>"
 
     def get_minio_bucket(self) -> str | None:
+        """返回测试集文件所在 MinIO bucket，尚未上传时返回 None。"""
         return (self.storage or {}).get("minio_bucket")
 
     def get_minio_object_name(self) -> str | None:
+        """返回测试集文件在 MinIO 中的对象名，尚未上传时返回 None。"""
         return (self.storage or {}).get("minio_object_name")
 
     def set_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
+        """上传成功后把 bucket/object_name/etag 合并回写 storage JSON 字段。"""
         self.storage = {
             **(self.storage or {}),
             "minio_bucket": bucket,
@@ -120,12 +117,15 @@ class EvaluationTask(BaseModel):
         return f"<EvaluationTask(id={self.id}, name='{self.name}', status={self.status})>"
 
     def get_result_minio_bucket(self) -> str | None:
+        """返回结果文件所在 MinIO bucket，尚无结果时返回 None。"""
         return (self.result_storage or {}).get("minio_bucket")
 
     def get_result_minio_object_name(self) -> str | None:
+        """返回结果文件在 MinIO 中的对象名，尚无结果时返回 None。"""
         return (self.result_storage or {}).get("minio_object_name")
 
     def set_result_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
+        """结果上传成功后把 bucket/object_name/etag 合并回写 result_storage JSON 字段。"""
         self.result_storage = {
             **(self.result_storage or {}),
             "minio_bucket": bucket,

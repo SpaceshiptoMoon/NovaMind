@@ -5,6 +5,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
+    """注册时导入 ORM 模型，确保 Base.metadata 全量建表前模型已加载。"""
     from novamind.features.evaluation.models.evaluation_task import (  # noqa: F401
         EvaluationTask,
         EvaluationTestSet,
@@ -12,6 +13,7 @@ def _import_models() -> None:
 
 
 def manifest() -> FeatureManifest:
+    """声明 evaluation feature 的路由、依赖与加载顺序，供 router_manager 与 startup_manager 装配。"""
     from novamind.features.evaluation.api.routes import router as evaluation_router
 
     return FeatureManifest(

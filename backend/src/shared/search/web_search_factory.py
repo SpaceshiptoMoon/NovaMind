@@ -1,17 +1,7 @@
-"""web 搜索端口唯一构造工厂（批次 2.1 收敛）。
+"""web 搜索端口唯一构造工厂。
 
-此前同样的「按 provider 构造搜索客户端」逻辑有四份逐字级重复：
-engines 顶层散件 ports 的 build_web_search_port_from_provider（旧名，已收编 engines/search/）、
-deep_research 数据源适配器的三个 build_*、qa/ai_chat_service 的 _resolve/_build_yaml_fallback。
-本模块成为唯一实现，消费方全部改调此处。
-
-语义保持（择优链）：
-1. 用户显式指定 provider → 该 provider 的用户配置（SearchConfigService 解密凭据）
-2. 用户首选（is_primary）→ 同上
-3. YAML 全局默认（Tavily 配了 api_key 则优先）→ DuckDuckGo 兜底
-
-R5 工厂自注册：各 provider 构造器挂 ``_FACTORY_NAME`` 属性 + 模块扫描入注册表，
-新增 provider 无需改本文件分支链。
+provider 择优链：用户显式指定 → 用户首选（is_primary）→ YAML 全局默认 → DuckDuckGo 兜底。
+R5 工厂自注册：构造器挂 _FACTORY_NAME 属性入注册表，新增 provider 不改分支链。
 """
 from __future__ import annotations
 
@@ -52,6 +42,7 @@ __all__ = [
 # ==================== R5：provider 构造器自注册 ====================
 
 def _build_tavily(api_key: str | None, extra: dict[str, Any]) -> TavilySearchService:
+    """构造 Tavily 服务；缺 api_key 抛 WebSearchProviderNotConfiguredError。"""
     if not api_key:
         raise WebSearchProviderNotConfiguredError("tavily")
     return TavilySearchService(
@@ -65,6 +56,7 @@ def _build_tavily(api_key: str | None, extra: dict[str, Any]) -> TavilySearchSer
 
 
 def _build_serpapi(api_key: str | None, extra: dict[str, Any]) -> SerpAPISearchService:
+    """构造 SerpAPI 服务；缺 api_key 抛 WebSearchProviderNotConfiguredError。"""
     if not api_key:
         raise WebSearchProviderNotConfiguredError("serpapi")
     return SerpAPISearchService(
@@ -79,6 +71,7 @@ def _build_serpapi(api_key: str | None, extra: dict[str, Any]) -> SerpAPISearchS
 
 def _build_duckduckgo(api_key: str | None, extra: dict[str, Any]) -> DuckDuckGoSearchService:
     # duckduckgo 免费、无需 key（api_key 参数忽略）
+    """构造 DuckDuckGo 服务（免费无需 key，api_key 参数忽略）。"""
     return DuckDuckGoSearchService(
         DuckDuckGoSearchConfig(
             max_results=int(extra.get("max_results", 10)),

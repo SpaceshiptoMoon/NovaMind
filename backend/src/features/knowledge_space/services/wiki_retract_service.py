@@ -1,18 +1,6 @@
-"""Wiki 来源回收（retract）——对齐 WeKnora cleanupWikiOnKnowledgeDelete 三步
-
-源文档删除时 wiki 页面的联动处置：
-
-1. **tombstone**：写 Redis 墓碑 ``wiki:deleted:{kb_id}:{document_id}``
-   （TTL 1h > per-KB 锁 TTL 30min），防「删除 vs 生成中」竞态——
-   ingest 任务在入口与 reduce 落库前各查一次，命中即放弃（不留
-   幽灵 source_ref）；墓碑同时用于清理该文档的 pending ingest 语义。
-2. **立即对账**（reconcile_document_removal，幂等）：反查引用该文档的
-   页面——唯一来源页整体软删；多来源页剥掉该文档的 source_ref 与
-   ``{document_id}_`` 前缀的 chunk_refs 后仅元数据更新（不动 version）。
-3. **链接收尾**：对账后跑 finalize links（死链剔除 + in_links 双向对齐）。
-
-异步兜底：删除入口同步对账一次 + 入队 arq retract 任务再跑一遍
-（幂等，重试安全）。
+"""Wiki 来源回收：源文档删除时 wiki 页面的联动处置。写 Redis 墓碑（TTL 1h > per-KB 锁 TTL 30min，防「删除 vs 生成中」竞态，ingest 在入口与落
+库前各查一次）；立即对账（幂等）：唯一来源页整体软删、多来源页剥该文档的 source_ref 与 chunk 引用（不动 version）；对账后跑 finalize 链接收尾。删除入口同步
+对账一次 + 入队 arq retract 任务再跑一遍（幂等可重试）。
 """
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -28,6 +16,7 @@ WIKI_TOMBSTONE_TTL = 3600
 
 
 def tombstone_key(kb_id: int, document_id: int) -> str:
+    """删除墓碑的 Redis 键名（wiki:deleted:{kb}:{doc}）。"""
     return f"wiki:deleted:{kb_id}:{document_id}"
 
 
@@ -59,6 +48,7 @@ async def tombstone_exists(kb_id: int, document_id: int) -> bool:
 
 
 def _source_ref_matches(page: WikiPage, document_id: int) -> bool:
+    """判断页面 source_refs 是否引用指定文档（docid| 前缀匹配）。"""
     prefix = f"{document_id}|"
     return any(str(r).startswith(prefix) for r in (page.source_refs or []))
 
@@ -67,6 +57,7 @@ class WikiRetractService:
     """来源文档删除的 wiki 页面对账"""
 
     def __init__(self, session: AsyncSession, *, kb_id: int, space_id: int):
+        """绑定会话与 KB/空间上下文，内部持有页面仓储。"""
         self.session = session
         self.kb_id = kb_id
         self.space_id = space_id

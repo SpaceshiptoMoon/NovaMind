@@ -1,8 +1,4 @@
-"""
-成员管理服务
-
-处理空间成员的管理操作
-"""
+"""成员管理服务：成员的邀请、加入、角色权限管理。"""
 
 from datetime import timedelta
 from typing import Any
@@ -50,6 +46,7 @@ class MemberService:
         es_client: ElasticsearchClient | None = None,
         minio_client: MinioClient | None = None,
     ):
+        """构造注入会话，ES/MinIO 客户端可选（成员管理本身不需要）。"""
         self.session = session
         self.member_repo = MemberRepository(session)
         self.space_repo = SpaceRepository(session)

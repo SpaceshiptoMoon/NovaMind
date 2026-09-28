@@ -28,6 +28,7 @@ class NotificationService:
     """通知服务"""
 
     def __init__(self, db: AsyncSession):
+        """绑定数据库会话、通知/偏好仓储（邮件与 WS 推送在方法内组合）。"""
         self.db = db
         self._repo = NotificationRepository(db)
         self._pref_repo = NotificationPreferenceRepository(db)

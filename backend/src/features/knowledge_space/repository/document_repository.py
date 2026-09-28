@@ -1,12 +1,7 @@
-"""
-文档仓储
+"""文档仓储：仅负责 Document（文件元数据）的 CRUD。
 
-处理文档的数据访问操作
-支持知识库层级
-
-注意：处理状态已迁移至 DocumentTask 模型。
-本文档仓储仅负责 Document（文件元数据）的 CRUD。
-状态统计通过 LEFT JOIN document_tasks 实现。
+处理状态已迁至 DocumentTask，状态统计通过 LEFT JOIN document_tasks
+取最新任务实现。分块数据仅存 ES，不在 MySQL。
 """
 
 from typing import Any
@@ -133,6 +128,7 @@ class DocumentRepository:
         return document
 
     async def lock_active_document_by_id(self, document_id: int) -> Document | None:
+        """FOR UPDATE 行锁读取未删文档，锁保持至事务提交，用于入队防重等临界区。"""
         query = (
             select(Document).where(
                 Document.id == document_id,
@@ -143,6 +139,7 @@ class DocumentRepository:
         return result.scalar_one_or_none()
 
     async def get_by_ids(self, document_ids: list[int]) -> list[Document]:
+        """批量按主键查询未删文档并附带最新任务，按入参顺序返回存在项。"""
         if not document_ids:
             return []
         query = select(Document).where(
@@ -173,6 +170,7 @@ class DocumentRepository:
         return {doc_id: filename for doc_id, filename in result.all() if filename}
 
     async def lock_active_documents_by_ids(self, document_ids: list[int]) -> list[Document]:
+        """批量 FOR UPDATE 行锁读取未删文档，用于批量操作的并发防重。"""
         if not document_ids:
             return []
         query = (
@@ -542,6 +540,7 @@ class DocumentRepository:
 
     @staticmethod
     def _latest_task_status_subquery():
+        """构造每文档最新任务状态的子查询（按任务 ID 倒序取第一条）。"""
         ranked = (
             select(
                 DocumentTask.document_id,

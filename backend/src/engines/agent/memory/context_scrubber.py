@@ -1,14 +1,4 @@
-"""
-StreamingContextScrubber — SSE 输出标签清洗器
-
-程序化保证内部标签不会泄露到前端：
-  - <memory-context>...</memory-context>
-  - <documents>...</documents>
-  - <think ...>...</think 或 <think/>（模型内部推理标签）
-  - [系统提示：...] 行
-
-有状态设计，处理跨 SSE chunk 的标签分割情况。
-"""
+"""SSE 输出标签清洗器：程序化保证 memory-context/documents/think 等内部标签不泄露到前端；有状态设计处理跨 SSE chunk 的标签分割。"""
 import re
 
 # 匹配系统提示行
@@ -35,6 +25,7 @@ class StreamingContextScrubber:
         self,
         extra_tags: frozenset[str] | None = None,
     ) -> None:
+        """初始化跨 chunk 缓冲与标签内状态；实例绑定单个输出流，不可跨流复用。"""
         self._buffer = ""
         self._in_tag: str | None = None  # 当前正在清洗的 open tag
         self._in_think = False

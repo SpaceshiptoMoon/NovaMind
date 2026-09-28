@@ -1,17 +1,7 @@
-"""
-qa 流式心跳包装工具（批次 6.6 从 shared/utils 归位 qa 域——唯一消费者是 qa）。
+"""qa 流式心跳包装工具：为 SSE 流定期发心跳注释防代理超时断连，结构化版带流死检测（判死置截断标记，半截内容不得当完整回答落库）。
 
-为流式输出提供心跳机制，防止代理服务器或负载均衡器因超时断开连接；
-同时提供「流死检测」：连续多个心跳间隔无新数据时判定流已终止，通过
-``StreamHeartbeatOutcome`` 告知调用方内容被截断——调用方不得把半截内容
-当作完整回答落库（评审 P1-1）。
-
-关键实现约束（Python 3.12 asyncio.wait_for 语义陷阱）：
-``wait_for(gen.__anext__(), timeout)`` 超时会 cancel ``__anext__`` 任务，
-CancelledError 直接打入 generator 帧——对 AsyncOpenAI/httpx 流等价于关闭
-连接，下一轮 ``__anext__()`` 抛 StopAsyncIteration，与「LLM 正常说完」
-不可区分。因此 ``__anext__`` 必须放在独立 task 里并 ``shield``：
-超时只放弃本次等待，generator 帧不被打扰，流保持存活可继续等待。
+关键约束（Python 3.12）：``wait_for(gen.__anext__(), timeout)`` 超时会 cancel ``__anext__`` 任务、关掉底层流，
+与「LLM 正常说完」不可区分——``__anext__`` 必须放独立 task 并 ``shield``，超时只放弃本次等待不杀流。
 """
 
 import asyncio

@@ -83,6 +83,7 @@ class EvaluationService:
         retrieval_factory: Callable[[AsyncSession], SearchService],
         session_factory: Callable[[], Any],
     ):
+        """注入请求级会话与检索/模型配置/MinIO 依赖；session_factory 与 retrieval_factory 供后台评估任务用独立会话装配检索服务。"""
         self.db = db
         self.test_set_repo = EvaluationTestSetRepository(db)
         self.task_repo = EvaluationTaskRepository(db)
@@ -103,6 +104,7 @@ class EvaluationService:
         file_content: bytes,
         filename: str,
     ) -> Any:
+        """解析上传文件、建测试集记录并上传 MinIO，返回含存储信息的 ORM 对象（含提交）。"""
         test_set = parse_test_set(file_content, filename)
         total_cases = len(test_set.test_cases)
         file_hash = hashlib.sha256(file_content).hexdigest()
@@ -129,14 +131,17 @@ class EvaluationService:
         return test_set_obj
 
     async def get_test_set(self, test_set_id: int) -> Any | None:
+        """按 ID 查测试集，不做知识库归属校验（内部使用）。"""
         return await self.test_set_repo.get_by_id(test_set_id)
 
     async def get_test_set_by_kb(self, test_set_id: int, space_id: int, kb_id: int) -> Any | None:
+        """按 ID + 空间 + 知识库查测试集，供路由层归属校验。"""
         return await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
 
     async def list_test_sets(
         self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20
     ) -> tuple[list, int]:
+        """分页列出知识库下测试集，返回记录列表与总数。"""
         test_sets = await self.test_set_repo.list_by_kb(kb_id, space_id, skip, limit)
         total = await self.test_set_repo.count_by_kb(kb_id, space_id)
         return test_sets, total
@@ -144,6 +149,7 @@ class EvaluationService:
     async def update_test_set(
         self, test_set_id: int, space_id: int, kb_id: int, name: str
     ) -> Any:
+        """重命名测试集，不存在时抛 EvaluationTestSetNotFoundError（含提交）。"""
         test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -155,6 +161,7 @@ class EvaluationService:
     async def get_test_set_cases(
         self, test_set_id: int, space_id: int, kb_id: int
     ) -> tuple[Any, list[dict]] | None:
+        """从 MinIO 下载并重新解析测试集，返回对象与用例列表；不存在时抛错。"""
         test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -263,6 +270,7 @@ class EvaluationService:
         return test_set_obj
 
     async def delete_test_set(self, test_set_id: int) -> bool:
+        """删除测试集及其任务的记录与 MinIO 文件；存在 PENDING/RUNNING 任务时拒绝。"""
         test_set_obj = await self.test_set_repo.get_by_id(test_set_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -311,6 +319,7 @@ class EvaluationService:
         name: str,
         config: dict | None = None,
     ) -> Any:
+        """校验配置后创建 PENDING 任务并启动后台评估协程，协程结束自动清理跟踪表。"""
         if config:
             EvaluationConfig(**config)
 
@@ -336,19 +345,23 @@ class EvaluationService:
         return task
 
     async def get_task(self, task_id: int) -> Any | None:
+        """按 ID 查测评任务，不做知识库归属校验（内部使用）。"""
         return await self.task_repo.get_by_id(task_id)
 
     async def get_task_by_kb(self, task_id: int, space_id: int, kb_id: int) -> Any | None:
+        """按 ID + 空间 + 知识库查任务，供路由层归属校验。"""
         return await self.task_repo.get_by_id_and_kb(task_id, space_id, kb_id)
 
     async def list_tasks(
         self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20, status: int | None = None
     ) -> tuple[list, int]:
+        """分页列出知识库下任务，可按状态过滤，返回列表与总数。"""
         tasks = await self.task_repo.list_by_kb(kb_id, space_id, skip, limit, status=status)
         total = await self.task_repo.count_by_kb(kb_id, space_id, status=status)
         return tasks, total
 
     async def delete_task(self, task_id: int) -> bool:
+        """删除非执行中任务的记录与结果文件，PENDING/RUNNING 状态拒绝删除。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -373,6 +386,7 @@ class EvaluationService:
         return result
 
     async def cancel_task(self, task_id: int) -> Any:
+        """取消任务：置 CANCELLED 并 cancel 本 worker 内协程，跨 worker 靠 DB 检查点停止。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -400,6 +414,7 @@ class EvaluationService:
         return task
 
     async def get_task_progress(self, task_id: int) -> dict[str, Any] | None:
+        """返回任务进度快照（状态与 current/total），任务不存在时抛错。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -414,6 +429,7 @@ class EvaluationService:
     async def submit_human_scores(
         self, task_id: int, scores: list[dict[str, Any]]
     ) -> int:
+        """按用例索引写入人工评分并重算均分，仅 COMPLETED 任务可评分。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -450,6 +466,7 @@ class EvaluationService:
         return updated
 
     async def get_report(self, task_id: int) -> dict[str, Any] | None:
+        """下载结果文件组装报告视图（汇总指标与逐条详情），任务不存在时抛错。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -618,6 +635,7 @@ class EvaluationService:
         }
 
     async def export_result(self, task_id: int, format: str = "json") -> tuple[bytes, str] | None:
+        """把任务结果导出为 JSON/CSV 字节与文件名，无结果文件时返回 None。"""
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -638,6 +656,7 @@ class EvaluationService:
     # ========== 异步执行 ==========
 
     async def _run_evaluation(self, task_id: int, user_id: int) -> None:
+        """后台评估主流程：下载测试集 → 并发评估（限流+取消检查点）→ 汇总指标 → 结果上传 MinIO → 置 COMPLETED，异常标记 FAILED。"""
         async with self._session_factory() as session:
             task_repo = EvaluationTaskRepository(session)
             test_set_repo = EvaluationTestSetRepository(session)
@@ -898,6 +917,7 @@ class EvaluationService:
         user_id: int,
         retrieval_port: SearchService | None = None,
     ) -> dict[str, Any]:
+        """评估单条用例：检索 → 检索指标 → 按配置生成回答 → 生成质量评分 → 端到端指标，返回逐条详情。"""
         detail: dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,
         }
@@ -970,6 +990,7 @@ class EvaluationService:
     # ========== MinIO 辅助方法 ==========
 
     async def _download_task_result(self, task: Any) -> dict[str, Any] | None:
+        """下载并反序列化任务结果 JSON，无存储信息或失败时返回 None。"""
         bucket = task.get_result_minio_bucket()
         object_name = task.get_result_minio_object_name()
         if not bucket or not object_name:
@@ -982,6 +1003,7 @@ class EvaluationService:
             return None
 
     async def _upload_task_result(self, task: Any, result_data: dict[str, Any]) -> None:
+        """序列化结果上传 MinIO 并回写 result_storage（flag_modified 强制脏标记）。"""
         test_set_obj = task.test_set
         result_bytes = result_to_json_bytes(result_data)
         result_hash = hashlib.sha256(result_bytes).hexdigest()
@@ -999,6 +1021,7 @@ class EvaluationService:
         flag_modified(task, "result_storage")
 
     async def _delete_task_result_file(self, task: Any) -> None:
+        """删除任务结果文件，失败仅记 warning 不抛出。"""
         bucket = task.get_result_minio_bucket()
         object_name = task.get_result_minio_object_name()
         if bucket and object_name:
@@ -1015,6 +1038,7 @@ class EvaluationService:
         chunks: list[dict[str, Any]],
         llm_client: BaseLLM | None = None,
     ) -> str | None:
+        """基于检索片段拼接上下文生成回答，LLM 缺失或调用失败时返回 None。"""
         if not llm_client:
             return None
 
@@ -1034,6 +1058,7 @@ class EvaluationService:
             return None
 
     async def _get_llm_client(self, user_id: int, model: str | None = None) -> tuple:
+        """按指定模型或用户默认配置解析 LLM 客户端，失败返回 (None, None)。"""
         try:
             if not model:
                 model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
@@ -1046,6 +1071,7 @@ class EvaluationService:
             return (None, None)
 
     async def _get_embedding_client(self, user_id: int, model: str | None = None) -> tuple:
+        """按指定模型或用户默认配置解析 Embedding 客户端，失败返回 (None, None)。"""
         try:
             if not model:
                 model = await self.model_config_service.get_user_default_model_name(user_id, "embedding")

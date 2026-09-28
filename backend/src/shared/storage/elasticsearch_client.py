@@ -42,6 +42,7 @@ class ElasticsearchClient:
         default_analyzer: str = "standard",
         index_schema: IndexSchema | None = None,
     ):
+        """归一 host 协议（按 use_ssl 强制 http/https 前缀一致）并构建带超时与重试的 AsyncElasticsearch 客户端。"""
         self.verify_certs = verify_certs
         self.ca_certs = ca_certs
         self.default_embedding_dim = default_embedding_dim
@@ -85,6 +86,7 @@ class ElasticsearchClient:
     # ========== 健康检查 ==========
 
     async def ping(self) -> bool:
+        """探活集群连通性；异常记 error 并返回 False（不抛）。"""
         try:
             return await self.es_client.ping()
         except Exception as e:
@@ -92,6 +94,7 @@ class ElasticsearchClient:
             return False
 
     async def close(self) -> None:
+        """关闭底层 ES 连接（应用关闭期调用）。"""
         await self.es_client.close()
         logger.info("Elasticsearch 客户端已关闭")
 
@@ -377,6 +380,7 @@ class ElasticsearchClient:
 
     @staticmethod
     def _escape_query(query: str) -> str:
+        """转义查询串中的 ES 保留字符，防特殊字符破坏 query_string 语法。"""
         if not query:
             return ""
         return ES_SPECIAL_CHARS.sub(r"\\\g<0>", query)

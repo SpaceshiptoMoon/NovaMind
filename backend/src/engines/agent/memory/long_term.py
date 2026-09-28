@@ -50,6 +50,7 @@ class LongTermMemory(ILongTermMemory):
         memory_search: HostMemorySearchPort | None = None,
         embedding_factory: Callable | None = None,
     ):
+        """注入记忆存储、LLM 工厂与 prompt 提供者；搜索与 embedding 端口可选，缺省时分别降级 MySQL LIKE 与跳过向量化。"""
         self._store = memory_store
         self._llm_factory = llm_client_factory
         self._prompt_provider = prompt_provider

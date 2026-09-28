@@ -28,6 +28,7 @@ class ReadAttachmentTool(BaseTool):
         return "会话附件按需读取：读取用户上传文档的完整提取文本"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 read_attachment 工具定义（attachment_id 定位，offset/limit 分页读取）。"""
         return [
             {
                 "type": "function",
@@ -70,6 +71,7 @@ class ReadAttachmentTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """校验 context 中的附件读取端口后分页返回附件提取文本；端口未配置返回错误 JSON。"""
         port = context.get("attachment_read_port")
         if port is None:
             return json.dumps(

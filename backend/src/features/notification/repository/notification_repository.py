@@ -17,6 +17,7 @@ class NotificationRepository:
     """通知数据访问"""
 
     def __init__(self, db: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.db = db
 
     async def create(self, data: dict) -> Notification:
@@ -115,6 +116,7 @@ class NotificationPreferenceRepository:
     """通知偏好数据访问"""
 
     def __init__(self, db: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.db = db
 
     async def get_by_user_id(self, user_id: int) -> NotificationPreference | None:

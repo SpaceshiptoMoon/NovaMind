@@ -46,6 +46,7 @@ class MemoryRepository:
         return memory
 
     async def get_by_id(self, memory_id: int) -> AgentMemory | None:
+        """按主键查询记忆条目，未命中返回 None。"""
         result = await self.session.execute(
             select(AgentMemory).where(AgentMemory.id == memory_id)
         )
@@ -144,6 +145,7 @@ class MemoryRepository:
         return await self.get_by_id(memory_id)
 
     async def delete(self, memory_id: int) -> bool:
+        """物理删除记忆条目，返回是否实际删除。"""
         from sqlalchemy import delete
         result = await self.session.execute(
             delete(AgentMemory).where(AgentMemory.id == memory_id)

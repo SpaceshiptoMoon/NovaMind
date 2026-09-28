@@ -20,11 +20,13 @@ class TaskTracker:
     """任务追踪器，管理 entity_id ↔ job_id 映射 + 取消标记（通过 Redis）"""
 
     def __init__(self, tracker_key: str, cancel_prefix: str, tracker_ttl: int = TRACKER_TTL):
+        """设定追踪 Hash 键、取消标记键前缀与追踪 TTL（各业务域用独立键位互不干扰）。"""
         self._tracker_key = tracker_key
         self._cancel_prefix = cancel_prefix
         self._tracker_ttl = tracker_ttl
 
     async def _get_redis(self):
+        """经客户端工厂取共享 Redis 客户端。"""
         from novamind.shared.storage.client_factory import get_redis_client
         return await get_redis_client()
 

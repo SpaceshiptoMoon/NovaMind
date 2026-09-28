@@ -1,13 +1,4 @@
-"""
-用户模块
-
-提供用户管理和认证功能，支持：
-- 用户注册、登录、登出
-- JWT Token 认证
-- 角色权限管理
-- 用户信息管理
-- 用户模型配置（LLM/Embedding/Rerank）
-"""
+"""用户模块公共面：认证、用户/角色管理、模型与搜索配置聚合导出。"""
 
 # API 路由
 from novamind.features.user.api import router

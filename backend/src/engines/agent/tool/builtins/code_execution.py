@@ -33,6 +33,7 @@ class CodeExecutionTool(BaseTool):
         return "在隔离沙箱中执行代码，支持 Python、JavaScript、Shell"
 
     def get_tools(self) -> list[dict[str, Any]]:
+        """返回 run_code 的 OpenAI function calling 定义（语言枚举与超时参数）。"""
         return [
             {
                 "type": "function",
@@ -83,6 +84,7 @@ class CodeExecutionTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
+        """路由 run_code 到沙箱执行，未知工具名返回错误 JSON。"""
         if tool_name == "run_code":
             return await self._run_code(arguments)
         return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
@@ -135,6 +137,7 @@ class CodeExecutionTool(BaseTool):
             )
 
     def get_system_prompt_fragment(self) -> str:
+        """返回代码执行工具的使用纪律片段（何时必须用、沙箱无网络、失败重试策略）。"""
         return (
             "## Code Execution\n"
             "ALWAYS use code_execution for:\n"

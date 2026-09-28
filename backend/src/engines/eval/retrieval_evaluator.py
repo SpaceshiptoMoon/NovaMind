@@ -22,6 +22,7 @@ class RetrievalEvaluator:
         prompt_provider: PromptManager,
         logger: Logger,
     ):
+        """注入可选 LLM 与 embedding 评估器及 prompt/日志依赖，按所选策略取用。"""
         self.llm_client = llm_client
         self.embedding_evaluator = embedding_evaluator
         self._prompt_provider = prompt_provider

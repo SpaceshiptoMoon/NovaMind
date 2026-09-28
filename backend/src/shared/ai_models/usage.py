@@ -1,16 +1,4 @@
-"""LLM usage 归一化 + cost 估算（可观测性 E1）。
-
-不同 provider 返回的 usage 字段形态不一，``normalize_usage`` 统一为
-``CanonicalUsage``（input/output/cache_read/cache_write/reasoning），
-``estimate_cost`` 按内置默认价格表估算 USD 成本（per-million tokens）。
-
-支持三种形态：
-- OpenAI Chat Completions: ``prompt_tokens``/``completion_tokens`` +
-  ``prompt_tokens_details.cached_tokens`` + ``completion_tokens_details.reasoning_tokens``
-- Anthropic Messages: ``input_tokens``/``output_tokens`` +
-  ``cache_read_input_tokens``/``cache_creation_input_tokens``
-- 通用简化: 仅 ``total_tokens``
-"""
+"""LLM usage 归一化（CanonicalUsage）+ 按内置价格表估算 USD 成本。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,13 +18,16 @@ class CanonicalUsage:
 
     @property
     def prompt_tokens(self) -> int:
+        """提示词侧 token 总量（input + 缓存读 + 缓存写）。"""
         return self.input_tokens + self.cache_read_tokens + self.cache_write_tokens
 
     @property
     def total_tokens(self) -> int:
+        """本次调用 token 总量（提示词侧 + 输出侧）。"""
         return self.prompt_tokens + self.output_tokens
 
     def __add__(self, other: CanonicalUsage) -> CanonicalUsage:
+        """逐字段相加（跨多次调用聚合用量）。"""
         return CanonicalUsage(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,

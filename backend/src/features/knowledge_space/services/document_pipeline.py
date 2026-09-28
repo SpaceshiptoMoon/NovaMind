@@ -1,20 +1,6 @@
-"""文档处理管道执行模块（从 document_service.py 巨石抽出的管道职责）。
-
-集中承载文档处理 pipeline 的执行入口与模块级静态助手群：
-- ``execute_document_pipeline``：四模态分流入口（文本/图片/视频/音频），由 arq worker
-  或上层直接以模块级函数调用；按文件类型路由到文本管道 / 图片 VLM+OCR / 视频 / 音频分支。
-- 模块级静态助手：``_process_image_document_static`` / ``_process_image_ocr_static`` /
-  ``build_es_chunks`` / ``prepare_es_chunks`` / ``run_post_parse_tail`` /
-  ``extract_parse_metadata_summary`` / ``get_es_client`` /
-  ``_get_document_processor_static`` / ``generate_embeddings`` /
-  ``get_embedding_client`` / ``generate_single_embedding`` /
-  ``_generate_image_description`` / ``generate_questions_for_chunks``。
-- 取消语义：``DocumentCancelledError`` + ``check_document_cancelled``（pipeline 关键节点提前终止）。
-- 配置上下文：``PipelineContext`` + ``load_pipeline_context``（统一 space/kb/pipeline_config/embedding_config）。
-- 解析全文持久化：``persist_parsed_text``（所有模态解析全文入 MinIO + 立即 commit 落库）。
-
-文件类型常量收敛到 ``document_file_types``（中立模块），本模块按模态分流时引用。
-对 ``media_processing`` 的调用（视频/音频/语义切分）保持延迟导入，避免顶层循环 import。
+"""文档处理管道执行模块：四模态分流入口 execute_document_pipeline 与模块级静态助手群（图片 OCR/VLM、ES 分块构建、后置收尾、embedding 生成、问题生成
+等）。取消语义走 DocumentCancelledError + check_document_cancelled；配置上下文走 PipelineContext + load_pipelin
+e_context；解析全文经 persist_parsed_text 入 MinIO 并立即落库。对 media_processing 的调用保持延迟导入，避免顶层循环 import。
 """
 
 import asyncio

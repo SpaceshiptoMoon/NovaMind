@@ -15,6 +15,7 @@ class DocConversionError(RuntimeError):
 
 
 def _find_soffice() -> str | None:
+    """定位 soffice 可执行文件：先查 PATH，再探测 Windows 常见安装路径；找不到返回 None。"""
     candidates = [
         shutil.which("soffice"),
         shutil.which("libreoffice"),
@@ -28,6 +29,7 @@ def _find_soffice() -> str | None:
 
 
 def _convert_with_soffice(source_path: Path, target_dir: Path) -> bytes | None:
+    """用 LibreOffice headless 转 .doc 为 .docx；未安装返回 None，转换失败抛 DocConversionError。"""
     soffice = _find_soffice()
     if not soffice:
         return None
@@ -55,6 +57,7 @@ def _convert_with_soffice(source_path: Path, target_dir: Path) -> bytes | None:
 
 
 def _convert_with_win32com(source_path: Path, target_dir: Path) -> bytes | None:
+    """Windows-only 路径：经 Word COM 组件（pywin32）转 .doc 为 .docx；未装 pywin32 返回 None 交下一转换器，COM 失败抛错。"""
     try:
         import pythoncom
         import win32com.client  # type: ignore[import-not-found]
@@ -86,6 +89,7 @@ def _convert_with_win32com(source_path: Path, target_dir: Path) -> bytes | None:
 
 
 def _convert_doc_to_docx_sync(file_bytes: bytes, filename: str) -> bytes:
+    """同步转换主流程：临时目录落地后依次尝试 soffice 与 Word COM，全部不可用抛 DocConversionError。"""
     with tempfile.TemporaryDirectory(prefix="novamind_doc_convert_") as tmp_dir:
         tmp_path = Path(tmp_dir)
         source_path = tmp_path / filename
@@ -106,4 +110,5 @@ def _convert_doc_to_docx_sync(file_bytes: bytes, filename: str) -> bytes:
 
 
 async def convert_doc_to_docx(file_bytes: bytes, filename: str) -> bytes:
+    """异步入口：把同步转换放到线程池执行，避免阻塞事件循环。"""
     return await asyncio.to_thread(_convert_doc_to_docx_sync, file_bytes, filename)

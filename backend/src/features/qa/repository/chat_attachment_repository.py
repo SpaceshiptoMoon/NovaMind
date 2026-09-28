@@ -15,6 +15,7 @@ class ChatAttachmentRepository:
     """ChatAttachment 数据访问仓库"""
 
     def __init__(self, session: AsyncSession):
+        """绑定请求级数据库会话。"""
         self.session = session
 
     async def create(

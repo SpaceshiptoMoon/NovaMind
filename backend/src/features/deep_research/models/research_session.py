@@ -119,6 +119,7 @@ class ResearchSession(BaseModel):
     )
 
     def __repr__(self) -> str:
+        """调试用对象标识，含 ID、查询摘要与状态。"""
         return f"<ResearchSession(id={self.id}, query='{self.query[:30]}...', status={self.status})>"
 
     @staticmethod

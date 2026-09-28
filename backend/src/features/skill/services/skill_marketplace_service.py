@@ -59,6 +59,7 @@ class SkillMarketplaceService:
         model_config_service: ModelConfigService | None = None,
         agent_service: AgentService | None = None,
     ):
+        """装配 DB 会话、MinIO、安全检查器、四个仓储与可选模型/Agent 服务。"""
         self.db = db
         self.minio = minio_client
         self.checker = security_checker or SkillSecurityChecker()
@@ -70,6 +71,7 @@ class SkillMarketplaceService:
         self._agent_service = agent_service
 
     async def cleanup(self):
+        """请求级资源清理钩子（当前无持外资源，空实现）。"""
         pass
 
     # ==================== 上传 ====================
@@ -373,6 +375,7 @@ class SkillMarketplaceService:
     # ==================== 查询 ====================
 
     async def get_skill(self, skill_id: int, user_id: int = None) -> SkillDefinition | None:
+        """查技能详情；私有技能仅所有者可见（他人查询返回 None 不泄露存在性）。"""
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             return None
@@ -385,6 +388,7 @@ class SkillMarketplaceService:
         self, user_id: int, status: int | None = None,
         limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
+        """分页列出用户自己的技能（可按状态筛选），返回 (列表, 总数)。"""
         return await self.skill_repo.list_by_user(user_id, status, limit, offset)
 
     async def list_marketplace(
@@ -392,6 +396,7 @@ class SkillMarketplaceService:
         tags: str | None = None, sort: str = "newest",
         limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
+        """广场检索已发布技能：关键词/分类/标签过滤加排序，返回 (列表, 总数)。"""
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
         return await self.skill_repo.list_marketplace(keyword, category, tag_list, sort, limit, offset)
 
@@ -519,6 +524,7 @@ class SkillMarketplaceService:
         }
 
     async def list_installed(self, agent_id: int, user_id: int) -> list[SkillInstallation]:
+        """列出 Agent 已安装技能；Agent 归属校验失败返回空列表不泄露他人 Agent。"""
         if self._agent_service is None:
             # 无 port 无法校验归属，保守返回空（正常 HTTP 入口总会注入 agent_registry_port）
             return []
@@ -533,6 +539,7 @@ class SkillMarketplaceService:
     async def create_review(
         self, user_id: int, skill_id: int, rating: int, content: str | None,
     ) -> SkillReview:
+        """创建/更新技能评价并重算技能平均分与评价数。"""
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -549,9 +556,11 @@ class SkillMarketplaceService:
     async def list_reviews(
         self, skill_id: int, limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillReview], int]:
+        """分页列出技能评价，返回 (列表, 总数)。"""
         return await self.review_repo.list_by_skill(skill_id, limit, offset)
 
     async def delete_review(self, user_id: int, skill_id: int) -> bool:
+        """删除本人评价并重算技能评分统计，返回是否实际删除。"""
         deleted = await self.review_repo.delete_review(user_id, skill_id)
         if deleted:
             avg, count = await self.review_repo.get_rating_stats(skill_id)
@@ -562,6 +571,7 @@ class SkillMarketplaceService:
     # ==================== 删除 ====================
 
     async def delete_skill(self, user_id: int, skill_id: int) -> bool:
+        """删除本人技能（软删 + 重命名释放唯一约束），非所有者抛拒绝访问。"""
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)

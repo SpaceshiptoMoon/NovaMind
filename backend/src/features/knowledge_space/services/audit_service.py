@@ -1,8 +1,4 @@
-"""
-审计日志服务
-
-处理知识空间的审计日志记录和查询
-"""
+"""审计日志服务：记录与查询知识空间内的操作日志。"""
 
 from datetime import datetime
 from typing import Any
@@ -25,6 +21,7 @@ class AuditService:
     """
 
     def __init__(self, session: AsyncSession):
+        """绑定会话并持有审计与空间仓储。"""
         self.session = session
         self.audit_repo = AuditRepository(session)
         self.space_repo = SpaceRepository(session)

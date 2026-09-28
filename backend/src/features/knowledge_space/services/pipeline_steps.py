@@ -98,14 +98,17 @@ class PipelineContext:
 
     @property
     def space_owner_id(self) -> int | None:
+        """空间创建者 ID（空间缺失时为 None）。"""
         return self.space.owner_id if self.space else None
 
     @property
     def embedding_model_name(self) -> str | None:
+        """空间绑定的 embedding 模型名（未配置为 None）。"""
         return self.embedding_config.get("model") if self.embedding_config else None
 
     @property
     def embedding_dim(self) -> int | None:
+        """空间 embedding 向量维度（未配置为 None）。"""
         return self.embedding_config.get("dimension") if self.embedding_config else None
 
 
@@ -163,6 +166,7 @@ async def persist_parsed_text(
 
 
 def extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, Any]:
+    """从解析元数据提取轻量摘要（解析器类/模式/区域计数），供任务进度展示。"""
     table_regions = list(parse_metadata.get("table_regions") or [])
     figure_regions = list(parse_metadata.get("figure_regions") or [])
     reading_order = list(parse_metadata.get("reading_order") or [])

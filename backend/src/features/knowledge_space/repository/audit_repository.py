@@ -1,8 +1,4 @@
-"""
-审计日志仓储
-
-处理空间审计日志的数据访问操作
-"""
+"""审计日志仓储：空间审计日志的数据访问。"""
 
 from datetime import datetime
 from typing import Any

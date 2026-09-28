@@ -1,29 +1,29 @@
-"""文档域任务追踪（批次 6.4 从 shared/mq/task_tracker 下沉）。
-
-文档域函数归 knowledge_space；通用 TaskTracker 类留 shared/mq。
-doc_tracker 单例随迁（键名不变，Redis 数据兼容）。
-"""
+"""文档域任务追踪：文档与 arq job 的绑定/取消标记/队列清理（doc_tracker 单例，键名与 Redis 数据兼容）。"""
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.mq.task_tracker import doc_tracker
 
 logger = get_logger(__name__)
 
 async def bind_job_to_document(document_id: int, job_id: str) -> None:
+    """绑定文档与 arq job ID（doc_tracker 转发）。"""
     await doc_tracker.bind(document_id, job_id)
 
 
 
 async def get_job_id_for_document(document_id: int) -> str | None:
+    """查询文档当前绑定的 job ID（doc_tracker 转发）。"""
     return await doc_tracker.get_job_id(document_id)
 
 
 
 async def unbind_job(document_id: int) -> None:
+    """解除文档与 job 的绑定（doc_tracker 转发）。"""
     await doc_tracker.unbind(document_id)
 
 
 
 async def get_active_document_count() -> int:
+    """统计当前活跃处理的文档数（doc_tracker 转发）。"""
     return await doc_tracker.get_active_count()
 
 
@@ -141,15 +141,18 @@ async def purge_document_jobs(document_id: int, *, exclude_job_id: str | None = 
 
 
 async def mark_document_cancelled(document_id: int) -> None:
+    """写文档取消标记（doc_tracker 转发）。"""
     await doc_tracker.mark_cancelled(document_id)
 
 
 
 async def is_document_cancelled(document_id: int) -> bool:
+    """查询文档是否被请求取消（doc_tracker 转发）。"""
     return await doc_tracker.is_cancelled(document_id)
 
 
 
 async def clear_cancel_flag(document_id: int) -> None:
+    """清除文档取消标记（doc_tracker 转发）。"""
     await doc_tracker.clear_cancel(document_id)
 

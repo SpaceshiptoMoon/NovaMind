@@ -1,14 +1,4 @@
-"""
-空间 Schema
-
-定义知识空间的请求和响应模型
-
-字段命名与数据库模型 (KnowledgeSpace) 保持一致:
-- owner_id: 创建者ID
-- visibility: 可见性 (SmallInteger: 0-私有, 1-团队, 2-公开)
-- config: 空间配置 (JSON)
-- status: 状态 (SmallInteger: 1-活跃, 2-归档, 3-删除)
-"""
+"""空间 Schema：知识空间请求/响应模型，字段命名与 KnowledgeSpace 模型一致（visibility/config/status 语义见模型层）。"""
 
 import json
 from datetime import datetime

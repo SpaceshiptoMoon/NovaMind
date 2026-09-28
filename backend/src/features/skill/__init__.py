@@ -1,13 +1,4 @@
-"""
-技能广场模块
-
-基于 Anthropic SKILL.md 开放标准的技能管理系统，支持：
-- 技能上传（ZIP 包含 SKILL.md + 可选 scripts/references/assets）
-- 安全审查（规则 + LLM 双重审查）
-- 技能发布与广场浏览
-- 安装到 Agent（注入系统提示词 + 激活引用工具）
-- 评价与评分
-"""
+"""技能广场模块公共面：基于 SKILL.md 标准的技能上传、安全审查、发布、安装与评价。"""
 
 from novamind.features.skill.models import (
     ReviewStatus,

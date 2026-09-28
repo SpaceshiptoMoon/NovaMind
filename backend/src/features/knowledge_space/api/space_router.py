@@ -1,8 +1,4 @@
-"""
-空间管理路由
-
-处理知识空间的 CRUD 操作
-"""
+"""空间管理路由：知识空间的 CRUD 与成员可见范围内的列表查询。"""
 
 from typing import Annotated
 

@@ -14,6 +14,7 @@ class ClaimDecomposer:
     """Claim 拆解与验证器"""
 
     def __init__(self, llm_client: BaseLLM, *, prompt_provider: PromptManager, logger: Logger):
+        """注入 LLM 客户端、prompt 提供者与日志器；验证逻辑按调用使用。"""
         self.llm_client = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger

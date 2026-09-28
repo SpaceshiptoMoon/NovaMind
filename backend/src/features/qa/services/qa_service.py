@@ -50,6 +50,7 @@ class QAService:
         cache_service: QACacheService | None = None,
         model_config_service: ModelConfigService | None = None,
     ):
+        """装配仓储与可选缓存/模型配置服务，校验各仓储共享同一 DB 会话否则拒绝初始化。"""
         self.repository = repository
         self.session_config_repo = session_config_repo
         self.session_summary_repo = session_summary_repo
@@ -517,6 +518,7 @@ class QAService:
     async def create_session_config(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> Any:
+        """创建会话配置并失效缓存，保证后续读立即生效。"""
         config = await self.session_config_repo.create(
             session_id, user_id, compression_config,
         )
@@ -559,6 +561,7 @@ class QAService:
     async def update_compression_config(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> Any:
+        """更新会话压缩配置并失效缓存。"""
         config = await self.session_config_repo.update_compression(
             session_id, user_id, compression_config,
         )
@@ -568,6 +571,7 @@ class QAService:
     async def update_llm_config(
         self, session_id: str, user_id: int, llm_config: dict,
     ) -> Any:
+        """更新会话模型生成参数并失效缓存。"""
         config = await self.session_config_repo.update_llm_config(
             session_id, user_id, llm_config,
         )
@@ -577,6 +581,7 @@ class QAService:
     async def update_web_search_config(
         self, session_id: str, user_id: int, web_search_config: dict,
     ) -> Any:
+        """更新会话联网搜索配置并失效缓存。"""
         config = await self.session_config_repo.update_web_search_config(
             session_id, user_id, web_search_config,
         )
@@ -586,6 +591,7 @@ class QAService:
     async def upsert_rag_binding(
         self, session_id: str, user_id: int, rag_config: dict,
     ) -> Any:
+        """更新会话知识库绑定（自动 RAG）并失效缓存。"""
         config = await self.session_config_repo.upsert_rag_binding(
             session_id, user_id, rag_config,
         )

@@ -20,6 +20,7 @@ class TokenBudget:
     """
 
     def __init__(self, model_name: str = "gpt-4"):
+        """按模型名构造底层计数器，token 口径随模型 tokenizer 变化。"""
         self._model_name = model_name
         from novamind.shared.utils.text_utils.token_counter import TokenCounter
         self._counter = TokenCounter(model_name)

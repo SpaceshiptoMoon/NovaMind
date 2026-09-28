@@ -14,6 +14,7 @@ class PDFReader(BaseReader):
     """PDF文档读取器"""
 
     def __init__(self):
+        """初始化基类公共字段（编码列表、logger）。"""
         super().__init__()
 
     def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:

@@ -12,11 +12,13 @@ class AttachmentTextReader:
     """按 offset/limit 分片读附件提取文本（只允许读本人附件）。"""
 
     def __init__(self, db):
+        """绑定数据库会话。"""
         self._db = db
 
     async def get_attachment_text(
         self, attachment_id: int, user_id: int, offset: int = 0, limit: int = 8000
     ) -> AttachmentTextChunk:
+        """按 offset/limit 分片读附件提取文本；归属不符抛 KeyError。"""
         from novamind.features.qa.repository.chat_attachment_repository import (
             ChatAttachmentRepository,
         )

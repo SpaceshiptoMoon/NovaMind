@@ -1,17 +1,6 @@
-"""视频帧描述引擎：single / grouped / rewrite 三种描述策略。
-
-纯逻辑层，不 import features/setting/ORM。三个函数均接收 ``vlm_client`` / ``llm_client`` /
-``prompt`` 作注入参数（features 装配点从 ModelConfigPort 取 client、从 PromptManager 取 prompt
-后注入），引擎不碰 ``model_config_port`` / ``PromptManager``。
-
-- ``describe_single``：逐帧单图 VLM 描述，返回 ``[(desc, ts, frame_idx)]``；单帧主 client 配额/鉴权
-  失败且有 fallback client 时回退重试一次，全部帧失败抛 ``AllFrameDescriptionsFailedError``。
-- ``describe_grouped``：每 ``group_size`` 帧一组喂 VLM 多图消息生成连贯描述，返回
-  ``[(desc, start_ts, end_ts, frame_idx_list)]``；多图调用失败时该组降级为逐帧 single。
-- ``describe_rewrite``：先 single 逐帧描述，再调 LLM 重写连贯（强约束保留 ``[HH:MM:SS#idx]`` 锚点），
-  后处理校验锚点 idx 集合一致，不一致回退原逐帧拼接；返回 ``(full_text, descriptions)``。
-
-所有策略产出的描述/文本均带 ``[HH:MM:SS#idx]`` 锚点，供 ``align_chunk_times`` 切分后反查时间区间。
+"""视频帧描述引擎：single 逐帧 VLM / grouped 分组多图 / rewrite 逐帧后重写连贯，三种描述策略，纯逻辑层全注入。
+single 主 client 配额/鉴权失败且有 fallback client 时回退重试一次；rewrite 校验锚点 idx 集合，不一致回退原逐帧拼接。
+所有产出带 [HH:MM:SS#idx] 锚点（格式契约，供 align_chunk_times 切分后反查时间区间）；不碰 model_config_port/PromptManager。
 """
 from __future__ import annotations
 
@@ -60,6 +49,7 @@ class AllFrameDescriptionsFailedError(Exception):
         quota_failures: int = 0,
         total_frames: int = 0,
     ):
+        """记录首个错误、配额类失败计数与总帧数，供编排层决策占位或转错误。"""
         self.first_error = first_error
         self.quota_failures = quota_failures
         self.total_frames = total_frames

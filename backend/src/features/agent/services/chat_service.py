@@ -72,6 +72,7 @@ class AgentChatService:
         web_search_port: WebSearchPort | None = None,
         prompt_provider: PromptManager | None = None,
     ):
+        """仅装配仓储与提示构建器；引擎端口由 build_agent_chat_service 注入，不在此内部构造。"""
         self.db = db
         self.agent_service = agent_service
         self.model_config_service = model_config_service

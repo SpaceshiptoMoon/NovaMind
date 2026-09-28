@@ -57,16 +57,23 @@ class DefaultIndexSchema:
     """
 
     def __init__(self) -> None:
+        """固化字段名集合（检索查询与建索引体共用同一来源）。"""
         self._field_names = IndexFieldNames()
 
     @property
     def field_names(self) -> IndexFieldNames:
+        """ES 文档字段名集合（引擎构造查询时引用）。"""
         return self._field_names
 
     def index_name(self, space_id: int) -> str:
+        """空间索引命名：space_{space_id}（与现行部署索引名逐字一致）。"""
         return f"space_{space_id}"
 
     def build_create_body(self, embedding_dim: int, analyzer: str) -> dict[str, Any]:
+        """构造建索引体：1 分片 0 副本；content/questions 按 analyzer 选 ik/standard 检索分词。
+
+        dense_vector 余弦相似；question_embeddings 为 nested 结构（内部 vector 子字段）。
+        """
         is_ik = analyzer.startswith("ik_")
         search_analyzer = "ik_smart" if is_ik else "standard"
 

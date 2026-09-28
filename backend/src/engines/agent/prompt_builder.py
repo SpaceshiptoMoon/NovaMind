@@ -94,6 +94,7 @@ class SystemPromptBuilder:
     """分层组装 Agent 系统提示词"""
 
     def __init__(self, tool_registry: ToolRegistry):
+        """注入工具注册表，用于收集已启用工具的系统提示片段。"""
         self._registry = tool_registry
 
     async def build(
