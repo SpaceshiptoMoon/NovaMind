@@ -1,109 +1,109 @@
-# CLAUDE.md - Backend
+# CLAUDE.md — 后端
 
-## Overview
+## 概述
 
-The backend is a FastAPI application using a feature-oriented, DDD-leaning structure.
+后端是 FastAPI 应用，采用面向 feature、偏 DDD（领域驱动设计）的结构。
 
-Entry points:
+入口：
 
 - `main.py`
 - `src/core/middleware/app_factory.py`
 - `src/core/middleware/router_manager.py`
 - `src/core/middleware/startup_manager.py`
 
-## Parallel Multi-Agent Development
+## 多 Agent 并行开发
 
-When multiple agent windows work on this repo concurrently, each must run in its own git worktree on its own branch — never in a shared working directory. See the root `CLAUDE.md` and `docs/multi-agent-parallel-development-workflow.md` for the full workflow.
+多个 agent 窗口并发操作本仓库时，每个必须在自己的 git worktree、自己的分支里运行——绝不在共享工作目录中工作。完整工作流见根 `CLAUDE.md` 与 `docs/multi-agent-parallel-development-workflow.md`。
 
-Backend-specific notes:
+后端专属要点：
 
-- Branch by feature boundary (`src/features/<domain>/`); one agent owns one feature.
-- Single-point shared files — `src/shared/prompts/`, `src/core/middleware/router_manager.py`, `src/core/middleware/startup_manager.py`, `*.example` configs, DB models — are edited by only one agent at a time.
-- Run `pytest` (or targeted tests) in the worktree before merging back to the trunk.
+- 按 feature 边界（`src/features/<domain>/`）拉分支；一个 agent 拥有一个 feature。
+- 单点共享文件——`src/shared/prompts/`、`src/core/middleware/router_manager.py`、`src/core/middleware/startup_manager.py`、`*.example` 配置、DB 模型——同一时间只由一个 agent 编辑。
+- 合并回主干前，先在 worktree 里跑 `pytest`（或针对性测试）。
 
-## Directory Structure
+## 目录结构
 
-- `src/core/`: framework/runtime layer
-- `src/features/`: feature modules
-- `src/setting/`: config system and YAML assets
-- `src/shared/`: reusable shared capabilities
-- `tests/`: backend tests
+- `src/core/`：框架/运行时层
+- `src/features/`：feature 模块
+- `src/setting/`：配置系统与 YAML 资产
+- `src/shared/`：可复用共享能力
+- `tests/`：后端测试
 
-## Feature Module Contract
+## feature 模块契约
 
-Each feature should follow this structure where applicable:
+每个 feature 在适用处遵循以下结构：
 
-- `api/`: HTTP layer only
-- `services/`: business logic and orchestration
-- `repository/`: persistence access
-- `models/`: SQLAlchemy models
-- `schemas/`: Pydantic schemas
+- `api/`：仅 HTTP 层
+- `services/`：业务逻辑与编排
+- `repository/`：持久化访问
+- `models/`：SQLAlchemy 模型
+- `schemas/`：Pydantic schema
 
-Rules:
+规则：
 
-- Keep request validation in `schemas/`
-- Keep route handlers thin
-- Keep transaction-sensitive logic in services
-- Keep persistence queries in repository classes, not scattered through services
+- 请求校验放 `schemas/`
+- 路由处理器保持轻薄
+- 事务敏感逻辑放 services
+- 持久化查询放 repository 类，不散落在 services 里
 
-## Core Layer Rules
+## core 层规则
 
-`src/core/` is for application runtime concerns only:
+`src/core/` 只放应用运行时关注点：
 
-- middleware
-- auth and security
-- app startup/shutdown
-- db session management
-- cross-cutting infrastructure
+- 中间件
+- 认证与安全
+- 应用启动/关闭
+- db session 管理
+- 横切基础设施
 
-Do not place feature business logic in `core/`.
+不要把 feature 业务逻辑放进 `core/`。
 
-## Shared Layer Rules
+## shared 层规则
 
-`src/shared/` is for reusable capabilities across features, not a dumping ground.
+`src/shared/` 放跨 feature 可复用能力，不是杂物堆。
 
-Allowed categories:
+允许的类别：
 
-- `shared/storage/`: external service clients (ES/MinIO/Redis, via `client_factory/`)
-- `shared/search/`: external search vendor clients (tavily/serpapi/duckduckgo)
-- `shared/cache/`: cache access
-- `shared/mq/`: async task runtime
-- `shared/prompts/`: shared prompts
-- `shared/utils/`: truly generic helpers
-- `shared/document/`: cross-feature document readers & validation (truly reusable across features)
+- `shared/storage/`：外部服务客户端（ES/MinIO/Redis，经 `client_factory/`）
+- `shared/search/`：外部搜索厂商客户端（tavily/serpapi/duckduckgo）
+- `shared/cache/`：缓存访问
+- `shared/mq/`：异步任务运行时
+- `shared/prompts/`：共享 prompt
+- `shared/utils/`：真正的通用辅助函数
+- `shared/document/`：跨 feature 文档读取器与校验（真正跨 feature 复用）
 
-If code is only used by one feature and expresses domain behavior, keep it in that feature instead of moving it into `shared/`.
+只被一个 feature 使用、表达领域行为的代码，留在该 feature 内，不搬进 `shared/`。
 
-## Knowledge-Base Architecture
+## 知识库架构
 
-Canonical homes:
+权威归属：
 
-- `src/features/knowledge_space/`: domain layer for documents, KB config, tasks, chunk lifecycle, APIs (business logic; parsing/chunking/multimodal engines live in `engines/document/`)
-- `src/engines/document/pipeline/`: document parsing pipeline (DocumentLoader/DocumentProcessor/DocumentRegistry) — reusable engines-layer component
-- `src/engines/document/splitters/`: chunk splitters (recursive/semantic/fixed/markdown)
-- `src/engines/document/converters/`: document format converters
-- `src/engines/document/media/`: audio/video/image multimodal processing (VLM/OCR/audio/video)
-- `src/engines/document/integrations/deepdoc/`: DeepDoc-specific implementation (vendored, self-contained)
-- `src/shared/document/readers/`: cross-feature document readers (PDF/DOCX/TXT/HTML/MD) — reused by app/qa/knowledge_space
-- `src/shared/document/validation/`: cross-feature file validation (FileInfo/FileValidator) — reused by qa/knowledge_space
+- `src/features/knowledge_space/`：文档、KB 配置、任务、chunk 生命周期、API 的领域层（业务逻辑；解析/切分/多模态引擎在 `engines/document/`）
+- `src/engines/document/pipeline/`：文档解析管道（DocumentLoader/DocumentProcessor/DocumentRegistry）——可复用的引擎层组件
+- `src/engines/document/splitters/`：分块切分器（recursive/semantic/fixed/markdown）
+- `src/engines/document/converters/`：文档格式转换器
+- `src/engines/document/media/`：音频/视频/图像多模态处理（VLM/OCR/audio/video）
+- `src/engines/document/integrations/deepdoc/`：DeepDoc 专有实现（vendored，自包含）
+- `src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 app/qa/knowledge_space 复用
+- `src/shared/document/validation/`：跨 feature 文件校验（FileInfo/FileValidator）——被 qa/knowledge_space 复用
 
-Do not duplicate parsing logic under both `shared/document/` and `engines/document/`. Document-processing engines (pipeline/splitters/converters/media/deepdoc) live in `engines/document/` as reusable components any feature may import (`features → engines` allowed); `features/knowledge_space/` retains only business logic and orchestrates them via ports. Only truly cross-feature readers & validation stay in `shared/document/`.
+不要在 `shared/document/` 与 `engines/document/` 两处重复实现解析逻辑。文档处理引擎（pipeline/splitters/converters/media/deepdoc）位于 `engines/document/`，是任何 feature 都可 import 的可复用组件（允许 `features → engines`）；`features/knowledge_space/` 只保留业务逻辑并通过端口编排引擎。只有真正跨 feature 的读取器与校验留在 `shared/document/`。
 
-## Import Rules
+## import 规则
 
-- Prefer absolute imports from `novamind...`
-- Avoid relative imports in cross-module shared code
-- Keep `__init__.py` exports minimal and intentional
-- Do not rely on path hacks when normal package imports can solve it
+- 优先 `novamind...` 绝对 import
+- 跨模块共享代码避免相对 import
+- `__init__.py` 导出保持最少且有明确意图
+- 常规包 import 能解决时，不依赖路径 hack
 
-## Coding Rules
+## 编码规则
 
 - Python 3.12+
-- 4-space indentation
-- Add type hints for service boundaries and shared-layer code
-- Keep async code async end-to-end where reasonable
-- Raise domain-meaningful errors instead of generic `Exception`
-- Log enough context for task failures, especially in parsing and MQ workflows
+- 4 空格缩进
+- 服务边界与共享层代码加类型标注
+- 合理之处保持 async 代码端到端 async
+- 抛领域语义的错误，而非泛化的 `Exception`
+- 任务失败时（尤其解析与 MQ 工作流）记录足够的日志上下文
 
 ## import 依赖规则（硬规则，ragflow 务实单体风格）
 
@@ -116,33 +116,33 @@ R1–R6（详版见 `docs/plans/active/REFACTOR-ragflow-style-migration.md` §1�
 - **R5 工厂自注册**：模型客户端（llm/embedding/rerank/asr）与 web 搜索源用 `_FACTORY_NAME` 属性 + 模块扫描注册，消灭 if-else 供应商分支链。
 - **R6 安全硬规则全部保留**：BaseAPIError 体系、`begin_nested()` SAVEPOINT、密钥加密、异步密码哈希、JWT 黑名单、FileValidator 魔数校验、参数化查询、路由手动注册、模块 init 注册。
 
-## Testing Rules
+## 测试规则
 
-Run:
+运行：
 
 - `pytest`
 - `pytest -m unit`
 - `pytest -m "not slow"`
 
-Guidelines:
+指引：
 
-- Put tests in `backend/tests/`, organized by tested target (see `tests/README.md`):
-  - `tests/architecture/`: global structural gates & API contract snapshots
-  - `tests/core/` / `tests/shared/` / `tests/engines/<x>/` / `tests/features/<x>/`: mirror the `src/` layer of the tested module
-  - `tests/integration/`: tests marked `integration` that need a running :8100 service
-- Add focused regression tests for parsing bugs
-- Multimodal sample files: repo-root `test_data/` if it exists locally (untracked convention, may not exist); otherwise put fixtures in `tests/fixtures/`
-- When fixing pipeline issues, prefer at least one test that reproduces the original failure mode
+- 测试放 `backend/tests/`，按被测对象组织（见 `tests/README.md`）：
+  - `tests/architecture/`：全局结构门禁与 API 契约快照
+  - `tests/core/` / `tests/shared/` / `tests/engines/<x>/` / `tests/features/<x>/`：镜像被测模块所在的 `src/` 层
+  - `tests/integration/`：标记 `integration`、需要 :8100 服务在跑的测试
+- 为解析 bug 补针对性的回归测试
+- 多模态样例文件：仓库根 `test_data/` 若本地存在（未跟踪约定，可能不存在）；否则夹具放 `tests/fixtures/`
+- 修管道问题时，至少补一个能复现原始失败模式的测试
 
-## Knowledge Processing Notes
+## 知识处理注意事项
 
-- Document parsing config and runtime config conversion must stay aligned
-- Media parsing should degrade gracefully when metadata is incomplete
-- External integrations like DeepDoc should be isolated behind shared adapters
+- 文档解析配置与运行时配置的转换必须保持对齐
+- 元数据不完整时，媒体解析应优雅降级
+- DeepDoc 这类外部集成应隔离在共享适配层之后
 
-## When Editing Backend Code
+## 修改后端代码时
 
-- Check whether the target code belongs to `feature` or `shared`
-- Check for duplicate implementations before adding new helpers
-- Update docs if you change canonical paths or architecture guidance
-- If you touch imports, verify there is no second stale import path left behind
+- 先确认目标代码属于 `feature` 还是 `shared`
+- 新增辅助函数前先查有无重复实现
+- 改动了权威路径或架构指引时，同步更新文档
+- 动了 import 就确认没留下第二条过期的 import 路径

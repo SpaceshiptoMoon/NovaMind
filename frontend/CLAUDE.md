@@ -1,58 +1,58 @@
-# CLAUDE.md - Frontend
+# CLAUDE.md — 前端
 
-## Overview
+## 概述
 
-The frontend is a Vue 3 + TypeScript application.
+前端是 Vue 3 + TypeScript 应用。
 
-Its job is to present workspace, knowledge-base, agent, and multimodal configuration flows clearly while staying aligned with backend API contracts.
+职责：清晰呈现工作台、知识库、智能体与多模态配置流程，同时与后端 API 契约保持对齐。
 
-## Directory Structure
+## 目录结构
 
-- `src/api/`: typed API access by domain
-- `src/components/`: reusable UI components by domain
-- `src/views/`: route-level pages
-- `src/stores/`: Pinia stores
-- `src/router/`: route definitions
-- `src/layouts/`: app shells and structural layouts
-- `src/types/`: shared frontend types
-- `src/utils/`: frontend-only helpers
+- `src/api/`：按领域分组的带类型 API 访问
+- `src/components/`：按领域分组的可复用 UI 组件
+- `src/views/`：路由级页面
+- `src/stores/`：Pinia store
+- `src/router/`：路由定义
+- `src/layouts/`：应用外壳与结构性布局
+- `src/types/`：前端共享类型
+- `src/utils/`：前端专用辅助函数
 
-## Domain Grouping Rules
+## 领域分组规则
 
-Keep domain code together.
+领域代码聚拢存放。
 
-Knowledge-base related UI should primarily live in:
+知识库相关 UI 主要放在：
 
 - `src/api/knowledge/`
 - `src/components/knowledge/`
 - `src/views/space/`
 
-Do not scatter knowledge-base form logic across unrelated generic folders if it can stay inside the knowledge domain.
+能留在知识领域内部的知识库表单逻辑，不要散落到无关的通用目录。
 
-## Component Boundaries
+## 组件边界
 
-- Views orchestrate data loading, page state, and route context
-- Domain components render reusable business UI
-- Generic base components should stay presentation-focused
-- Stores manage shared client state, not page-local temporary UI state unless reused
+- view 负责编排数据加载、页面状态与路由上下文
+- 领域组件渲染可复用的业务 UI
+- 通用基础组件保持纯展示职责
+- store 管理共享客户端状态；页面局部临时 UI 状态不放 store，除非确有复用
 
-## Coding Rules
+## 编码规则
 
-- TypeScript only for new logic
-- 2-space indentation
-- `PascalCase` for Vue SFC names
-- `camelCase` for composables, stores, utilities
-- Prefer strongly typed API responses and form models
-- Keep watchers and side effects readable and local
+- 新逻辑一律 TypeScript
+- 2 空格缩进
+- Vue 单文件组件（SFC）命名用 `PascalCase`
+- composable、store、工具函数用 `camelCase`
+- API 响应与表单模型优先强类型
+- watcher 与副作用保持可读且局部化
 
-## UI and UX Rules
+## UI 与 UX 规则
 
-- Preserve the existing design language unless a redesign is intentional
-- Knowledge-base config pages should make structure and processing flow obvious
-- Complex forms should group by user intent, not backend implementation detail
-- Use labels and helper text to explain mutually exclusive options and fallback behavior
+- 非有意重设计时，保持既有设计语言
+- 知识库配置页应让结构与处理流程一目了然
+- 复杂表单按用户意图分组，而非按后端实现细节分组
+- 用标签与辅助文字说明互斥选项与兜底行为
 
-## Layout Robustness Rules（抗压缩布局规范）
+## 抗压缩布局规范
 
 以 `src/views/space/DocumentTaskBatchView.vue`（任务列表页）为黄金基准：任意视口宽度（含 F12 手动压缩到极窄）下不穿模、不溢出、文字与容器框完整。新页面/改版必须达到同等鲁棒性，规则如下：
 
@@ -78,20 +78,20 @@ Do not scatter knowledge-base form logic across unrelated generic folders if it 
 
 - 交付前用浏览器 DevTools 拖拽视口从最宽压到 ~320px，全程检查：文字不溢出容器、边框/圆角不裁切内容、无横向滚动条（除表格/代码块等有意横向滚动的区域）、布局在断点处平滑切换无跳变。
 
-## API Alignment Rules
+## API 对齐规则
 
-- Frontend config models must match backend schema shape
-- If backend config nesting changes, update:
-  - API types
-  - form state
-  - submit transform
-  - display logic
-  - docs if needed
-- Do not silently rename fields on the frontend without confirming backend compatibility
+- 前端配置模型必须匹配后端 schema 形状
+- 后端配置嵌套变化时，同步更新：
+  - API 类型
+  - 表单状态
+  - 提交转换
+  - 展示逻辑
+  - 需要时更新文档
+- 未经后端兼容性确认，不在前端静默重命名字段
 
-## Validation Workflow
+## 验证工作流
 
-Run locally when relevant:
+相关场景下本地运行：
 
 - `npm run dev`
 - `npm run type-check`
@@ -99,11 +99,11 @@ Run locally when relevant:
 - `npm run format`
 - `npm run build`
 
-If existing unrelated type errors already exist, state that clearly and still verify the touched area as far as possible.
+若已存在与本次改动无关的类型错误，明确说明这一点，并尽可能验证被触碰的区域。
 
-## When Editing Frontend Code
+## 修改前端代码时
 
-- Check whether a change belongs in `view`, `component`, `store`, or `api`
-- Prefer extending existing domain components before adding duplicates
-- Keep forms understandable for both users and future developers
-- When changing backend-facing config screens, verify the payload shape being submitted
+- 先确认改动属于 `view`、`component`、`store` 还是 `api`
+- 优先扩展现有领域组件，而不是添加重复项
+- 表单要对用户和未来的开发者都可理解
+- 改面向后端的配置界面时，验证实际提交的 payload 形状
