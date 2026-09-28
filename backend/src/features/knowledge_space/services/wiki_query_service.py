@@ -46,7 +46,16 @@ def _to_list_item(page: WikiPage) -> WikiPageListItem:
 
 
 async def get_kb_or_fail(db: AsyncSession, kb_id: int, space_id: int):
-    """校验 KB 归属（存在 + 属于该空间 + 未删），失败抛 KnowledgeBaseNotFoundError。"""
+    """校验 KB 归属（存在 + 属于该空间 + 未删），失败抛 KnowledgeBaseNotFoundError。
+
+    Args:
+        db: 数据库会话。
+        kb_id: 知识库 ID。
+        space_id: 归属空间 ID。
+
+    Returns:
+        通过校验的知识库实例。
+    """
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
     from novamind.features.knowledge_space.repository.knowledge_base_repository import (
         KnowledgeBaseRepository,
@@ -59,7 +68,14 @@ async def get_kb_or_fail(db: AsyncSession, kb_id: int, space_id: int):
 
 
 def status_name(status: WikiIngestStatus) -> str:
-    """生成状态枚举转小写状态名，未知值回退 unknown。"""
+    """生成状态枚举转小写状态名，未知值回退 unknown。
+
+    Args:
+        status: WikiIngestStatus 枚举值。
+
+    Returns:
+        pending/running/done/failed/cancelled 之一。
+    """
     return _STATUS_NAMES.get(status, "unknown")
 
 
@@ -83,7 +99,20 @@ class WikiQueryService:
         category: str | None,
         q: str | None,
     ):
-        """分页列出页面（支持类型/状态/目录/关键词过滤），返回（列表项，总数）。"""
+        """分页列出页面（支持类型/状态/目录/关键词过滤），返回（列表项，总数）。
+
+        Args:
+            kb_id: 知识库 ID。
+            page: 页码（1-based）。
+            page_size: 每页条数。
+            page_type: 可选类型过滤，None 表示不过滤。
+            status: 可选状态过滤，None 表示不过滤。
+            category: 可选目录标签过滤，命中 category_path 任一标签。
+            q: 可选关键词，匹配标题/slug/摘要，None 表示不过滤。
+
+        Returns:
+            (列表项数组, 总数) 二元组。
+        """
         pages, total = await self.repo.list_pages(
             kb_id, page_type=page_type, status=status, category_label=category,
             query=q, page=page, page_size=page_size,
@@ -91,18 +120,43 @@ class WikiQueryService:
         return [_to_list_item(p) for p in pages], total
 
     async def get_page(self, *, kb_id: int, slug: str):
-        """按 slug 取存活页面，不存在抛 WikiPageNotFoundError。"""
+        """按 slug 取存活页面，不存在抛 WikiPageNotFoundError。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+
+        Returns:
+            页面 ORM 实例。
+        """
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
         return page
 
     async def search_pages(self, *, kb_id: int, q: str, limit: int):
-        """按关键词搜索页面（标题/slug/摘要/正文加权排序）。"""
+        """按关键词搜索页面（标题/slug/摘要/正文加权排序）。
+
+        Args:
+            kb_id: 知识库 ID。
+            q: 搜索关键词，空白词返回空列表。
+            limit: 返回条数上限（内部截断到 50）。
+
+        Returns:
+            带 rank 与 snippet 的搜索结果字典列表。
+        """
         return await self.repo.search_pages_ranked(kb_id, q, limit=limit)
 
     async def get_index(self, *, kb_id: int, per_page: int):
-        """索引页组装：三类分组 + 生成状态 + index intro。"""
+        """索引页组装：三类分组 + 生成状态 + index intro。
+
+        Args:
+            kb_id: 知识库 ID。
+            per_page: 每组条数上限。
+
+        Returns:
+            (分组列表, 是否生成中, index intro 文本) 三元组。
+        """
         groups: list[WikiIndexGroup] = []
         for page_type in ("entity", "concept", "summary"):
             items, total = await self.repo.list_pages(
@@ -124,14 +178,28 @@ class WikiQueryService:
         return groups, is_active, intro
 
     async def get_stats(self, *, kb_id: int):
-        """返回 KB 统计与是否生成中（最新履历处于 PENDING/RUNNING）。"""
+        """返回 KB 统计与是否生成中（最新履历处于 PENDING/RUNNING）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            (统计字典, 是否生成中) 二元组。
+        """
         stats = await self.repo.get_stats(kb_id)
         latest = await self.record_repo.get_latest_for_kb(kb_id)
         is_active = bool(latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING))
         return stats, is_active
 
     async def get_ingest_status(self, *, kb_id: int):
-        """返回 KB 最新一次生成履历（可能为 None）。"""
+        """返回 KB 最新一次生成履历（可能为 None）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            最新履历行；从未生成返回 None。
+        """
         return await self.record_repo.get_latest_for_kb(kb_id)
 
     async def get_page_sources(self, *, kb_id: int, slug: str):
@@ -171,7 +239,16 @@ class WikiQueryService:
         return page, source_documents, page.chunk_refs or []
 
     async def get_revision(self, *, kb_id: int, slug: str, version: int):
-        """取页面指定版本快照，页面或版本缺失抛 WikiPageNotFoundError。"""
+        """取页面指定版本快照，页面或版本缺失抛 WikiPageNotFoundError。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+            version: 目标版本号。
+
+        Returns:
+            版本快照 ORM 实例。
+        """
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -181,7 +258,15 @@ class WikiQueryService:
         return revision
 
     async def list_revisions(self, *, kb_id: int, slug: str):
-        """返回页面与其全部版本快照（按版本降序）。"""
+        """返回页面与其全部版本快照（按版本降序）。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+
+        Returns:
+            (页面, 快照列表) 二元组。
+        """
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -189,7 +274,16 @@ class WikiQueryService:
         return page, revisions
 
     async def list_issues(self, *, kb_id: int, status: str | None, limit: int):
-        """分页列出 KB 问题登记，可按状态过滤。"""
+        """分页列出 KB 问题登记，可按状态过滤。
+
+        Args:
+            kb_id: 知识库 ID。
+            status: 可选状态过滤（pending/ignored/resolved），None 表示不过滤。
+            limit: 返回条数上限。
+
+        Returns:
+            按 ID 降序的问题列表。
+        """
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )

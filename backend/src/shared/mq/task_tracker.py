@@ -31,14 +31,26 @@ class TaskTracker:
         return await get_redis_client()
 
     async def bind(self, entity_id: int | str, job_id: str) -> None:
-        """建立 entity_id → job_id 映射"""
+        """建立 entity_id 到 job_id 的映射（并刷新追踪 Hash TTL）。
+
+        Args:
+            entity_id: 业务实体 ID（如文档 ID），内部转为字符串作 Hash 字段。
+            job_id: arq 任务 ID。
+        """
         redis = await self._get_redis()
         await redis.hset(self._tracker_key, mapping={str(entity_id): job_id})
         await redis.expire(self._tracker_key, self._tracker_ttl)
         logger.debug("任务追踪：绑定映射", entity_id=entity_id, job_id=job_id)
 
     async def get_job_id(self, entity_id: int | str) -> str | None:
-        """获取 entity_id 对应的 arq job_id"""
+        """获取 entity_id 对应的 arq job_id。
+
+        Args:
+            entity_id: 业务实体 ID。
+
+        Returns:
+            job_id 字符串；无映射返回 None。
+        """
         redis = await self._get_redis()
         raw_client = redis.redis_client
         job_id = await raw_client.hget(self._tracker_key, str(entity_id))
@@ -49,7 +61,11 @@ class TaskTracker:
         return str(job_id)
 
     async def unbind(self, entity_id: int | str) -> None:
-        """移除 entity_id → job_id 映射（任务完成/失败后调用）"""
+        """移除 entity_id 到 job_id 的映射（任务完成/失败后调用）。
+
+        Args:
+            entity_id: 业务实体 ID。
+        """
         redis = await self._get_redis()
         raw_client = redis.redis_client
         await raw_client.hdel(self._tracker_key, str(entity_id))
@@ -62,20 +78,35 @@ class TaskTracker:
         return (await raw_client.hlen(self._tracker_key)) or 0
 
     async def mark_cancelled(self, entity_id: int | str) -> None:
-        """写取消标记供 worker 协作取消。"""
+        """写取消标记供 worker 协作取消（TTL 4 小时，覆盖长任务周期）。
+
+        Args:
+            entity_id: 业务实体 ID。
+        """
         redis = await self._get_redis()
         raw_client = redis.redis_client
         await raw_client.setex(f"{self._cancel_prefix}{entity_id}", CANCEL_KEY_TTL, "1")
         logger.info("已设置取消标记", entity_id=entity_id)
 
     async def is_cancelled(self, entity_id: int | str) -> bool:
-        """检查是否被标记为取消"""
+        """检查是否被标记为取消。
+
+        Args:
+            entity_id: 业务实体 ID。
+
+        Returns:
+            取消标记存在返回 True；标记已过期视为未取消。
+        """
         redis = await self._get_redis()
         raw_client = redis.redis_client
         return (await raw_client.get(f"{self._cancel_prefix}{entity_id}")) is not None
 
     async def clear_cancel(self, entity_id: int | str) -> None:
-        """清除取消标记"""
+        """清除取消标记。
+
+        Args:
+            entity_id: 业务实体 ID。
+        """
         redis = await self._get_redis()
         raw_client = redis.redis_client
         await raw_client.delete(f"{self._cancel_prefix}{entity_id}")

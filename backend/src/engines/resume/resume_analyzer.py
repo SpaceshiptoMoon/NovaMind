@@ -86,7 +86,16 @@ class ResumeAnalyzer:
         jd_text: str | None = None,
         config: dict | None = None,
     ) -> dict:
-        """完整分析流程 S4.5 → S9"""
+        """完整分析流程 S4.5 → S9。
+
+        Args:
+            resume: 结构化简历（原地补 resume_summary）。
+            jd_text: JD 原文；空则跳过 S5 技术图谱提取。
+            config: 配置 dict（breadth 控制追问广度），可空。
+
+        Returns:
+            含 jd_analysis / cross_mapping / probing_plan / prefix_knowledge / md_report 的 dict。
+        """
         cfg = config or {}
         breadth = cfg.get("breadth", 3)
 

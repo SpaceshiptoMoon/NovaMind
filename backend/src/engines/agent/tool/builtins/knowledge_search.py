@@ -164,7 +164,16 @@ class KnowledgeSearchTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """校验 context 中的检索端口后按工具名分发执行；端口未配置返回错误 JSON。"""
+        """校验 context 中的检索端口后按工具名分发执行；端口未配置返回错误 JSON。
+
+        Args:
+            tool_name: 工具名：空间发现 / KB 浏览（单个与跨空间）/ 检索 / 文档列表五者之一。
+            arguments: 工具参数（space_id/kb_id/query 等，逐工具不同）。
+            context: 执行上下文：knowledge_search_port 与 user_id。
+
+        Returns:
+            JSON 文本：命中为结果集，无权限或异常为 {error}；未知工具为纯文本提示。
+        """
         port = context.get("knowledge_search_port")
         if port is None:
             return json.dumps(

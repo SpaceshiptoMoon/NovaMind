@@ -79,7 +79,16 @@ class DocumentQueryService:
         status: int | None = None,
         keyword: str | None = None,
     ) -> int:
-        """统计知识库中的文档数量"""
+        """统计知识库中的文档数量。
+
+        Args:
+            kb_id: 知识库 ID。
+            status: 可选任务状态过滤，None 表示不过滤。
+            keyword: 可选文件名子串过滤，None 表示不过滤。
+
+        Returns:
+            满足过滤条件的文档总数（配对 get_kb_documents 做分页 total）。
+        """
         return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status, keyword=keyword)
 
     async def get_filename_map(self, document_ids: list[int]) -> dict[int, str]:

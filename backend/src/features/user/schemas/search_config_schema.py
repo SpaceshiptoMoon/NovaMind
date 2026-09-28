@@ -30,7 +30,17 @@ class SearchConfigBase(BaseModel):
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        """验证搜索服务商白名单"""
+        """验证搜索服务商属白名单并归一为小写。
+
+        Args:
+            v: 待校验的服务商字符串。
+
+        Returns:
+            归一为小写后的服务商名。
+
+        Raises:
+            ValueError: 不在 tavily/serpapi/duckduckgo 白名单内。
+        """
         allowed = {"tavily", "serpapi", "duckduckgo"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的搜索服务商: {v}，支持: {allowed}")
@@ -95,7 +105,17 @@ class SearchTestRequest(BaseModel):
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        """校验搜索服务商属白名单（tavily/serpapi/duckduckgo）并归一为小写。"""
+        """校验搜索服务商属白名单（tavily/serpapi/duckduckgo）并归一为小写。
+
+        Args:
+            v: 待校验的服务商字符串。
+
+        Returns:
+            归一为小写后的服务商名。
+
+        Raises:
+            ValueError: 不在白名单内。
+        """
         allowed = {"tavily", "serpapi", "duckduckgo"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的搜索服务商: {v}")

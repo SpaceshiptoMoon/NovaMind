@@ -101,7 +101,16 @@ class TodoTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """按会话 ID 读或写任务清单：无 items 时读当前列表，有 items 时按 merge 写入并返回统计。"""
+        """按会话 ID 读或写任务清单：无 items 时读当前列表，有 items 时按 merge 写入并返回统计。
+
+        Args:
+            tool_name: 工具名（仅认 todo）。
+            arguments: 工具参数：items 与 merge；无 items 即读模式。
+            context: 执行上下文：conversation_id。
+
+        Returns:
+            JSON 文本：读模式为 items/total/active 统计；写模式为更新消息 + 同组统计。
+        """
         conversation_id = context.get("conversation_id")
 
         if not conversation_id:

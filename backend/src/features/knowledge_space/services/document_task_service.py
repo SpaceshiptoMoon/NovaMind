@@ -386,7 +386,24 @@ class DocumentTaskService:
         batch_creator_id: int | None = None,
         batch_note: str | None = None,
     ) -> dict[str, Any]:
-        """重试文档处理，支持 FAILED、COMPLETED 和 CANCELLED 状态。"""
+        """重试文档处理，支持 FAILED、COMPLETED 和 CANCELLED 状态。
+
+        Args:
+            document_id: 文档 ID。
+            kb_id: 知识库 ID（归属校验用）。
+            space_id: 空间 ID（归属校验用）。
+            batch_id: 可选复用已有批次；None 且给 batch_creator_id 时新建单文档批次。
+            batch_creator_id: 可选新批次的创建人 ID。
+            batch_note: 可选批次备注。
+
+        Returns:
+            任务信息字典：document/task_id/parent_task_id/task_item_id/job_id。
+
+        Raises:
+            DocumentNotFoundError: 文档不存在或不属于该 KB/空间。
+            DocumentAlreadyProcessingError: 文档已有活跃处理任务。
+            InvalidParameterError: 最新任务状态不在可重试范围内。
+        """
         document = await self._validate_document_not_processing(document_id)
         if document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)

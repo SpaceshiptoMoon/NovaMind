@@ -219,7 +219,16 @@ class WikiTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """按函数名分发到对应实现；缺 db 会话或 user_id 上下文直接返回错误 JSON。"""
+        """按函数名分发到对应实现；缺 db 会话或 user_id 上下文直接返回错误 JSON。
+
+        Args:
+            tool_name: wiki_* 函数名，须在 8 个已声明 schema 内。
+            arguments: LLM 传入的参数，语义随函数而异。
+            context: 工具上下文，须含 db_session 与 user_id。
+
+        Returns:
+            对应实现的 JSON 输出；未知函数名或缺上下文返回含 error 的 JSON。
+        """
         db = context.get("db_session")
         user_id = context.get("user_id")
         if not db or user_id is None:

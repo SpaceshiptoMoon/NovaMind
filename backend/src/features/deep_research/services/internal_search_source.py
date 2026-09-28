@@ -48,7 +48,18 @@ class HostInternalSearchPort:
         self._logger = logger
 
     async def search(self, query: str, *, top_k: int = 10) -> list[dict[str, Any]]:
-        """执行内部 RAG 检索，返回归一化结果字典列表。"""
+        """执行内部 RAG 检索，返回归一化结果字典列表。
+
+        Args:
+            query: 研究问题或步骤查询文本。
+            top_k: keyword-only，单库检索条数；实际截断用 internal_config.top_k。
+
+        Returns:
+            按 score 降序的统一 dict 列表（source_type/content/kb_id/score 等）；空间无活跃知识库返回空列表。
+
+        Raises:
+            DeepResearchError: 检索过程异常（原始异常已记日志并包装）。
+        """
         config = self._config
         space_id = self._space_id
         user_id = self._user_id
@@ -139,7 +150,19 @@ def as_internal_search_port(
     internal_config: InternalSearchConfig,
     logger: object | None = None,
 ) -> HostInternalSearchPort:
-    """构造内部检索宿主实例（供装配点注入引擎）。"""
+    """构造内部检索宿主实例（供装配点注入引擎）。
+
+    Args:
+        search_port: SearchService 实例，实际执行多租户 KB 检索。
+        kb_repo: 知识库仓储，用于解析候选 KB 列表。
+        space_id: 当前空间 ID，检索范围边界。
+        user_id: 当前用户 ID，透传给检索服务。
+        internal_config: 内部检索配置（kb_ids/search_mode/top_k/权重/重排）。
+        logger: 可选日志器；None 时静默降级不打日志。
+
+    Returns:
+        绑定好上下文的 HostInternalSearchPort 实例。
+    """
     return HostInternalSearchPort(
         search_port=search_port,
         kb_repo=kb_repo,

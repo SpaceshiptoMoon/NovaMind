@@ -108,7 +108,27 @@ class AgentChatService:
         approval_registry: Any | None = None,
         event_sink: Any | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）"""
+        """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: Agent 主键 ID。
+            content: 用户输入正文。
+            session_id: 业务会话 ID；None 时新建会话。
+            llm_model: 覆盖 Agent 配置的模型名；None 用 Agent 配置或用户默认。
+            enable_thinking: 是否启用思考过程输出。
+            stream: 是否流式生成。
+            attachment_ids: 随消息引用的附件 ID 列表。
+            approval_registry: 异步审批注册表（WS 端点注入，DANGEROUS 工具需用户决策）。
+            event_sink: 审批请求等旁路事件的接收器。
+
+        Returns:
+            事件字典异步生成器，涵盖 session/context_usage/compaction/content/reasoning/
+            tool_call/tool_result/sources/done/error 等类型。
+
+        Raises:
+            AgentError: 未配置可用的 LLM 模型（经 error 事件 yield，不以异常冒泡）。
+        """
         try:
             agent, conv, user_msg = await self._prepare(
                 user_id, agent_id, content, session_id, llm_model, attachment_ids

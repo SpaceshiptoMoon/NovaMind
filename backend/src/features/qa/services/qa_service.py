@@ -66,7 +66,20 @@ class QAService:
     async def add_message(
         self, request: QARequest, user_id: int
     ) -> QAResponse:
-        """添加消息到用户会话"""
+        """添加消息到用户会话。
+
+        Args:
+            request: 消息请求（content/role/session_id/kb_id/space_id/extra）；session_id 缺省时自动生成 UUID。
+            user_id: 消息归属用户 ID。
+
+        Returns:
+            新消息响应对象。
+
+        Raises:
+            InvalidMessageContentError: 消息内容为空或纯空白。
+            DatabaseOperationError: 数据库写入失败。
+            QAError: 其他未分类异常。
+        """
         try:
             if not request.content or not request.content.strip():
                 raise InvalidMessageContentError("消息内容不能为空")
@@ -109,7 +122,20 @@ class QAService:
     async def get_session_messages(
         self, session_id: str, user_id: int
     ) -> list[QAResponse]:
-        """获取用户特定会话的所有消息（带缓存，附当前用户反馈回显）"""
+        """获取用户特定会话的所有消息（带缓存，附当前用户反馈回显）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 用户 ID（SQL 层过滤，避免跨用户泄露）。
+
+        Returns:
+            按时间序的消息响应列表，会话无消息返回空列表。
+
+        Raises:
+            SessionNotFoundError: 会话 ID 为空或会话已被删除。
+            DatabaseOperationError: 数据库查询失败。
+            QAError: 其他未分类异常。
+        """
         feedback_repo = MessageFeedbackRepository(self.repository.session)
         try:
             if not session_id:
@@ -197,7 +223,20 @@ class QAService:
     async def get_user_sessions(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> tuple[list[dict[str, str]], int]:
-        """获取用户的所有会话列表（含预览，支持分页）"""
+        """获取用户的所有会话列表（含预览，支持分页）。
+
+        Args:
+            user_id: 用户 ID。
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            (会话预览字典列表, 总数) 二元组。
+
+        Raises:
+            DatabaseOperationError: 数据库查询失败。
+            QAError: 其他未分类异常。
+        """
         try:
             return await self.repository.get_user_sessions_with_preview(user_id, limit, offset)
         except SQLAlchemyError as e:
@@ -263,7 +302,22 @@ class QAService:
         request: QAUpdateRequest,
         user_id: int,
     ) -> QAResponse | None:
-        """更新消息内容（校验归属，非本人消息抛 MessageNotFoundError）。"""
+        """更新消息内容（校验归属，非本人消息视为不存在）。
+
+        Args:
+            message_id: 消息 ID。
+            request: 更新请求（content/role，None 字段跳过）。
+            user_id: 当前用户 ID，用于归属校验。
+
+        Returns:
+            更新后的消息响应；消息不存在返回 None（由路由转 404）。
+
+        Raises:
+            MessageNotFoundError: 消息不存在或不属于当前用户。
+            InvalidMessageContentError: 新内容为空或纯空白。
+            DatabaseOperationError: 数据库更新失败。
+            QAError: 其他未分类异常。
+        """
         try:
             message = await self.repository.get_by_id(message_id)
             if not message or message.user_id != user_id:
@@ -309,7 +363,20 @@ class QAService:
     async def delete_message(
         self, message_id: int, user_id: int
     ) -> bool:
-        """删除单条消息并失效会话缓存（校验归属）。"""
+        """删除单条消息并失效会话缓存（校验归属）。
+
+        Args:
+            message_id: 消息 ID。
+            user_id: 当前用户 ID，用于归属校验。
+
+        Returns:
+            是否实际删除。
+
+        Raises:
+            MessageNotFoundError: 消息不存在或不属于当前用户。
+            DatabaseOperationError: 数据库删除失败。
+            QAError: 其他未分类异常。
+        """
         try:
             message = await self.repository.get_by_id(message_id)
             if not message or message.user_id != user_id:
@@ -333,7 +400,14 @@ class QAService:
             raise QAError(f"删除消息失败: {str(e)}") from e
 
     async def cleanup_message(self, message_id: int) -> None:
-        """清理残留消息（用于异常恢复场景）"""
+        """清理残留消息（用于异常恢复场景）。
+
+        Args:
+            message_id: 消息 ID。
+
+        Returns:
+            无返回；删除失败仅记告警不抛出。
+        """
         try:
             await self.repository.delete(message_id)
         except Exception as e:
@@ -350,7 +424,20 @@ class QAService:
     async def delete_session(
         self, session_id: str, user_id: int
     ) -> int:
-        """删除会话中的所有消息"""
+        """删除会话（消息/配置/摘要一并清除并失效全部缓存）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 当前用户 ID。
+
+        Returns:
+            删除的消息条数。
+
+        Raises:
+            SessionNotFoundError: 会话 ID 为空。
+            DatabaseOperationError: 数据库删除失败。
+            QAError: 其他未分类异常。
+        """
         try:
             if not session_id:
                 raise SessionNotFoundError(session_id)
@@ -518,7 +605,19 @@ class QAService:
     async def create_session_config(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> Any:
-        """创建会话配置并失效缓存，保证后续读立即生效。"""
+        """创建会话配置并失效缓存，保证后续读立即生效。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            compression_config: 压缩配置字典（strategy/threshold/target_tokens/keep_recent 等）。
+
+        Returns:
+            创建的会话配置（只 flush，事务由路由层提交）。
+
+        Raises:
+            SessionConfigAlreadyExistsError: 该会话已有配置（仓储层唯一冲突时）。
+        """
         config = await self.session_config_repo.create(
             session_id, user_id, compression_config,
         )
@@ -537,7 +636,18 @@ class QAService:
             raise UnauthorizedAccessException("无权操作此会话配置")
 
     async def get_session_config(self, session_id: str, user_id: int):
-        """读会话配置；无记录返回 None（调用方回落默认值），归属不符抛 403。"""
+        """读会话配置；无记录返回 None（调用方回落默认值）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 当前用户 ID，用于归属校验。
+
+        Returns:
+            会话配置，无记录返回 None。
+
+        Raises:
+            UnauthorizedAccessException: 配置存在但归属其他用户（映射 403）。
+        """
         from novamind.features.qa.exceptions import UnauthorizedAccessException
 
         config = await self.session_config_repo.get_by_session_id(session_id)
@@ -546,7 +656,18 @@ class QAService:
         return config
 
     async def delete_session_config(self, session_id: str, user_id: int) -> bool:
-        """删会话配置（归属校验 + 删 + 失效缓存）。Returns: 是否实际删除。"""
+        """删会话配置（归属校验 + 删 + 失效缓存）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 当前用户 ID，用于归属校验。
+
+        Returns:
+            是否实际删除（本就无配置返回 False）。
+
+        Raises:
+            UnauthorizedAccessException: 配置归属其他用户（映射 403）。
+        """
         from novamind.features.qa.exceptions import UnauthorizedAccessException
 
         existing = await self.session_config_repo.get_by_session_id(session_id)
@@ -561,7 +682,16 @@ class QAService:
     async def update_compression_config(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> Any:
-        """更新会话压缩配置并失效缓存。"""
+        """更新会话压缩配置并失效缓存。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            compression_config: 压缩配置字典（strategy/threshold/target_tokens/keep_recent 等）。
+
+        Returns:
+            更新后的会话配置（不存在则按默认创建）。
+        """
         config = await self.session_config_repo.update_compression(
             session_id, user_id, compression_config,
         )
@@ -571,7 +701,16 @@ class QAService:
     async def update_llm_config(
         self, session_id: str, user_id: int, llm_config: dict,
     ) -> Any:
-        """更新会话模型生成参数并失效缓存。"""
+        """更新会话模型生成参数并失效缓存。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            llm_config: 生成参数字典（max_tokens/temperature/top_p/system_prompt 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         config = await self.session_config_repo.update_llm_config(
             session_id, user_id, llm_config,
         )
@@ -581,7 +720,16 @@ class QAService:
     async def update_web_search_config(
         self, session_id: str, user_id: int, web_search_config: dict,
     ) -> Any:
-        """更新会话联网搜索配置并失效缓存。"""
+        """更新会话联网搜索配置并失效缓存。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            web_search_config: 联网搜索配置字典（provider/max_results 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         config = await self.session_config_repo.update_web_search_config(
             session_id, user_id, web_search_config,
         )
@@ -591,7 +739,16 @@ class QAService:
     async def upsert_rag_binding(
         self, session_id: str, user_id: int, rag_config: dict,
     ) -> Any:
-        """更新会话知识库绑定（自动 RAG）并失效缓存。"""
+        """更新会话知识库绑定（自动 RAG）并失效缓存。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            rag_config: RAG 绑定配置字典（auto_rag/space_id/kb_ids/refusal_enabled 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         config = await self.session_config_repo.upsert_rag_binding(
             session_id, user_id, rag_config,
         )
@@ -599,7 +756,11 @@ class QAService:
         return config
 
     async def invalidate_session_config_cache(self, session_id: str) -> None:
-        """失效会话配置缓存（Redis 不可用时静默跳过）"""
+        """失效会话配置缓存（Redis 不可用时静默跳过）。
+
+        Args:
+            session_id: 会话 ID。
+        """
         if self.cache_service:
             try:
                 await self.cache_service.invalidate_session_config(session_id)
@@ -814,7 +975,17 @@ class QAService:
         )
 
     async def get_compression_llm_client(self, user_id: int):
-        """获取用于压缩摘要的 LLM 客户端（用户默认 LLM）"""
+        """获取用于压缩摘要的 LLM 客户端（用户默认 LLM）。
+
+        Args:
+            user_id: 用户 ID，用于查其默认 LLM 配置。
+
+        Returns:
+            用户默认模型的 LLM 客户端。
+
+        Raises:
+            QAError: 未配置 ModelConfigService 或用户未配置 LLM 模型。
+        """
         if not self.model_config_service:
             raise QAError("未配置 ModelConfigService，无法执行压缩")
         default_model = await self.model_config_service.get_user_default_model_name(user_id, "llm")

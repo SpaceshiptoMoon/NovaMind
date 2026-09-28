@@ -90,7 +90,14 @@ class MinioClient:
     # ========== 桶管理 ==========
 
     async def bucket_exists(self, bucket_name: str) -> bool:
-        """检查存储桶是否存在"""
+        """检查存储桶是否存在。
+
+        Args:
+            bucket_name: 存储桶名。
+
+        Returns:
+            存在返回 True；S3 异常记 error 并返回 False。
+        """
         try:
             return await asyncio.to_thread(self.client.bucket_exists, bucket_name)
         except S3Error as e:
@@ -98,7 +105,17 @@ class MinioClient:
             return False
 
     async def create_bucket(self, bucket_name: str) -> bool:
-        """创建存储桶（幂等：已存在时跳过）。"""
+        """创建存储桶（幂等：已存在时跳过）。
+
+        Args:
+            bucket_name: 存储桶名。
+
+        Returns:
+            实际执行了创建返回 True；已存在返回 False。
+
+        Raises:
+            minio.error.S3Error: 创建失败（网络/权限等）原样抛出。
+        """
         try:
             if not await self.bucket_exists(bucket_name):
                 await asyncio.to_thread(self.client.make_bucket, bucket_name)
@@ -110,7 +127,14 @@ class MinioClient:
             raise
 
     async def ensure_bucket_exists(self, bucket_name: str) -> None:
-        """确保存储桶存在"""
+        """确保存储桶存在（不存在则创建）。
+
+        Args:
+            bucket_name: 存储桶名。
+
+        Raises:
+            minio.error.S3Error: 创建失败时经 create_bucket 透传。
+        """
         if not await self.bucket_exists(bucket_name):
             await self.create_bucket(bucket_name)
 
@@ -940,7 +964,19 @@ class MinioClient:
         return object_name
 
     async def upload_file(self, object_name: str, file_data: bytes, content_type: str = "application/octet-stream") -> str:
-        """异步通用文件上传，返回 object_name"""
+        """异步通用文件上传（先确保默认桶存在，重活下放线程池）。
+
+        Args:
+            object_name: 目标对象名（经 PathStrategy 生成）。
+            file_data: 文件原始字节。
+            content_type: MIME 类型，默认 application/octet-stream。
+
+        Returns:
+            对象名（与入参 object_name 一致）。
+
+        Raises:
+            minio.error.S3Error: 上传失败时记 error 后原样抛出。
+        """
         bucket_name = self.default_bucket
         await self.ensure_bucket_exists(bucket_name)
         try:

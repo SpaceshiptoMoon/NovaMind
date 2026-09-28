@@ -115,7 +115,17 @@ class NotificationService:
         offset: int = 0,
         unread_only: bool = False,
     ) -> NotificationListResponse:
-        """分页读取用户通知（新→旧排列）。"""
+        """分页读取用户通知（新到旧排列），附未读总数。
+
+        Args:
+            user_id: 用户 ID。
+            limit: 单页条数上限。
+            offset: 分页偏移量。
+            unread_only: True 时仅返回未读通知。
+
+        Returns:
+            含 items/total/unread_count 的响应模型；unread_count 不受分页与 unread_only 影响，恒为全量未读数。
+        """
         notifications, total = await self._repo.list_by_user(
             user_id, limit, offset, unread_only
         )
@@ -128,27 +138,64 @@ class NotificationService:
         )
 
     async def mark_read(self, notification_id: int, user_id: int) -> bool:
-        """标记单条通知为已读"""
+        """标记单条通知为已读（带归属校验，仅本人通知生效）。
+
+        Args:
+            notification_id: 通知记录 ID。
+            user_id: 当前用户 ID，与通知归属匹配才更新。
+
+        Returns:
+            是否命中并更新（False 表示通知不存在或不属于该用户，调用方转 404）。
+        """
         return await self._repo.mark_read(notification_id, user_id)
 
     async def mark_all_read(self, user_id: int) -> int:
-        """标记所有通知为已读"""
+        """把该用户全部未读通知标记为已读，返回更新条数。
+
+        Args:
+            user_id: 用户 ID，只影响本人通知。
+
+        Returns:
+            本次实际置为已读的条数（已读的不重复计数，可为 0）。
+        """
         return await self._repo.mark_all_read(user_id)
 
     async def get_unread_count(self, user_id: int) -> UnreadCountResponse:
-        """未读计数（红点/角标数据源）。"""
+        """查询用户未读通知数（红点/角标数据源）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            含 unread_count 的响应模型，无未读时为 0。
+        """
         count = await self._repo.get_unread_count(user_id)
         return UnreadCountResponse(unread_count=count)
 
     async def get_preferences(self, user_id: int) -> NotificationPreferenceResponse:
-        """读取通知渠道偏好（首读惰性落默认行）。"""
+        """读取通知渠道偏好（首读惰性落默认行）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            偏好响应模型；用户无偏好记录时自动创建全渠道默认开启的行并返回。
+        """
         pref = await self._pref_repo.get_or_create(user_id)
         return NotificationPreferenceResponse.model_validate(pref)
 
     async def update_preferences(
         self, user_id: int, data: dict
     ) -> NotificationPreferenceResponse:
-        """合并式更新通知偏好（只覆盖传入的渠道开关）。"""
+        """合并式更新通知偏好（只覆盖传入的渠道开关，其余保留）。
+
+        Args:
+            user_id: 用户 ID；无偏好记录时先惰性创建默认行。
+            data: 待更新字段 dict（email_enabled/in_app_enabled/types_enabled）；None 值跳过不覆盖。
+
+        Returns:
+            更新后的偏好响应模型（完整行，不只返回变更字段）。
+        """
         pref = await self._pref_repo.update(user_id, data)
         return NotificationPreferenceResponse.model_validate(pref)
 

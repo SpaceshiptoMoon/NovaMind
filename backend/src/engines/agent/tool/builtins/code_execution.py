@@ -84,7 +84,16 @@ class CodeExecutionTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """路由 run_code 到沙箱执行，未知工具名返回错误 JSON。"""
+        """路由 run_code 到沙箱执行，未知工具名返回错误 JSON。
+
+        Args:
+            tool_name: 工具名（仅认 run_code）。
+            arguments: 工具参数（code/language/timeout）。
+            context: 执行上下文（本工具不读取）。
+
+        Returns:
+            JSON 文本：成功为 stdout/stderr/exit_code 等执行摘要，参数缺失或失败为 {error}。
+        """
         if tool_name == "run_code":
             return await self._run_code(arguments)
         return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)

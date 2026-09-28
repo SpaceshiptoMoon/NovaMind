@@ -166,7 +166,14 @@ async def persist_parsed_text(
 
 
 def extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, Any]:
-    """从解析元数据提取轻量摘要（解析器类/模式/区域计数），供任务进度展示。"""
+    """从解析元数据提取轻量摘要（解析器类/模式/区域计数），供任务进度展示。
+
+    Args:
+        parse_metadata: 解析阶段产出的元数据字典。
+
+    Returns:
+        含 parser_class/pdf_mode 与表格/插图/阅读序区域计数的字典。
+    """
     table_regions = list(parse_metadata.get("table_regions") or [])
     figure_regions = list(parse_metadata.get("figure_regions") or [])
     reading_order = list(parse_metadata.get("reading_order") or [])

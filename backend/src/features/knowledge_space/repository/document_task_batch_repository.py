@@ -23,7 +23,14 @@ class DocumentTaskBatchRepository:
         self.logger = logger
 
     async def create(self, data: dict[str, Any]) -> DocumentTaskBatch:
-        """创建批次行并 flush 取自增 ID。"""
+        """创建批次行并 flush 取自增 ID。
+
+        Args:
+            data: 批次字段字典（space_id/kb_id/creator_id/action 等）。
+
+        Returns:
+            flush 并 refresh 后的批次实例；提交由调用方控制。
+        """
         batch = DocumentTaskBatch(**data)
         self.session.add(batch)
         await self.session.flush()
@@ -31,12 +38,26 @@ class DocumentTaskBatchRepository:
         return batch
 
     async def get_by_id(self, batch_id: int) -> DocumentTaskBatch | None:
-        """按主键查批次，不存在返回 None。"""
+        """按主键查批次，不存在返回 None。
+
+        Args:
+            batch_id: 批次主键。
+
+        Returns:
+            命中返回批次；未命中返回 None。
+        """
         result = await self.session.execute(select(DocumentTaskBatch).where(DocumentTaskBatch.id == batch_id))
         return result.scalar_one_or_none()
 
     async def delete(self, batch_id: int) -> bool:
-        """删除批次行（子任务级联删除），批次不存在返回 False。"""
+        """删除批次行（子任务级联删除），批次不存在返回 False。
+
+        Args:
+            batch_id: 批次主键。
+
+        Returns:
+            删除成功 True；批次不存在 False。
+        """
         batch = await self.get_by_id(batch_id)
         if not batch:
             return False
@@ -45,7 +66,16 @@ class DocumentTaskBatchRepository:
         return True
 
     async def list_by_kb(self, kb_id: int, skip: int = 0, limit: int = 50) -> list[DocumentTaskBatch]:
-        """分页列出 KB 内至少含一个子任务的批次（按 ID 降序）。"""
+        """分页列出 KB 内至少含一个子任务的批次（按 ID 降序）。
+
+        Args:
+            kb_id: 知识库 ID。
+            skip: 分页偏移量。
+            limit: 单页条数上限。
+
+        Returns:
+            按 ID 降序的批次页；空批次被过滤不出现。
+        """
         result = await self.session.execute(
             select(DocumentTaskBatch)
             .where(DocumentTaskBatch.kb_id == kb_id)
@@ -61,7 +91,14 @@ class DocumentTaskBatchRepository:
         return list(result.scalars().all())
 
     async def count_by_kb(self, kb_id: int) -> int:
-        """统计 KB 内至少含一个子任务的批次总数。"""
+        """统计 KB 内至少含一个子任务的批次总数。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            有效批次总数（配对 list_by_kb 做分页 total）。
+        """
         result = await self.session.execute(
             select(func.count(DocumentTaskBatch.id))
             .where(DocumentTaskBatch.kb_id == kb_id)
@@ -74,7 +111,14 @@ class DocumentTaskBatchRepository:
         return result.scalar() or 0
 
     async def refresh_summary(self, batch_id: int) -> DocumentTaskBatch | None:
-        """按子任务状态聚合刷新批次计数、汇总与状态机，含终态时间戳写入，flush-only。"""
+        """按子任务状态聚合刷新批次计数、汇总与状态机，含终态时间戳写入，flush-only。
+
+        Args:
+            batch_id: 批次主键。
+
+        Returns:
+            刷新后的批次；不存在返回 None，提交由调用方控制。
+        """
         batch = await self.get_by_id(batch_id)
         if not batch:
             return None

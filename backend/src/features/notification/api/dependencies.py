@@ -10,5 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def get_notification_service(
     db: AsyncSession = Depends(get_db),
 ) -> NotificationService:
-    """装配通知服务（DB 会话注入）。"""
+    """装配通知服务（DB 会话注入）。
+
+    Args:
+        db: 请求级异步数据库会话。
+
+    Returns:
+        绑定该会话的 NotificationService 实例。
+    """
     return NotificationService(db)

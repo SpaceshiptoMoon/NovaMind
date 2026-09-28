@@ -165,7 +165,15 @@ class ModelConfigService:
         user_id: int,
         model_type: str | None = None
     ) -> ModelConfigListResponse:
-        """获取用户的模型配置列表"""
+        """获取用户的模型配置列表（api_key 脱敏）。
+
+        Args:
+            user_id: 用户 ID。
+            model_type: 模型类型过滤（llm/embedding 等）；None 表示全部。
+
+        Returns:
+            含 total 与 items 的列表响应。
+        """
         configs = await self.repo.list_by_user(user_id, model_type)
         total = await self.repo.count_by_user(user_id, model_type)
 
@@ -173,7 +181,18 @@ class ModelConfigService:
         return ModelConfigListResponse(total=total, items=items)
 
     async def get_config(self, user_id: int, config_id: int) -> ModelConfigResponse:
-        """读取单个模型客户端配置（归属校验，密钥不解密回显）。"""
+        """读取单个模型客户端配置（归属校验，密钥不回显明文）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+
+        Returns:
+            脱敏后的配置响应。
+
+        Raises:
+            ModelConfigNotFoundError: 配置不存在或不属于当前用户。
+        """
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:
@@ -186,7 +205,19 @@ class ModelConfigService:
         data: ModelConfigCreate,
         user_id: int,
     ) -> ModelConfigResponse:
-        """创建模型客户端配置（API Key 加密落库）。"""
+        """创建模型客户端配置（API Key 加密落库）。
+
+        Args:
+            data: 创建数据（同用户同 model_type+model 唯一）。
+            user_id: 归属用户 ID。
+
+        Returns:
+            脱敏后的配置响应（embedding 类型会自动探测并写入向量维度）。
+
+        Raises:
+            ModelConfigAlreadyExistsError: 同用户下相同类型与模型名的配置已存在。
+            ModelConfigTestFailedError: 连接验证失败或 embedding 维度探测失败。
+        """
         # 检查是否已存在相同模型
         existing = await self.repo.get_by_user_and_model(
             user_id, data.model_type, data.model
@@ -251,7 +282,21 @@ class ModelConfigService:
         config_id: int,
         data: ModelConfigUpdate
     ) -> ModelConfigResponse:
-        """更新模型客户端配置（密钥字段为空则沿用原值）。"""
+        """更新模型客户端配置（密钥字段为空则沿用原值）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+            data: 更新数据（None 字段不改；api_key 传空串视为清空，传值则加密覆盖）。
+
+        Returns:
+            脱敏后的配置响应（关键连接字段变更时强制重验连接）。
+
+        Raises:
+            ModelConfigNotFoundError: 配置不存在或不属于当前用户。
+            ModelConfigAlreadyExistsError: 改名的目标模型名已存在同类型配置。
+            ModelConfigTestFailedError: 连接重验失败。
+        """
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:
@@ -350,7 +395,15 @@ class ModelConfigService:
         return self._build_response(config)
 
     async def delete_config(self, user_id: int, config_id: int) -> None:
-        """删除模型客户端配置（引用方后续调用将失败）。"""
+        """删除模型客户端配置（引用方后续调用将失败）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+
+        Raises:
+            ModelConfigNotFoundError: 配置不存在或不属于当前用户。
+        """
         config = await self.repo.get_by_id(config_id)
 
         if not config or config.user_id != user_id:
@@ -402,7 +455,16 @@ class ModelConfigService:
         model_type: str,
         model: str
     ) -> None:
-        """根据模型类型和名称删除配置"""
+        """根据模型类型和名称删除配置。
+
+        Args:
+            user_id: 归属用户 ID。
+            model_type: 模型类型（llm/embedding 等）。
+            model: 模型名称。
+
+        Raises:
+            ModelConfigNotFoundError: 该类型与模型名的配置不存在。
+        """
         config = await self.repo.get_by_user_and_model(user_id, model_type, model)
         if not config:
             raise ModelConfigNotFoundError(message=f"{model_type}/{model} 不存在")
@@ -476,7 +538,18 @@ class ModelConfigService:
         user_id: int,
         model: str
     ) -> BaseLLM:
-        """根据模型名称获取 LLM 客户端"""
+        """根据模型名称获取 LLM 客户端（带进程内缓存）。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名称。
+
+        Returns:
+            LLM 客户端实例。
+
+        Raises:
+            ModelConfigNotFoundError: 该模型配置不存在。
+        """
         return await self._get_client_by_model(
             user_id, model, "llm",
             create_from_credentials=lambda c: create_llm_client(
@@ -495,7 +568,18 @@ class ModelConfigService:
         user_id: int,
         model: str
     ) -> BaseLLM:
-        """根据模型名称获取 VLM 客户端（复用 LLM 工厂）"""
+        """根据模型名称获取 VLM 客户端（复用 LLM 工厂）。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名称。
+
+        Returns:
+            VLM 客户端实例。
+
+        Raises:
+            ModelConfigNotFoundError: 该模型配置不存在。
+        """
         return await self._get_client_by_model(
             user_id, model, "vlm",
             create_from_credentials=lambda c: create_llm_client(
@@ -514,7 +598,18 @@ class ModelConfigService:
         user_id: int,
         model: str
     ) -> BaseEmbedding:
-        """根据模型名称获取 Embedding 客户端"""
+        """根据模型名称获取 Embedding 客户端（带期望维度校验）。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名称。
+
+        Returns:
+            Embedding 客户端实例。
+
+        Raises:
+            ModelConfigNotFoundError: 该模型配置不存在。
+        """
         return await self._get_client_by_model(
             user_id, model, "embedding",
             create_from_credentials=lambda c: create_embedding_client(
@@ -534,7 +629,18 @@ class ModelConfigService:
         user_id: int,
         model: str
     ) -> BaseRerank:
-        """根据模型名称获取 Rerank 客户端"""
+        """根据模型名称获取 Rerank 客户端。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名称。
+
+        Returns:
+            Rerank 客户端实例。
+
+        Raises:
+            ModelConfigNotFoundError: 该模型配置不存在。
+        """
         return await self._get_client_by_model(
             user_id, model, "rerank",
             create_from_credentials=lambda c: create_rerank_client(
@@ -603,7 +709,18 @@ class ModelConfigService:
         user_id: int,
         request: ModelTestRequest
     ) -> ModelTestResponse:
-        """测试模型连接"""
+        """测试模型连接（按类型分派 tester，不入库）。
+
+        Args:
+            user_id: 当前用户 ID（用于日志上下文）。
+            request: 测试请求（含 model_type/protocol/model/api_key）。
+
+        Returns:
+            测试结果（成功含延迟毫秒数；embedding 类型附探测到的向量维度）。
+
+        Raises:
+            ModelConfigTestFailedError: 连接测试失败。
+        """
         start_time = time.time()
 
         try:
@@ -811,7 +928,14 @@ class ModelConfigService:
         self,
         user_id: int
     ) -> "AvailableModelsWithInfoResponse":  # noqa: F821 懒 import schema 名作字符串注解
-        """获取可用模型的详细信息"""
+        """获取可用模型的详细信息（按类型去重分组）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            五类模型各自的 (模型名, 协议) 信息列表响应。
+        """
         from novamind.features.user.schemas.model_config_schema import (
             AvailableModelsWithInfoResponse,
             ModelInfo,

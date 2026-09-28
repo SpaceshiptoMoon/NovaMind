@@ -25,19 +25,47 @@ class PromptManager:
 
     @classmethod
     def is_registered(cls, key: str) -> bool:
-        """判断模板键是否已注册（供启动期装配断言，避免请求期才发现缺模板）。"""
+        """判断模板键是否已注册（供启动期装配断言，避免请求期才发现缺模板）。
+
+        Args:
+            key: 模板键名。
+
+        Returns:
+            已注册返回 True。
+        """
         return key in cls._templates
 
     @classmethod
     def get_template(cls, template_name: str) -> str:
-        """获取提示词模板；键不存在抛 ValueError。"""
+        """获取提示词模板原文。
+
+        Args:
+            template_name: 模板键名。
+
+        Returns:
+            模板文本（含未渲染的占位符）。
+
+        Raises:
+            ValueError: 模板键不存在。
+        """
         if template_name not in cls._templates:
             raise ValueError(f"模板 '{template_name}' 不存在")
         return cls._templates[template_name]
 
     @classmethod
     def format_prompt(cls, template_name: str, **kwargs: str) -> str:
-        """格式化提示词；键不存在或缺参抛 ValueError。"""
+        """取模板并按 kwargs 渲染占位符。
+
+        Args:
+            template_name: 模板键名。
+            kwargs: 占位符到实参的映射。
+
+        Returns:
+            渲染后的提示词文本。
+
+        Raises:
+            ValueError: 模板键不存在或缺少占位符实参。
+        """
         template = cls.get_template(template_name)
         try:
             return template.format(**kwargs)
@@ -47,22 +75,64 @@ class PromptManager:
     # 实例方法（引擎消费面统一走 .get()/.format()；批次 2.3 起消费引擎直收
     # PromptManager 实例，不再经 HostPromptProvider 适配器）
     def get(self, key: str) -> str:
-        """实例入口：按模板键取模板文本（委托 get_template，键不存在抛 ValueError）。"""
+        """实例入口：按模板键取模板文本（委托 get_template）。
+
+        Args:
+            key: 模板键名。
+
+        Returns:
+            模板文本（未渲染）。
+
+        Raises:
+            ValueError: 模板键不存在。
+        """
         return self.get_template(key)
 
     def format(self, key: str, **kwargs: str) -> str:
-        """实例入口：取模板并按 kwargs 渲染（委托 format_prompt，缺参抛 ValueError）。"""
+        """实例入口：取模板并按 kwargs 渲染（委托 format_prompt）。
+
+        Args:
+            key: 模板键名。
+            kwargs: 占位符到实参的映射。
+
+        Returns:
+            渲染后的提示词文本。
+
+        Raises:
+            ValueError: 模板键不存在或缺少占位符实参。
+        """
         return self.format_prompt(key, **kwargs)
 
 
 # 便捷函数
 def get_prompt(template_name: str) -> str:
-    """模块级便捷入口：按模板名取渲染就绪的提示词文本。"""
+    """模块级便捷入口：按模板名取渲染就绪的提示词文本。
+
+    Args:
+        template_name: 模板键名。
+
+    Returns:
+        模板文本（未渲染）。
+
+    Raises:
+        ValueError: 模板键不存在。
+    """
     return PromptManager.get_template(template_name)
 
 
 def format_prompt(template_name: str, **kwargs: str) -> str:
-    """格式化提示词"""
+    """模块级便捷入口：取模板并按 kwargs 渲染。
+
+    Args:
+        template_name: 模板键名。
+        kwargs: 占位符到实参的映射。
+
+    Returns:
+        渲染后的提示词文本。
+
+    Raises:
+        ValueError: 模板键不存在或缺少占位符实参。
+    """
     return PromptManager.format_prompt(template_name, **kwargs)
 
 

@@ -139,7 +139,15 @@ class WikiIngestService:
         full_text: str,
         chunks: list[dict[str, Any]],
     ) -> IngestOutcome:
-        """执行四阶段管道。full_text 与 chunks 由任务层准备好后传入。"""
+        """执行四阶段管道。full_text 与 chunks 由任务层准备好后传入。
+
+        Args:
+            full_text: 解析全文（MinIO parsed_text），空文本直接跳过。
+            chunks: ES 分块字典列表（含 chunk_id/content），作为引文素材。
+
+        Returns:
+            IngestOutcome 统计（新建/更新页数、候选数、截断标记等）。
+        """
         outcome = IngestOutcome()
 
         # 删除竞态守卫（检查点 1，对齐 WeKnora isKnowledgeGone）：
@@ -978,7 +986,14 @@ class WikiIngestService:
         return record
 
     def bind_record(self, record: Any) -> None:
-        """绑定生成履历行，供管道各阶段即时写入进度。"""
+        """绑定生成履历行，供管道各阶段即时写入进度。
+
+        Args:
+            record: WikiIngestRecord 履历行（任务层创建）。
+
+        Returns:
+            无返回；未绑定时步骤记录为 no-op。
+        """
         self._ingest_record = record
 
     @staticmethod

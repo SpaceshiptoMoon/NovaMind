@@ -67,7 +67,16 @@ class TaskTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """校验 context 中的子 agent runner 后启动独立子 ReAct 循环并返回其 summary。"""
+        """校验 context 中的子 agent runner 后启动独立子 ReAct 循环并返回其 summary。
+
+        Args:
+            tool_name: 工具名（仅认 task）。
+            arguments: 工具参数：prompt 与 description。
+            context: 执行上下文：subagent_runner（缺失时拒绝执行）。
+
+        Returns:
+            JSON 文本：成功为子 agent 结果；runner 缺失、prompt 为空或失败为 {error}。
+        """
         if tool_name != "task":
             return f"未知工具：{tool_name}"
         runner = context.get("subagent_runner")

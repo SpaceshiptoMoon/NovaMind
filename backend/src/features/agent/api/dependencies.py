@@ -163,7 +163,21 @@ async def get_agent_chat_service(
     memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
     minio_client: Any | None = None,
 ) -> AgentChatService:
-    """装配请求级 AgentChatService（引擎端口在此构造后注入，user_id 取自当前认证用户）。"""
+    """装配请求级 AgentChatService（引擎端口在此构造后注入，user_id 取自当前认证用户）。
+
+    Args:
+        db: 请求级数据库会话。
+        user_id: 当前认证用户 ID（经 _current_user_id 依赖解析）。
+        agent_service: 请求级 AgentService。
+        model_config_service: 请求级模型配置服务。
+        agent_engine: 应用级单例 Agent 引擎。
+        todo_store: 应用级单例 todo 存储。
+        memory_search_repo: ES 记忆检索仓储；None 表示 ES 不可用，对应端口置空。
+        minio_client: MinIO 客户端；None 时内部懒取，取不到则以 None 下发。
+
+    Returns:
+        装配完成的 AgentChatService。
+    """
     return await build_agent_chat_service(
         db, user_id, agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, minio_client,
@@ -174,5 +188,13 @@ async def get_mcp_server_service(
     db: AsyncSession = Depends(get_db),
     mcp_client_manager: McpClientManager = Depends(get_mcp_client_manager),
 ) -> McpServerService:
-    """提供请求级 McpServerService（绑定 db 会话与应用级 MCP 客户端管理器）。"""
+    """提供请求级 McpServerService（绑定 db 会话与应用级 MCP 客户端管理器）。
+
+    Args:
+        db: 请求级数据库会话。
+        mcp_client_manager: 应用级单例 MCP 客户端管理器。
+
+    Returns:
+        McpServerService 实例。
+    """
     return McpServerService(db=db, mcp_client_manager=mcp_client_manager)

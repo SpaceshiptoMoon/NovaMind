@@ -71,7 +71,16 @@ class EvaluationTestSet(BaseModel):
         return (self.storage or {}).get("minio_object_name")
 
     def set_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
-        """上传成功后把 bucket/object_name/etag 合并回写 storage JSON 字段。"""
+        """上传成功后把 bucket/object_name/etag 合并回写 storage JSON 字段。
+
+        Args:
+            bucket: MinIO 桶名。
+            object_name: 测试集文件在桶内的对象名。
+            etag: 可选，MinIO 返回的内容 ETag；None 时仍写入 null 占位。
+
+        Returns:
+            无；仅改内存对象，持久化由调用方 commit。
+        """
         self.storage = {
             **(self.storage or {}),
             "minio_bucket": bucket,
@@ -125,7 +134,16 @@ class EvaluationTask(BaseModel):
         return (self.result_storage or {}).get("minio_object_name")
 
     def set_result_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
-        """结果上传成功后把 bucket/object_name/etag 合并回写 result_storage JSON 字段。"""
+        """结果上传成功后把 bucket/object_name/etag 合并回写 result_storage JSON 字段。
+
+        Args:
+            bucket: MinIO 桶名。
+            object_name: 结果文件在桶内的对象名。
+            etag: 可选，MinIO 返回的内容 ETag；None 时仍写入 null 占位。
+
+        Returns:
+            无；仅改内存对象，持久化由调用方 commit（JSON 列需 flag_modified）。
+        """
         self.result_storage = {
             **(self.result_storage or {}),
             "minio_bucket": bucket,

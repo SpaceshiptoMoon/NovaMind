@@ -210,7 +210,16 @@ class RedisCache:
             return False
 
     async def setex(self, key: str, ttl: int, value: Any) -> bool:
-        """设置带过期时间的缓存值（``set`` 的 TTL 必填快捷方式）。"""
+        """设置带过期时间的缓存值（set 的 TTL 必填快捷方式）。
+
+        Args:
+            key: 缓存键。
+            ttl: 过期秒数。
+            value: 缓存值；非字符串/字节类型自动 JSON 序列化。
+
+        Returns:
+            是否成功（Redis 异常降级返回 False）。
+        """
         return await self.set(key, value, expire=ttl)
 
     async def delete(self, *keys: str) -> int:
@@ -254,7 +263,15 @@ class RedisCache:
             return 0
 
     async def expire(self, key: str, ttl: int) -> bool:
-        """为已存在的键设置过期时间。"""
+        """为已存在的键设置过期时间。
+
+        Args:
+            key: 缓存键。
+            ttl: 过期秒数。
+
+        Returns:
+            键存在且设置成功返回 True；键不存在或 Redis 异常返回 False。
+        """
         try:
             if not self.redis_client:
                 await self.connect()
@@ -302,7 +319,15 @@ class RedisCache:
             return 0
 
     async def decr(self, key: str, amount: int = 1) -> int:
-        """原子递减计数器（``incr`` 取负实现）。"""
+        """原子递减计数器（incr 取负实现）。
+
+        Args:
+            key: 计数器键。
+            amount: 递减量。
+
+        Returns:
+            递减后的值（Redis 异常降级返回 0）。
+        """
         return await self.incr(key, -amount)
 
     # ============================================================
@@ -446,7 +471,14 @@ class RedisCache:
             return deleted_count
 
     async def keys_count(self, pattern: str = "*") -> int:
-        """用 SCAN 统计匹配模式的键数量。"""
+        """用 SCAN 统计匹配模式的键数量（增量遍历，不阻塞 Redis）。
+
+        Args:
+            pattern: glob 匹配模式（如 user:*）。
+
+        Returns:
+            匹配键数量（Redis 异常降级返回 0）。
+        """
         try:
             if not self.redis_client:
                 await self.connect()

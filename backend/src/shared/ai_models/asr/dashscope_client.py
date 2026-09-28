@@ -19,7 +19,12 @@ class DashScopeTranscriptionError(RuntimeError):
 
 
 def configure_dashscope(api_key: str | None, base_url: str | None) -> None:
-    """设置 DashScope SDK 全局凭据与百炼 base URL。"""
+    """设置 DashScope SDK 全局凭据与百炼 base URL。
+
+    Args:
+        api_key: DashScope API Key；None 或空串表示不改全局凭据。
+        base_url: 百炼 base URL；自动剥离 OpenAI 兼容路径 /compatible-mode/v1 并补齐 /api/v1 后缀。
+    """
     import dashscope
 
     if api_key:
@@ -42,7 +47,19 @@ def submit_transcription(
     file_urls: list[str],
     language_hints: list[str] | None = None,
 ):
-    """提交转写任务（HTTP URL 形态，非 fileid://）。失败抛 DashScopeTranscriptionError。"""
+    """提交转写任务（HTTP URL 形态，非 fileid://）。
+
+    Args:
+        model: Paraformer 模型名（如 paraformer-v2）。
+        file_urls: 音频文件的公网 HTTP URL 列表。
+        language_hints: 语言提示列表（如 zh、en）；None 表示不指定。
+
+    Returns:
+        DashScope 提交响应对象，task_id 经 output.task_id 获取。
+
+    Raises:
+        DashScopeTranscriptionError: 提交失败（output 缺失或状态码非 200）。
+    """
     from dashscope.audio.asr import Transcription
 
     call_kwargs: dict[str, Any] = {

@@ -9,7 +9,15 @@ QA模块的异常处理器
 # ========== LLM 服务特殊处理器（包含原始错误信息）==========
 
 async def llm_service_exception_handler(request, exc):
-    """处理LLM服务异常（包含原始错误详情）"""
+    """处理 LLM 服务异常（包含原始错误详情）。
+
+    Args:
+        request: 触发异常的请求对象。
+        exc: LLMServiceError 异常实例。
+
+    Returns:
+        带 trace 上下文与原始错误详情的 500 JSONResponse。
+    """
     from fastapi.responses import JSONResponse
     from novamind.core.middleware.base_exception_handler import build_trace_context, logger
     from novamind.shared.utils.time_utils import now_china

@@ -23,7 +23,17 @@ class StreamableHttpConfig(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, v):
-        """校验 MCP HTTP URL：仅允许 http/https，禁止私有网络 / 环回 / 云元数据地址，防止 SSRF"""
+        """校验 MCP HTTP URL：仅允许 http/https，禁止私有网络 / 环回 / 云元数据地址，防止 SSRF。
+
+        Args:
+            v: 待校验的 URL 字符串。
+
+        Returns:
+            校验通过时原样返回 URL。
+
+        Raises:
+            ValueError: 协议非 http/https、缺 hostname、DNS 解析失败或命中私有/环回/链路本地地址。
+        """
         parsed = urlparse(v)
         if parsed.scheme not in ("http", "https"):
             raise ValueError("MCP HTTP URL 仅允许 http/https 协议")
@@ -50,7 +60,15 @@ class McpConnectionConfig(BaseModel):
 
     @classmethod
     def from_db_config(cls, transport_type: str, connection_config: dict) -> "McpConnectionConfig":
-        """从数据库配置创建"""
+        """从数据库配置创建连接配置（按传输类型挂载子配置）。
+
+        Args:
+            transport_type: 传输类型（stdio 或 streamable_http）。
+            connection_config: 对应传输的配置段 dict。
+
+        Returns:
+            组装完成的 McpConnectionConfig 实例。
+        """
         config = cls(transport_type=transport_type)
         sub_configs = {
             "stdio": (StdioConfig, "stdio"),

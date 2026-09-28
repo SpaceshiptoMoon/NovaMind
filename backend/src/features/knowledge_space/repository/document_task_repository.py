@@ -20,7 +20,14 @@ class DocumentTaskRepository:
         self.logger = logger
 
     async def create(self, data: dict[str, Any]) -> DocumentTask:
-        """创建单个任务项并 flush 取自增 ID。"""
+        """创建单个任务项并 flush 取自增 ID。
+
+        Args:
+            data: 任务项字段字典（document_id/kb_id/space_id/status 等）。
+
+        Returns:
+            flush 并 refresh 后的任务项，自增 ID 已可用；提交由调用方控制。
+        """
         task = DocumentTask(**data)
         self.session.add(task)
         await self.session.flush()
@@ -28,26 +35,54 @@ class DocumentTaskRepository:
         return task
 
     async def create_many(self, items: list[dict[str, Any]]) -> list[DocumentTask]:
-        """批量创建任务项并一次性 flush。"""
+        """批量创建任务项并一次性 flush。
+
+        Args:
+            items: 任务项字段字典列表。
+
+        Returns:
+            flush 后的任务项列表；提交由调用方控制。
+        """
         tasks = [DocumentTask(**item) for item in items]
         self.session.add_all(tasks)
         await self.session.flush()
         return tasks
 
     async def get_by_id(self, task_id: int) -> DocumentTask | None:
-        """按主键查任务项，不存在返回 None。"""
+        """按主键查任务项，不存在返回 None。
+
+        Args:
+            task_id: 任务项主键。
+
+        Returns:
+            命中返回任务项；未命中返回 None。
+        """
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.id == task_id))
         return result.scalar_one_or_none()
 
     async def get_by_document_id(self, document_id: int) -> DocumentTask | None:
-        """取该文档最新一条任务项（含终态），不存在返回 None。"""
+        """取该文档最新一条任务项（含终态），不存在返回 None。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            按 ID 倒序的最新任务项；无任务返回 None。
+        """
         result = await self.session.execute(
             select(DocumentTask).where(DocumentTask.document_id == document_id).order_by(desc(DocumentTask.id)).limit(1)
         )
         return result.scalar_one_or_none()
 
     async def get_active_by_document_id(self, document_id: int) -> DocumentTask | None:
-        """取该文档最新的活跃（PENDING/PROCESSING）任务项。"""
+        """取该文档最新的活跃（PENDING/PROCESSING）任务项。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            最新活跃任务项；无活跃任务返回 None。
+        """
         result = await self.session.execute(
             select(DocumentTask)
             .where(DocumentTask.document_id == document_id, DocumentTask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
@@ -76,7 +111,14 @@ class DocumentTaskRepository:
         return result.scalar_one_or_none()
 
     async def lock_active_by_document_ids(self, document_ids: list[int]) -> dict[int, DocumentTask]:
-        """批量版 lock_active_by_document_id，返回 {document_id: 活跃任务}。"""
+        """批量版 lock_active_by_document_id，返回 {document_id: 活跃任务}。
+
+        Args:
+            document_ids: 文档 ID 列表。
+
+        Returns:
+            {document_id: 最新活跃任务} 映射；FOR UPDATE 行锁保持至事务提交。
+        """
         if not document_ids:
             return {}
         result = await self.session.execute(
@@ -94,7 +136,14 @@ class DocumentTaskRepository:
         return active
 
     async def get_latest_by_document_ids(self, document_ids: list[int]) -> dict[int, DocumentTask]:
-        """批量取每文档最新一条任务项，返回文档 ID 到任务项的映射。"""
+        """批量取每文档最新一条任务项，返回文档 ID 到任务项的映射。
+
+        Args:
+            document_ids: 文档 ID 列表。
+
+        Returns:
+            {document_id: 最新任务项} 映射（含终态）；无任务项的文档不在映射中。
+        """
         if not document_ids:
             return {}
         result = await self.session.execute(
@@ -108,7 +157,14 @@ class DocumentTaskRepository:
         return latest
 
     async def get_active_by_document_ids(self, document_ids: list[int]) -> dict[int, DocumentTask]:
-        """批量取每文档最新一条活跃任务项，返回文档 ID 到任务项的映射。"""
+        """批量取每文档最新一条活跃任务项，返回文档 ID 到任务项的映射。
+
+        Args:
+            document_ids: 文档 ID 列表。
+
+        Returns:
+            {document_id: 最新活跃任务项} 映射；无活跃任务的不在映射中。
+        """
         if not document_ids:
             return {}
         result = await self.session.execute(
@@ -125,7 +181,15 @@ class DocumentTaskRepository:
         return active
 
     async def get_previous_by_document_id(self, document_id: int, before_task_id: int) -> DocumentTask | None:
-        """取指定任务之前（ID 更小）的最新一条任务项，用于对比上次结果。"""
+        """取指定任务之前（ID 更小）的最新一条任务项，用于对比上次结果。
+
+        Args:
+            document_id: 文档 ID。
+            before_task_id: 基准任务项 ID，只查更早的。
+
+        Returns:
+            基准之前的最新任务项；无更早任务返回 None。
+        """
         result = await self.session.execute(
             select(DocumentTask)
             .where(
@@ -138,21 +202,45 @@ class DocumentTaskRepository:
         return result.scalar_one_or_none()
 
     async def list_by_document(self, document_id: int) -> list[DocumentTask]:
-        """列出该文档全部任务项（按 ID 降序）。"""
+        """列出该文档全部任务项（按 ID 降序）。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            按 ID 降序的任务项列表。
+        """
         result = await self.session.execute(
             select(DocumentTask).where(DocumentTask.document_id == document_id).order_by(desc(DocumentTask.id))
         )
         return list(result.scalars().all())
 
     async def list_by_batch(self, batch_id: int) -> list[DocumentTask]:
-        """列出批次下全部任务项（按 ID 降序）。"""
+        """列出批次下全部任务项（按 ID 降序）。
+
+        Args:
+            batch_id: 批次 ID。
+
+        Returns:
+            按 ID 降序的任务项列表。
+        """
         result = await self.session.execute(
             select(DocumentTask).where(DocumentTask.batch_id == batch_id).order_by(desc(DocumentTask.id))
         )
         return list(result.scalars().all())
 
     async def list_by_kb(self, kb_id: int, status: TaskStatus | None = None, skip: int = 0, limit: int = 100) -> list[DocumentTask]:
-        """分页列出 KB 内任务项，可按状态过滤（按 ID 降序）。"""
+        """分页列出 KB 内任务项，可按状态过滤（按 ID 降序）。
+
+        Args:
+            kb_id: 知识库 ID。
+            status: 可选状态过滤，None 表示不过滤。
+            skip: 分页偏移量。
+            limit: 单页条数上限。
+
+        Returns:
+            按 ID 降序的任务项页；配对 count_by_status 取 total。
+        """
         query = select(DocumentTask).where(DocumentTask.kb_id == kb_id)
         if status is not None:
             query = query.where(DocumentTask.status == status)
@@ -160,7 +248,15 @@ class DocumentTaskRepository:
         return list(result.scalars().all())
 
     async def update(self, task_id: int, data: dict[str, Any]) -> DocumentTask | None:
-        """按字典更新任务项字段（忽略未知键），flush 后返回任务项。"""
+        """按字典更新任务项字段（忽略未知键），flush 后返回任务项。
+
+        Args:
+            task_id: 任务项主键。
+            data: 待更新字段字典，未知键静默忽略。
+
+        Returns:
+            更新后的任务项；不存在返回 None。
+        """
         task = await self.get_by_id(task_id)
         if not task:
             return None
@@ -171,7 +267,15 @@ class DocumentTaskRepository:
         return task
 
     async def count_by_status(self, kb_id: int, status: TaskStatus) -> int:
-        """统计 KB 内指定状态的任务项数量。"""
+        """统计 KB 内指定状态的任务项数量。
+
+        Args:
+            kb_id: 知识库 ID。
+            status: 任务状态。
+
+        Returns:
+            该状态任务项数量（配对 list_by_kb 做分页 total）。
+        """
         result = await self.session.execute(
             select(func.count(DocumentTask.id)).where(DocumentTask.kb_id == kb_id, DocumentTask.status == status)
         )
@@ -190,7 +294,14 @@ class DocumentTaskRepository:
         return list(result.scalars().all())
 
     async def get_by_job_id(self, job_id: str) -> DocumentTask | None:
-        """按 arq job ID 查任务项，不存在返回 None。"""
+        """按 arq job ID 查任务项，不存在返回 None。
+
+        Args:
+            job_id: arq job ID。
+
+        Returns:
+            命中返回任务项；未命中返回 None。
+        """
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.job_id == job_id))
         return result.scalar_one_or_none()
 

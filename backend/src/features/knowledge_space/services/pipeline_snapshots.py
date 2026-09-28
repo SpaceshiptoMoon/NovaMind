@@ -50,14 +50,29 @@ def canonical_sha256(payload: Any) -> str:
 
 
 def canonical_json(payload: Any) -> str:
-    """与 canonical_sha256 同一套规范化的 JSON 串（用于配置漂移比对）。"""
+    """与 canonical_sha256 同一套规范化的 JSON 串（用于配置漂移比对）。
+
+    Args:
+        payload: 任意 JSON 可序列化对象，不可序列化经 default=str 兜底。
+
+    Returns:
+        键排序、紧凑分隔符的规范化 JSON 字符串。
+    """
     return json.dumps(
         payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
     )
 
 
 def compute_parse_fingerprint(document: Document, parsing_config: dict[str, Any]) -> str:
-    """解析指纹：文件内容哈希/类型 + 解析配置任一变化即失效。"""
+    """解析指纹：文件内容哈希/类型 + 解析配置任一变化即失效。
+
+    Args:
+        document: 文档 ORM 实例（取 file_hash/file_type）。
+        parsing_config: 生效的解析配置字典。
+
+    Returns:
+        规范化 sha256 指纹串。
+    """
     return canonical_sha256({
         "v": FINGERPRINT_VERSION,
         "kind": "parse",
@@ -72,7 +87,16 @@ def compute_split_fingerprint(
     split_mode: str,
     splitting_config: dict[str, Any],
 ) -> str:
-    """切分指纹：解析指纹进入计算，parse 失效自动级联 split。"""
+    """切分指纹：解析指纹进入计算，parse 失效自动级联 split。
+
+    Args:
+        parse_fingerprint: 上游解析指纹。
+        split_mode: 切分模式。
+        splitting_config: 切分配置字典。
+
+    Returns:
+        规范化 sha256 指纹串。
+    """
     return canonical_sha256({
         "v": FINGERPRINT_VERSION,
         "kind": "split",
@@ -118,17 +142,38 @@ def _base_object_name(document: Document) -> str:
 
 
 def parse_meta_object_name(document: Document) -> str:
-    """解析元数据快照的对象名（parsed/parse_meta.json）。"""
+    """解析元数据快照的对象名（parsed/parse_meta.json）。
+
+    Args:
+        document: 文档 ORM 实例。
+
+    Returns:
+        基于 minio_object_name 前缀拼出的对象键。
+    """
     return f"{_base_object_name(document)}_parsed/parse_meta.json"
 
 
 def chunks_object_name(document: Document) -> str:
-    """分块快照的对象名（artifacts/chunks.json）。"""
+    """分块快照的对象名（artifacts/chunks.json）。
+
+    Args:
+        document: 文档 ORM 实例。
+
+    Returns:
+        基于 minio_object_name 前缀拼出的对象键。
+    """
     return f"{_base_object_name(document)}_artifacts/chunks.json"
 
 
 def embeddings_object_name(document: Document) -> str:
-    """向量快照的对象名（artifacts/embeddings.json）。"""
+    """向量快照的对象名（artifacts/embeddings.json）。
+
+    Args:
+        document: 文档 ORM 实例。
+
+    Returns:
+        基于 minio_object_name 前缀拼出的对象键。
+    """
     return f"{_base_object_name(document)}_artifacts/embeddings.json"
 
 
@@ -254,7 +299,19 @@ async def save_parse_snapshot(
     parse_fingerprint: str,
     payload: dict[str, Any],
 ) -> bool:
-    """保存解析快照到 ``{base}_parsed/parse_meta.json`` 并记录指针。"""
+    """保存解析快照到 ``{base}_parsed/parse_meta.json`` 并记录指针。
+
+    Args:
+        document: 文档 ORM 实例（storage 指针写在其上）。
+        session: 数据库会话（快照指针随 commit 落库）。
+        logger: 调用方日志器。
+        minio_client: MinIO 客户端（调用方注入）。
+        parse_fingerprint: 本次解析指纹，写入指针供 resume 比对。
+        payload: build_parse_snapshot_payload 构造的快照内容。
+
+    Returns:
+        保存成功 True；fail-open 失败返回 False 不影响主流程。
+    """
     object_name = parse_meta_object_name(document)
     return await _save_snapshot(
         document, session, logger,
@@ -323,7 +380,20 @@ async def save_embeddings_snapshot(
     embeddings: list[list[float] | None],
     embedding_model: str = "",
 ) -> bool:
-    """保存向量快照到 ``{base}_artifacts/embeddings.json``。"""
+    """保存向量快照到 ``{base}_artifacts/embeddings.json``。
+
+    Args:
+        document: 文档 ORM 实例（storage 指针写在其上）。
+        session: 数据库会话（快照指针随 commit 落库）。
+        logger: 调用方日志器。
+        minio_client: MinIO 客户端（调用方注入）。
+        embed_fingerprint: 本次向量指纹，写入指针供 resume 比对。
+        embeddings: 向量列表（None 槽位保留），落盘前降精度到 6 位小数。
+        embedding_model: 生成向量的模型名，写入指针。
+
+    Returns:
+        保存成功 True；fail-open 失败返回 False 不影响主流程。
+    """
     payload = {
         "version": SNAPSHOT_VERSION,
         "embed_fingerprint": embed_fingerprint,
@@ -364,7 +434,16 @@ async def load_parse_snapshot(
     minio_client,
     logger,
 ) -> dict[str, Any] | None:
-    """读取解析快照 payload。指针缺失/下载失败/坏 JSON → warning + None。"""
+    """读取解析快照 payload。指针缺失/下载失败/坏 JSON → warning + None。
+
+    Args:
+        document: 文档 ORM 实例（读 storage 指针）。
+        minio_client: MinIO 客户端（调用方注入）。
+        logger: 调用方日志器。
+
+    Returns:
+        快照 payload 字典；无指针或读取失败返回 None（调用方全量重跑）。
+    """
     state = _snapshot_state(document)
     object_name = state.get("parse_meta_object")
     if not object_name:
@@ -386,7 +465,16 @@ async def load_split_snapshot(
     minio_client,
     logger,
 ) -> dict[str, Any] | None:
-    """读取切分快照，返回 {split_fingerprint, alignment_applied, chunk_items} 或 None。"""
+    """读取切分快照，返回 {split_fingerprint, alignment_applied, chunk_items} 或 None。
+
+    Args:
+        document: 文档 ORM 实例（读 storage 指针）。
+        minio_client: MinIO 客户端（调用方注入）。
+        logger: 调用方日志器。
+
+    Returns:
+        切分快照结构字典；无指针或读取失败返回 None（调用方重跑切分）。
+    """
     state = _snapshot_state(document)
     object_name = state.get("chunks_object")
     if not object_name:
@@ -417,7 +505,16 @@ async def load_embeddings_snapshot(
     minio_client,
     logger,
 ) -> dict[str, Any] | None:
-    """读取向量快照，返回 {embed_fingerprint, embedding_model, embeddings} 或 None。"""
+    """读取向量快照，返回 {embed_fingerprint, embedding_model, embeddings} 或 None。
+
+    Args:
+        document: 文档 ORM 实例（读 storage 指针）。
+        minio_client: MinIO 客户端（调用方注入）。
+        logger: 调用方日志器。
+
+    Returns:
+        向量快照结构字典；无指针或读取失败返回 None（调用方重算向量）。
+    """
     state = _snapshot_state(document)
     object_name = state.get("embeddings_object")
     if not object_name:
@@ -578,7 +675,14 @@ def resolve_figure_short_paths(
 
 
 def restore_frame_paths(raw: dict[str, Any] | None) -> dict[int, str]:
-    """把 JSON 里 str 键的 frame_paths 还原为 {int: str}（视频帧索引）。"""
+    """把 JSON 里 str 键的 frame_paths 还原为 {int: str}（视频帧索引）。
+
+    Args:
+        raw: 快照里经 JSON 序列化的 frame_paths 字典，可为 None。
+
+    Returns:
+        {帧索引: 帧路径}；无法解析的键跳过。
+    """
     result: dict[int, str] = {}
     for key, value in (raw or {}).items():
         try:
@@ -630,7 +734,15 @@ _SNAPSHOT_POINTER_KEYS = frozenset({
 
 
 def snapshot_has_level(document: Document, level: str) -> bool:
-    """storage 中是否记录了指定层级的快照指针（不含指纹是否仍有效）。"""
+    """storage 中是否记录了指定层级的快照指针（不含指纹是否仍有效）。
+
+    Args:
+        document: 文档 ORM 实例。
+        level: 快照层级，parse/split/embed。
+
+    Returns:
+        该层级任一指针存在返回 True；层级未知返回 False。
+    """
     state = _snapshot_state(document)
     key_map = {
         "parse": ("parse_fingerprint", "parse_meta_object"),

@@ -25,7 +25,14 @@ CSV_COLUMNS = [
 
 
 def result_to_csv(result_data: dict[str, Any]) -> str:
-    """将测评结果 JSON 转换为 CSV 字符串"""
+    """把测评结果 JSON 扁平化为 CSV 字符串（固定列，缺失值留空）。
+
+    Args:
+        result_data: 任务结果 dict，须含 details 列表；缺 details 视为空导出。
+
+    Returns:
+        带表头的 CSV 文本（不含 BOM，字节层由调用方补 utf-8-sig）。
+    """
     details = result_data.get("details", [])
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_COLUMNS)
@@ -39,7 +46,14 @@ def result_to_csv(result_data: dict[str, Any]) -> str:
 
 
 def result_to_json_bytes(result_data: dict[str, Any]) -> bytes:
-    """将测评结果序列化为 JSON bytes"""
+    """把测评结果序列化为 UTF-8 JSON 字节（ensure_ascii 关，两空格缩进）。
+
+    Args:
+        result_data: 任务结果 dict，原样序列化。
+
+    Returns:
+        可直接上传 MinIO 或落盘的 JSON 字节流。
+    """
     return json.dumps(result_data, ensure_ascii=False, indent=2).encode("utf-8")
 
 

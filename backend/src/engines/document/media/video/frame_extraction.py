@@ -188,7 +188,14 @@ def _extract_scene_from_path(
 
 
 def compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
-    """算 PIL 图像的归一化灰度直方图（256 bin，和为 1）。"""
+    """算 PIL 图像的归一化灰度直方图（256 bin，和为 1）。
+
+    Args:
+        pil_image: PIL 图像。
+
+    Returns:
+        长度 256 的归一化直方图数组（空图返回零数组）。
+    """
     import numpy as np
 
     gray = pil_image.convert("L")

@@ -155,7 +155,17 @@ class AutoProbingEngine:
         probing_plan: ProbingPlan,
         jd_analysis: JDAnalysis | None,
     ) -> list[dict]:
-        """对所有 KP 并行执行自问自答"""
+        """对所有 KP 并行执行自问自答。
+
+        Args:
+            resume_session_id: 简历会话 ID。
+            structured_resume: 结构化简历（无 summary 时程序化兜底拼接）。
+            probing_plan: 追问计划（知识点与工作单元）。
+            jd_analysis: JD 技术图谱，可空。
+
+        Returns:
+            逐 KP 记录列表（kp_id/qa_pairs/status 等）；失败 KP 记 status=failed。
+        """
         kps = sorted(probing_plan.knowledge_points, key=lambda k: k.probing_weight, reverse=True)
 
         resume_summary = structured_resume.resume_summary or self._make_resume_summary(structured_resume)
@@ -314,7 +324,15 @@ class AutoProbingEngine:
         qa_records: list[dict],
         structured_resume: StructuredResume,
     ) -> str:
-        """S11: 从所有 Q&A 生成面试准备建议（带重试降级）"""
+        """S11: 从所有 Q&A 生成面试准备建议（带重试降级）。
+
+        Args:
+            qa_records: probe_all 产出的逐 KP 记录。
+            structured_resume: 结构化简历（取候选人姓名）。
+
+        Returns:
+            面试准备建议文本；无有效记录或全部模型失败为空串。
+        """
         qa_summary_parts = []
         for record in qa_records:
             if record.get("status") != "completed" or not record.get("qa_pairs"):
@@ -352,7 +370,15 @@ class AutoProbingEngine:
         qa_records: list[dict],
         structured_resume: StructuredResume,
     ) -> str:
-        """S11-NEW: 从追问记录生成简历优化建议"""
+        """S11-NEW: 从追问记录生成简历优化建议。
+
+        Args:
+            qa_records: probe_all 产出的逐 KP 记录（低于 0.6 分标薄弱）。
+            structured_resume: 结构化简历。
+
+        Returns:
+            简历优化建议文本；无有效记录或全部模型失败为空串。
+        """
         # 构建追问摘要，标记低分回答为薄弱点
         qa_summary_parts = []
         for record in qa_records:

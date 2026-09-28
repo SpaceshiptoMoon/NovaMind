@@ -26,7 +26,14 @@ class TokenBudget:
         self._counter = TokenCounter(model_name)
 
     def count_text_tokens(self, text: str) -> int:
-        """计算文本 token 数"""
+        """计算文本 token 数。
+
+        Args:
+            text: 待计数文本。
+
+        Returns:
+            按模型 tokenizer 口径的 token 数。
+        """
         return self._counter.count_tokens(text)
 
     def count_messages_tokens(

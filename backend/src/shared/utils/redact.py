@@ -29,7 +29,14 @@ _SENSITIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 
 def redact_sensitive_text(text: str) -> str:
-    """脱敏文本中的敏感数据"""
+    """脱敏文本中的敏感数据（API Key、Token、密码、连接串、PII 等）。
+
+    Args:
+        text: 待脱敏原文；空串原样返回。
+
+    Returns:
+        命中模式的部分替换为 REDACTED 占位符后的文本（手机号/邮箱/证件/银行卡一并处理）。
+    """
     if not text:
         return text
     for pattern, replacement in _SENSITIVE_PATTERNS:

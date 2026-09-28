@@ -118,7 +118,14 @@ class User(BaseModel):
 
     # ========== 密码验证 ==========
     def check_password(self, plain_password: str) -> bool:
-        """校验明文密码与存储的 Argon2 哈希是否匹配（不匹配/格式异常均 False）。"""
+        """校验明文密码与存储的 Argon2 哈希是否匹配。
+
+        Args:
+            plain_password: 用户输入的明文密码。
+
+        Returns:
+            匹配返回 True；不匹配或哈希格式异常返回 False。
+        """
         return verify_password(plain_password, self.password_hash)
 
     # ========== 状态检查 ==========
@@ -138,7 +145,15 @@ class User(BaseModel):
 
     # ========== Profile 访问方法 ==========
     def get_profile_value(self, key: str, default: Any = None) -> Any:
-        """按 key 读取 JSON profile 字段，缺省返回 default。"""
+        """按 key 读取 JSON profile 字段。
+
+        Args:
+            key: profile 字段名。
+            default: 字段缺失时的返回值，默认 None。
+
+        Returns:
+            字段值或 default；profile 为空时返回 default。
+        """
         profile = self.profile or {}
         return profile.get(key, default)
 

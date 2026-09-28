@@ -124,7 +124,11 @@ class ResearchSession(BaseModel):
 
     @staticmethod
     def generate_session_id() -> str:
-        """生成会话ID（32 字符 hex，无连字符）"""
+        """生成会话 ID（32 字符 hex，无连字符）。
+
+        Returns:
+            uuid4 的 32 位十六进制字符串，全局唯一。
+        """
         return uuid.uuid4().hex
 
     # ========== Config 访问方法 ==========
@@ -152,7 +156,14 @@ class ResearchSession(BaseModel):
         flag_modified(self, "status_info")
 
     def set_error(self, error_message: str) -> None:
-        """落入错误消息与完成时间，置 FAILED 语义的状态快照。"""
+        """落入错误消息与完成时间，置 FAILED 语义的状态快照。
+
+        Args:
+            error_message: 面向用户的错误描述，写入 status_info.error_message。
+
+        Returns:
+            无；只改内存对象（含 flag_modified），持久化由调用方 commit。
+        """
         if not self.status_info:
             self.status_info = {}
         self.status_info["error_message"] = error_message
@@ -160,7 +171,14 @@ class ResearchSession(BaseModel):
         flag_modified(self, "status_info")
 
     def set_cancelled(self, reason: str = None) -> None:
-        """记取消时间与可选原因（终态，可附带截断产物）。"""
+        """记取消时间与可选原因（终态，可附带截断产物）。
+
+        Args:
+            reason: 可选取消原因；空值不写入 cancel_reason 字段。
+
+        Returns:
+            无；只改内存对象（含 flag_modified），持久化由调用方 commit。
+        """
         if not self.status_info:
             self.status_info = {}
         self.status_info["cancelled_at"] = now_china().isoformat()
@@ -181,7 +199,17 @@ class ResearchSession(BaseModel):
         reasoning_steps: list = None,
         confidence: float = None
     ) -> None:
-        """逐字段合并写入研究结果（None 字段跳过不覆盖）。"""
+        """逐字段合并写入研究结果（None 字段跳过不覆盖）。
+
+        Args:
+            answer: 最终报告正文；None 表示保留已有值。
+            sources: 引用来源列表；None 表示保留已有值。
+            reasoning_steps: 推理步骤列表；None 表示保留已有值。
+            confidence: 置信度分数（0 到 1）；None 表示保留已有值。
+
+        Returns:
+            无；只改内存对象（含 flag_modified），持久化由调用方 commit。
+        """
         if not self.result:
             self.result = {}
 
@@ -214,7 +242,16 @@ class ResearchSession(BaseModel):
         self.set_started()
 
     def mark_completed(self, answer: str, sources: list = None, stats: dict = None) -> None:
-        """标记为研究完成"""
+        """置 COMPLETED 终态：记完成时间、写入报告与来源，可选刷新统计。
+
+        Args:
+            answer: 最终报告正文，经 set_result 合并写入。
+            sources: 可选引用来源列表；None 保留已有 sources。
+            stats: 可选统计 dict（token 用量、搜索次数等）；空值不覆盖。
+
+        Returns:
+            无；只改内存对象，持久化由调用方 commit。
+        """
         self.status = ResearchStatus.COMPLETED
         self.completed_at = now_china()
         self.set_result(answer=answer, sources=sources)
@@ -227,13 +264,27 @@ class ResearchSession(BaseModel):
         flag_modified(self, "status_info")
 
     def mark_failed(self, error_message: str) -> None:
-        """标记为研究失败"""
+        """置 FAILED 终态：记完成时间并委托 set_error 写错误快照。
+
+        Args:
+            error_message: 面向用户的失败原因描述。
+
+        Returns:
+            无；只改内存对象，持久化由调用方 commit。
+        """
         self.status = ResearchStatus.FAILED
         self.completed_at = now_china()
         self.set_error(error_message)
 
     def mark_cancelled(self, reason: str = None) -> None:
-        """标记为取消研究"""
+        """置 CANCELLED 终态：记完成时间并委托 set_cancelled 写取消快照。
+
+        Args:
+            reason: 可选取消原因；空值不写入。
+
+        Returns:
+            无；只改内存对象，持久化由调用方 commit。
+        """
         self.status = ResearchStatus.CANCELLED
         self.completed_at = now_china()
         self.set_cancelled(reason)

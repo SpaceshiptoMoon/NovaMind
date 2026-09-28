@@ -226,7 +226,14 @@ class PdfLayoutExtractor:
 
     @staticmethod
     def final_reading_order(boxes: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-        """阅读序排序键：(页, 列, top, x0)。双栏先左栏全列再右栏。"""
+        """阅读序排序键：(页, 列, top, x0)。双栏先左栏全列再右栏。
+
+        Args:
+            boxes: 行级框 dict 列表（读 page_number/col_id/top/x0 键）。
+
+        Returns:
+            排序后的新列表（sorted 不改入参顺序）。
+        """
         return sorted(
             boxes,
             key=lambda item: (

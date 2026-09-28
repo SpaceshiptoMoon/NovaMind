@@ -24,7 +24,14 @@ RUNTIME_MODULES = {
 
 
 def probe_module(module_name: str) -> dict[str, Any]:
-    """探测单个包的可导入性（附版本号，异常捕获为缺失）。"""
+    """探测单个包的可导入性（附版本号，异常捕获为缺失）。
+
+    Args:
+        module_name: 包名。
+
+    Returns:
+        {available, version}；导入异常时附 error 键。
+    """
     if find_spec(module_name) is None:
         return {"available": False, "version": None}
     try:

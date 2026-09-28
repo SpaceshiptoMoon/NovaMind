@@ -18,7 +18,20 @@ class AttachmentTextReader:
     async def get_attachment_text(
         self, attachment_id: int, user_id: int, offset: int = 0, limit: int = 8000
     ) -> AttachmentTextChunk:
-        """按 offset/limit 分片读附件提取文本；归属不符抛 KeyError。"""
+        """按 offset/limit 分片读附件提取文本；归属不符抛 KeyError。
+
+        Args:
+            attachment_id: 附件 ID。
+            user_id: 当前用户 ID，用于归属校验。
+            offset: 起始字符偏移，越界自动夹取到有效范围，默认 0。
+            limit: 本次读取的最大字符数，默认 8000。
+
+        Returns:
+            文本分块（含 total_length/offset/content/has_more）。
+
+        Raises:
+            KeyError: 附件不存在或不属于该用户。
+        """
         from novamind.features.qa.repository.chat_attachment_repository import (
             ChatAttachmentRepository,
         )

@@ -51,13 +51,27 @@ class TokenCounter:
         self.logger = get_logger(__name__)
 
     def count_tokens(self, text: str) -> int:
-        """计单段文本 token 数（空文本返回 0）。"""
+        """计单段文本 token 数（tiktoken 近似分词，空文本返回 0）。
+
+        Args:
+            text: 待计数的文本。
+
+        Returns:
+            token 数量。
+        """
         if not text:
             return 0
         return len(self.encoder.encode(text))
 
     def count_messages_tokens(self, messages: list[dict[str, Any]]) -> int:
-        """计消息列表总 token 数（多模态内容取文本部分；每条消息加 4 的对话开销近似）。"""
+        """计消息列表总 token 数（多模态内容取文本部分，每条消息加对话开销近似）。
+
+        Args:
+            messages: OpenAI 格式消息 dict 列表；content 为字符串、多模态分段列表或其它可 str 化对象。
+
+        Returns:
+            总 token 数（每条消息固定加 4 的对话格式开销）。
+        """
         total = 0
         for msg in messages:
             content = msg.get("content", "")

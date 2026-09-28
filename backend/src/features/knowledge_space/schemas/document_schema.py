@@ -43,7 +43,14 @@ class DocumentResponse(BaseModel):
 
     @field_serializer('status')
     def serialize_status(self, value) -> int:
-        """序列化状态枚举为整数"""
+        """序列化状态枚举为整数。
+
+        Args:
+            value: 待序列化的状态值，可能是枚举、整数或 None。
+
+        Returns:
+            枚举取其 value；整数原样返回；None 兜底 0。
+        """
         if hasattr(value, 'value'):
             return value.value
         return int(value) if value is not None else 0

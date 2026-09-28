@@ -23,7 +23,17 @@ class AuthBlacklistError(Exception):
 
 
 async def is_token_revoked(jti: str) -> bool:
-    """检查 token jti 是否已被撤销（在 token 级黑名单中）。"""
+    """检查 token jti 是否已被撤销（在 token 级黑名单中）。
+
+    Args:
+        jti: JWT ID（token 唯一标识）；空串直接返回未撤销。
+
+    Returns:
+        已撤销返回 True。
+
+    Raises:
+        AuthBlacklistError: Redis 访问失败（向上透传，不做 fail-close 吞错）。
+    """
     if not jti:
         return False
     try:

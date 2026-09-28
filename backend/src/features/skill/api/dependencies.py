@@ -60,7 +60,14 @@ async def _get_review_model_owner_id() -> int | None:
 
 
 def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
-    """装配用户模型配置服务（请求级 DB 会话）。"""
+    """装配用户模型配置服务（请求级 DB 会话）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        ModelConfigService 实例。
+    """
     return ModelConfigService(db)
 
 
@@ -69,7 +76,16 @@ async def get_skill_service(
     user_id: int = Depends(get_current_user_id),
     model_config_service: ModelConfigService = Depends(get_model_config_service),
 ) -> SkillMarketplaceService:
-    """装配技能广场服务（DB 会话 + MinIO + 安全检查器 + 可选 LLM 审查依赖）。"""
+    """装配技能广场服务（DB 会话 + MinIO + 安全检查器 + 可选 LLM 审查依赖）。
+
+    Args:
+        db: 请求级数据库会话。
+        user_id: 当前用户 ID（决定 LLM 审查凭证归属）。
+        model_config_service: 用户模型配置服务。
+
+    Returns:
+        SkillMarketplaceService 生成器（请求结束触发 cleanup）。
+    """
     minio = await get_minio_client()
 
     # 条件注入 LLM 审查：端口 prompt_provider + logger 始终注入（默认无 LLM 时
@@ -96,7 +112,12 @@ async def get_skill_service(
 
 
 async def update_llm_review_settings(enabled: bool, model: str | None = None) -> None:
-    """管理员更新 LLM 审查设置（委托 service 层持久化）"""
+    """管理员更新 LLM 审查设置（委托 service 层持久化）。
+
+    Args:
+        enabled: 是否启用 LLM 审查。
+        model: 审查模型名；None 表示清空。
+    """
     from novamind.features.skill.services.admin_settings_store import (
         update_llm_review_settings as _store_update,
     )

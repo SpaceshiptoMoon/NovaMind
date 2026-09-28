@@ -7,7 +7,15 @@ from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEn
 
 
 def build_doctor_payload(engine: DeepDocEngine, *, include_smoke: bool = False) -> dict[str, Any]:
-    """装配诊断报告：依赖探测 + 视觉健康 + 可选冒烟检查 + 模型状态。"""
+    """装配诊断报告：依赖探测 + 视觉健康 + 可选冒烟检查 + 模型状态。
+
+    Args:
+        engine: DeepDocEngine 实例（各项探测经其执行）。
+        include_smoke: 是否附视觉链路冒烟检查结果。
+
+    Returns:
+        诊断报告 dict（supported_extensions / runtime_dependencies / remediation 等键）。
+    """
     runtime_dependencies = engine.runtime_dependencies()
     vision_model_status = engine.vision_model_status()
     vision_health = engine.vision_health_status()
@@ -39,7 +47,17 @@ def build_remediation(
     vision_health: dict[str, Any],
     text_concat_model_status: dict[str, Any],
 ) -> dict[str, Any]:
-    """按诊断结果生成修复指引（装哪个包/下载哪个模型组）。"""
+    """按诊断结果生成修复指引（装哪个包/下载哪个模型组）。
+
+    Args:
+        runtime_dependencies: 运行时依赖探测报告。
+        vision_model_status: 视觉模型组状态。
+        vision_health: 视觉能力健康摘要。
+        text_concat_model_status: 段落合并模型状态。
+
+    Returns:
+        {missing_* 清单, next_steps 修复动作文本列表}。
+    """
     missing_runtime = [
         name for name, status in runtime_dependencies.items() if not status.get("available")
     ]

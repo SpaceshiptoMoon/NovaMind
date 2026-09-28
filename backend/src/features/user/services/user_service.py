@@ -134,7 +134,14 @@ class UserService:
         )
 
     async def ensure_not_super_admin(self, user_id: int) -> None:
-        """超管保护：目标为最高管理员时抛 PermissionDeniedError（强制下线前调用）。"""
+        """超管保护：目标为最高管理员时抛 PermissionDeniedError（强制下线前调用）。
+
+        Args:
+            user_id: 目标用户 ID。
+
+        Raises:
+            PermissionDeniedError: 目标是最高管理员账户。
+        """
         from novamind.features.user.exceptions import PermissionDeniedError
 
         target = await self.user_repository.get_user_by_id(user_id, use_cache=False)

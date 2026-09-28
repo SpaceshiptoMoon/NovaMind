@@ -30,7 +30,11 @@ class ToolRegistry:
         self._tool_name_to_provider: dict[str, str] = {}  # tool_name -> provider_name
 
     def register(self, tool: BaseTool) -> None:
-        """注册工具并建 OpenAI tool 名 → 提供者的二级索引。"""
+        """注册工具并建 OpenAI tool 名 → 提供者的二级索引。
+
+        Args:
+            tool: 工具提供者实例（BaseTool 子类）。
+        """
         self._tools[tool.name] = tool
         for tool_def in tool.get_tools():
             func = tool_def.get("function", {})
@@ -40,11 +44,25 @@ class ToolRegistry:
         logger.info("工具已注册", tool_name=tool.name)
 
     def get_tool(self, name: str) -> BaseTool | None:
-        """按提供者名取工具实例。"""
+        """按提供者名取工具实例。
+
+        Args:
+            name: 提供者名（tool.name 属性）。
+
+        Returns:
+            工具实例；未注册为 None。
+        """
         return self._tools.get(name)
 
     def find_tool_provider(self, tool_name: str) -> BaseTool | None:
-        """根据工具名查找所属工具提供者"""
+        """根据工具名查找所属工具提供者。
+
+        Args:
+            tool_name: OpenAI function 名（二级索引键）。
+
+        Returns:
+            所属工具提供者实例；未注册为 None。
+        """
         provider_name = self._tool_name_to_provider.get(tool_name)
         if provider_name:
             return self._tools.get(provider_name)

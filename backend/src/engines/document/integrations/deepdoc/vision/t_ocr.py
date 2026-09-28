@@ -80,7 +80,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """命令行入口：解析参数后执行 OCR 诊断，返回退出码 0。"""
+    """命令行入口：解析参数后执行 OCR 诊断，返回退出码 0。
+
+    Args:
+        argv: 命令行参数列表；None 用 sys.argv。
+
+    Returns:
+        退出码，恒 0。
+    """
     args = build_parser().parse_args(argv)
     run_ocr_diagnostics(args.inputs, args.output_dir, threshold=args.threshold)
     return 0

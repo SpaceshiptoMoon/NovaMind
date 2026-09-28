@@ -57,7 +57,17 @@ class DocumentRepository:
         file_hash: str,
         exists: bool,
     ) -> None:
-        """缓存文档哈希检查结果"""
+        """缓存文档哈希检查结果。
+
+        Args:
+            kb_id: 知识库 ID（去重范围的一部分）。
+            uploader_id: 上传者用户 ID。
+            file_hash: 文件内容哈希。
+            exists: 该哈希在库内是否已有文档。
+
+        Returns:
+            无返回；写缓存失败仅告警不影响主流程。
+        """
         try:
             cache = await self._get_cache()
             cache_key = self._get_doc_hash_cache_key(kb_id, uploader_id, file_hash)
@@ -128,7 +138,14 @@ class DocumentRepository:
         return document
 
     async def lock_active_document_by_id(self, document_id: int) -> Document | None:
-        """FOR UPDATE 行锁读取未删文档，锁保持至事务提交，用于入队防重等临界区。"""
+        """FOR UPDATE 行锁读取未删文档，锁保持至事务提交，用于入队防重等临界区。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            命中返回文档实例；未命中返回 None。
+        """
         query = (
             select(Document).where(
                 Document.id == document_id,
@@ -139,7 +156,14 @@ class DocumentRepository:
         return result.scalar_one_or_none()
 
     async def get_by_ids(self, document_ids: list[int]) -> list[Document]:
-        """批量按主键查询未删文档并附带最新任务，按入参顺序返回存在项。"""
+        """批量按主键查询未删文档并附带最新任务，按入参顺序返回存在项。
+
+        Args:
+            document_ids: 文档 ID 列表。
+
+        Returns:
+            按入参顺序的文档列表，缺失的 ID 跳过；空列表返回空列表。
+        """
         if not document_ids:
             return []
         query = select(Document).where(
@@ -170,7 +194,14 @@ class DocumentRepository:
         return {doc_id: filename for doc_id, filename in result.all() if filename}
 
     async def lock_active_documents_by_ids(self, document_ids: list[int]) -> list[Document]:
-        """批量 FOR UPDATE 行锁读取未删文档，用于批量操作的并发防重。"""
+        """批量 FOR UPDATE 行锁读取未删文档，用于批量操作的并发防重。
+
+        Args:
+            document_ids: 文档 ID 列表。
+
+        Returns:
+            锁定的未删文档列表；锁保持至事务提交。
+        """
         if not document_ids:
             return []
         query = (
@@ -190,7 +221,18 @@ class DocumentRepository:
         status: int | None = None,
         keyword: str | None = None,
     ) -> list[Document]:
-        """获取知识库内的文档列表（keyword 非空时按文件名子串模糊匹配）"""
+        """获取知识库内的文档列表（keyword 非空时按文件名子串模糊匹配）。
+
+        Args:
+            kb_id: 知识库 ID。
+            skip: 分页偏移量。
+            limit: 单页条数上限。
+            status: 可选任务状态过滤，None 表示不过滤。
+            keyword: 可选文件名子串匹配，None 表示不过滤。
+
+        Returns:
+            按创建时间倒序的文档列表，附每文档最新任务。
+        """
         return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status, keyword=keyword)
 
     async def get_by_space(
@@ -199,7 +241,16 @@ class DocumentRepository:
         skip: int = 0,
         limit: int = 100,
     ) -> list[Document]:
-        """获取空间内的文档列表"""
+        """获取空间内的文档列表。
+
+        Args:
+            space_id: 空间 ID。
+            skip: 分页偏移量。
+            limit: 单页条数上限。
+
+        Returns:
+            按创建时间倒序的文档列表，附每文档最新任务。
+        """
         return await self._list_by_parent(Document.space_id, space_id, skip, limit)
 
     async def get_by_hash(
@@ -289,7 +340,16 @@ class DocumentRepository:
     async def get_deleted_by_hash(
         self, kb_id: int, uploader_id: int, file_hash: str
     ) -> Document | None:
-        """根据文件哈希获取已软删除的文档（用于复活，限同上传者）"""
+        """根据文件哈希获取已软删除的文档（用于复活，限同上传者）。
+
+        Args:
+            kb_id: 知识库 ID。
+            uploader_id: 上传者用户 ID。
+            file_hash: 文件内容哈希。
+
+        Returns:
+            最近软删的一条文档；无则返回 None。
+        """
         result = await self.session.execute(
             select(Document).where(
                 Document.kb_id == kb_id,
@@ -427,7 +487,14 @@ class DocumentRepository:
     # ========== 统计查询 ==========
 
     async def get_kb_realtime_stats(self, kb_id: int) -> dict[str, Any]:
-        """实时统计知识库信息（排除软删除文档），通过 LEFT JOIN document_tasks 获取状态"""
+        """实时统计知识库信息（排除软删除文档），通过 LEFT JOIN document_tasks 获取状态。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            统计字典：文档数/分块数/存储 MB 与各处理状态计数。
+        """
         stmt = self._build_stats_select().where(
             Document.kb_id == kb_id,
             Document.deleted_at.is_(None),
@@ -436,7 +503,14 @@ class DocumentRepository:
         return self._row_to_stats_dict(row)
 
     async def batch_get_kb_stats(self, kb_ids: list[int]) -> dict[int, dict[str, Any]]:
-        """批量统计多个知识库信息（单条 SQL，解决 N+1 问题）"""
+        """批量统计多个知识库信息（单条 SQL，解决 N+1 问题）。
+
+        Args:
+            kb_ids: 知识库 ID 列表。
+
+        Returns:
+            {kb_id: 统计字典} 映射；入参为空返回空字典。
+        """
         if not kb_ids:
             return {}
         stmt = self._build_stats_select(with_kb_id=True).where(

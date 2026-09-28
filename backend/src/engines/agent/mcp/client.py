@@ -152,7 +152,14 @@ class McpClientManager:
         return tools
 
     async def disconnect_server(self, server_id: int) -> None:
-        """断开 MCP 服务器连接"""
+        """断开 MCP 服务器连接。
+
+        Args:
+            server_id: 目标服务器 ID。
+
+        Returns:
+            无返回；连接不存在时静默无操作。
+        """
         async with self._lock:
             await self._disconnect_internal(server_id)
 
@@ -255,25 +262,56 @@ class McpClientManager:
         await self.connect_server(server_id, server_name, config)
 
     def get_server_id_by_name(self, server_name: str) -> int | None:
-        """根据服务器名称查找已连接的 server_id"""
+        """根据服务器名称查找已连接的 server_id。
+
+        Args:
+            server_name: 服务器名称。
+
+        Returns:
+            已连接时返回 server_id；未找到返回 None。
+        """
         for sid, name in self._server_names.items():
             if name == server_name:
                 return sid
         return None
 
     def get_tools_for_servers(self, server_ids: list[int]) -> list[dict]:
-        """获取指定服务器 ID 列表的工具"""
+        """获取指定服务器 ID 列表的工具。
+
+        Args:
+            server_ids: 服务器 ID 列表。
+
+        Returns:
+            各服务器缓存工具定义的合并列表（OpenAI 格式）；未连接服务器贡献空段。
+        """
         tools = []
         for sid in server_ids:
             tools.extend(self._tools_cache.get(sid, []))
         return tools
 
     def is_connected(self, server_id: int) -> bool:
-        """检查 MCP 服务器是否已连接"""
+        """检查 MCP 服务器是否已连接。
+
+        Args:
+            server_id: 服务器 ID。
+
+        Returns:
+            已连接为 True。
+        """
         return server_id in self._sessions
 
     async def refresh_tools(self, server_id: int) -> list[dict]:
-        """重新获取 MCP 服务器的工具列表"""
+        """重新获取 MCP 服务器的工具列表。
+
+        Args:
+            server_id: 服务器 ID。
+
+        Returns:
+            最新工具定义列表（OpenAI 格式），同时更新缓存。
+
+        Raises:
+            ValueError: 服务器未连接。
+        """
         session = self._sessions.get(server_id)
         server_name = self._server_names.get(server_id, "unknown")
         if not session:

@@ -40,7 +40,16 @@ class WikiPageRepository:
         slug: str,
         include_deleted: bool = False,
     ) -> WikiPage | None:
-        """按 slug 取页面（默认只取存活）"""
+        """按 slug 取页面（默认只取存活）。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+            include_deleted: 是否包含软删页；False 时软删页视同不存在。
+
+        Returns:
+            命中返回页面；未命中返回 None。
+        """
         query = select(WikiPage).where(
             WikiPage.kb_id == kb_id,
             WikiPage.slug == slug,
@@ -51,7 +60,15 @@ class WikiPageRepository:
         return result.scalar_one_or_none()
 
     async def list_by_slugs(self, kb_id: int, slugs: list[str]) -> dict[str, WikiPage]:
-        """批量按 slug 取页面，返回 slug -> WikiPage 映射（缺省的不在结果里）"""
+        """批量按 slug 取页面，返回 slug -> WikiPage 映射（缺省的不在结果里）。
+
+        Args:
+            kb_id: 知识库 ID。
+            slugs: 页面 slug 列表。
+
+        Returns:
+            {slug: WikiPage} 映射，只含存活页；空入参返回空字典。
+        """
         if not slugs:
             return {}
         result = await self.session.execute(
@@ -64,7 +81,14 @@ class WikiPageRepository:
         return {p.slug: p for p in result.scalars().all()}
 
     async def list_slugs_by_kb(self, kb_id: int) -> list[str]:
-        """KB 内全部存活 slug（喂给抽取提示词保 slug 连续性）"""
+        """KB 内全部存活 slug（喂给抽取提示词保 slug 连续性）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            存活 slug 列表。
+        """
         result = await self.session.execute(
             select(WikiPage.slug).where(
                 WikiPage.kb_id == kb_id,
@@ -201,7 +225,15 @@ class WikiPageRepository:
         } for rank, _, p in scored]
 
     async def list_by_source_document(self, kb_id: int, document_id: int) -> list[WikiPage]:
-        """按来源文档反查页面（source_refs 存 "docid|filename"，LIKE 前缀匹配）"""
+        """按来源文档反查页面（source_refs 存 "docid|filename"，LIKE 前缀匹配）。
+
+        Args:
+            kb_id: 知识库 ID。
+            document_id: 来源文档 ID。
+
+        Returns:
+            引用该文档的存活页面列表。
+        """
         prefix = f"{document_id}|"
         result = await self.session.execute(
             select(WikiPage).where(
@@ -235,7 +267,14 @@ class WikiPageRepository:
         ]
 
     async def list_distinct_category_paths(self, kb_id: int) -> list[list[str]]:
-        """KB 内 distinct category_path（taxonomy 目录池；空路径剔除）"""
+        """KB 内 distinct category_path（taxonomy 目录池；空路径剔除）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            去重后的目录路径列表（每项为标签数组）。
+        """
         result = await self.session.execute(
             select(WikiPage.category_path).where(
                 WikiPage.kb_id == kb_id,
@@ -251,7 +290,14 @@ class WikiPageRepository:
         return out
 
     async def create_page(self, data: dict[str, Any]) -> WikiPage:
-        """新建页面"""
+        """新建页面。
+
+        Args:
+            data: 页面字段字典（space_id/kb_id/slug/title/content 等）。
+
+        Returns:
+            flush 后的页面实例；提交由调用方控制。
+        """
         page = WikiPage(**data)
         self.session.add(page)
         await self.session.flush()
@@ -561,7 +607,14 @@ class WikiPageRepository:
         return page.version
 
     async def prune_revisions(self, page_id: str) -> int:
-        """两级保留裁剪：软上限只清机器写的快照，硬上限一律裁剪。返回清理数。"""
+        """两级保留裁剪：软上限只清机器写的快照，硬上限一律裁剪。返回清理数。
+
+        Args:
+            page_id: 页面 UUID。
+
+        Returns:
+            实际删除的快照数；未超上限返回 0。
+        """
         # 倒序取快照，按版本从新到旧保留
         result = await self.session.execute(
             select(WikiPageRevision.id, WikiPageRevision.version, WikiPageRevision.edit_source)
@@ -609,7 +662,15 @@ class WikiPageRepository:
         return list(result.scalars().all())
 
     async def get_revision(self, page_id: str, version: int) -> WikiPageRevision | None:
-        """取指定版本快照全文"""
+        """取指定版本快照全文。
+
+        Args:
+            page_id: 页面 UUID。
+            version: 目标版本号。
+
+        Returns:
+            命中返回快照；未命中返回 None。
+        """
         result = await self.session.execute(
             select(WikiPageRevision).where(
                 WikiPageRevision.page_id == page_id,
@@ -619,19 +680,40 @@ class WikiPageRepository:
         return result.scalar_one_or_none()
 
     async def soft_delete_page(self, page: WikiPage) -> None:
-        """软删页面（deleted_flag 写时间戳让出唯一占位）"""
+        """软删页面（deleted_flag 写时间戳让出唯一占位）。
+
+        Args:
+            page: 待软删的页面 ORM 实例。
+
+        Returns:
+            无返回；flush-only，提交由调用方控制。
+        """
         page.soft_delete()
         await self.session.flush()
 
     async def all_live_pages(self, kb_id: int) -> list[WikiPage]:
-        """KB 内全部存活页面（finalize 链接重建用；页面量可控）"""
+        """KB 内全部存活页面（finalize 链接重建用；页面量可控）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            全部存活页面列表（含正文，无分页）。
+        """
         result = await self.session.execute(
             select(WikiPage).where(WikiPage.kb_id == kb_id, WikiPage.deleted_flag == 0)
         )
         return list(result.scalars().all())
 
     async def get_stats(self, kb_id: int) -> dict[str, Any]:
-        """统计：页数/按类型分布/链接数/孤儿数"""
+        """统计：页数/按类型分布/链接数/孤儿数。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            统计字典：total_pages/pages_by_type/total_links/orphan_count。
+        """
         total_result = await self.session.execute(
             select(func.count(WikiPage.id)).where(WikiPage.kb_id == kb_id, WikiPage.deleted_flag == 0)
         )
@@ -730,21 +812,42 @@ class WikiIngestRecordRepository:
         self.logger = logger
 
     async def create(self, data: dict[str, Any]) -> WikiIngestRecord:
-        """创建生成履历行（默认 PENDING 状态）并 flush。"""
+        """创建生成履历行（默认 PENDING 状态）并 flush。
+
+        Args:
+            data: 履历字段字典（space_id/kb_id/document_id 等）。
+
+        Returns:
+            flush 后的履历行；提交由调用方控制。
+        """
         record = WikiIngestRecord(**data)
         self.session.add(record)
         await self.session.flush()
         return record
 
     async def get_by_id(self, record_id: int) -> WikiIngestRecord | None:
-        """按自增主键查履历，不存在返回 None。"""
+        """按自增主键查履历，不存在返回 None。
+
+        Args:
+            record_id: 履历主键。
+
+        Returns:
+            命中返回履历行；未命中返回 None。
+        """
         result = await self.session.execute(
             select(WikiIngestRecord).where(WikiIngestRecord.id == record_id)
         )
         return result.scalar_one_or_none()
 
     async def get_latest_for_kb(self, kb_id: int) -> WikiIngestRecord | None:
-        """KB 最新一条履历（前端「生成中」轮询用）"""
+        """KB 最新一条履历（前端「生成中」轮询用）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            按 ID 倒序的最新履历；无履历返回 None。
+        """
         result = await self.session.execute(
             select(WikiIngestRecord)
             .where(WikiIngestRecord.kb_id == kb_id)
@@ -754,7 +857,15 @@ class WikiIngestRecordRepository:
         return result.scalar_one_or_none()
 
     async def list_by_kb(self, kb_id: int, limit: int = 20) -> list[WikiIngestRecord]:
-        """按 ID 降序列出 KB 最近生成履历，默认 20 条。"""
+        """按 ID 降序列出 KB 最近生成履历，默认 20 条。
+
+        Args:
+            kb_id: 知识库 ID。
+            limit: 返回条数上限，默认 20。
+
+        Returns:
+            按 ID 降序的履历列表。
+        """
         result = await self.session.execute(
             select(WikiIngestRecord)
             .where(WikiIngestRecord.kb_id == kb_id)
@@ -764,7 +875,15 @@ class WikiIngestRecordRepository:
         return list(result.scalars().all())
 
     async def list_by_document(self, document_id: int, limit: int = 10) -> list[WikiIngestRecord]:
-        """该文档的生成履历（reparse 清洗 scrub_pending_wiki_ingest 用）"""
+        """该文档的生成履历（reparse 清洗 scrub_pending_wiki_ingest 用）。
+
+        Args:
+            document_id: 触发文档 ID。
+            limit: 返回条数上限，默认 10。
+
+        Returns:
+            按 ID 降序的履历列表。
+        """
         result = await self.session.execute(
             select(WikiIngestRecord)
             .where(WikiIngestRecord.document_id == document_id)

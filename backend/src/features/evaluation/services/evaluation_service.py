@@ -104,7 +104,22 @@ class EvaluationService:
         file_content: bytes,
         filename: str,
     ) -> Any:
-        """解析上传文件、建测试集记录并上传 MinIO，返回含存储信息的 ORM 对象（含提交）。"""
+        """解析上传文件、建测试集记录并上传 MinIO，返回含存储信息的 ORM 对象（含提交）。
+
+        Args:
+            space_id: 目标空间 ID。
+            kb_id: 目标知识库 ID。
+            user_id: 创建者用户 ID。
+            name: 测试集展示名。
+            file_content: 上传文件完整字节（json 或 csv）。
+            filename: 原始文件名，扩展名决定解析方式。
+
+        Returns:
+            storage 已回填 MinIO 信息的测试集 ORM 对象（已 commit）。
+
+        Raises:
+            InvalidTestSetError: 文件格式不支持、编码错误或缺 question/expected_answer 字段。
+        """
         test_set = parse_test_set(file_content, filename)
         total_cases = len(test_set.test_cases)
         file_hash = hashlib.sha256(file_content).hexdigest()
@@ -131,17 +146,43 @@ class EvaluationService:
         return test_set_obj
 
     async def get_test_set(self, test_set_id: int) -> Any | None:
-        """按 ID 查测试集，不做知识库归属校验（内部使用）。"""
+        """按 ID 查测试集，不做知识库归属校验（内部使用）。
+
+        Args:
+            test_set_id: 测试集记录 ID。
+
+        Returns:
+            测试集 ORM 对象；不存在返回 None，对外路由须改用 get_test_set_by_kb。
+        """
         return await self.test_set_repo.get_by_id(test_set_id)
 
     async def get_test_set_by_kb(self, test_set_id: int, space_id: int, kb_id: int) -> Any | None:
-        """按 ID + 空间 + 知识库查测试集，供路由层归属校验。"""
+        """按 ID + 空间 + 知识库查测试集，供路由层归属校验。
+
+        Args:
+            test_set_id: 测试集记录 ID。
+            space_id: 期望归属的空间 ID。
+            kb_id: 期望归属的知识库 ID。
+
+        Returns:
+            三元组匹配返回 ORM 对象，否则返回 None（调用方转 404）。
+        """
         return await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
 
     async def list_test_sets(
         self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20
     ) -> tuple[list, int]:
-        """分页列出知识库下测试集，返回记录列表与总数。"""
+        """分页列出知识库下测试集，返回记录列表与总数。
+
+        Args:
+            space_id: 空间 ID。
+            kb_id: 知识库 ID。
+            skip: 分页跳过条数。
+            limit: 单页条数上限。
+
+        Returns:
+            (测试集 ORM 列表，总数) 二元组，列表按创建时间新到旧。
+        """
         test_sets = await self.test_set_repo.list_by_kb(kb_id, space_id, skip, limit)
         total = await self.test_set_repo.count_by_kb(kb_id, space_id)
         return test_sets, total
@@ -149,7 +190,20 @@ class EvaluationService:
     async def update_test_set(
         self, test_set_id: int, space_id: int, kb_id: int, name: str
     ) -> Any:
-        """重命名测试集，不存在时抛 EvaluationTestSetNotFoundError（含提交）。"""
+        """重命名测试集，不存在时抛 EvaluationTestSetNotFoundError（含提交）。
+
+        Args:
+            test_set_id: 测试集记录 ID。
+            space_id: 归属校验用空间 ID。
+            kb_id: 归属校验用知识库 ID。
+            name: 新的测试集展示名。
+
+        Returns:
+            重命名后的测试集 ORM 对象（已 commit 并 refresh）。
+
+        Raises:
+            EvaluationTestSetNotFoundError: ID + 空间 + 知识库三元组无匹配记录。
+        """
         test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -161,7 +215,19 @@ class EvaluationService:
     async def get_test_set_cases(
         self, test_set_id: int, space_id: int, kb_id: int
     ) -> tuple[Any, list[dict]] | None:
-        """从 MinIO 下载并重新解析测试集，返回对象与用例列表；不存在时抛错。"""
+        """从 MinIO 下载并重新解析测试集，返回对象与用例列表；不存在时抛错。
+
+        Args:
+            test_set_id: 测试集记录 ID。
+            space_id: 归属校验用空间 ID。
+            kb_id: 归属校验用知识库 ID。
+
+        Returns:
+            (测试集 ORM 对象, 用例 dict 列表) 二元组；每条含 question 与 expected_answer。
+
+        Raises:
+            EvaluationTestSetNotFoundError: 测试集不存在或归属不匹配。
+        """
         test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -270,7 +336,18 @@ class EvaluationService:
         return test_set_obj
 
     async def delete_test_set(self, test_set_id: int) -> bool:
-        """删除测试集及其任务的记录与 MinIO 文件；存在 PENDING/RUNNING 任务时拒绝。"""
+        """删除测试集及其任务的记录与 MinIO 文件；存在 PENDING/RUNNING 任务时拒绝。
+
+        Args:
+            test_set_id: 测试集记录 ID。
+
+        Returns:
+            是否删除了记录（先删库后清文件，文件清理失败仅告警不影响结果）。
+
+        Raises:
+            EvaluationTestSetNotFoundError: 测试集不存在。
+            EvaluationTaskPendingError: 该测试集下仍有 PENDING 或 RUNNING 任务。
+        """
         test_set_obj = await self.test_set_repo.get_by_id(test_set_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -319,7 +396,20 @@ class EvaluationService:
         name: str,
         config: dict | None = None,
     ) -> Any:
-        """校验配置后创建 PENDING 任务并启动后台评估协程，协程结束自动清理跟踪表。"""
+        """校验配置后创建 PENDING 任务并启动后台评估协程，协程结束自动清理跟踪表。
+
+        Args:
+            test_set_id: 关联的测试集 ID。
+            user_id: 发起任务的用户 ID（决定默认模型解析）。
+            name: 任务展示名。
+            config: 可选测评参数 dict（模型名、开关项、top_k 等）；None 表示全默认。
+
+        Returns:
+            PENDING 状态的任务 ORM 对象（已 commit）；评估在后台异步执行。
+
+        Raises:
+            ValidationError: config 非空但未通过 EvaluationConfig 模型校验。
+        """
         if config:
             EvaluationConfig(**config)
 
@@ -345,23 +435,61 @@ class EvaluationService:
         return task
 
     async def get_task(self, task_id: int) -> Any | None:
-        """按 ID 查测评任务，不做知识库归属校验（内部使用）。"""
+        """按 ID 查测评任务，不做知识库归属校验（内部使用）。
+
+        Args:
+            task_id: 测评任务记录 ID。
+
+        Returns:
+            任务 ORM 对象（test_set 已预加载）；不存在返回 None。
+        """
         return await self.task_repo.get_by_id(task_id)
 
     async def get_task_by_kb(self, task_id: int, space_id: int, kb_id: int) -> Any | None:
-        """按 ID + 空间 + 知识库查任务，供路由层归属校验。"""
+        """按 ID + 空间 + 知识库查任务，供路由层归属校验。
+
+        Args:
+            task_id: 测评任务记录 ID。
+            space_id: 期望归属的空间 ID。
+            kb_id: 期望归属的知识库 ID。
+
+        Returns:
+            全部匹配返回任务 ORM 对象，否则返回 None（调用方转 404）。
+        """
         return await self.task_repo.get_by_id_and_kb(task_id, space_id, kb_id)
 
     async def list_tasks(
         self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20, status: int | None = None
     ) -> tuple[list, int]:
-        """分页列出知识库下任务，可按状态过滤，返回列表与总数。"""
+        """分页列出知识库下任务，可按状态过滤，返回列表与总数。
+
+        Args:
+            space_id: 空间 ID。
+            kb_id: 知识库 ID。
+            skip: 分页跳过条数。
+            limit: 单页条数上限。
+            status: 可选，EvaluationStatus 整数状态过滤；None 表示不过滤。
+
+        Returns:
+            (任务 ORM 列表，总数) 二元组，列表按创建时间新到旧。
+        """
         tasks = await self.task_repo.list_by_kb(kb_id, space_id, skip, limit, status=status)
         total = await self.task_repo.count_by_kb(kb_id, space_id, status=status)
         return tasks, total
 
     async def delete_task(self, task_id: int) -> bool:
-        """删除非执行中任务的记录与结果文件，PENDING/RUNNING 状态拒绝删除。"""
+        """删除非执行中任务的记录与结果文件，PENDING/RUNNING 状态拒绝删除。
+
+        Args:
+            task_id: 测评任务记录 ID。
+
+        Returns:
+            是否删除了记录（先删库后清文件，文件清理失败仅告警）。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+            EvaluationTaskPendingError: 任务处于 PENDING 或 RUNNING 状态。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -386,7 +514,18 @@ class EvaluationService:
         return result
 
     async def cancel_task(self, task_id: int) -> Any:
-        """取消任务：置 CANCELLED 并 cancel 本 worker 内协程，跨 worker 靠 DB 检查点停止。"""
+        """取消任务：置 CANCELLED 并 cancel 本 worker 内协程，跨 worker 靠 DB 检查点停止。
+
+        Args:
+            task_id: 测评任务记录 ID。
+
+        Returns:
+            更新后的任务 ORM 对象（已 commit 并 refresh，error_message 置为用户取消）。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+            EvaluationTaskNotCancellableError: 任务已处于终态（completed/failed/cancelled）。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -414,7 +553,17 @@ class EvaluationService:
         return task
 
     async def get_task_progress(self, task_id: int) -> dict[str, Any] | None:
-        """返回任务进度快照（状态与 current/total），任务不存在时抛错。"""
+        """返回任务进度快照（状态与 current/total），任务不存在时抛错。
+
+        Args:
+            task_id: 测评任务记录 ID。
+
+        Returns:
+            含 task_id/status/current/total 的 dict；current/total 无进度记录时为 0。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -429,7 +578,19 @@ class EvaluationService:
     async def submit_human_scores(
         self, task_id: int, scores: list[dict[str, Any]]
     ) -> int:
-        """按用例索引写入人工评分并重算均分，仅 COMPLETED 任务可评分。"""
+        """按用例索引写入人工评分并重算均分，仅 COMPLETED 任务可评分。
+
+        Args:
+            task_id: 测评任务记录 ID。
+            scores: 评分项列表，每项含 index（用例下标）、score 与可选 comment；越界下标静默跳过。
+
+        Returns:
+            实际写入的评分条数；结果文件下载失败时返回 0（不视为错误）。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+            EvaluationTaskNotCompletedError: 任务未处于 COMPLETED 状态。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -466,7 +627,18 @@ class EvaluationService:
         return updated
 
     async def get_report(self, task_id: int) -> dict[str, Any] | None:
-        """下载结果文件组装报告视图（汇总指标与逐条详情），任务不存在时抛错。"""
+        """下载结果文件组装报告视图（汇总指标与逐条详情），任务不存在时抛错。
+
+        Args:
+            task_id: 测评任务记录 ID。
+
+        Returns:
+            报告视图 dict，含 task_id/name/status/total_cases/completed_cases/
+            summary/details 七个键；无结果文件时 summary 与 details 均为空。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -635,7 +807,18 @@ class EvaluationService:
         }
 
     async def export_result(self, task_id: int, format: str = "json") -> tuple[bytes, str] | None:
-        """把任务结果导出为 JSON/CSV 字节与文件名，无结果文件时返回 None。"""
+        """把任务结果导出为 JSON/CSV 字节与文件名，无结果文件时返回 None。
+
+        Args:
+            task_id: 测评任务记录 ID。
+            format: 导出格式，json（默认）或 csv；csv 附 UTF-8 BOM 便于 Excel 打开。
+
+        Returns:
+            (文件字节, 文件名) 二元组；任务无结果文件返回 None。
+
+        Raises:
+            EvaluationTaskNotFoundError: 任务不存在。
+        """
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)

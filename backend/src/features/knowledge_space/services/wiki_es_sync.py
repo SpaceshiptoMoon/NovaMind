@@ -13,7 +13,14 @@ WIKI_CHUNK_ID_PREFIX = "wp-"
 
 
 def wiki_chunk_id(page_id: str) -> str:
-    """wiki 页在 ES 中的 chunk ID（wp- 前缀 + 页面 UUID）。"""
+    """wiki 页在 ES 中的 chunk ID（wp- 前缀 + 页面 UUID）。
+
+    Args:
+        page_id: 页面 UUID。
+
+    Returns:
+        形如 wp-{uuid} 的 chunk ID。
+    """
     return f"{WIKI_CHUNK_ID_PREFIX}{page_id}"
 
 
@@ -85,7 +92,15 @@ class WikiEsSyncService:
         return await self.es.index_chunk(space_id, doc)
 
     async def delete_page(self, space_id: int, page_id: str) -> bool:
-        """删除 wiki 页对应的 ES 文档"""
+        """删除 wiki 页对应的 ES 文档。
+
+        Args:
+            space_id: 空间 ID（ES 索引路由）。
+            page_id: 页面 UUID。
+
+        Returns:
+            删除成功 True；失败仅告警返回 False。
+        """
         try:
             return await self.es.delete_chunk(space_id, wiki_chunk_id(page_id))
         except Exception as e:

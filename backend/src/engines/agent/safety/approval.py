@@ -40,7 +40,19 @@ class ApprovalHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """执行前检测代码内容：HARDLINE 抛 ApprovalRejectedError 拒绝；DANGEROUS 异步审批，deny/超时拒绝，无审批通道告警放行。"""
+        """执行前危险检测：HARDLINE 拒绝；DANGEROUS 异步审批，deny/超时拒绝，无通道告警放行。
+
+        Args:
+            tool: 工具定义（非目标工具直接放行）。
+            arguments: 工具参数（读 code 字段做危险检测）。
+            context: 执行上下文：approval_registry 与 event_sink 构成审批通道。
+
+        Returns:
+            None 表示放行（不修改参数）。
+
+        Raises:
+            ApprovalRejectedError: HARDLINE 命中，或用户拒绝/审批超时。
+        """
         if tool.name not in self._targets:
             return None
         code = arguments.get("code") or ""
@@ -90,7 +102,17 @@ class ApprovalHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
-        """执行后钩子：原样透传工具结果，本 hook 无后处理语义。"""
+        """执行后钩子：原样透传工具结果，本 hook 无后处理语义。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            result: 工具结果。
+            context: 执行上下文。
+
+        Returns:
+            原样返回 result。
+        """
         return result
 
 

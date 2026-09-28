@@ -260,7 +260,15 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def total_page_number(fnm, binary=None):
-        """读 PDF 总页数；打开失败记日志并返回 0。"""
+        """读 PDF 总页数；打开失败记日志并返回 0。
+
+        Args:
+            fnm: 文件路径（binary 为 None 时使用）。
+            binary: 文件字节流；非 None 时优先于路径。
+
+        Returns:
+            总页数；打开失败为 0。
+        """
         try:
             with _pdfplumber_lock, pdfplumber.open(fnm) if binary is None else pdfplumber.open(BytesIO(binary)) as pdf:
                 total_page = len(pdf.pages)
@@ -512,7 +520,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     @staticmethod
     def remove_tag(text: str) -> str:
-        """剥离文本内嵌的坐标标记（strip_position_tags 委托）。"""
+        """剥离文本内嵌的坐标标记（strip_position_tags 委托）。
+
+        Args:
+            text: 含 @@page 坐标标记 的文本。
+
+        Returns:
+            去除全部坐标标记后的干净文本。
+        """
         # 委托到 core.models.strip_position_tags，保持全包唯一的坐标标记清洗正则。
         return strip_position_tags(text)
 

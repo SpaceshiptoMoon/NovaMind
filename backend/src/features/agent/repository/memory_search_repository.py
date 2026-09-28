@@ -303,7 +303,15 @@ class MemorySearchRepository:
             return []
 
     async def delete_memory(self, agent_id: int, memory_id: int) -> bool:
-        """删除 ES 中的记忆文档"""
+        """删除 ES 中的记忆文档。
+
+        Args:
+            agent_id: Agent 主键 ID（决定索引名）。
+            memory_id: 记忆主键 ID（ES 文档 ID）。
+
+        Returns:
+            索引存在且删除动作为 True；索引不存在或 ES 失败返回 False。
+        """
         try:
             index_name = self._index_name(agent_id)
             if await self._es.indices.exists(index=index_name):

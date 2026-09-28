@@ -4,13 +4,30 @@ from typing import Any
 
 
 def build_image_data_url(file_bytes: bytes, mime_type: str) -> str:
-    """将图片二进制内容编码为 data URL。"""
+    """将图片二进制内容编码为 data URL。
+
+    Args:
+        file_bytes: 图片字节流。
+        mime_type: MIME 类型。
+
+    Returns:
+        data:{mime};base64,... 形式的字符串。
+    """
     base64_data = base64.b64encode(file_bytes).decode("utf-8")
     return f"data:{mime_type};base64,{base64_data}"
 
 
 def build_vlm_image_messages(file_bytes: bytes, mime_type: str, text_prompt: str) -> list[dict[str, Any]]:
-    """构建 OpenAI 兼容格式的图片多模态消息。"""
+    """构建 OpenAI 兼容格式的图片多模态消息。
+
+    Args:
+        file_bytes: 图片字节流。
+        mime_type: MIME 类型。
+        text_prompt: 随图发送的文本指令。
+
+    Returns:
+        单条 user 消息的列表（content 为 image_url + text 两段）。
+    """
     return [{
         "role": "user",
         "content": [
@@ -57,7 +74,20 @@ async def generate_vlm_text_with_fallback(
     vlm_model: str,
     log_context: dict[str, Any] | None = None,
 ) -> str:
-    """兼容部分 VLM 提供商要求显式开启 thinking 的场景。"""
+    """兼容部分 VLM 提供商要求显式开启 thinking 的场景。
+
+    Args:
+        vlm_client: VLM 客户端。
+        messages: 多模态消息列表。
+        max_tokens: 生成 token 上限。
+        temperature: 采样温度。
+        logger: 日志器（重试时记录）。
+        vlm_model: 模型名（日志上下文）。
+        log_context: 附加日志键值，可空。
+
+    Returns:
+        VLM 生成文本；首次失败且错误含 enable_thinking 时自动开启重试，其余异常原样上抛。
+    """
     try:
         return await vlm_client.generate_text(
             prompt=messages,

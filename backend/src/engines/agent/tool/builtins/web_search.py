@@ -63,7 +63,16 @@ class WebSearchTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """路由 web_search 调用并格式化结果；结束后关闭端口释放 HTTP 连接。"""
+        """路由 web_search 调用并格式化结果；结束后关闭端口释放 HTTP 连接。
+
+        Args:
+            tool_name: 工具名（仅认 web_search）。
+            arguments: 工具参数：query 与 max_results。
+            context: 执行上下文：web_search_port。
+
+        Returns:
+            JSON 文本：命中为标题/URL/摘要列表；未命中/端口未配置/失败为提示或 {error}。
+        """
         if tool_name == "web_search":
             return await self._search(arguments, context)
         return f"未知工具：{tool_name}"

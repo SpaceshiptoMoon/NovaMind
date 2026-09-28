@@ -147,7 +147,18 @@ class WikiPage(BaseModel):
 
     def content_signature_changed(self, *, title: str, content: str, summary: str,
                                    page_type: str, status: str) -> bool:
-        """判断用户可见字段是否变化（决定 version 是否递增）"""
+        """判断用户可见字段是否变化（决定 version 是否递增）。
+
+        Args:
+            title: 候选新标题。
+            content: 候选新正文。
+            summary: 候选新摘要。
+            page_type: 候选新页面类型。
+            status: 候选新状态。
+
+        Returns:
+            任一字段与当前值不同返回 True，全部一致返回 False。
+        """
         return (
             self.title != title
             or self.content != content
@@ -219,7 +230,15 @@ class WikiIngestRecord(BaseModel):
         self.started_at = now_china()
 
     def mark_done(self, pages_created: int, pages_updated: int) -> None:
-        """标记生成完成并记录新建/更新页面数、清空错误信息。"""
+        """标记生成完成并记录新建/更新页面数、清空错误信息。
+
+        Args:
+            pages_created: 本轮新建页面数。
+            pages_updated: 本轮更新页面数。
+
+        Returns:
+            无返回；写 completed_at，不 flush 不 commit。
+        """
         self.status = WikiIngestStatus.DONE
         self.pages_created = pages_created
         self.pages_updated = pages_updated
@@ -227,25 +246,54 @@ class WikiIngestRecord(BaseModel):
         self.error_message = None
 
     def mark_failed(self, error_message: str) -> None:
-        """标记生成失败并记录失败原因。"""
+        """标记生成失败并记录失败原因。
+
+        Args:
+            error_message: 失败原因，写入 error_message 列。
+
+        Returns:
+            无返回；写 completed_at，不 flush 不 commit。
+        """
         self.status = WikiIngestStatus.FAILED
         self.completed_at = now_china()
         self.error_message = error_message
 
     def mark_cancelled(self, reason: str) -> None:
-        """reparse 清洗取消（终态，区别于失败：非错误，是主动让位）"""
+        """reparse 清洗取消（终态，区别于失败：非错误，是主动让位）。
+
+        Args:
+            reason: 取消原因，写入 error_message 列供排查。
+
+        Returns:
+            无返回；写 completed_at，不 flush 不 commit。
+        """
         self.status = WikiIngestStatus.CANCELLED
         self.completed_at = now_china()
         self.error_message = reason
 
     def start_step(self, step_name: str) -> None:
-        """记录阶段开始（调用方负责 commit，保证崩溃后节点日志可见）"""
+        """记录阶段开始（调用方负责 commit，保证崩溃后节点日志可见）。
+
+        Args:
+            step_name: 阶段名，作为 step_progress 字典的键。
+
+        Returns:
+            无返回；不 commit，进度可见性依赖调用方提交。
+        """
         progress = dict(self.step_progress or {})
         progress[step_name] = {"status": "running", "started_at": now_china().isoformat()}
         self.step_progress = progress
 
     def finish_step(self, step_name: str, metrics: dict | None = None) -> None:
-        """记录阶段完成"""
+        """记录阶段完成。
+
+        Args:
+            step_name: 阶段名。
+            metrics: 可选指标字典，None 不写 metrics 键。
+
+        Returns:
+            无返回；不 commit，进度可见性依赖调用方提交。
+        """
         progress = dict(self.step_progress or {})
         node = progress.get(step_name) if isinstance(progress.get(step_name), dict) else {}
         node["status"] = "done"
@@ -256,7 +304,15 @@ class WikiIngestRecord(BaseModel):
         self.step_progress = progress
 
     def fail_step(self, step_name: str, error: str) -> None:
-        """记录阶段失败"""
+        """记录阶段失败。
+
+        Args:
+            step_name: 阶段名。
+            error: 失败原因。
+
+        Returns:
+            无返回；不 commit，进度可见性依赖调用方提交。
+        """
         progress = dict(self.step_progress or {})
         node = progress.get(step_name) if isinstance(progress.get(step_name), dict) else {}
         node["status"] = "failed"

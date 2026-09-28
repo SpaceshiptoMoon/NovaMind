@@ -76,7 +76,16 @@ class TextCompressor:
         target_tokens: int = 500,
         keep_recent: int = 4,
     ) -> CompressionResult:
-        """按摘要策略压缩消息列表（默认入口，参数透传给通用策略接口）。"""
+        """按摘要策略压缩消息列表（默认入口，参数透传给通用策略接口）。
+
+        Args:
+            messages: 消息字典列表（role/content），按时间序排列。
+            target_tokens: 压缩后摘要的 token 预算，默认 500。
+            keep_recent: 保留原文的最近消息条数，默认 4；其余进入摘要。
+
+        Returns:
+            压缩结果（摘要文本/前后 token 数/保留消息/压缩比）。
+        """
         return await self.compress_with_strategy(
             messages,
             strategy=CompressionStrategy.SUMMARY.value,
@@ -154,7 +163,17 @@ class TextCompressor:
         target_tokens: int = 500,
         keep_recent: int = 4,
     ) -> CompressionResult:
-        """按指定策略压缩：截断/滑窗只保留消息，摘要策略另调 LLM 生成摘要。"""
+        """按指定策略压缩：截断/滑窗只保留消息，摘要策略另调 LLM 生成摘要。
+
+        Args:
+            messages: 消息字典列表（role/content），按时间序排列。
+            strategy: 压缩策略（summary/sliding_window/keep_recent/truncate），未知值按 summary 处理。
+            target_tokens: token 预算：truncate 下为保留上限，summary 下为摘要长度目标，默认 500。
+            keep_recent: 滑窗/摘要策略保留的最近消息条数，默认 4；0 表示不留原文。
+
+        Returns:
+            压缩结果（摘要文本/前后 token 数/保留消息/压缩比）；空入参返回全零结果。
+        """
         original_tokens = self._messages_tokens(messages)
         if not messages:
             return CompressionResult("", 0, 0, [], 0.0)

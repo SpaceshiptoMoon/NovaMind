@@ -51,7 +51,21 @@ class RoleService:
         description: str | None = None,
         permission_codes: list[str] | None = None,
     ) -> Role:
-        """创建角色（编码唯一）并绑定初始权限，返回带权限关联的角色。"""
+        """创建角色（编码唯一）并绑定初始权限。
+
+        Args:
+            code: 角色唯一编码，重复即拒绝。
+            name: 角色显示名称。
+            description: 角色描述，可为 None。
+            permission_codes: 初始权限码列表；None/空表示不绑定权限。
+
+        Returns:
+            带权限关联的角色记录。
+
+        Raises:
+            UserOperationError: 角色编码已存在。
+            RoleError: 权限码不存在。
+        """
         existing = await self.repo.get_role_by_code(code)
         if existing:
             raise UserOperationError(f"角色编码 '{code}' 已存在")
@@ -77,7 +91,21 @@ class RoleService:
         description: str | None = None,
         permission_codes: list[str] | None = None,
     ) -> Role:
-        """更新角色基础字段与权限；权限变更后失效该角色所有用户的权限缓存。"""
+        """更新角色基础字段与权限；权限变更后失效该角色所有用户的权限缓存。
+
+        Args:
+            role_id: 角色 ID。
+            name: 新名称；None 表示不改。
+            description: 新描述；None 表示不改。
+            permission_codes: 全量权限码列表；None 表示不改（空列表表示清空）。
+
+        Returns:
+            更新后的角色记录（带权限关联）。
+
+        Raises:
+            RoleNotFoundError: 角色不存在。
+            RoleError: 权限码不存在。
+        """
         role = await self.repo.get_role_by_id(role_id)
         if role is None:
             raise RoleNotFoundError(role_id=role_id)
@@ -111,7 +139,15 @@ class RoleService:
             await self.checker.invalidate(uid)
 
     async def delete_role(self, role_id: int) -> None:
-        """删除角色；系统内置角色与仍被用户绑定的角色拒绝删除。"""
+        """删除角色；系统内置角色与仍被用户绑定的角色拒绝删除。
+
+        Args:
+            role_id: 角色 ID。
+
+        Raises:
+            RoleNotFoundError: 角色不存在。
+            UserOperationError: 系统内置角色不可删除，或角色下仍有绑定用户。
+        """
         role = await self.repo.get_role_by_id(role_id)
         if role is None:
             raise RoleNotFoundError(role_id=role_id)
@@ -129,7 +165,17 @@ class RoleService:
         await self.repo.delete_role(role_id)
 
     async def assign_user_role(self, user_id: int, role_id: int) -> None:
-        """为用户分配角色（最高管理员拒绝降级），并失效该用户权限缓存。"""
+        """为用户分配角色（最高管理员拒绝降级），并失效该用户权限缓存。
+
+        Args:
+            user_id: 目标用户 ID。
+            role_id: 目标角色 ID。
+
+        Raises:
+            UserNotFoundError: 用户不存在。
+            RoleNotFoundError: 角色不存在。
+            PermissionDeniedError: 目标是最高管理员（超管角色仅能经 YAML 配置变更）。
+        """
         user = await self.db.get(User, user_id)
         if user is None:
             raise UserNotFoundError(user_id=user_id)

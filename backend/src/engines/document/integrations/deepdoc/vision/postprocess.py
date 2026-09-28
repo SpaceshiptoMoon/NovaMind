@@ -101,7 +101,15 @@ class DBPostProcess:
         return np.array(boxes, dtype="int32"), scores
 
     def unclip(self, box, unclip_ratio):
-        """按 DB 公式（距离 = 面积 × 比例 / 周长）把四边形外扩后重新闭合。"""
+        """按 DB 公式（距离 = 面积 × 比例 / 周长）把四边形外扩后重新闭合。
+
+        Args:
+            box: 四边形角点坐标。
+            unclip_ratio: 外扩比例。
+
+        Returns:
+            外扩后的多边形顶点数组（退化时可能为空数组）。
+        """
         poly = Polygon(box)
         distance = poly.area * unclip_ratio / poly.length
         offset = pyclipper.PyclipperOffset()
@@ -110,7 +118,14 @@ class DBPostProcess:
         return expanded
 
     def get_mini_boxes(self, contour):
-        """取最小面积外接矩形并按左上→右下排角点（返回角点与短边长度）。"""
+        """取最小面积外接矩形并按左上→右下排角点（返回角点与短边长度）。
+
+        Args:
+            contour: 轮廓点集。
+
+        Returns:
+            (排好序的 4 角点, 短边长度)。
+        """
         bounding_box = cv2.minAreaRect(contour)
         points = sorted(list(cv2.boxPoints(bounding_box)), key=lambda x: x[0])
 
@@ -209,7 +224,14 @@ class BaseRecLabelDecode:
         self.character = dict_character
 
     def pred_reverse(self, pred):
-        """识别结果分段倒序（阿拉伯语从右到左修正，拉丁/数字串保持原序）。"""
+        """识别结果分段倒序（阿拉伯语从右到左修正，拉丁/数字串保持原序）。
+
+        Args:
+            pred: 识别文本。
+
+        Returns:
+            倒序修正后的文本。
+        """
         pred_re = []
         c_current = ""
         for c in pred:
@@ -226,11 +248,27 @@ class BaseRecLabelDecode:
         return "".join(pred_re[::-1])
 
     def add_special_char(self, dict_character):
-        """占位实现：基类不添加特殊字符。"""
+        """占位实现：基类不添加特殊字符。
+
+        Args:
+            dict_character: 字符字典列表。
+
+        Returns:
+            原样返回入参。
+        """
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """convert text-index into text-label."""
+        """把预测索引序列解码为文本与置信度。
+
+        Args:
+            text_index: 批量预测索引序列。
+            text_prob: 对应置信度；None 时置信度恒 1。
+            is_remove_duplicate: 是否去除相邻重复索引。
+
+        Returns:
+            (文本, 平均置信度) 列表，按批次顺序；阿拉伯语字典输出经倒序修正。
+        """
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         batch_size = len(text_index)
@@ -288,6 +326,13 @@ class CTCLabelDecode(BaseRecLabelDecode):
         return text, label
 
     def add_special_char(self, dict_character):
-        """在字典头部插入空白符。"""
+        """在字典头部插入空白符。
+
+        Args:
+            dict_character: 字符字典列表。
+
+        Returns:
+            头部插入 blank 后的列表。
+        """
         dict_character = ["blank"] + dict_character
         return dict_character

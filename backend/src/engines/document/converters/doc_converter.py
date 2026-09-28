@@ -110,5 +110,16 @@ def _convert_doc_to_docx_sync(file_bytes: bytes, filename: str) -> bytes:
 
 
 async def convert_doc_to_docx(file_bytes: bytes, filename: str) -> bytes:
-    """异步入口：把同步转换放到线程池执行，避免阻塞事件循环。"""
+    """异步入口：把同步转换放到线程池执行，避免阻塞事件循环。
+
+    Args:
+        file_bytes: 旧版 .doc 文件字节流。
+        filename: 原始文件名（带扩展名，决定临时落地名）。
+
+    Returns:
+        转换后的 .docx 文件字节流；输出写入临时目录、不落业务存储。
+
+    Raises:
+        DocConversionError: LibreOffice 与 Word COM 两条路径均不可用或转换失败。
+    """
     return await asyncio.to_thread(_convert_doc_to_docx_sync, file_bytes, filename)

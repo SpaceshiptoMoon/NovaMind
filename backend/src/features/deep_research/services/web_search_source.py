@@ -33,7 +33,15 @@ class WebSearchSourceAdapter:
         self._web_port = web_port
 
     async def search(self, query: str, *, top_k: int) -> list[dict[str, Any]]:
-        """执行外部 Web 搜索并把结果归一化为统一 dict（source_type=external，content/url/title/score）。"""
+        """执行外部 Web 搜索并把结果归一化为统一 dict（source_type=external，content/url/title/score）。
+
+        Args:
+            query: 搜索查询文本。
+            top_k: keyword-only，最大结果条数，透传底层 WebSearchPort。
+
+        Returns:
+            统一形状 dict 列表，字段缺失时取空串或 0 分兜底。
+        """
         raw = await self._web_port.search(query, max_results=top_k)
         return [
             {

@@ -21,7 +21,14 @@ class HandleTable:
         self._by_real: dict[str, str] = {}
 
     def register(self, real_id: str) -> str:
-        """注册真实 ID，返回（已存在则复用）其句柄"""
+        """注册真实 ID，返回（已存在则复用）其句柄。
+
+        Args:
+            real_id: 真实 ID（chunk_id 或 slug）。
+
+        Returns:
+            按前缀+零填充序号生成的短句柄；重复注册返回既有句柄。
+        """
         existing = self._by_real.get(real_id)
         if existing is not None:
             return existing
@@ -31,7 +38,14 @@ class HandleTable:
         return handle
 
     def resolve(self, handle: str) -> str | None:
-        """句柄 → 真实 ID；未知句柄返回 None"""
+        """句柄 → 真实 ID；未知句柄返回 None。
+
+        Args:
+            handle: 模型输出的句柄（自动去首尾空白）。
+
+        Returns:
+            对应的真实 ID；未注册返回 None。
+        """
         return self._by_handle.get(str(handle or "").strip())
 
     def decode_text(self, text: str, pattern: str) -> str:

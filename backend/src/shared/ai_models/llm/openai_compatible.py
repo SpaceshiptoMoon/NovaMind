@@ -249,7 +249,19 @@ class OpenAICompatibleLLM(BaseLLM):
         response_format: dict | None = None,
         enable_thinking: bool = False,
     ) -> LLMResponse:
-        """非流式结构化生成——提取 reasoning_content"""
+        """非流式结构化生成——提取 reasoning_content。
+
+        Args:
+            prompt: 提示词文本或消息列表。
+            max_tokens: 最大生成 token 数。
+            temperature: 采样温度。
+            top_p: 核采样概率上限。
+            response_format: 响应格式约束（如 JSON mode 声明）；None 表示不约束。
+            enable_thinking: 是否启用模型 thinking 模式（经 extra_body 透传）。
+
+        Returns:
+            LLMResponse，content 为正文，reasoning 为思维链文本（模型未返回时为 None）。
+        """
         async with self._get_semaphore():
             messages = self._build_messages(prompt)
 
@@ -296,7 +308,18 @@ class OpenAICompatibleLLM(BaseLLM):
         top_p: float = 0.8,
         enable_thinking: bool = False,
     ) -> AsyncGenerator[StreamChunk, None]:
-        """流式结构化生成——分离 reasoning_content 和 content"""
+        """流式结构化生成——分离 reasoning_content 和 content。
+
+        Args:
+            prompt: 提示词文本或消息列表。
+            max_tokens: 最大生成 token 数。
+            temperature: 采样温度。
+            top_p: 核采样概率上限。
+            enable_thinking: 是否启用模型 thinking 模式。
+
+        Returns:
+            异步生成器，逐块产出 StreamChunk（type 为 reasoning 或 content）。
+        """
         async with self._get_semaphore():
             messages = self._build_messages(prompt)
 
@@ -364,7 +387,20 @@ class OpenAICompatibleLLM(BaseLLM):
         tool_choice: str = "auto",
         enable_thinking: bool = False,
     ) -> LLMResponseWithTools:
-        """支持工具调用的文本生成"""
+        """支持工具调用的非流式文本生成（带重试）。
+
+        Args:
+            prompt: 提示词文本或消息列表。
+            tools: OpenAI tools 格式的工具定义列表；None 或空表示不启用工具。
+            max_tokens: 最大生成 token 数。
+            temperature: 采样温度。
+            top_p: 核采样概率上限。
+            tool_choice: 工具选择策略（auto/none/指定函数名），默认 auto。
+            enable_thinking: 是否启用模型 thinking 模式。
+
+        Returns:
+            LLMResponseWithTools，含正文、解析后的 tool_calls、finish_reason 与 usage。
+        """
         async with self._get_semaphore():
             messages = self._build_messages(prompt)
 

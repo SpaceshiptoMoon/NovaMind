@@ -43,7 +43,15 @@ class SubAgentRunner:
     async def run_subagent(
         self, prompt: str, description: str = ""
     ) -> dict[str, Any]:
-        """跑子 agent，返回 ``{summary, session_id, description}``。"""
+        """跑子 agent，返回 ``{summary, session_id, description}``。
+
+        Args:
+            prompt: 给子 agent 的任务指令（独立 messages，不继承父上下文）。
+            description: 子任务短描述，透传到返回值。
+
+        Returns:
+            summary 为子 agent 最终回答（失败为错误文案），session_id 恒 None（不持久化）。
+        """
         # LLM 客户端（优先 LLM，fallback VLM）
         try:
             llm_client = await self._mcs.get_llm_client_by_model(

@@ -30,7 +30,20 @@ class MemoryRepository:
         source_type: str | None = None,
         extra_data: dict | None = None,
     ) -> AgentMemory:
-        """写入长期记忆条目（source_type 缺省 consolidate，即压缩归纳产物）。"""
+        """写入长期记忆条目（source_type 缺省 consolidate，即压缩归纳产物）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+            user_id: 属主用户 ID。
+            category: 记忆类别。
+            content: 记忆正文。
+            source_conversation_id: 来源会话主键 ID；None 表示无会话来源。
+            source_type: 来源类型；None 落库为 consolidate。
+            extra_data: 附加结构化数据；None 表示无。
+
+        Returns:
+            已 flush 的记忆实体（事务由调用方提交）。
+        """
         memory = AgentMemory(
             agent_id=agent_id,
             user_id=user_id,
@@ -46,7 +59,14 @@ class MemoryRepository:
         return memory
 
     async def get_by_id(self, memory_id: int) -> AgentMemory | None:
-        """按主键查询记忆条目，未命中返回 None。"""
+        """按主键查询记忆条目，未命中返回 None。
+
+        Args:
+            memory_id: 记忆主键 ID。
+
+        Returns:
+            AgentMemory ORM 实体；不存在返回 None。
+        """
         result = await self.session.execute(
             select(AgentMemory).where(AgentMemory.id == memory_id)
         )
@@ -87,7 +107,18 @@ class MemoryRepository:
         content: str,
         similarity_threshold: float = 0.85,
     ) -> AgentMemory | None:
-        """查找相似的记忆条目（用于去重）"""
+        """查找相似的记忆条目（同类别同内容精确匹配，用于去重）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+            user_id: 属主用户 ID。
+            category: 记忆类别。
+            content: 待查重的正文。
+            similarity_threshold: 预留参数，当前实现为精确匹配未使用。
+
+        Returns:
+            已存在的同内容条目；无命中返回 None。
+        """
         result = await self.session.execute(
             select(AgentMemory).where(
                 AgentMemory.agent_id == agent_id,
@@ -99,7 +130,14 @@ class MemoryRepository:
         return result.scalar_one_or_none()
 
     async def increment_access_count(self, memory_id: int) -> None:
-        """递增访问计数"""
+        """递增访问计数。
+
+        Args:
+            memory_id: 记忆主键 ID。
+
+        Returns:
+            无。
+        """
         await self.session.execute(
             update(AgentMemory)
             .where(AgentMemory.id == memory_id)
@@ -115,7 +153,18 @@ class MemoryRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AgentMemory], int]:
-        """列出 Agent 的所有记忆"""
+        """列出 Agent 的所有记忆（updated_at 倒序分页，可按类别过滤）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+            user_id: 属主用户 ID。
+            category: 按类别过滤；None 不过滤。
+            limit: 页大小，默认 50。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            （记忆列表, 符合条件的总数）元组。
+        """
         base = select(AgentMemory).where(
             AgentMemory.agent_id == agent_id,
             AgentMemory.user_id == user_id,
@@ -133,7 +182,15 @@ class MemoryRepository:
         return result.scalars().all(), total
 
     async def update(self, memory_id: int, **kwargs) -> AgentMemory | None:
-        """白名单字段更新（非白名单键静默过滤）。"""
+        """白名单字段更新（非白名单键静默过滤）。
+
+        Args:
+            memory_id: 记忆主键 ID。
+            kwargs: 字段名到新值的映射，仅 _UPDATABLE_FIELDS 内的键生效。
+
+        Returns:
+            更新后的实体；记忆不存在返回 None。
+        """
         allowed = {f for f in self._UPDATABLE_FIELDS if f in kwargs}
         if not allowed:
             return await self.get_by_id(memory_id)
@@ -145,7 +202,14 @@ class MemoryRepository:
         return await self.get_by_id(memory_id)
 
     async def delete(self, memory_id: int) -> bool:
-        """物理删除记忆条目，返回是否实际删除。"""
+        """物理删除记忆条目，返回是否实际删除。
+
+        Args:
+            memory_id: 记忆主键 ID。
+
+        Returns:
+            有记录被删为 True；未命中为 False。
+        """
         from sqlalchemy import delete
         result = await self.session.execute(
             delete(AgentMemory).where(AgentMemory.id == memory_id)

@@ -26,7 +26,11 @@ def read_settings() -> dict:
 
 
 def write_settings(data: dict) -> None:
-    """写入 JSON 设置文件"""
+    """写入 JSON 设置文件。
+
+    Args:
+        data: 设置字典（整体覆盖写入，UTF-8 缩进 2 格式）。
+    """
     _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     _SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -52,7 +56,12 @@ async def get_llm_review_model() -> str | None:
 
 
 async def update_llm_review_settings(enabled: bool, model: str | None) -> None:
-    """管理员更新 LLM 审查设置。"""
+    """管理员更新 LLM 审查设置。
+
+    Args:
+        enabled: 是否启用 LLM 审查。
+        model: 审查模型名；None 表示清空（回落 YAML 默认）。
+    """
     settings = read_settings()
     settings["llm_review_enabled"] = enabled
     settings["llm_review_model"] = model

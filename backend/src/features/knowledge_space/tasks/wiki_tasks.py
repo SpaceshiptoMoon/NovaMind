@@ -16,7 +16,14 @@ WIKI_INGEST_JOB_TIMEOUT = 1800
 
 
 async def acquire_kb_lock(kb_id: int) -> str | None:
-    """拿 per-KB wiki 生成锁（Redis SET NX EX）。成功返回锁值，失败 None。"""
+    """拿 per-KB wiki 生成锁（Redis SET NX EX）。成功返回锁值，失败 None。
+
+    Args:
+        kb_id: 知识库 ID。
+
+    Returns:
+        抢到锁返回唯一 token（释放时校验用）；已被占用返回 None。
+    """
     import uuid
 
     from novamind.shared.storage.client_factory import get_redis_client
@@ -29,7 +36,15 @@ async def acquire_kb_lock(kb_id: int) -> str | None:
 
 
 async def release_kb_lock(kb_id: int, token: str) -> None:
-    """释放 per-KB 锁（校验 token 防误删他人锁）"""
+    """释放 per-KB 锁（校验 token 防误删他人锁）。
+
+    Args:
+        kb_id: 知识库 ID。
+        token: acquire_kb_lock 返回的锁值，不匹配则不删。
+
+    Returns:
+        无返回；token 不匹配或锁已过期时静默跳过。
+    """
     from novamind.shared.storage.client_factory import get_redis_client
 
     redis = await get_redis_client()
@@ -534,7 +549,16 @@ async def enqueue_wiki_retract(
     space_id: int,
     document_id: int,
 ) -> str | None:
-    """入队 wiki retract 任务（fire-and-forget：删除主流程不因入队失败阻断）"""
+    """入队 wiki retract 任务（fire-and-forget：删除主流程不因入队失败阻断）。
+
+    Args:
+        kb_id: 知识库 ID。
+        space_id: 空间 ID。
+        document_id: 被删除的来源文档 ID。
+
+    Returns:
+        入队成功返回 job ID；失败告警并返回 None。
+    """
     from novamind.shared.mq import get_arq_pool
 
     try:

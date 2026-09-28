@@ -21,7 +21,14 @@ class RbacPermissionService:
 
     async def get_user_permissions(self, user_id: int) -> set[str]:
         # 1. Redis 缓存
-        """查用户权限码集合：admin 角色直接放行全部，其余按角色映射；结果缓存 5 分钟（空集不缓存）。"""
+        """查用户权限码集合：admin 角色直接放行全部，其余按角色映射；结果缓存 5 分钟（空集不缓存）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            权限码集合；用户不存在或无角色返回空集。
+        """
         if self.redis:
             cached = await self.redis.get(f"{ROLE_PERM_CACHE_PREFIX}{user_id}")
             if cached is not None:
@@ -50,6 +57,10 @@ class RbacPermissionService:
         return perms
 
     async def invalidate(self, user_id: int) -> None:
-        """失效用户的权限码缓存（Redis 未装配时静默跳过）。"""
+        """失效用户的权限码缓存（Redis 未装配时静默跳过）。
+
+        Args:
+            user_id: 用户 ID。
+        """
         if self.redis:
             await self.redis.delete(f"{ROLE_PERM_CACHE_PREFIX}{user_id}")

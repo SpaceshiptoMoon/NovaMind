@@ -99,7 +99,18 @@ class TransformersEmbedding(BaseEmbedding):
                 )
 
     async def generate_embedding(self, text: str) -> list[float]:
-        """生成单个文本的嵌入向量"""
+        """生成单个文本的嵌入向量（本地推理，首次调用懒加载模型）。
+
+        Args:
+            text: 待嵌入文本。
+
+        Returns:
+            嵌入向量；构造器开启 normalize_embeddings 时已做归一化。
+
+        Raises:
+            ImportError: sentence-transformers 未安装。
+            ValueError: 向量维度与构造器期望维度不一致。
+        """
         await self._ensure_initialized()
 
         async with self._get_semaphore():
@@ -118,7 +129,18 @@ class TransformersEmbedding(BaseEmbedding):
     async def generate_embeddings_batch(
         self, texts: list[str], batch_size: int = 32
     ) -> list[list[float]]:
-        """批量生成文本嵌入向量"""
+        """批量生成文本嵌入向量（单次模型调用按批次编码）。
+
+        Args:
+            texts: 待嵌入文本列表；空列表直接返回空表。
+            batch_size: 模型内部编码批次大小。
+
+        Returns:
+            与输入顺序一一对应的嵌入向量列表。
+
+        Raises:
+            ValueError: 任一向量维度与期望维度不一致。
+        """
         if not texts:
             return []
 

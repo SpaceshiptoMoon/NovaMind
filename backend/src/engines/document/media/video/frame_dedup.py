@@ -22,7 +22,14 @@ _DEFAULT_SIMILARITY_THRESHOLD = 0.95
 def dedup_none(
     frames: list[tuple[bytes, float, int]],
 ) -> list[tuple[bytes, float, int]]:
-    """不去重，原样返回（frame_idx 保持不变）。"""
+    """不去重，原样返回（frame_idx 保持不变）。
+
+    Args:
+        frames: 帧元组列表 (jpeg_bytes, timestamp, frame_idx)。
+
+    Returns:
+        输入的浅拷贝列表。
+    """
     return list(frames)
 
 

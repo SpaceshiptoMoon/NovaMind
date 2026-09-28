@@ -124,7 +124,15 @@ def parse_plan_json(plan: dict) -> ResearchPlan | None:
 
 
 def plan_to_json(plan: ResearchPlan, background_results: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """ResearchPlan → DB plan JSON v2（execution_res 截 1000 字，background 复用/覆盖）。"""
+    """ResearchPlan 转 DB plan JSON v2（execution_res 截 1000 字，background 可复用或覆盖）。
+
+    Args:
+        plan: 引擎侧研究计划对象。
+        background_results: 可选背景调查结果列表；None 时复用 plan 内置值。
+
+    Returns:
+        带 version=2 标记的 plan JSON dict，含 title/steps 等，直接可落 research_sessions.plan 列。
+    """
     return {
         "version": 2,
         "title": plan.title,
@@ -150,7 +158,14 @@ def plan_to_json(plan: ResearchPlan, background_results: list[dict[str, Any]] | 
 
 
 def plan_to_event_data(plan: ResearchPlan) -> dict[str, Any]:
-    """ResearchPlan → plan_generated 事件 data 的 plan 部分（不回填执行结果）。"""
+    """ResearchPlan 转 plan_generated 事件 data 的 plan 部分（不回填执行结果）。
+
+    Args:
+        plan: 引擎侧研究计划对象。
+
+    Returns:
+        给前端 WS 事件的 plan dict；不含 execution_res 与背景调查正文。
+    """
     return {
         "title": plan.title,
         "thought": plan.thought,
@@ -170,7 +185,14 @@ def plan_to_event_data(plan: ResearchPlan) -> dict[str, Any]:
 
 
 def plan_iteration_count(ctx: "ResearchContext") -> int:
-    """当前计划轮次（ctx.plan 未生成时为 -1，即首轮前的初始值）。"""
+    """当前计划轮次（ctx.plan 未生成时为 -1，即首轮前的初始值）。
+
+    Args:
+        ctx: 研究会话执行上下文。
+
+    Returns:
+        当前计划的 iteration 值；计划未生成时返回 -1。
+    """
     return ctx.plan.iteration if ctx.plan is not None else -1
 
 

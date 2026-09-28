@@ -21,7 +21,14 @@ from novamind.features.deep_research.exceptions import (
 
 
 def setup_deep_research_exception_handlers(app: FastAPI) -> None:
-    """注册深度研究异常处理器"""
+    """注册深度研究异常处理器。
+
+    Args:
+        app: FastAPI 应用实例。
+
+    Returns:
+        无；按异常类到 HTTP 状态码的映射完成注册。
+    """
     register_module_exceptions(app, status_map={
         ResearchNotFoundError: 404,
         ResearchFailedError: 500,

@@ -26,7 +26,16 @@ class TodoStore:
         todos: list[dict[str, Any]],
         merge: bool = False,
     ) -> list[dict[str, str]]:
-        """写入任务列表"""
+        """写入任务列表。
+
+        Args:
+            conversation_id: 会话 ID。
+            todos: 任务 dict 列表（id/content/status），非 dict 项忽略、非法 status 归 pending。
+            merge: True 按 id 更新合并；False 整表替换。
+
+        Returns:
+            写入后的完整任务列表。
+        """
         normalized = []
         for item in todos:
             if not isinstance(item, dict):
@@ -58,11 +67,25 @@ class TodoStore:
         return self._store[conversation_id]
 
     def read(self, conversation_id: int) -> list[dict[str, str]]:
-        """读取任务列表"""
+        """读取任务列表。
+
+        Args:
+            conversation_id: 会话 ID。
+
+        Returns:
+            任务列表副本；无记录为空列表。
+        """
         return list(self._store.get(conversation_id, []))
 
     def format_for_injection(self, conversation_id: int) -> str | None:
-        """生成压缩后重新注入的文本（只含 pending/in_progress）"""
+        """生成压缩后重新注入的文本（只含 pending/in_progress）。
+
+        Args:
+            conversation_id: 会话 ID。
+
+        Returns:
+            带序号的注入文本；无待办任务为 None。
+        """
         todos = self._store.get(conversation_id, [])
         active = [t for t in todos if t["status"] in ("pending", "in_progress")]
         if not active:
@@ -74,5 +97,9 @@ class TodoStore:
         return "\n".join(lines)
 
     def clear(self, conversation_id: int) -> None:
-        """清除指定会话的任务"""
+        """清除指定会话的任务。
+
+        Args:
+            conversation_id: 会话 ID。
+        """
         self._store.pop(conversation_id, None)

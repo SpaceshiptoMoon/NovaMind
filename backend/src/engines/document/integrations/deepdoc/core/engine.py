@@ -77,7 +77,14 @@ class DeepDocEngine:
 
     @staticmethod
     def download_vision_models(group: str | None = None):
-        """按组下载视觉模型（ocr/layout/tsr，None 全量），返回逐组结果。"""
+        """按组下载视觉模型（ocr/layout/tsr，None 全量），返回逐组结果。
+
+        Args:
+            group: 模型组名（ocr/layout/tsr）；None 下载全集。
+
+        Returns:
+            下载目标目录 Path。
+        """
         from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
             download_model_group,
         )
@@ -160,7 +167,18 @@ class DeepDocEngine:
         return result
 
     def parse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:
-        """同步解析本地文件（asyncio.run 桥接 aparse_with_parser_id）。"""
+        """同步解析本地文件（asyncio.run 桥接 aparse_with_parser_id）。
+
+        Args:
+            file_path: 文件路径。
+            kwargs: 透传 parser.parse 的解析/切分配置。
+
+        Returns:
+            DeepDocParseResult。
+
+        Raises:
+            RuntimeError: 已在活动事件循环内调用（应改用 aparse_* 异步入口）。
+        """
         return self._run_async(self.parser.parse(file_path, **kwargs))
 
     def parse_with_parser_id(self, **kwargs) -> DeepDocParseResult:

@@ -53,7 +53,14 @@ def _get_nested(d: dict[str, Any], *keys: str) -> int:
 
 
 def normalize_usage(raw: dict[str, Any] | None) -> CanonicalUsage:
-    """归一化 Anthropic/OpenAI/通用 三种 usage 形态为 CanonicalUsage。"""
+    """归一化 Anthropic/OpenAI/通用 三种 usage 形态为 CanonicalUsage。
+
+    Args:
+        raw: 原始 usage dict；按字段特征自动识别形态，None 或非 dict 返回全零。
+
+    Returns:
+        CanonicalUsage；OpenAI 形态扣除缓存命中得真实 input，通用形态仅 total 计入 output。
+    """
     if not raw or not isinstance(raw, dict):
         return CanonicalUsage()
 
@@ -133,7 +140,16 @@ def _lookup_pricing(model: str, provider: str | None) -> PricingEntry | None:
 
 
 def estimate_cost(usage: CanonicalUsage, model: str, provider: str | None = None) -> Decimal:
-    """按内置价格表估算 USD 成本；未命中价格表返回 Decimal('0')。"""
+    """按内置价格表估算 USD 成本；未命中价格表返回 Decimal 零值。
+
+    Args:
+        usage: 归一化后的 token 用量。
+        model: 模型名（点号归一化为横杠后匹配）。
+        provider: 供应商名（小写精确匹配）；None 时按模型名模糊匹配任意供应商。
+
+    Returns:
+        USD 成本（按 per 1M tokens 价格表计算）；未命中返回 Decimal 0。
+    """
     entry = _lookup_pricing(model, provider)
     if entry is None:
         return Decimal("0")

@@ -68,7 +68,28 @@ class MemoryManager:
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
     ) -> MemoryManager:
-        """工厂方法：创建完整配置的 MemoryManager"""
+        """工厂方法：创建完整配置的 MemoryManager。
+
+        Args:
+            message_repository: 消息仓储。
+            tool_call_repository: 工具调用仓储。
+            session_repository: 会话仓储。
+            long_term_store: 长期记忆存储端口。
+            summary_store: 压缩摘要存储端口。
+            prompt_provider: prompt 提供者。
+            model: 模型名，决定 token 计数口径。
+            llm_client_factory: LLM 客户端工厂。
+            memory_search: ES 记忆搜索端口，可空。
+            embedding_factory: embedding 客户端工厂，可空。
+            todo_store: 压缩后任务存储，可空。
+            conversation_id: 当前会话 ID，可空。
+            agent_id: Agent ID，可空。
+            user_id: 用户 ID，可空。
+            auxiliary_llm_factory: 压缩用辅助 LLM 工厂，可空。
+
+        Returns:
+            组装完成的 MemoryManager 实例。
+        """
         # 先创建 LongTermMemory（ContextCompressor 需要访问）
         long_term = LongTermMemory(
             long_term_store,
@@ -143,7 +164,17 @@ class MemoryManager:
         user_id: int,
         top_k: int = 3,
     ) -> list[LongTermMemoryEntry]:
-        """动态预取相关记忆（Phase 1: MySQL LIKE，Phase 2 添加 ES）"""
+        """动态预取相关记忆（Phase 1: MySQL LIKE，Phase 2 添加 ES）。
+
+        Args:
+            query: 查询文本。
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            top_k: 返回条数上限。
+
+        Returns:
+            相关记忆条目列表；检索失败时为空列表。
+        """
         try:
             return await self._long_term.search(
                 agent_id=agent_id,
@@ -165,7 +196,18 @@ class MemoryManager:
         tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
     ) -> MemorySnapshot:
-        """构建发送给 LLM 的完整上下文快照"""
+        """构建发送给 LLM 的完整上下文快照。
+
+        Args:
+            system_prompt: 系统提示词。
+            conversation_id: 会话 ID。
+            max_tokens: 模型上下文窗口大小（非生成上限）。
+            tools: OpenAI tools schema 列表（计入 tools 分项 token），可空。
+            dry_run: True 时只算 token 不触发压缩、不写摘要。
+
+        Returns:
+            MemorySnapshot，含格式化消息列表与 token 统计。
+        """
         return await self._short_term.build_context(
             system_prompt=system_prompt,
             conversation_id=conversation_id,

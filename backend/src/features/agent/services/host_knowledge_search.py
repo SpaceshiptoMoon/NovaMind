@@ -73,7 +73,15 @@ class HostKnowledgeSearchPort:
     # ==================== 权限校验 ====================
 
     async def can_access_space(self, space_id: int, user_id: int) -> bool:
-        """空间级访问判定，委托 knowledge_space 权限中心。"""
+        """空间级访问判定，委托 knowledge_space 权限中心。
+
+        Args:
+            space_id: 空间主键 ID。
+            user_id: 当前用户 ID。
+
+        Returns:
+            该用户可访问该空间时为 True。
+        """
         from novamind.features.knowledge_space.services.access_service import (
             check_space_access,
         )
@@ -83,7 +91,14 @@ class HostKnowledgeSearchPort:
     # ==================== 空间与知识库发现 ====================
 
     async def list_spaces(self, user_id: int) -> list[SpaceInfo]:
-        """列出用户可访问的空间，映射为引擎侧 SpaceInfo。"""
+        """列出用户可访问的空间，映射为引擎侧 SpaceInfo。
+
+        Args:
+            user_id: 当前用户 ID。
+
+        Returns:
+            SpaceInfo 列表（id/名称/描述）。
+        """
         spaces = await self._space_service().get_user_spaces(user_id)
         return [
             SpaceInfo(
@@ -97,7 +112,15 @@ class HostKnowledgeSearchPort:
     async def list_knowledge_bases(
         self, space_id: int, user_id: int
     ) -> list[KbInfo]:
-        """列出空间下 ACTIVE 状态的知识库，映射为引擎侧 KbInfo。"""
+        """列出空间下 ACTIVE 状态的知识库，映射为引擎侧 KbInfo。
+
+        Args:
+            space_id: 空间主键 ID。
+            user_id: 当前用户 ID。
+
+        Returns:
+            KbInfo 列表（id/名称/space_id/描述）。
+        """
         from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
@@ -116,7 +139,14 @@ class HostKnowledgeSearchPort:
         ]
 
     async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
-        """遍历用户全部空间汇总 ACTIVE 知识库，附带所属空间名。"""
+        """遍历用户全部空间汇总 ACTIVE 知识库，附带所属空间名。
+
+        Args:
+            user_id: 当前用户 ID。
+
+        Returns:
+            KbInfo 列表，额外携带 space_name 字段。
+        """
         from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
@@ -154,7 +184,20 @@ class HostKnowledgeSearchPort:
         kb_id: int | None = None,
         score_threshold: float | None = None,
     ) -> list[KnowledgeSearchItem]:
-        """按模式检索知识库内容；指定 kb_id 单库检索，缺省时取空间前 3 个 KB 跨库检索按分数合并取 top_k；单库失败静默跳过。"""
+        """按模式检索知识库内容；指定 kb_id 单库检索，缺省时取空间前 3 个 KB 跨库检索按分数合并取 top_k；单库失败静默跳过。
+
+        Args:
+            space_id: 空间主键 ID。
+            user_id: 当前用户 ID。
+            query: 检索查询文本。
+            top_k: 返回条数上限，默认 5。
+            search_mode: 检索模式（内容/混合等），默认 CONTENT_HYBRID。
+            kb_id: 限定单库检索的知识库 ID；None 跨库检索。
+            score_threshold: 分数阈值；None 时按 0 处理即不过滤。
+
+        Returns:
+            按分数排序的 KnowledgeSearchItem 列表（content/score/document_id/chunk_id 等）。
+        """
         from novamind.features.knowledge_space.schemas.search_schema import (
             SearchRequest,
         )
@@ -217,7 +260,18 @@ class HostKnowledgeSearchPort:
         page: int = 1,
         page_size: int = 20,
     ) -> DocumentListResult:
-        """分页列出知识库文档并返回总数，映射为引擎侧 DocumentListResult。"""
+        """分页列出知识库文档并返回总数，映射为引擎侧 DocumentListResult。
+
+        Args:
+            space_id: 空间主键 ID。
+            kb_id: 知识库主键 ID。
+            user_id: 当前用户 ID。
+            page: 页码，从 1 起，默认 1。
+            page_size: 页大小，默认 20。
+
+        Returns:
+            含 total 与文档列表（id/文件名）的 DocumentListResult。
+        """
         doc_service = self._doc_query_service()
         skip = (page - 1) * page_size
         documents = await doc_service.get_kb_documents(kb_id=kb_id, skip=skip, limit=page_size)

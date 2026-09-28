@@ -31,14 +31,28 @@ logger = get_logger(__name__)
 
 
 async def get_current_user_id(current_user: dict = Depends(get_current_user)) -> int:
-    """获取当前用户 ID"""
+    """从认证上下文提取当前用户 ID（依赖函数，非路由）。
+
+    Args:
+        current_user: 认证依赖注入的当前用户字典。
+
+    Returns:
+        当前用户 ID。
+    """
     return current_user["id"]
 
 
 def get_session_config_repo(
     db: AsyncSession = Depends(get_db)
 ) -> SessionConfigRepository:
-    """装配会话配置仓储（请求级 DB 会话）。"""
+    """装配会话配置仓储（请求级 DB 会话）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        会话配置仓储实例。
+    """
     return SessionConfigRepository(db)
 
 

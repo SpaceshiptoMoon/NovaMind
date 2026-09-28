@@ -13,7 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def is_admin_user(db: AsyncSession, user_id: int) -> bool:
-    """用户是否平台管理员（查询失败按非管理员处理）。"""
+    """用户是否平台管理员（查询失败按非管理员处理）。
+
+    Args:
+        db: 数据库会话。
+        user_id: 待判定的用户 ID。
+
+    Returns:
+        是平台管理员 True；非管理员或查询异常 False。
+    """
     try:
         from novamind.features.user.models.user import User
 

@@ -13,7 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def get_deep_research_service(
     db: AsyncSession = Depends(get_db)
 ):
-    """获取深度研究服务（请求结束时自动清理资源）"""
+    """获取深度研究服务（请求结束时自动清理资源）。
+
+    Args:
+        db: 请求级异步数据库会话。
+
+    Returns:
+        yield 出的 DeepResearchService 实例；请求结束自动调用 cleanup 释放搜索客户端。
+    """
     model_config_service = ModelConfigService(db)
     es_client = await get_elasticsearch_client()
     service = DeepResearchService(

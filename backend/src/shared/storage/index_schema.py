@@ -38,7 +38,14 @@ class IndexSchema(Protocol):
         ...
 
     def index_name(self, space_id: int) -> str:
-        """生成空间索引名。"""
+        """生成空间索引名。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            索引名字符串（实现方决定命名规则）。
+        """
         ...
 
     def build_create_body(self, embedding_dim: int, analyzer: str) -> dict[str, Any]:
@@ -66,7 +73,14 @@ class DefaultIndexSchema:
         return self._field_names
 
     def index_name(self, space_id: int) -> str:
-        """空间索引命名：space_{space_id}（与现行部署索引名逐字一致）。"""
+        """空间索引命名：space_{space_id}（与现行部署索引名逐字一致）。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            形如 space_123 的索引名。
+        """
         return f"space_{space_id}"
 
     def build_create_body(self, embedding_dim: int, analyzer: str) -> dict[str, Any]:

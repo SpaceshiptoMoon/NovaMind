@@ -145,7 +145,21 @@ class SkillMarketplaceService:
     async def update_skill_version(
         self, user_id: int, skill_id: int, zip_bytes: bytes,
     ) -> SkillDefinition:
-        """上传新版本 ZIP 更新已有技能"""
+        """上传新版本 ZIP 更新已有技能。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            skill_id: 技能 ID。
+            zip_bytes: 新版技能 ZIP 包字节流。
+
+        Returns:
+            更新后的技能记录（重置为 PENDING 等待后台审查；已发布的会被收回草稿与私有可见性）。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+            SkillAccessDeniedError: 非所有者操作。
+            InvalidSkillFormatError: ZIP 解析失败或包内 name 与现有技能不一致。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -220,7 +234,20 @@ class SkillMarketplaceService:
     # ==================== 发布/取消 ====================
 
     async def publish_skill(self, user_id: int, skill_id: int) -> SkillDefinition:
-        """发布技能"""
+        """发布技能（草稿转为已发布并置公开可见）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            skill_id: 技能 ID。
+
+        Returns:
+            发布后的技能记录。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+            SkillAccessDeniedError: 非所有者操作。
+            SkillReviewRejectedError: 审查未通过/待人工审核/审查中，均不可发布。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -242,7 +269,19 @@ class SkillMarketplaceService:
         return skill
 
     async def unpublish_skill(self, user_id: int, skill_id: int) -> SkillDefinition:
-        """取消发布"""
+        """取消发布（已发布转回草稿并收回公开可见性）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            skill_id: 技能 ID。
+
+        Returns:
+            下架后的技能记录。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+            SkillAccessDeniedError: 非所有者操作。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -375,7 +414,15 @@ class SkillMarketplaceService:
     # ==================== 查询 ====================
 
     async def get_skill(self, skill_id: int, user_id: int = None) -> SkillDefinition | None:
-        """查技能详情；私有技能仅所有者可见（他人查询返回 None 不泄露存在性）。"""
+        """查技能详情；私有技能仅所有者可见（他人查询返回 None 不泄露存在性）。
+
+        Args:
+            skill_id: 技能 ID。
+            user_id: 查询者用户 ID；None 时仅可见非私有技能。
+
+        Returns:
+            技能记录；不存在或私有且非所有者返回 None。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             return None
@@ -388,7 +435,17 @@ class SkillMarketplaceService:
         self, user_id: int, status: int | None = None,
         limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
-        """分页列出用户自己的技能（可按状态筛选），返回 (列表, 总数)。"""
+        """分页列出用户自己的技能（可按状态筛选）。
+
+        Args:
+            user_id: 归属用户 ID。
+            status: 状态过滤（SkillStatus 值）；None 表示不过滤。
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            (技能列表, 总数) 二元组。
+        """
         return await self.skill_repo.list_by_user(user_id, status, limit, offset)
 
     async def list_marketplace(
@@ -396,7 +453,19 @@ class SkillMarketplaceService:
         tags: str | None = None, sort: str = "newest",
         limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
-        """广场检索已发布技能：关键词/分类/标签过滤加排序，返回 (列表, 总数)。"""
+        """广场检索已发布技能：关键词/分类/标签过滤加排序。
+
+        Args:
+            keyword: 搜索关键词（空格分词）；None 表示不过滤。
+            category: 分类过滤；None 表示不过滤。
+            tags: 逗号分隔标签串；None/空串表示不过滤。
+            sort: 排序方式（popular/rating/newest/name），未知值按 newest。
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            (技能列表, 总数) 二元组，命中关键词时按相关性加权排序。
+        """
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
         return await self.skill_repo.list_marketplace(keyword, category, tag_list, sort, limit, offset)
 
@@ -411,7 +480,17 @@ class SkillMarketplaceService:
     async def ai_search(
         self, query: str, user_id: int, limit: int = 20, offset: int = 0,
     ) -> dict[str, Any]:
-        """AI 智能搜索：LLM 理解自然语言意图 → 结构化参数搜索"""
+        """AI 智能搜索：LLM 理解自然语言意图后结构化检索。
+
+        Args:
+            query: 自然语言查询。
+            user_id: 当前用户 ID（取其默认 LLM 做意图解析）。
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            含 items/total/limit/offset/explanation/ai_query 的结果字典；LLM 不可用或解析失败降级为关键词搜索。
+        """
         llm_client = await self._get_llm_client(user_id)
         if not llm_client:
             return await self._fallback_ai_search(
@@ -524,7 +603,15 @@ class SkillMarketplaceService:
         }
 
     async def list_installed(self, agent_id: int, user_id: int) -> list[SkillInstallation]:
-        """列出 Agent 已安装技能；Agent 归属校验失败返回空列表不泄露他人 Agent。"""
+        """列出 Agent 已安装技能；归属校验失败返回空列表不泄露他人 Agent。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 当前用户 ID，用于归属校验。
+
+        Returns:
+            安装记录列表；Agent 不存在或属他人返回空列表。
+        """
         if self._agent_service is None:
             # 无 port 无法校验归属，保守返回空（正常 HTTP 入口总会注入 agent_registry_port）
             return []
@@ -539,7 +626,20 @@ class SkillMarketplaceService:
     async def create_review(
         self, user_id: int, skill_id: int, rating: int, content: str | None,
     ) -> SkillReview:
-        """创建/更新技能评价并重算技能平均分与评价数。"""
+        """创建/更新技能评价（幂等覆盖）并重算技能平均分与评价数。
+
+        Args:
+            user_id: 评价所属用户 ID。
+            skill_id: 技能 ID。
+            rating: 评分。
+            content: 评论文字，可为 None。
+
+        Returns:
+            写入后的最新评价记录。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -556,11 +656,28 @@ class SkillMarketplaceService:
     async def list_reviews(
         self, skill_id: int, limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillReview], int]:
-        """分页列出技能评价，返回 (列表, 总数)。"""
+        """分页列出技能评价。
+
+        Args:
+            skill_id: 技能 ID。
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            (评价列表, 总数) 二元组，按时间降序。
+        """
         return await self.review_repo.list_by_skill(skill_id, limit, offset)
 
     async def delete_review(self, user_id: int, skill_id: int) -> bool:
-        """删除本人评价并重算技能评分统计，返回是否实际删除。"""
+        """删除本人评价并重算技能评分统计。
+
+        Args:
+            user_id: 评价所属用户 ID。
+            skill_id: 技能 ID。
+
+        Returns:
+            实际删除返回 True，本无评价返回 False。
+        """
         deleted = await self.review_repo.delete_review(user_id, skill_id)
         if deleted:
             avg, count = await self.review_repo.get_rating_stats(skill_id)
@@ -571,7 +688,19 @@ class SkillMarketplaceService:
     # ==================== 删除 ====================
 
     async def delete_skill(self, user_id: int, skill_id: int) -> bool:
-        """删除本人技能（软删 + 重命名释放唯一约束），非所有者抛拒绝访问。"""
+        """删除本人技能（软删 + 重命名释放唯一约束）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            skill_id: 技能 ID。
+
+        Returns:
+            是否实际删除。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+            SkillAccessDeniedError: 非所有者操作。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -586,13 +715,31 @@ class SkillMarketplaceService:
     async def list_pending_review(
         self, limit: int = 20, offset: int = 0,
     ) -> tuple[list[SkillDefinition], int]:
-        """列出待人工审核的技能（SUSPICIOUS 状态）"""
+        """列出待人工审核的技能（SUSPICIOUS 状态）。
+
+        Args:
+            limit: 每页数量，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            (技能列表, 总数) 二元组。
+        """
         return await self.skill_repo.list_by_review_status(
             ReviewStatus.SUSPICIOUS, limit, offset,
         )
 
     async def approve_skill(self, skill_id: int) -> SkillDefinition:
-        """管理员批准技能（SUSPICIOUS → APPROVED）"""
+        """管理员批准技能（SUSPICIOUS 等 → APPROVED）并通知作者。
+
+        Args:
+            skill_id: 技能 ID。
+
+        Returns:
+            更新后的技能记录。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -608,7 +755,18 @@ class SkillMarketplaceService:
         return updated
 
     async def reject_skill(self, skill_id: int, reason: str | None = None) -> SkillDefinition:
-        """管理员拒绝技能（SUSPICIOUS → REJECTED）"""
+        """管理员拒绝技能（→ REJECTED，可附原因）并通知作者。
+
+        Args:
+            skill_id: 技能 ID。
+            reason: 驳回原因；None 表示不带原因通知。
+
+        Returns:
+            更新后的技能记录。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
@@ -629,7 +787,19 @@ class SkillMarketplaceService:
     # ==================== 下载 ====================
 
     async def download_skill(self, skill_id: int, user_id: int) -> bytes:
-        """从 MinIO 打包技能为 ZIP 供下载"""
+        """从 MinIO 打包技能为 ZIP 供下载（校验可见性）。
+
+        Args:
+            skill_id: 技能 ID。
+            user_id: 当前用户 ID，用于可见性校验。
+
+        Returns:
+            ZIP 字节流（含 SKILL.md 与版本清单内的资源文件）。
+
+        Raises:
+            SkillNotFoundError: 技能不存在。
+            SkillAccessDeniedError: 私有技能且非所有者。
+        """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)

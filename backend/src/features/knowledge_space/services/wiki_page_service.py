@@ -57,7 +57,23 @@ class WikiPageService:
         category_path: list[str] | None,
         user_id: int,
     ) -> WikiPage:
-        """人工/Agent 新建页面：slug 清洗与类型校验、冲突检查、写版本快照、commit 后返回。"""
+        """人工/Agent 新建页面：slug 清洗与类型校验、冲突检查、写版本快照、commit 后返回。
+
+        Args:
+            space_id: 空间 ID。
+            kb_id: 知识库 ID。
+            slug_raw: 原始 slug，清洗后为空抛参数错误。
+            title: 页面标题。
+            content: Markdown 正文。
+            summary: 一句话摘要，None 落空串。
+            page_type: 页面类型，summary 类型由管道管理不接受。
+            aliases: 可选别名列表。
+            category_path: 可选目录路径。
+            user_id: 创建者用户 ID。
+
+        Returns:
+            commit 后的页面实例（version=1）。
+        """
         slug = normalize_slug(slug_raw)
         if not slug:
             raise InvalidParameterError("slug 清洗后为空", field="slug")
@@ -102,7 +118,24 @@ class WikiPageService:
         expected_version: int,
         user_id: int,
     ) -> WikiPage:
-        """更新页面（乐观锁：expected_version 不符抛 409 异常），仅用户可见字段变化才递增版本。"""
+        """更新页面（乐观锁：expected_version 不符抛 409 异常），仅用户可见字段变化才递增版本。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+            body_title: 可选新标题，None 保持不变。
+            body_content: 可选新正文，None 保持不变。
+            body_summary: 可选新摘要，None 保持不变。
+            body_page_type: 可选新类型，None 保持不变。
+            body_status: 可选新状态，None 保持不变。
+            body_aliases: 可选新别名列表，None 保持不变。
+            body_category_path: 可选新目录路径，None 保持不变。
+            expected_version: 客户端持有的版本号，0 表示不做乐观锁校验。
+            user_id: 操作者用户 ID。
+
+        Returns:
+            commit 后的页面实例。
+        """
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -135,7 +168,15 @@ class WikiPageService:
         return page
 
     async def delete_page(self, *, kb_id: int, slug: str) -> None:
-        """软删页面并跑 finalize（清理死链、重对齐 in_links）。"""
+        """软删页面并跑 finalize（清理死链、重对齐 in_links）。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+
+        Returns:
+            无返回；commit 后软删生效。
+        """
         from novamind.features.knowledge_space.services.wiki_graph_service import (
             finalize_links,
         )
@@ -151,7 +192,17 @@ class WikiPageService:
     async def revert_page(
         self, *, kb_id: int, slug: str, version: int, user_id: int
     ) -> tuple[WikiPage, int, int]:
-        """Returns: (page, reverted_to_version, new_version)"""
+        """回滚页面到指定版本：以该版本内容创建新版本。
+
+        Args:
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+            version: 回滚目标版本号。
+            user_id: 操作者用户 ID。
+
+        Returns:
+            (page, reverted_to_version, new_version) 三元组。
+        """
         page = await self.repo.get_by_slug(kb_id, slug)
         if not page:
             raise WikiPageNotFoundError(slug)
@@ -218,7 +269,20 @@ class WikiPageService:
         reported_by: str,
         user_id: int,
     ):
-        """登记页面问题（校验问题类型白名单与页面存在），commit 后返回。"""
+        """登记页面问题（校验问题类型白名单与页面存在），commit 后返回。
+
+        Args:
+            kb: 知识库实例（取 space_id）。
+            kb_id: 知识库 ID。
+            slug: 页面 slug。
+            issue_type: 问题类型，须在白名单内。
+            description: 问题描述。
+            reported_by: 报告者标识；传 user 时自动改写为 user:{id}。
+            user_id: 操作者用户 ID。
+
+        Returns:
+            commit 后的问题登记行。
+        """
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )
@@ -250,7 +314,15 @@ class WikiPageService:
     async def update_issue_status(
         self, *, issue_id: str, status: str
     ):
-        """流转问题状态（pending/ignored/resolved 映射到对应方法），非法状态抛参数错误。"""
+        """流转问题状态（pending/ignored/resolved 映射到对应方法），非法状态抛参数错误。
+
+        Args:
+            issue_id: 问题 UUID。
+            status: 目标状态：pending/ignored/resolved。
+
+        Returns:
+            commit 后的问题登记行。
+        """
         from novamind.features.knowledge_space.repository.wiki_issue_repository import (
             WikiIssueRepository,
         )

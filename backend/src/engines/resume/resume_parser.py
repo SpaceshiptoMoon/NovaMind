@@ -32,7 +32,18 @@ class ResumeParser:
         self._logger = logger
 
     async def parse(self, file_bytes: bytes, filename: str) -> StructuredResume:
-        """完整解析流程 S1 → S4"""
+        """完整解析流程 S1 → S4。
+
+        Args:
+            file_bytes: 简历文件字节流。
+            filename: 文件名（扩展名决定 reader）。
+
+        Returns:
+            StructuredResume；单章节失败用默认值继续，警告挂 validation_warnings。
+
+        Raises:
+            ValueError: 扩展名不在白名单（pdf/docx/doc/txt/md）。
+        """
         # S1: 文本提取
         raw_text = await self._extract_text(file_bytes, filename)
         self._logger.info("简历文本提取完成", filename=filename, text_len=len(raw_text))

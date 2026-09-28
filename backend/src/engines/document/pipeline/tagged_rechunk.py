@@ -154,7 +154,14 @@ def build_tagged_text(
 
 
 def strip_sentinels(text: str) -> str:
-    """移除文本中的全部 PUA 哨兵字符（U+E000–U+F7FF）。"""
+    """移除文本中的全部 PUA 哨兵字符（U+E000–U+F7FF）。
+
+    Args:
+        text: 可能含哨兵的文本。
+
+    Returns:
+        去除哨兵后的干净文本。
+    """
     if not text:
         return text
     return "".join(c for c in text if not (SENTINEL_BASE <= ord(c) < SENTINEL_BASE + SENTINEL_CAPACITY))

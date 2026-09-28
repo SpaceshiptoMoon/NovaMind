@@ -43,13 +43,33 @@ class UserBase(BaseModel):
     @field_validator('username')
     @classmethod
     def validate_username(cls, v):
-        """验证用户名格式"""
+        """验证用户名格式。
+
+        Args:
+            v: 待校验的用户名。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 用户名格式不合法。
+        """
         return validate_username_format(v)
 
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v):
-        """验证手机号格式"""
+        """验证手机号格式。
+
+        Args:
+            v: 待校验的手机号。
+
+        Returns:
+            规范化后的手机号（空值归 None）。
+
+        Raises:
+            ValueError: 手机号格式不正确。
+        """
         return validate_phone_format(v)
 
 
@@ -71,7 +91,17 @@ class UserCreate(UserBase):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
-        """验证密码强度"""
+        """验证密码强度。
+
+        Args:
+            v: 待校验的明文密码。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 密码强度不达标。
+        """
         return validate_password_strength(v)
 
     @model_validator(mode='after')
@@ -129,19 +159,49 @@ class UserUpdate(BaseModel):
     @field_validator('username')
     @classmethod
     def validate_username(cls, v):
-        """验证用户名格式"""
+        """验证用户名格式（可选字段，None 时跳过）。
+
+        Args:
+            v: 待校验的用户名；None 表示不改该项。
+
+        Returns:
+            None 原样返回，其余校验通过时原样返回。
+
+        Raises:
+            ValueError: 用户名格式不合法。
+        """
         return validate_username_optional(v)
 
     @field_validator('phone')
     @classmethod
     def validate_phone(cls, v):
-        """验证手机号格式"""
+        """验证手机号格式（空值规范化为 None）。
+
+        Args:
+            v: 待校验的手机号；None 表示不改该项。
+
+        Returns:
+            规范化后的手机号。
+
+        Raises:
+            ValueError: 手机号格式不正确。
+        """
         return validate_phone_format(v)
 
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
-        """验证密码强度（仅在提供时验证）"""
+        """验证密码强度（仅在提供时验证）。
+
+        Args:
+            v: 待校验的明文密码；None 表示不改该项。
+
+        Returns:
+            None 原样返回，其余校验通过时原样返回。
+
+        Raises:
+            ValueError: 密码强度不达标。
+        """
         return validate_password_strength_optional(v)
 
     @model_validator(mode='after')
@@ -175,7 +235,17 @@ class UserLogin(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
-        """验证密码非空"""
+        """验证密码非空。
+
+        Args:
+            v: 登录表单中的密码。
+
+        Returns:
+            非空时原样返回。
+
+        Raises:
+            ValueError: 密码为空。
+        """
         if not v:
             raise ValueError('密码不能为空')
         return v
@@ -199,7 +269,17 @@ class UserRegister(UserBase):
     @field_validator('password')
     @classmethod
     def validate_password(cls, v):
-        """验证密码强度"""
+        """验证密码强度。
+
+        Args:
+            v: 待校验的明文密码。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 密码强度不达标。
+        """
         return validate_password_strength(v)
 
     @model_validator(mode='after')
@@ -343,7 +423,17 @@ class ChangePasswordRequest(BaseModel):
     @field_validator('new_password')
     @classmethod
     def validate_new_password(cls, v):
-        """验证新密码强度"""
+        """验证新密码强度。
+
+        Args:
+            v: 待校验的新明文密码。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 密码强度不达标。
+        """
         return validate_password_strength(v)
 
 
@@ -377,7 +467,17 @@ class ResetPasswordRequest(BaseModel):
     @field_validator('new_password')
     @classmethod
     def validate_new_password(cls, v):
-        """验证新密码强度"""
+        """验证新密码强度。
+
+        Args:
+            v: 待校验的新明文密码。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 密码强度不达标。
+        """
         return validate_password_strength(v)
 
 
@@ -407,7 +507,17 @@ class UserAppAccessUpdateRequest(UserAppAccessBase):
     @field_validator("disabled_apps")
     @classmethod
     def validate_app_codes(cls, v: list[str]) -> list[str]:
-        """校验应用代码合法且无重复，非法值直接报错。"""
+        """校验应用代码合法且无重复，非法值直接报错。
+
+        Args:
+            v: 待校验的被禁用应用代码列表。
+
+        Returns:
+            校验通过时原样返回。
+
+        Raises:
+            ValueError: 存在未知应用代码，或列表含重复项。
+        """
         from novamind.core.authorization.app_codes import AppCode
 
         allowed = set(AppCode.ALL)

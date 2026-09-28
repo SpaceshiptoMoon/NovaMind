@@ -114,7 +114,20 @@ class DeepDocParser:
         parsing_config: dict[str, Any] | None = None,
         splitting_config: dict[str, Any] | None = None,
     ) -> DeepDocParseResult:
-        """解析字节流为 DeepDocParseResult（file_type 显式指定后缀）。"""
+        """解析字节流为 DeepDocParseResult（file_type 显式指定后缀）。
+
+        Args:
+            file_bytes: 文件字节流。
+            file_type: 文件后缀（决定路由的解析器）。
+            parsing_config: 解析配置（deepdoc_parser_id / deepdoc_pdf_mode 等），可空。
+            splitting_config: 切分配置（chunk_size 等），可空。
+
+        Returns:
+            DeepDocParseResult。
+
+        Raises:
+            ValueError: 文件类型不支持。
+        """
         extension = file_type.lower().lstrip(".")
         parsing_config = parsing_config or {}
         splitting_config = splitting_config or {}

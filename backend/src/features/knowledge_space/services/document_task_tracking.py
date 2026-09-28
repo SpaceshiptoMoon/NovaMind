@@ -5,19 +5,41 @@ from novamind.shared.mq.task_tracker import doc_tracker
 logger = get_logger(__name__)
 
 async def bind_job_to_document(document_id: int, job_id: str) -> None:
-    """绑定文档与 arq job ID（doc_tracker 转发）。"""
+    """绑定文档与 arq job ID（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+        job_id: arq job ID。
+
+    Returns:
+        无返回；Redis 写失败由 doc_tracker 内部容错。
+    """
     await doc_tracker.bind(document_id, job_id)
 
 
 
 async def get_job_id_for_document(document_id: int) -> str | None:
-    """查询文档当前绑定的 job ID（doc_tracker 转发）。"""
+    """查询文档当前绑定的 job ID（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        绑定的 job ID；无绑定返回 None。
+    """
     return await doc_tracker.get_job_id(document_id)
 
 
 
 async def unbind_job(document_id: int) -> None:
-    """解除文档与 job 的绑定（doc_tracker 转发）。"""
+    """解除文档与 job 的绑定（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        无返回。
+    """
     await doc_tracker.unbind(document_id)
 
 
@@ -29,7 +51,14 @@ async def get_active_document_count() -> int:
 
 
 async def is_document_actively_processing(document_id: int) -> bool:
-    """检查文档是否真的还在处理中（验证 job 是否存活）"""
+    """检查文档是否真的还在处理中（验证 job 是否存活）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        job 仍在队列返回 True；已终结/无绑定/无法验证返回 False 并顺手清理残留映射。
+    """
     job_id = await doc_tracker.get_job_id(document_id)
     if not job_id:
         return False
@@ -141,18 +170,39 @@ async def purge_document_jobs(document_id: int, *, exclude_job_id: str | None = 
 
 
 async def mark_document_cancelled(document_id: int) -> None:
-    """写文档取消标记（doc_tracker 转发）。"""
+    """写文档取消标记（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        无返回。
+    """
     await doc_tracker.mark_cancelled(document_id)
 
 
 
 async def is_document_cancelled(document_id: int) -> bool:
-    """查询文档是否被请求取消（doc_tracker 转发）。"""
+    """查询文档是否被请求取消（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        已请求取消 True，否则 False。
+    """
     return await doc_tracker.is_cancelled(document_id)
 
 
 
 async def clear_cancel_flag(document_id: int) -> None:
-    """清除文档取消标记（doc_tracker 转发）。"""
+    """清除文档取消标记（doc_tracker 转发）。
+
+    Args:
+        document_id: 文档 ID。
+
+    Returns:
+        无返回。
+    """
     await doc_tracker.clear_cancel(document_id)
 

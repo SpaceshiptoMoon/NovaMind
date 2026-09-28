@@ -21,7 +21,14 @@ class AppAccessService:
 
     @classmethod
     async def with_redis(cls, db: AsyncSession) -> AppAccessService:
-        """装配点便捷构造：自取 Redis 单例（失败降级 None → DB 直查）。"""
+        """装配点便捷构造：自取 Redis 单例（失败降级 None 走 DB 直查）。
+
+        Args:
+            db: 请求级数据库会话。
+
+        Returns:
+            AppAccessService 实例。
+        """
         try:
             from novamind.shared.storage.client_factory import ClientFactory
 
@@ -33,7 +40,14 @@ class AppAccessService:
     # ==================== 查询 ====================
 
     async def get_disabled_apps(self, user_id: int) -> set[str]:
-        """用户被禁用的应用集合（空集 = 全部可用）。"""
+        """用户被禁用的应用集合（空集 = 全部可用）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            被禁用的应用代码集合（优先 Redis 缓存，空集也会缓存）。
+        """
         if self.redis:
             cached = await self.redis.get(f"{APPGATE_CACHE_PREFIX}{user_id}")
             if cached is not None:
@@ -55,7 +69,15 @@ class AppAccessService:
         return codes
 
     async def is_app_disabled(self, user_id: int, app_code: str) -> bool:
-        """门禁判定入口（AppGateMiddleware 调用）。"""
+        """门禁判定入口（AppGateMiddleware 调用）。
+
+        Args:
+            user_id: 用户 ID。
+            app_code: 应用代码。
+
+        Returns:
+            该应用对该用户已被禁用返回 True。
+        """
         return app_code in await self.get_disabled_apps(user_id)
 
     # ==================== 替换（管理端点） ====================
@@ -66,7 +88,13 @@ class AppAccessService:
         app_codes: set[str],
         operator_id: int | None = None,
     ) -> None:
-        """全量替换用户的禁用应用集合（delete + insert，单个 SAVEPOINT）。"""
+        """全量替换用户的禁用应用集合（delete + insert，单个 SAVEPOINT）。
+
+        Args:
+            user_id: 用户 ID。
+            app_codes: 新的禁用应用代码集合；空集表示全部可用。
+            operator_id: 操作管理员用户 ID，用于审计；可为 None。
+        """
         # SQLite 下 BigInteger 主键不自动分配，手动分配自增 ID
         is_sqlite = self.db.bind is not None and self.db.bind.dialect.name == "sqlite"
 
@@ -94,6 +122,10 @@ class AppAccessService:
     # ==================== 缓存 ====================
 
     async def invalidate(self, user_id: int) -> None:
-        """失效用户的应用门禁缓存（Redis 未装配时静默跳过）。"""
+        """失效用户的应用门禁缓存（Redis 未装配时静默跳过）。
+
+        Args:
+            user_id: 用户 ID。
+        """
         if self.redis:
             await self.redis.delete(f"{APPGATE_CACHE_PREFIX}{user_id}")

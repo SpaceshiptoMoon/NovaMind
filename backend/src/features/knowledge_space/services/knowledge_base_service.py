@@ -406,7 +406,14 @@ class KnowledgeBaseService:
         return await self.kb_repo.search_by_name(keyword, skip, limit)
 
     async def get_full_stats(self, kb_id: int) -> dict[str, Any]:
-        """获取知识库完整统计（实时查询，排除软删除文档）"""
+        """获取知识库完整统计（实时查询，排除软删除文档）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            统计字典：文档数/分块数/存储 MB 与各处理状态计数。
+        """
         return await self.doc_repo.get_kb_realtime_stats(kb_id)
 
     # ========== 配置管理方法 ==========

@@ -112,7 +112,17 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
 
 
 def read_video_metadata(filepath: str) -> dict:
-    """经 imageio/pyav 探测视频时长、帧率与总帧数；探测失败抛 VideoMetadataError。"""
+    """经 imageio/pyav 探测视频时长、帧率与总帧数；探测失败抛 VideoMetadataError。
+
+    Args:
+        filepath: 视频文件路径。
+
+    Returns:
+        {duration, fps, n_images}；探测不到的字段可能为 0。
+
+    Raises:
+        VideoMetadataError: 元数据探测失败。
+    """
     import imageio.v3 as iio
 
     try:
@@ -128,7 +138,16 @@ def read_video_metadata(filepath: str) -> dict:
 
 
 def read_frame_at(filepath: str, timestamp: float, fps: float):
-    """读取指定时间戳所在帧并返回 PIL Image；解码失败返回 None 跳帧（不兜底取第 0 帧，防锚点时间轴错位）。"""
+    """读取指定时间戳所在帧并返回 PIL Image；解码失败返回 None 跳帧，不兜底取第 0 帧。
+
+    Args:
+        filepath: 视频文件路径。
+        timestamp: 目标时间戳（秒）。
+        fps: 视频帧率（时间戳换帧号用）。
+
+    Returns:
+        PIL Image；解码失败或帧号越界为 None。
+    """
     import imageio.v3 as iio
     import numpy as np
     from PIL import Image

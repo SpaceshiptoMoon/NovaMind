@@ -71,7 +71,16 @@ class ReadAttachmentTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """校验 context 中的附件读取端口后分页返回附件提取文本；端口未配置返回错误 JSON。"""
+        """校验 context 中的附件读取端口后分页返回附件提取文本；端口未配置返回错误 JSON。
+
+        Args:
+            tool_name: 工具名（仅认 read_attachment）。
+            arguments: 工具参数：attachment_id 与 offset/limit（limit 上限 20000 字符）。
+            context: 执行上下文：attachment_read_port 与 user_id（归属校验）。
+
+        Returns:
+            JSON 文本：附件元信息 + content + has_more；归属不符或异常为 {error}。
+        """
         port = context.get("attachment_read_port")
         if port is None:
             return json.dumps(

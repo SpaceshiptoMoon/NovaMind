@@ -18,7 +18,17 @@ class ASRConnectionTester:
     """ASR 连接测试（按协议路由）。请求字段（model/api_key/base_url/protocol）由调用方传入。"""
 
     async def test(self, *, protocol: str | None, model: str, api_key: str, base_url: str | None) -> None:
-        """按协议路由到对应连通测试，失败抛 ValueError（携带可操作指引）；未知协议按 openai 处理。"""
+        """按协议路由到对应连通测试，未知协议按 openai 处理。
+
+        Args:
+            protocol: 连通测试协议（local/openai/dashscope）；None 按 openai 处理。
+            model: 待测试的 ASR 模型名。
+            api_key: 服务方 API Key（local 协议不使用）。
+            base_url: 服务 base URL；None 用对应协议的官方默认地址。
+
+        Raises:
+            ValueError: 连通失败，消息携带可操作指引（模型目录缺失、API Key 无效等）。
+        """
         p = protocol or "openai"
         if p == "local":
             await self._test_local()

@@ -142,23 +142,59 @@ class SessionConfigRepository:
     async def upsert_rag_binding(
         self, session_id: str, user_id: int, rag_config: dict,
     ) -> SessionConfig:
-        """绑定/更新会话知识库（会话级自动 RAG）"""
+        """绑定/更新会话知识库（会话级自动 RAG）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID（记录不存在时作为创建者）。
+            rag_config: RAG 绑定配置字典（auto_rag/space_id/kb_ids 等）。
+
+        Returns:
+            更新后的会话配置（只 flush，事务由上层管理）。
+        """
         return await self._upsert(session_id, user_id, kb_bindings=rag_config)
 
     async def update_compression(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> SessionConfig:
-        """更新会话压缩配置（支持反复修改）"""
+        """更新会话压缩配置（支持反复修改）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            compression_config: 压缩配置字典（strategy/threshold/target_tokens/keep_recent 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         return await self._upsert(session_id, user_id, compression_config=compression_config)
 
     async def update_llm_config(
         self, session_id: str, user_id: int, llm_config: dict,
     ) -> SessionConfig:
-        """更新会话模型生成参数配置（支持反复修改）"""
+        """更新会话模型生成参数配置（支持反复修改）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            llm_config: 生成参数字典（max_tokens/temperature/top_p/system_prompt 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         return await self._upsert(session_id, user_id, llm_config=llm_config)
 
     async def update_web_search_config(
         self, session_id: str, user_id: int, web_search_config: dict,
     ) -> SessionConfig:
-        """更新会话联网搜索引擎配置（支持反复修改）"""
+        """更新会话联网搜索引擎配置（支持反复修改）。
+
+        Args:
+            session_id: 会话 ID。
+            user_id: 归属用户 ID。
+            web_search_config: 联网搜索配置字典（provider/max_results 等）。
+
+        Returns:
+            更新后的会话配置。
+        """
         return await self._upsert(session_id, user_id, web_search_config=web_search_config)

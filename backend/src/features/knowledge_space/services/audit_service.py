@@ -91,7 +91,17 @@ class AuditService:
         space_name: str,
         request: Request | None = None,
     ):
-        """记录空间创建"""
+        """记录空间创建。
+
+        Args:
+            space_id: 新空间 ID。
+            user_id: 操作者用户 ID。
+            space_name: 空间名称（进 details）。
+            request: 可选 FastAPI Request，用于提取 IP 等上下文。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交，业务失败不回滚。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -109,7 +119,17 @@ class AuditService:
         changes: dict[str, Any],
         request: Request | None = None,
     ):
-        """记录空间更新"""
+        """记录空间更新。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 操作者用户 ID。
+            changes: 变更字段字典（进 changes）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -126,7 +146,16 @@ class AuditService:
         user_id: int,
         request: Request | None = None,
     ):
-        """记录空间删除"""
+        """记录空间删除。
+
+        Args:
+            space_id: 被删空间 ID。
+            user_id: 操作者用户 ID。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -144,7 +173,18 @@ class AuditService:
         kb_name: str,
         request: Request | None = None,
     ):
-        """记录知识库创建"""
+        """记录知识库创建。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 操作者用户 ID。
+            kb_id: 新知识库 ID。
+            kb_name: 知识库名称（进 details）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -163,7 +203,18 @@ class AuditService:
         changes: dict[str, Any],
         request: Request | None = None,
     ):
-        """记录知识库更新"""
+        """记录知识库更新。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 操作者用户 ID。
+            kb_id: 知识库 ID。
+            changes: 变更字段字典（进 changes）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -182,7 +233,18 @@ class AuditService:
         kb_name: str,
         request: Request | None = None,
     ):
-        """记录知识库删除"""
+        """记录知识库删除。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 操作者用户 ID。
+            kb_id: 被删知识库 ID。
+            kb_name: 知识库名称（进 details）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -201,7 +263,18 @@ class AuditService:
         role: str,
         request: Request | None = None,
     ):
-        """记录成员邀请"""
+        """记录成员邀请。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 邀请人用户 ID。
+            invited_user_id: 被邀请用户 ID。
+            role: 授予的角色值。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -221,7 +294,19 @@ class AuditService:
         file_size: int,
         request: Request | None = None,
     ):
-        """记录文档上传"""
+        """记录文档上传。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 上传者用户 ID。
+            document_id: 新文档 ID。
+            filename: 文件名（进 details）。
+            file_size: 文件大小（字节，进 details）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -240,7 +325,18 @@ class AuditService:
         filename: str,
         request: Request | None = None,
     ):
-        """记录文档删除"""
+        """记录文档删除。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 操作者用户 ID。
+            document_id: 被删文档 ID。
+            filename: 文件名（进 details）。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         await self.log_action(
             space_id=space_id,
             user_id=user_id,
@@ -260,7 +356,19 @@ class AuditService:
         result_count: int,
         request: Request | None = None,
     ):
-        """记录检索操作"""
+        """记录检索操作。
+
+        Args:
+            space_id: 空间 ID。
+            user_id: 发起检索的用户 ID。
+            query: 检索词，截断 200 字符入库。
+            search_type: 检索类型（vector/bm25/hybrid），未知值按 hybrid 落。
+            result_count: 命中条数。
+            request: 可选 FastAPI Request。
+
+        Returns:
+            无返回值意义上的审计行；独立会话立即提交。
+        """
         action_map = {
             "vector": AuditAction.SEARCH_VECTOR.value,
             "bm25": AuditAction.SEARCH_BM25.value,

@@ -143,7 +143,18 @@ class DeepDocParserFactory:
 
     @classmethod
     def build_configs(cls, file_type: str, parser_id: str | None = None) -> tuple[DeepDocParser, dict]:
-        """定位 spec 并合成运行参数，返回 (解析器实例, 运行参数 dict)。"""
+        """定位 spec 并合成运行参数，返回 (解析器实例, 运行参数 dict)。
+
+        Args:
+            file_type: 文件后缀。
+            parser_id: 显式解析器 ID；None 按后缀推断。
+
+        Returns:
+            (DeepDocParser 实例, 合成的解析配置 dict)。
+
+        Raises:
+            ValueError: parser_id 未知或后缀无匹配规格。
+        """
         spec = cls.resolve_parser_id(file_type, parser_id)
         parser = DeepDocParser()
         parsing_config = {}

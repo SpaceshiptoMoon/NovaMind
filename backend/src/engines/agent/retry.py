@@ -39,7 +39,14 @@ class RetryConfig:
 
 
 def is_retryable_error(exc: Exception) -> bool:
-    """判断异常是否可重试"""
+    """判断异常是否可重试。
+
+    Args:
+        exc: 待判断异常。
+
+    Returns:
+        瞬时错误（429/5xx、连接与超时类）为 True。
+    """
     status_code = getattr(exc, "status_code", None)
 
     # openai / httpx 瞬时错误
@@ -59,13 +66,27 @@ def is_retryable_error(exc: Exception) -> bool:
 
 
 def is_context_overflow(exc: Exception) -> bool:
-    """判断是否为上下文溢出错误"""
+    """判断是否为上下文溢出错误。
+
+    Args:
+        exc: 待判断异常。
+
+    Returns:
+        错误消息命中 token 超限特征串时为 True。
+    """
     msg = str(exc).lower()
     return any(p in msg for p in _CONTEXT_OVERFLOW_PATTERNS)
 
 
 def is_non_retryable(exc: Exception) -> bool:
-    """判断是否为明确不可重试的错误"""
+    """判断是否为明确不可重试的错误。
+
+    Args:
+        exc: 待判断异常。
+
+    Returns:
+        认证/请求类错误（401/403 及 AuthenticationError、BadRequestError、ValueError）为 True。
+    """
     status_code = getattr(exc, "status_code", None)
     if status_code in (401, 403):
         return True

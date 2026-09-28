@@ -27,13 +27,29 @@ class DataSearchSourceRegistry:
         self._display_names: dict[str, str] = {}
 
     def register(self, source_type: str, factory: SourceFactory, display_name: str = "") -> None:
-        """注册源工厂（幂等：同 type 重复注册覆盖）。"""
+        """注册源工厂（幂等：同 type 重复注册覆盖）。
+
+        Args:
+            source_type: 源类型标识（internal/external 等），重复注册时新工厂覆盖旧值。
+            factory: 源工厂函数：SearchSourceContext 到 SearchSourcePort 实例。
+            display_name: 可选展示名；空字符串不覆盖已有展示名。
+
+        Returns:
+            无；只改实例内注册表。
+        """
         self._factories[source_type] = factory
         if display_name:
             self._display_names[source_type] = display_name
 
     def get_factory(self, source_type: str) -> SourceFactory | None:
-        """按源类型取注册工厂，未注册返回 None。"""
+        """按源类型取注册工厂，未注册返回 None。
+
+        Args:
+            source_type: 源类型标识。
+
+        Returns:
+            对应工厂函数；未注册返回 None（构造场景应改用 build 抛错）。
+        """
         return self._factories.get(source_type)
 
     def known_types(self) -> tuple[str, ...]:
@@ -41,11 +57,29 @@ class DataSearchSourceRegistry:
         return tuple(sorted(self._factories))
 
     def display_name(self, source_type: str) -> str:
-        """返回源类型的展示名，未注册回退为类型名本身。"""
+        """返回源类型的展示名，未注册回退为类型名本身。
+
+        Args:
+            source_type: 源类型标识。
+
+        Returns:
+            注册时的展示名（如 知识库检索）；未注册返回 source_type 原文。
+        """
         return self._display_names.get(source_type, source_type)
 
     def build(self, source_type: str, context: SearchSourceContext) -> SearchSourcePort:
-        """按类型构造源 port 实例。未注册类型抛 ``SearchProviderNotConfiguredError``。"""
+        """按类型构造源 port 实例；未注册类型抛 SearchProviderNotConfiguredError。
+
+        Args:
+            source_type: 源类型标识。
+            context: 构造上下文（space_id/user_id/config/deps）。
+
+        Returns:
+            满足 SearchSourcePort 协议的新实例（每请求新建，不跨请求复用）。
+
+        Raises:
+            SearchProviderNotConfiguredError: source_type 未在注册表中。
+        """
         factory = self._factories.get(source_type)
         if factory is None:
             raise SearchProviderNotConfiguredError(source_type)
@@ -59,7 +93,16 @@ source_registry = DataSearchSourceRegistry()
 def register_source_factory(
     source_type: str, factory: SourceFactory, display_name: str = ""
 ) -> None:
-    """向全局注册表注册数据源工厂（新源接入点）。"""
+    """向全局注册表注册数据源工厂（新源接入点）。
+
+    Args:
+        source_type: 源类型标识（须与 schema/SearchSource 枚举对齐）。
+        factory: 源工厂函数：SearchSourceContext 到 SearchSourcePort 实例。
+        display_name: 可选展示名，空字符串跳过。
+
+    Returns:
+        无；写入模块级单例 source_registry。
+    """
     source_registry.register(source_type, factory, display_name)
 
 

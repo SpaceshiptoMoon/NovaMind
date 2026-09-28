@@ -120,7 +120,14 @@ def _quantize_to_int8(model_dir: Path) -> bool:
 
 
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
-    """下载 fp32 权重与分词器（共享下载实现，幂等），随后尝试 INT8 量化。"""
+    """下载 fp32 权重与分词器（共享下载实现，幂等），随后尝试 INT8 量化。
+
+    Args:
+        model_dir: 目标目录；None 用默认目录。
+
+    Returns:
+        模型目录 Path。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
     download_hf_files(base_dir, FORMULA_MODEL_REPO_ID, list(FORMULA_MODEL_FILES))
@@ -177,7 +184,14 @@ class FormulaRecognizer:
         return arr.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
 
     def recognize(self, crop: np.ndarray) -> str:
-        """公式裁剪图 → LaTeX（无 $ 包裹，由调用方决定行内/块级格式）。"""
+        """公式裁剪图 → LaTeX（无 $ 包裹，由调用方决定行内/块级格式）。
+
+        Args:
+            crop: H×W×3 uint8 公式裁剪图。
+
+        Returns:
+            LaTeX 文本（已去首尾空白）。
+        """
         hidden = self.encoder.run(None, {"pixel_values": self.preprocess(crop)})[0]
         tokens: list[int] = [FORMULA_EOS_TOKEN_ID]  # decoder_start_token_id = </s>
         for _ in range(FORMULA_MAX_NEW_TOKENS):
@@ -193,7 +207,17 @@ class FormulaRecognizer:
 
 
 def load_formula_recognizer(model_dir: str | os.PathLike[str] | None = None) -> FormulaRecognizer:
-    """按目录缓存加载 FormulaRecognizer（进程级单例）。"""
+    """按目录缓存加载 FormulaRecognizer（进程级单例）。
+
+    Args:
+        model_dir: 模型目录；None 用默认目录。
+
+    Returns:
+        FormulaRecognizer 实例（同目录复用缓存）。
+
+    Raises:
+        FileNotFoundError: 模型权重/分词器文件缺失。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     cache_key = str(base_dir)
     cached = _LOADED_RECOGNIZERS.get(cache_key)

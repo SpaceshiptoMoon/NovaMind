@@ -23,16 +23,33 @@ class ConnectionManager:
         self._lock = asyncio.Lock()  # 注册表增删互斥（同一事件循环内实际无竞争，防御性）
 
     def connections_count(self, user_id: int) -> int:
-        """指定用户的活跃连接数（测试/监控用）。"""
+        """指定用户的活跃连接数（测试/监控用）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            该用户当前活跃 WebSocket 连接数；无连接返回 0。
+        """
         return len(self._connections.get(user_id, ()))
 
     async def connect(self, user_id: int, websocket: WebSocket) -> None:
-        """注册连接（认证通过后调用）。"""
+        """注册连接（认证通过后调用）。
+
+        Args:
+            user_id: 用户 ID。
+            websocket: 已通过认证的 WebSocket 连接。
+        """
         async with self._lock:
             self._connections.setdefault(user_id, set()).add(websocket)
 
     async def disconnect(self, user_id: int, websocket: WebSocket) -> None:
-        """摘除连接；用户最后一个连接移除后清掉空集合。"""
+        """摘除连接；用户最后一个连接移除后清掉空集合。
+
+        Args:
+            user_id: 用户 ID。
+            websocket: 待摘除的 WebSocket 连接；未注册时静默返回。
+        """
         async with self._lock:
             conns = self._connections.get(user_id)
             if conns is None:

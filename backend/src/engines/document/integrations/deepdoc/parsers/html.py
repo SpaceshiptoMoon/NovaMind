@@ -198,7 +198,15 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def chunk_block(cls, block_text_list, chunk_token_num: int = 512):
-        """把块文本聚合到 token 预算内；超预算的块先切小再输出。"""
+        """把块文本聚合到 token 预算内；超预算的块先切小再输出。
+
+        Args:
+            block_text_list: 块文本列表（同块文本已按 block_id 聚合）。
+            chunk_token_num: 单块 token 上限。
+
+        Returns:
+            聚合后的分块文本列表。
+        """
         chunks = []
         current_block = ""
         current_token_count = 0

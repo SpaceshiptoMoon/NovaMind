@@ -46,7 +46,14 @@ class MemorySecurityScanResult:
 
 
 def scan_memory_content(content: str) -> MemorySecurityScanResult:
-    """扫描记忆内容是否安全"""
+    """扫描记忆内容是否安全。
+
+    Args:
+        content: 待扫描的记忆文本。
+
+    Returns:
+        扫描结果对象：真值判断安全与否，threats 列威胁 ID（注入/泄露/不可见 Unicode）。
+    """
     if not content:
         return MemorySecurityScanResult(is_safe=True)
 

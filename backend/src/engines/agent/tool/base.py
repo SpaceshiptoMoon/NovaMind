@@ -30,11 +30,24 @@ class ToolContext:
         self._extra: dict[str, Any] = {}
 
     def set(self, key: str, value: Any) -> None:
-        """写入扩展上下文字段（自定义端口/配置等经此处挂载，供工具执行时取用）。"""
+        """写入扩展上下文字段（自定义端口/配置等经此处挂载，供工具执行时取用）。
+
+        Args:
+            key: 扩展字段名。
+            value: 字段值。
+        """
         self._extra[key] = value
 
     def get(self, key: str, default: Any = None) -> Any:
-        """读取扩展上下文字段，缺省返回 default。"""
+        """读取扩展上下文字段，缺省返回 default。
+
+        Args:
+            key: 扩展字段名。
+            default: 字段缺失时的返回值。
+
+        Returns:
+            字段值或 default。
+        """
         return self._extra.get(key, default)
 
     def to_dict(self) -> dict[str, Any]:

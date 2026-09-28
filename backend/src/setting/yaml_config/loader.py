@@ -49,7 +49,14 @@ class ConfigLoader:
         self._config: dict[str, Any] = {}
 
     def load(self, environment: str | None = None) -> dict[str, Any]:
-        """按环境加载并合并 YAML，解析占位符后返回配置 dict；环境取参数或 ENVIRONMENT 环境变量，缺省 development。"""
+        """按环境加载并合并 YAML，解析占位符后返回配置 dict；环境取参数或 ENVIRONMENT 环境变量，缺省 development。
+
+        Args:
+            environment: 目标环境名（development/production 等）；None 时回落 ENVIRONMENT 环境变量，再缺省 development。
+
+        Returns:
+            default 到 env 到 local 三层深度合并、${VAR} 占位符已替换的完整配置 dict，并附 environment 键。
+        """
         env = environment or os.getenv("ENVIRONMENT", "development")
         # 加载仓库根 .env 作为占位符取值源（幂等：已存在的进程环境变量优先）。
         # 本地开发时密钥只写 .env 一份，YAML 侧用 ${VAR} 占位符引用；
@@ -124,7 +131,15 @@ class ConfigLoader:
         return config
 
     def get(self, key: str, default: Any = None) -> Any:
-        """按点号路径读取已加载配置 dict 的嵌套值，任一层缺失返回 default。"""
+        """按点号路径读取已加载配置 dict 的嵌套值，任一层缺失返回 default。
+
+        Args:
+            key: 点号分隔的配置路径（如 database.pool_size），逐段下钻。
+            default: 任一层缺失时的兜底值；None 表示缺失即返回 None。
+
+        Returns:
+            命中的配置值（类型由 YAML 决定）；路径中断或键缺失返回 default。
+        """
         value: Any = self._config
         for part in key.split("."):
             if isinstance(value, dict) and part in value:
@@ -135,7 +150,14 @@ class ConfigLoader:
 
 
 def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
-    """把原始配置 dict 映射为强类型 AppConfig（逐节构造 dataclass，未提供的键用默认值；生产环境 MinIO 未开 SSL 时强制纠正并告警）。"""
+    """把原始配置 dict 映射为强类型 AppConfig（逐节构造 dataclass，未提供的键用默认值；生产环境 MinIO 未开 SSL 时强制纠正并告警）。
+
+    Args:
+        data: load 产出的原始配置 dict；缺失的节用 dataclass 默认值填充。
+
+    Returns:
+        可直接全局使用的 AppConfig 实例（生产环境 MinIO secure 被强制置 True）。
+    """
     config = AppConfig()
     config.environment = data.get("environment", "development")
     config.cors_origins = data.get("cors_origins", "*")
@@ -397,7 +419,14 @@ _config_lock = threading.Lock()
 
 
 def set_environment(env: str) -> None:
-    """预设环境名并清空全部已加载缓存，下次 get_config 按新环境重新加载（须在首次 get_config 前调用才生效）。"""
+    """预设环境名并清空全部已加载缓存，下次 get_config 按新环境重新加载（须在首次 get_config 前调用才生效）。
+
+    Args:
+        env: 目标环境名（development/production 等）。
+
+    Returns:
+        无；持锁重置 loader/config_dict/config 三个全局缓存。
+    """
     global _environment, _loader, _config_dict, _config
     with _config_lock:
         _environment = env
@@ -407,7 +436,11 @@ def set_environment(env: str) -> None:
 
 
 def get_environment() -> str | None:
-    """返回 set_environment 设置的环境名；未设置返回 None（get_config 会回落 ENVIRONMENT 环境变量）。"""
+    """返回 set_environment 设置的环境名；未设置返回 None（get_config 会回落 ENVIRONMENT 环境变量）。
+
+    Returns:
+        已预设的环境名；从未调用 set_environment 时为 None。
+    """
     return _environment
 
 
@@ -431,7 +464,15 @@ def get_config_dict() -> dict[str, Any]:
 
 
 def get_config_value(key: str, default: Any = None) -> Any:
-    """按点号路径读取单个配置项；必要时先触发全局配置加载。"""
+    """按点号路径读取单个配置项；必要时先触发全局配置加载。
+
+    Args:
+        key: 点号分隔的配置路径（如 features.wiki.enabled）。
+        default: 键缺失时的兜底值；None 表示缺失即返回 None。
+
+    Returns:
+        命中的配置值；键不存在返回 default。
+    """
     global _loader
     if _loader is None:
         get_config()
@@ -439,7 +480,14 @@ def get_config_value(key: str, default: Any = None) -> Any:
 
 
 def reload_config(environment: str | None = None) -> AppConfig:
-    """强制重新加载配置（可指定新环境）并刷新全局单例，返回新 AppConfig；持锁执行避免并发加载撕裂。"""
+    """强制重新加载配置（可指定新环境）并刷新全局单例，返回新 AppConfig；持锁执行避免并发加载撕裂。
+
+    Args:
+        environment: 可选新环境名；None 时按当前环境变量语义重新解析（不沿用 set_environment 预设）。
+
+    Returns:
+        重新构造的 AppConfig 实例（进程内后续 get_config 均命中新单例）。
+    """
     global _loader, _config_dict, _config
     with _config_lock:
         _loader = ConfigLoader()

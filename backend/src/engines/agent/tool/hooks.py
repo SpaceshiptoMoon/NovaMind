@@ -64,7 +64,16 @@ class LoggingHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """记录工具调用开始日志；不修改参数。"""
+        """记录工具调用开始日志；不修改参数。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            context: 执行上下文。
+
+        Returns:
+            恒 None（不改参数）。
+        """
         logger.info(
             "工具调用开始",
             tool_name=tool.name,
@@ -79,7 +88,17 @@ class LoggingHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
-        """记录工具调用完成日志（状态与耗时）；不修改结果。"""
+        """记录工具调用完成日志（状态与耗时）；不修改结果。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            result: 工具结果。
+            context: 执行上下文。
+
+        Returns:
+            原样返回 result。
+        """
         logger.info(
             "工具调用完成",
             tool_name=tool.name,
@@ -106,7 +125,16 @@ class ResultTruncationHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """前置无操作，原样放行。"""
+        """前置无操作，原样放行。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            context: 执行上下文。
+
+        Returns:
+            恒 None。
+        """
         return None
 
     async def after_execute(
@@ -116,7 +144,17 @@ class ResultTruncationHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
-        """结果超上限时硬截断并追加截断标记，metadata 记录原长度。"""
+        """结果超上限时硬截断并追加截断标记，metadata 记录原长度。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            result: 工具结果，content 可能被改写。
+            context: 执行上下文。
+
+        Returns:
+            截断后（或未超限原样）的 ToolResult，metadata 追加 truncated 与 original_length。
+        """
         if len(result.content) > self._max_chars:
             original_length = len(result.content)
             result.content = result.content[: self._max_chars] + "\n...[结果已截断]"
@@ -142,7 +180,16 @@ class ResultBudgetHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """前置无操作，原样放行。"""
+        """前置无操作，原样放行。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            context: 执行上下文。
+
+        Returns:
+            恒 None。
+        """
         return None
 
     async def after_execute(
@@ -152,7 +199,17 @@ class ResultBudgetHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
-        """结果超阈值时仅在 metadata 标记 oversized 并生成行边界预览，不截断正文。"""
+        """结果超阈值时仅在 metadata 标记 oversized 并生成行边界预览，不截断正文。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            result: 工具结果（正文不改写，只附加 metadata）。
+            context: 执行上下文。
+
+        Returns:
+            原 result，metadata 追加 _oversized / _preview / _original_length。
+        """
         if len(result.content) > self._preview_threshold:
             preview = result.content[:self._preview_chars]
             last_nl = preview.rfind("\n")
@@ -195,7 +252,16 @@ class ToolOutputBudgetHook(ToolHook):
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """前置无操作，原样放行。"""
+        """前置无操作，原样放行。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            context: 执行上下文。
+
+        Returns:
+            恒 None。
+        """
         return None
 
     async def after_execute(
@@ -205,7 +271,17 @@ class ToolOutputBudgetHook(ToolHook):
         result: ToolResult,
         context: dict[str, Any],
     ) -> ToolResult:
-        """输出超预算时 head/tail 双端截断（吸附行边界）并注明省略量；豁免工具原样透传。"""
+        """输出超预算时 head/tail 双端截断（吸附行边界）并注明省略量；豁免工具原样透传。
+
+        Args:
+            tool: 工具定义（按 name 匹配豁免集合）。
+            arguments: 工具参数。
+            result: 工具结果，content 可能被改写。
+            context: 执行上下文。
+
+        Returns:
+            截断后（或原样）的 ToolResult，metadata 记 truncated 与原长度/token 估计。
+        """
         if tool.name in self._exempt:
             return result
         content = result.content

@@ -83,7 +83,14 @@ async def _get_cached_user(
 # ========== 基础服务依赖 ==========
 
 async def get_space_service(db: AsyncSession = Depends(get_db)) -> SpaceService:
-    """获取空间服务（使用单例客户端，注入模型配置服务）"""
+    """获取空间服务（使用单例客户端，注入模型配置服务）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 SpaceService。
+    """
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
     model_config_service = ModelConfigService(db)
@@ -96,14 +103,28 @@ async def get_space_service(db: AsyncSession = Depends(get_db)) -> SpaceService:
 
 
 async def get_member_service(db: AsyncSession = Depends(get_db)) -> MemberService:
-    """装配成员服务（单例 ES/MinIO 客户端注入）。"""
+    """装配成员服务（单例 ES/MinIO 客户端注入）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 MemberService。
+    """
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
     return MemberService(db, es_client=es_client, minio_client=minio_client)
 
 
 async def get_document_query_service(db: AsyncSession = Depends(get_db)) -> DocumentQueryService:
-    """获取文档查询服务（使用单例 MinIO/ES 客户端，查询/下载/删除无需模型配置）"""
+    """获取文档查询服务（使用单例 MinIO/ES 客户端，查询/下载/删除无需模型配置）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 DocumentQueryService。
+    """
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
     return DocumentQueryService(
@@ -114,18 +135,39 @@ async def get_document_query_service(db: AsyncSession = Depends(get_db)) -> Docu
 
 
 async def get_document_upload_service(db: AsyncSession = Depends(get_db)) -> DocumentUploadService:
-    """获取文档上传服务（使用单例 MinIO 客户端）"""
+    """获取文档上传服务（使用单例 MinIO 客户端）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 DocumentUploadService。
+    """
     minio_client = await get_minio_client()
     return DocumentUploadService(session=db, minio_client=minio_client)
 
 
 async def get_document_task_service(db: AsyncSession = Depends(get_db)) -> DocumentTaskService:
-    """获取文档任务/批次服务（任务编排不触碰 MinIO/ES/模型配置）"""
+    """获取文档任务/批次服务（任务编排不触碰 MinIO/ES/模型配置）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 DocumentTaskService。
+    """
     return DocumentTaskService(session=db)
 
 
 async def get_knowledge_base_service(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseService:
-    """获取知识库服务（使用单例客户端，注入模型配置端口）"""
+    """获取知识库服务（使用单例客户端，注入模型配置端口）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 KnowledgeBaseService。
+    """
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
     # 批次 5b：装配点注入 ModelConfigPort
@@ -152,7 +194,14 @@ async def get_redis_cache():
 
 
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
-    """获取检索服务（单例客户端，注入模型配置服务与检索引擎）"""
+    """获取检索服务（单例客户端，注入模型配置服务与检索引擎）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 SearchService；Redis 未装配时缓存降级 no-op。
+    """
     es_client = await get_elasticsearch_client()
     model_config_service = ModelConfigService(db)
     # 装配点构造 RetrievalEngine + RedisCache 注入（惰性单例，未装配时 None 降级）
@@ -170,17 +219,38 @@ async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchServic
 
 
 async def get_audit_service(db: AsyncSession = Depends(get_db)) -> AuditService:
-    """装配审计服务（独立 DB 会话）。"""
+    """装配审计服务（独立 DB 会话）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 AuditService。
+    """
     return AuditService(db)
 
 
 async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
-    """装配用户仓储（R2 防环：跨 feature 直查 user models 用）。"""
+    """装配用户仓储（R2 防环：跨 feature 直查 user models 用）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        绑定该会话的 UserRepository。
+    """
     return UserRepository(db)
 
 
 async def get_kb_repository(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseRepository:
-    """装配知识库仓储（同一请求内复用 DB 会话）。"""
+    """装配知识库仓储（同一请求内复用 DB 会话）。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        绑定该会话的 KnowledgeBaseRepository。
+    """
     return KnowledgeBaseRepository(db)
 
 
@@ -189,7 +259,14 @@ async def get_kb_repository(db: AsyncSession = Depends(get_db)) -> KnowledgeBase
 async def get_current_user_id(
     current_user: dict = Depends(get_current_user),
 ) -> int:
-    """获取当前用户 ID"""
+    """获取当前用户 ID。
+
+    Args:
+        current_user: get_current_user 解析出的用户载荷字典。
+
+    Returns:
+        当前用户 ID。
+    """
     return current_user["id"]
 
 

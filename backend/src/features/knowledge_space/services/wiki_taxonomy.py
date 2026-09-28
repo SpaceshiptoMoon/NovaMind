@@ -21,7 +21,14 @@ CATEGORY_MAX_DEPTH = 2
 
 
 def clean_category_path(parts: Sequence[str]) -> list[str]:
-    """清洗路径标签：去空白、去重、保序、截断到最大深度。"""
+    """清洗路径标签：去空白、去重、保序、截断到最大深度。
+
+    Args:
+        parts: 原始路径标签序列。
+
+    Returns:
+        清洗后的标签列表，最多 2 级；标签内斜杠会被拆分。
+    """
     cleaned: list[str] = []
     for part in parts or []:
         label = (part or "").strip()
@@ -146,7 +153,15 @@ async def plan_batch_taxonomy(
 
 
 def append_unique_tree(existing: list[list[str]], path: list[str]) -> list[list[str]]:
-    """把新路径加入目录池（去重）——feed-forward 用"""
+    """把新路径加入目录池（去重）——feed-forward 用。
+
+    Args:
+        existing: 已有目录路径池，原地追加。
+        path: 新路径（标签数组），已存在则不动。
+
+    Returns:
+        同一个目录池引用。
+    """
     if path and path not in existing:
         existing.append(list(path))
     return existing

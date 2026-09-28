@@ -64,7 +64,14 @@ def default_model_dir() -> Path:
 
 
 def expected_model_files(group: str | None = None) -> list[str]:
-    """列出指定模型组（ocr/layout/tsr）的文件名清单；group=None 时聚合全部组的文件。"""
+    """列出指定模型组（ocr/layout/tsr）的文件名清单；group=None 时聚合全部组的文件。
+
+    Args:
+        group: 模型组名；None 聚合全部。
+
+    Returns:
+        文件名列表；未知组为空列表。
+    """
     if group is None:
         files: list[str] = []
         for names in MODEL_GROUPS.values():
@@ -433,7 +440,15 @@ def download_hf_files(
 
 
 def download_model_group(group: str | None = None, model_dir: str | os.PathLike[str] | None = None) -> Path:
-    """经多源降级下载链拉取指定组的全部模型文件（group=None 时下载全集）。"""
+    """经多源降级下载链拉取指定组的全部模型文件（group=None 时下载全集）。
+
+    Args:
+        group: 模型组名（ocr/layout/tsr）；None 全量。
+        model_dir: 目标目录；None 用默认目录。
+
+    Returns:
+        下载目标目录 Path。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_model_dir()
     allow_patterns = expected_model_files(group)
     if not allow_patterns:

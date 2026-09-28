@@ -19,7 +19,14 @@ class ContextSummaryRepository:
         self.session = session
 
     async def get_latest(self, conversation_id: int) -> AgentContextSummary | None:
-        """获取某个会话的最新一条摘要"""
+        """获取某个会话的最新一条摘要。
+
+        Args:
+            conversation_id: 会话主键 ID。
+
+        Returns:
+            created_at 最新的摘要实体；会话无摘要返回 None。
+        """
         stmt = (
             select(AgentContextSummary)
             .where(AgentContextSummary.conversation_id == conversation_id)
@@ -53,7 +60,18 @@ class ContextSummaryRepository:
         compression_ratio: float = 1.0,
         token_count: int = 0,
     ) -> AgentContextSummary:
-        """追加一条压缩摘要记录"""
+        """追加一条压缩摘要记录。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            summary_text: 压缩摘要正文。
+            compressed_count: 本次被压缩的消息条数，默认 0。
+            compression_ratio: 压缩率（压缩后/压缩前），默认 1.0。
+            token_count: 摘要的 token 用量，默认 0。
+
+        Returns:
+            已 flush 的新摘要实体（事务由调用方提交）。
+        """
         summary = AgentContextSummary(
             conversation_id=conversation_id,
             summary_text=summary_text,

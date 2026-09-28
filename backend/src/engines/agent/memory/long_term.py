@@ -66,7 +66,22 @@ class LongTermMemory(ILongTermMemory):
         source_conversation_id: int | None = None,
         source_type: str = "consolidate",
     ) -> LongTermMemoryEntry:
-        """存储一条长期记忆 → MySQL + ES"""
+        """存储一条长期记忆 → MySQL + ES。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            category: 记忆类别（preference/fact/procedure/insight）。
+            content: 记忆正文。
+            source_conversation_id: 来源会话 ID，可空。
+            source_type: 来源标记（consolidate/manual 等）。
+
+        Returns:
+            新建的记忆条目（已异步索引到 ES）。
+
+        Raises:
+            ValueError: 内容未通过安全扫描。
+        """
         # 安全扫描
         from novamind.engines.agent.memory.security import scan_memory_content
         scan = scan_memory_content(content)
@@ -102,7 +117,18 @@ class LongTermMemory(ILongTermMemory):
         old_content: str,
         new_content: str,
     ) -> dict[str, Any]:
-        """替换记忆内容（子串匹配）"""
+        """替换记忆内容（子串匹配）。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            category: 记忆类别。
+            old_content: 用于定位的记忆内容子串。
+            new_content: 替换后的新内容。
+
+        Returns:
+            成功为 {message, id}；未匹配或安全扫描未过为 {error}。
+        """
         from novamind.engines.agent.memory.security import scan_memory_content
 
         scan = scan_memory_content(new_content)
@@ -123,7 +149,16 @@ class LongTermMemory(ILongTermMemory):
         user_id: int,
         old_content: str,
     ) -> dict[str, Any]:
-        """移除记忆（子串匹配）"""
+        """移除记忆（子串匹配）。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            old_content: 用于定位的记忆内容子串。
+
+        Returns:
+            成功为 {message, id}；未匹配为 {error}（ES 删除失败仅告警不报错）。
+        """
         entry = await self._store.find_by_content_contains(agent_id, user_id, old_content)
         if not entry:
             return {"error": "未找到匹配的记忆"}
@@ -147,7 +182,18 @@ class LongTermMemory(ILongTermMemory):
         top_k: int = 5,
         categories: list[str] | None = None,
     ) -> list[LongTermMemoryEntry]:
-        """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE"""
+        """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            query: 检索查询文本。
+            top_k: 返回条数上限。
+            categories: 限定类别列表，None 不限。
+
+        Returns:
+            按相关度排序的记忆条目；ES 不可用或无结果时降级 MySQL LIKE。
+        """
         # 优先 ES 搜索
         if self._search and self._embedding_factory:
             es_results = await self._search_es(

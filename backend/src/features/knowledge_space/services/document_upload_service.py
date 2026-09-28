@@ -377,7 +377,17 @@ class DocumentUploadService:
 
     @staticmethod
     async def read_upload_file(file, *, max_size: int = 100 * 1024 * 1024) -> bytes:
-        """分块读取单个上传文件内容，带大小限制（批次 4 自路由层下沉）。"""
+        """分块读取单个上传文件内容，带大小限制（批次 4 自路由层下沉）。
+
+        Args:
+            file: FastAPI UploadFile，按 10MB 分块读取。
+
+        Returns:
+            完整文件字节串。
+
+        Raises:
+            DocumentSizeExceededError: 累计读取超过 max_size。
+        """
         file_content = bytearray()
         while True:
             chunk = await file.read(10 * 1024 * 1024)  # 10MB 分块读取

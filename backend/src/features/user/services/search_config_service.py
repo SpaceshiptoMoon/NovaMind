@@ -76,14 +76,32 @@ class SearchConfigService:
     # ========== 配置 CRUD ==========
 
     async def list_configs(self, user_id: int) -> SearchConfigListResponse:
-        """获取用户的搜索配置列表"""
+        """获取用户的搜索配置列表（api_key 脱敏）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            含 total 与 items 的列表响应。
+        """
         configs = await self.repo.list_by_user(user_id)
         total = await self.repo.count_by_user(user_id)
         items = [self._build_response(c) for c in configs]
         return SearchConfigListResponse(total=total, items=items)
 
     async def get_config(self, user_id: int, config_id: int) -> SearchConfigResponse:
-        """获取单个配置（校验归属）"""
+        """获取单个配置（校验归属，api_key 脱敏）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+
+        Returns:
+            脱敏后的配置响应。
+
+        Raises:
+            SearchConfigNotFoundError: 配置不存在或不属于当前用户。
+        """
         config = await self.repo.get_by_id(config_id)
         if not config or config.user_id != user_id:
             raise SearchConfigNotFoundError(config_id)
@@ -94,7 +112,18 @@ class SearchConfigService:
         data: SearchConfigCreate,
         user_id: int,
     ) -> SearchConfigResponse:
-        """创建搜索引擎凭证（密钥加密落库，可设为主源）。"""
+        """创建搜索引擎凭证（密钥加密落库，可设为主源）。
+
+        Args:
+            data: 创建数据（同用户同 provider 唯一；is_primary 为真时先清旧主源）。
+            user_id: 归属用户 ID。
+
+        Returns:
+            脱敏后的配置响应。
+
+        Raises:
+            SearchConfigAlreadyExistsError: 同用户下该 provider 已有配置。
+        """
         # 同 user 同 provider 唯一
         existing = await self.repo.get_by_user_and_provider(user_id, data.provider)
         if existing:
@@ -154,7 +183,18 @@ class SearchConfigService:
         return self._build_response(config)
 
     async def set_primary(self, user_id: int, config_id: int) -> SearchConfigResponse:
-        """将指定配置设为用户首选 provider（原子清旧 + 设新）"""
+        """将指定配置设为用户首选 provider（原子清旧 + 设新）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+
+        Returns:
+            设为主源后的脱敏配置响应。
+
+        Raises:
+            SearchConfigNotFoundError: 配置不存在或不属于当前用户。
+        """
         config = await self.repo.get_by_id(config_id)
         if not config or config.user_id != user_id:
             raise SearchConfigNotFoundError(config_id)
@@ -170,7 +210,15 @@ class SearchConfigService:
         return self._build_response(config)
 
     async def delete_config(self, user_id: int, config_id: int) -> None:
-        """删除搜索配置（校验归属）"""
+        """删除搜索配置（校验归属；若为主源，联网搜索回退其余配置）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            config_id: 配置 ID。
+
+        Raises:
+            SearchConfigNotFoundError: 配置不存在或不属于当前用户。
+        """
         config = await self.repo.get_by_id(config_id)
         if not config or config.user_id != user_id:
             raise SearchConfigNotFoundError(config_id)

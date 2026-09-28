@@ -31,7 +31,14 @@ class StreamingContextScrubber:
         self._in_think = False
 
     def feed(self, chunk: str) -> str:
-        """清洗单个 SSE chunk，返回去除内部标签后的内容"""
+        """清洗单个 SSE chunk，返回去除内部标签后的内容。
+
+        Args:
+            chunk: 上游 SSE 增量文本片段。
+
+        Returns:
+            可安全输出的清洗文本；标签未闭合时为空串，剩余内容留在缓冲待后续 chunk。
+        """
         if not chunk:
             return chunk
 

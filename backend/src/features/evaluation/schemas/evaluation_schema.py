@@ -192,7 +192,14 @@ class EvaluationTaskListItem(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
-        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。
+
+        Args:
+            v: 原始字段值：ORM 给出的 EvaluationStatus 整数；非整数原样透传。
+
+        Returns:
+            小写状态名（如 completed）；非法整数值回落为其字符串形式。
+        """
         return _status_to_str(v)
 
 
@@ -220,7 +227,14 @@ class EvaluationTaskDetailResponse(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
-        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。
+
+        Args:
+            v: 原始字段值：ORM 给出的 EvaluationStatus 整数；非整数原样透传。
+
+        Returns:
+            小写状态名（如 failed）；非法整数值回落为其字符串形式。
+        """
         return _status_to_str(v)
 
 
@@ -237,7 +251,14 @@ class EvaluationReportResponse(BaseModel):
     @field_validator("status", mode="before")
     @classmethod
     def convert_status(cls, v):
-        """ORM 整数状态在响应序列化前转为小写状态名字符串。"""
+        """ORM 整数状态在响应序列化前转为小写状态名字符串。
+
+        Args:
+            v: 原始字段值：ORM 给出的 EvaluationStatus 整数；非整数原样透传。
+
+        Returns:
+            小写状态名（如 running）；非法整数值回落为其字符串形式。
+        """
         return _status_to_str(v)
 
 

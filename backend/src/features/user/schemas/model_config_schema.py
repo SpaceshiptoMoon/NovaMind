@@ -46,7 +46,17 @@ class ModelConfigBase(BaseModel):
     @field_validator('model_type')
     @classmethod
     def validate_model_type(cls, v: str) -> str:
-        """验证模型类型"""
+        """验证模型类型属白名单并归一为小写。
+
+        Args:
+            v: 待校验的模型类型字符串。
+
+        Returns:
+            归一为小写后的模型类型。
+
+        Raises:
+            ValueError: 不在 llm/embedding/rerank/vlm/asr 白名单内。
+        """
         allowed = {"llm", "embedding", "rerank", "vlm", "asr"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的模型类型: {v}，支持的类型: {allowed}")
@@ -125,7 +135,17 @@ class ModelTestRequest(BaseModel):
     @field_validator('model_type')
     @classmethod
     def validate_model_type(cls, v: str) -> str:
-        """校验模型类型属白名单（llm/embedding/rerank/vlm/asr）并归一为小写。"""
+        """校验模型类型属白名单（llm/embedding/rerank/vlm/asr）并归一为小写。
+
+        Args:
+            v: 待校验的模型类型字符串。
+
+        Returns:
+            归一为小写后的模型类型。
+
+        Raises:
+            ValueError: 不在白名单内。
+        """
         allowed = {"llm", "embedding", "rerank", "vlm", "asr"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的模型类型: {v}")

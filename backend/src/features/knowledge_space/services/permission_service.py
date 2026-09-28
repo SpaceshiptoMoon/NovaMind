@@ -125,54 +125,110 @@ class SpaceAccessChecker:
         return member.role >= min_role
 
     def can_manage_knowledge_base(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以管理知识库（需要 EDITOR 及以上）"""
+        """检查成员是否可以管理知识库（需要 EDITOR 及以上）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "knowledge_bases", "manage",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
     def can_upload_document(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以上传文档（需要 EDITOR 及以上）"""
+        """检查成员是否可以上传文档（需要 EDITOR 及以上）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "documents", "upload",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
     def can_delete_document(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以删除任意文档（需要 EDITOR 及以上）"""
+        """检查成员是否可以删除文档（需要 EDITOR 及以上）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "documents", "delete",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
     def can_delete_any_document(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以删除任意文档（需要 ADMIN 权限）"""
+        """检查成员是否可以删除任意文档（需要 ADMIN 权限）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "documents", "delete_any",
             self._role_at_least(member, SpaceRole.ADMIN),
         )
 
     def can_invite_member(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以邀请其他成员（需要 ADMIN）"""
+        """检查成员是否可以邀请其他成员（需要 ADMIN）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "members", "invite",
             self.is_admin(member),
         )
 
     def is_admin(self, member: SpaceMember | None) -> bool:
-        """检查成员是否是管理员"""
+        """检查成员是否是管理员。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            角色达到 ADMIN 返回 True。
+        """
         if member is None or not member.is_active():
             return False
         return member.role >= SpaceRole.ADMIN
 
     def is_editor_or_above(self, member: SpaceMember | None) -> bool:
-        """检查成员是否是编辑或更高权限"""
+        """检查成员是否是编辑或更高权限。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            角色为 EDITOR 或 ADMIN 返回 True。
+        """
         if member is None or not member.is_active():
             return False
         return member.role in (SpaceRole.ADMIN, SpaceRole.EDITOR)
 
     def can_manage_members(self, member: SpaceMember | None) -> bool:
-        """检查成员是否可以管理其他成员（需要 ADMIN）"""
+        """检查成员是否可以管理其他成员（需要 ADMIN）。
+
+        Args:
+            member: 空间成员，None 或非活跃一律 False。
+
+        Returns:
+            允许 True；custom_permissions 覆盖优先于角色判断。
+        """
         return self._check_permission_with_override(
             member, "members", "manage",
             self.is_admin(member),

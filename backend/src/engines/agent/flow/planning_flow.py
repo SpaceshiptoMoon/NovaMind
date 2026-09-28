@@ -50,7 +50,22 @@ class PlanningFlow:
         top_p: float = 0.8,
         enable_thinking: bool = False,
     ) -> AsyncGenerator[AgentEvent, None]:
-        """Plan-and-Execute 主循环，产出 plan.* + 内层 ReAct + done 事件。"""
+        """Plan-and-Execute 主循环，产出 plan.* + 内层 ReAct + done 事件。
+
+        Args:
+            llm_client: 规划与总结共用的 LLM 客户端。
+            messages: 用户会话消息列表（OpenAI 格式）。
+            tools: 内层 ReAct 可用的工具定义列表。
+            context: 透传给内层引擎的执行上下文。
+            user_query: 用户原始问题。
+            max_tokens: 单次 LLM 生成的 token 上限。
+            temperature: 采样温度。
+            top_p: 核采样概率阈值。
+            enable_thinking: 是否开启思考模式。
+
+        Returns:
+            异步生成器：产出 plan.* 进度事件与内层 ReAct 事件，末尾 done 承载总结答案。
+        """
         # 1. 生成计划
         plan = await self._create_initial_plan(
             llm_client, user_query, max_tokens, temperature, top_p

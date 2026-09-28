@@ -219,7 +219,15 @@ class RetrievalEvaluator:
         per_case_results: list[dict[str, Any]],
         enable_mrr: bool = True,
     ) -> dict[str, Any]:
-        """汇总多条测试用例的检索指标"""
+        """汇总多条测试用例的检索指标。
+
+        Args:
+            per_case_results: 单用例指标 dict 列表（读 precision_at_k / hit 等键）。
+            enable_mrr: 是否计算 MRR。
+
+        Returns:
+            {precision_at_k, hit_rate, mrr}（保留 4 位小数；mrr 关闭时为 None）。
+        """
         total = len(per_case_results)
 
         # Precision@K 平均值

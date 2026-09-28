@@ -56,7 +56,14 @@ class ResumeSessionService:
         return await self.repo.get_by_id(session_id)
 
     async def delete_session(self, session_id: str) -> None:
-        """删除 MinIO 文件 + DB 会话记录（commit）。MinIO 删除失败仅告警。"""
+        """删除 MinIO 文件 + DB 会话记录（commit）。MinIO 删除失败仅告警。
+
+        Args:
+            session_id: 会话主键（字符串形式的 UUID）。
+
+        Returns:
+            无。
+        """
         session = await self.repo.get_by_id(session_id)
         if session is not None:
             try:
@@ -80,7 +87,18 @@ class ResumeSessionService:
         return await self.repo.list_by_user(user_id, limit, offset, status=status)
 
     async def get_owned_session(self, session_id: str, user_id: int):
-        """取会话并校验归属（不存在/非本人抛 ResumeSessionNotFoundError）。"""
+        """取会话并校验归属（不存在/非本人抛 ResumeSessionNotFoundError）。
+
+        Args:
+            session_id: 会话主键（字符串形式的 UUID）。
+            user_id: 当前用户 ID。
+
+        Returns:
+            归属校验通过的会话实体。
+
+        Raises:
+            ResumeSessionNotFoundError: 会话不存在或不属于该用户。
+        """
         from novamind.features.app.api.exceptions import ResumeSessionNotFoundError
 
         session = await self.repo.get_by_id(session_id)

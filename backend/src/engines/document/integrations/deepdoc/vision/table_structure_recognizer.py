@@ -100,7 +100,14 @@ class TableStructureRecognizer(Recognizer):
 
     @staticmethod
     def is_caption(box):
-        """判断框是否为表/图题注：文本命中 Figure/Table/图表编号模式，或 layout_type 已带 caption 标记。"""
+        """判断框是否为表/图题注：文本命中编号模式，或 layout_type 已带 caption 标记。
+
+        Args:
+            box: 框 dict（读 text 与 layout_type 键）。
+
+        Returns:
+            判定为题注为 True。
+        """
         patterns = [
             r"(?i)^fig(?:ure)?\.?\s*\d+",
             r"(?i)^table\s+\d+",

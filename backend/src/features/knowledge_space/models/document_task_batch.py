@@ -67,12 +67,26 @@ class DocumentTaskBatch(BaseModel):
             self.started_at = now_china()
 
     def mark_completed(self, has_failed: bool = False) -> None:
-        """标记批次完成（有失败项时为 PARTIAL_FAILED）。"""
+        """标记批次完成（有失败项时为 PARTIAL_FAILED）。
+
+        Args:
+            has_failed: 存在失败子任务时传 True，落 PARTIAL_FAILED 而非 COMPLETED。
+
+        Returns:
+            无返回；写 completed_at，不 flush 不 commit。
+        """
         self.status = BatchStatus.PARTIAL_FAILED if has_failed else BatchStatus.COMPLETED
         self.completed_at = now_china()
 
     def mark_failed(self, error_message: str) -> None:
-        """标记批次整体失败并写错误信息。"""
+        """标记批次整体失败并写错误信息。
+
+        Args:
+            error_message: 批次级失败原因，写入 error_message 列。
+
+        Returns:
+            无返回；写 completed_at，不 flush 不 commit。
+        """
         self.status = BatchStatus.FAILED
         self.error_message = error_message
         self.completed_at = now_china()

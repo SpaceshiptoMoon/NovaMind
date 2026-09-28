@@ -120,7 +120,17 @@ class UserRepository:
             raise ValueError("用户名或邮箱已被注册")
 
     async def get_role_by_code(self, code: str) -> Role | None:
-        """根据角色编码获取角色（带缓存）。"""
+        """根据角色编码获取角色（方法名带缓存字样，实为直查）。
+
+        Args:
+            code: 角色唯一编码。
+
+        Returns:
+            角色记录，无则 None。
+
+        Raises:
+            ValueError: 数据库会话未设置。
+        """
         if not self.db:
             raise ValueError("数据库会话未设置")
 
@@ -183,7 +193,18 @@ class UserRepository:
         return user
 
     async def get_user_by_id(self, user_id: int, use_cache: bool = True) -> User | None:
-        """根据用户ID获取用户（带缓存）"""
+        """根据用户 ID 获取用户（带缓存，已删除用户视为不存在）。
+
+        Args:
+            user_id: 用户 ID。
+            use_cache: 是否走 Redis 缓存，默认 True；缓存失败自动降级直查。
+
+        Returns:
+            用户记录；不存在或已删除返回 None。
+
+        Raises:
+            ValueError: 数据库会话未设置。
+        """
         if not self.db:
             raise ValueError("数据库会话未设置")
 
@@ -224,7 +245,18 @@ class UserRepository:
         return user
 
     async def get_users(self, skip: int = 0, limit: int = 100) -> list[User]:
-        """获取用户列表（排除已删除用户）"""
+        """获取用户列表（排除已删除用户）。
+
+        Args:
+            skip: 偏移量，默认 0。
+            limit: 数量上限，默认 100。
+
+        Returns:
+            用户列表。
+
+        Raises:
+            ValueError: 数据库会话未设置。
+        """
         if not self.db:
             raise ValueError("数据库会话未设置")
         stmt = select(User).where(
@@ -235,7 +267,17 @@ class UserRepository:
         return result.scalars().all()
 
     async def get_usernames_by_ids(self, user_ids: list[int]) -> dict[int, str]:
-        """批量查询 user_id → username（不存在的 id 不在结果中）"""
+        """批量查询 user_id 到 username 的映射（不存在的 id 不在结果中）。
+
+        Args:
+            user_ids: 用户 ID 列表。
+
+        Returns:
+            user_id 到 username 的字典。
+
+        Raises:
+            ValueError: 数据库会话未设置。
+        """
         if not self.db:
             raise ValueError("数据库会话未设置")
         stmt = select(User.id, User.username).where(User.id.in_(user_ids))

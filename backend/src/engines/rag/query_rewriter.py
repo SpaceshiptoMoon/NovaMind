@@ -64,7 +64,16 @@ class QueryRewriter:
         self, query: str, strategy: RewriteStrategy,
         history: list[dict] | None = None,
     ) -> RewriteResult:
-        """按指定策略改写查询"""
+        """按指定策略改写查询。
+
+        Args:
+            query: 原始查询文本。
+            strategy: 改写策略枚举（none/completion/synonym/decompose/hyde）。
+            history: 对话历史（OpenAI 格式）；仅 completion 策略消费，可空。
+
+        Returns:
+            RewriteResult；未知策略或 LLM 失败时回退原 query 且 degraded=True。
+        """
         handler = self._strategies.get(strategy)
         if handler is None:
             return RewriteResult(queries=[query], strategy=strategy.value, original_query=query)

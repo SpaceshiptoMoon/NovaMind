@@ -164,10 +164,29 @@ def mask_api_key(api_key: str) -> str:
 
 
 async def encrypt_api_key_async(plain_text: str, key: str | None = None) -> str:
-    """异步加密 API Key，不阻塞事件循环"""
+    """异步加密 API Key（AES-256-GCM，重活下放线程池不阻塞事件循环）。
+
+    Args:
+        plain_text: 明文 API Key；空串原样返回空串。
+        key: 外部加密密钥；None 时用启动期注入的全局密钥（HKDF-SHA256 派生）。
+
+    Returns:
+        v2:Base64(IV 12B + 密文 + GCM tag 16B) 格式密文。
+    """
     return await asyncio.to_thread(encrypt_api_key, plain_text, key)
 
 
 async def decrypt_api_key_async(cipher_text: str, key: str | None = None) -> str:
-    """异步解密 API Key，不阻塞事件循环"""
+    """异步解密 API Key（自动识别 v2 GCM 与旧版 CBC 格式，不阻塞事件循环）。
+
+    Args:
+        cipher_text: 密文字符串：带 v2: 前缀走 GCM，无前缀走旧版 CBC 兼容解密。
+        key: 外部加密密钥；None 时旧格式用全局密钥的 SHA-256 派生（v1 兼容）。
+
+    Returns:
+        明文 API Key。
+
+    Raises:
+        ValueError: 全局密钥未配置且未传入 key。
+    """
     return await asyncio.to_thread(decrypt_api_key, cipher_text, key)

@@ -59,7 +59,15 @@ class UserModelConfig(BaseModel):
         return f"<UserModelConfig(id={self.id}, user_id={self.user_id}, type={self.model_type}, model={self.model})>"
 
     def get_extra(self, key: str, default: Any = None) -> Any:
-        """获取扩展配置中的值"""
+        """获取扩展配置 extra_config 中的值。
+
+        Args:
+            key: 扩展配置键名。
+            default: 键缺失或 extra_config 为空时的返回值，默认 None。
+
+        Returns:
+            键对应值或 default。
+        """
         if self.extra_config is None:
             return default
         return self.extra_config.get(key, default)

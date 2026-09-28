@@ -35,7 +35,14 @@ def default_text_concat_model_dir() -> Path:
 
 
 def text_concat_model_path(model_dir: str | os.PathLike[str] | None = None) -> Path:
-    """模型二进制文件完整路径。"""
+    """模型二进制文件完整路径。
+
+    Args:
+        model_dir: 模型目录；None 用默认目录。
+
+    Returns:
+        模型文件完整路径。
+    """
     base_dir = Path(model_dir) if model_dir is not None else default_text_concat_model_dir()
     return base_dir / TEXT_CONCAT_MODEL_FILENAME
 
@@ -72,7 +79,14 @@ def ensure_text_concat_model_available(model_dir: str | os.PathLike[str] | None 
 
 
 def download_text_concat_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
-    """下载段落合并 xgb 模型（镜像直链/官方兜底，幂等）。"""
+    """下载段落合并 xgb 模型（镜像直链/官方兜底，幂等）。
+
+    Args:
+        model_dir: 目标目录；None 用默认目录。
+
+    Returns:
+        模型文件路径。
+    """
     model_path = text_concat_model_path(model_dir)
     # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
     download_hf_files(

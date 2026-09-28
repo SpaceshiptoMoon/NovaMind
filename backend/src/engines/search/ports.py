@@ -32,7 +32,15 @@ class WebSearchPort(Protocol):
     async def search(
         self, query: str, max_results: int = 5
     ) -> list[WebSearchResult]:
-        """执行联网搜索，返回标题/URL/摘要列表。"""
+        """执行联网搜索，返回标题/URL/摘要列表。
+
+        Args:
+            query: 查询文本。
+            max_results: 结果条数上限。
+
+        Returns:
+            WebSearchResult 列表。
+        """
         ...
 
 
@@ -52,7 +60,18 @@ class ProviderWebSearchPort:
     async def search(
         self, query: str, max_results: int = 5
     ) -> list[WebSearchResult]:
-        """委托底层 service 搜索并把结果归一化为 WebSearchResult（service 未注入时抛 WebSearchError）。"""
+        """委托底层 service 搜索并归一化为 WebSearchResult；service 未注入时抛错。
+
+        Args:
+            query: 查询文本。
+            max_results: 结果条数上限。
+
+        Returns:
+            归一化后的 WebSearchResult 列表。
+
+        Raises:
+            WebSearchError: 构造时未注入底层搜索 service。
+        """
         if self._service is None:
             from novamind.engines.search.errors import WebSearchError
 

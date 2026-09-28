@@ -86,7 +86,16 @@ class MemoryTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """校验 context 中的记忆存储端口后按 action 分发执行；写入前经安全扫描。"""
+        """校验 context 中的记忆存储端口后按 action 分发执行；写入前经安全扫描。
+
+        Args:
+            tool_name: 工具名（仅认 memory）。
+            arguments: 工具参数：action（add/replace/remove）+ category/content/old_content。
+            context: 执行上下文：memory_store_port、user_id、agent_id 与记忆上限。
+
+        Returns:
+            JSON 文本：操作结果消息，端口缺失/安全拦截/超限/异常为 {error}。
+        """
         if tool_name != "memory":
             return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 

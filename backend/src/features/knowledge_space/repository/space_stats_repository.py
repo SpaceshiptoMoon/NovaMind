@@ -39,7 +39,17 @@ class SpaceStatsRepository:
 
     async def count_qa(        self, space_id: int, start: datetime, end: datetime, kb_id: int | None = None
     ) -> int:
-        """时间窗内 assistant 消息总数（问答量）"""
+        """时间窗内 assistant 消息总数（问答量）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+            kb_id: 可选知识库过滤，None 表示不过滤。
+
+        Returns:
+            assistant 消息计数。
+        """
         conditions = self._qa_base_conditions(space_id, start, end, kb_id)
         query = select(func.count(QuestionAnswer.id)).where(and_(*conditions))
         result = await self.session.execute(query)
@@ -48,7 +58,17 @@ class SpaceStatsRepository:
     async def count_by_day(
         self, space_id: int, start: datetime, end: datetime, kb_id: int | None = None
     ) -> dict[str, dict[str, int]]:
-        """按日聚合：{date: {qa_count, zero_hit, refused}}（趋势图）"""
+        """按日聚合：{date: {qa_count, zero_hit, refused}}（趋势图）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+            kb_id: 可选知识库过滤，None 表示不过滤。
+
+        Returns:
+            {日期串: {qa_count, zero_hit, refused}} 映射，按日升序；无数据返回空字典。
+        """
         day = func.date(QuestionAnswer.created_at).label("day")
         extra = QuestionAnswer.extra
         zero_hit = case(
@@ -87,7 +107,18 @@ class SpaceStatsRepository:
     async def count_feedback(
         self, space_id: int, start: datetime, end: datetime, rating: str, kb_id: int | None = None
     ) -> dict[str, int]:
-        """反馈聚合：{"down_count": N, "up_count": M}（按 rating 过滤只返回对应计数）"""
+        """反馈聚合：{"down_count": N, "up_count": M}（按 rating 过滤只返回对应计数）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+            rating: 反馈类型，down 或 up。
+            kb_id: 可选知识库过滤，None 表示不过滤。
+
+        Returns:
+            仅含 {"{rating}_count": N} 单键的字典。
+        """
         conditions = [
             MessageFeedback.space_id == space_id,
             MessageFeedback.rating == rating,
@@ -183,7 +214,19 @@ class SpaceStatsRepository:
         kb_id: int | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """点踩或低分消息列表（跳会话用，含 message_id/session_id）"""
+        """点踩或低分消息列表（跳会话用，含 message_id/session_id）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+            low_score_threshold: 低分阈值，max_score 低于它判为低分。
+            kb_id: 可选知识库过滤，None 表示不过滤。
+            limit: 返回条数上限。
+
+        Returns:
+            按时间倒序的消息字典列表（answer 截断 200 字符）。
+        """
         extra = QuestionAnswer.extra
         # JSON 数值比较：CAST 为 DOUBLE 再比（字符串比较 0.35 < 0.9 会出错）
         max_score = func.cast(extra["retrieval"]["max_score"].as_string(), Numeric(10, 6))
@@ -231,7 +274,16 @@ class SpaceStatsRepository:
     async def aggregate_by_kb(
         self, space_id: int, start: datetime, end: datetime
     ) -> list[dict[str, Any]]:
-        """KB 维度聚合（问答量/点踩/零命中），无 kb_id 过滤（全空间）"""
+        """KB 维度聚合（问答量/点踩/零命中），无 kb_id 过滤（全空间）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+
+        Returns:
+            {kb_id, qa_count, zero_hit_count, down_count} 字典列表；无数据 KB 不出现。
+        """
         extra = QuestionAnswer.extra
         zero_hit = case(
             (
@@ -284,7 +336,16 @@ class SpaceStatsRepository:
     async def list_down_feedback_message_ids(
         self, space_id: int, start: datetime, end: datetime
     ) -> set[int]:
-        """时间窗内被点踩的 message_id 集合（低分列表 rating 回显）"""
+        """时间窗内被点踩的 message_id 集合（低分列表 rating 回显）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 窗口起始时间（含）。
+            end: 窗口结束时间（非含）。
+
+        Returns:
+            被点踩的 message_id 集合。
+        """
         query = select(MessageFeedback.message_id).where(
             and_(
                 MessageFeedback.space_id == space_id,

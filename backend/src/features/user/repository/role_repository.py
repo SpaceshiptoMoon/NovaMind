@@ -13,11 +13,25 @@ class RoleRepository:
         self.db = db
 
     async def get_role_by_id(self, role_id: int) -> Role | None:
-        """按 ID 查角色，无则 None。"""
+        """按 ID 查角色。
+
+        Args:
+            role_id: 角色 ID。
+
+        Returns:
+            角色记录，无则 None。
+        """
         return await self.db.get(Role, role_id)
 
     async def get_role_by_code(self, code: str) -> Role | None:
-        """按编码查角色，无则 None。"""
+        """按编码查角色。
+
+        Args:
+            code: 角色唯一编码。
+
+        Returns:
+            角色记录，无则 None。
+        """
         stmt = select(Role).where(Role.code == code)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -29,7 +43,14 @@ class RoleRepository:
         return result.scalars().all()
 
     async def create_role(self, data: dict) -> Role:
-        """创建角色（begin_nested 写入；SQLite 下手动分配自增 ID）。"""
+        """创建角色（begin_nested 写入；SQLite 下手动分配自增 ID）。
+
+        Args:
+            data: 角色字段字典（code/name 必填，description/is_system 可选）。
+
+        Returns:
+            创建后的角色记录。
+        """
         role = Role(
             code=data["code"],
             name=data["name"],
@@ -48,7 +69,15 @@ class RoleRepository:
         return role
 
     async def update_role(self, role_id: int, data: dict) -> Role | None:
-        """更新角色名称与描述（None 字段跳过），角色不存在返回 None。"""
+        """更新角色名称与描述（None 字段跳过）。
+
+        Args:
+            role_id: 角色 ID。
+            data: 更新字典，仅 name/description 字段生效。
+
+        Returns:
+            更新后的角色记录，角色不存在返回 None。
+        """
         role = await self.get_role_by_id(role_id)
         if role is None:
             return None
@@ -64,7 +93,14 @@ class RoleRepository:
         return role
 
     async def delete_role(self, role_id: int) -> bool:
-        """物理删除角色，角色不存在返回 False。"""
+        """物理删除角色。
+
+        Args:
+            role_id: 角色 ID。
+
+        Returns:
+            实际删除返回 True，角色不存在返回 False。
+        """
         role = await self.get_role_by_id(role_id)
         if role is None:
             return False
@@ -75,7 +111,15 @@ class RoleRepository:
         return True
 
     async def set_role_permissions(self, role_id: int, permission_codes: list[str]) -> None:
-        """全量替换角色的权限映射（先校验权限码存在，再删旧建新，单个 SAVEPOINT）。"""
+        """全量替换角色的权限映射（先校验权限码存在，再删旧建新，单个 SAVEPOINT）。
+
+        Args:
+            role_id: 角色 ID。
+            permission_codes: 权限码列表；空列表表示清空该角色全部权限。
+
+        Raises:
+            RoleError: 存在不合法的权限码。
+        """
         if permission_codes:
             # 校验所有 code 必须存在，避免静默遗漏
             stmt = select(Permission).where(Permission.code.in_(permission_codes))

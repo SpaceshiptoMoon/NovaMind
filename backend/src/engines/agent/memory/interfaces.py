@@ -89,12 +89,24 @@ class IShortTermMemory(ABC):
     async def add_message(
         self, conversation_id: int, message: MemoryMessage
     ) -> None:
-        """添加一条消息到短期记忆"""
+        """添加一条消息到短期记忆。
+
+        Args:
+            conversation_id: 会话 ID。
+            message: 统一消息模型实例。
+        """
         ...
 
     @abstractmethod
     async def get_token_count(self, conversation_id: int) -> int:
-        """获取当前对话的 token 估计值"""
+        """获取当前对话的 token 估计值。
+
+        Args:
+            conversation_id: 会话 ID。
+
+        Returns:
+            该会话消息的 token 估计值。
+        """
         ...
 
 
@@ -117,7 +129,18 @@ class ILongTermMemory(ABC):
         content: str,
         source_conversation_id: int | None = None,
     ) -> LongTermMemoryEntry:
-        """存储一条长期记忆"""
+        """存储一条长期记忆。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            category: 记忆类别（preference/fact/procedure/insight）。
+            content: 记忆正文。
+            source_conversation_id: 来源会话 ID，可空。
+
+        Returns:
+            新建的记忆条目。
+        """
         ...
 
     @abstractmethod
@@ -129,7 +152,18 @@ class ILongTermMemory(ABC):
         top_k: int = 5,
         categories: list[str] | None = None,
     ) -> list[LongTermMemoryEntry]:
-        """根据查询搜索相关的长期记忆"""
+        """根据查询搜索相关的长期记忆。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            query: 检索查询文本。
+            top_k: 返回条数上限。
+            categories: 限定类别列表，None 不限。
+
+        Returns:
+            按相关度排序的记忆条目列表。
+        """
         ...
 
     @abstractmethod

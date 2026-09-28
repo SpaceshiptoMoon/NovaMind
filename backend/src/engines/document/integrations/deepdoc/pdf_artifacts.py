@@ -519,7 +519,15 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def bbox_overlap_ratio(a: dict[str, Any], b: dict[str, Any]) -> float:
-        """两个页面坐标 bbox 的交面积 / 较小框面积（IoMin）。0 表示不相交。"""
+        """两个页面坐标 bbox 的交面积 / 较小框面积（IoMin）。0 表示不相交。
+
+        Args:
+            a: 含 x0/x1/top/bottom 键的坐标 dict。
+            b: 含 x0/x1/top/bottom 键的坐标 dict。
+
+        Returns:
+            交叠比 [0, 1]；不相交为 0。
+        """
         left = max(float(a.get("x0", 0.0)), float(b.get("x0", 0.0)))
         right = min(float(a.get("x1", 0.0)), float(b.get("x1", 0.0)))
         top = max(float(a.get("top", 0.0)), float(b.get("top", 0.0)))

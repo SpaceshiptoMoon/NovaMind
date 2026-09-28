@@ -208,7 +208,17 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         reraise=True,
     )
     async def generate_embedding(self, text: str) -> list[float]:
-        """生成单个文本的嵌入向量（带重试和并发控制）"""
+        """生成单个文本的嵌入向量（带重试和并发控制）。
+
+        Args:
+            text: 待嵌入文本；发送前经乱码清洗（控制/PUA 字符）。
+
+        Returns:
+            嵌入向量（浮点列表）。
+
+        Raises:
+            EmbeddingDimensionError: 返回向量维度与构造器期望维度不一致。
+        """
         async with self._get_semaphore():
             try:
                 response = await self.client.embeddings.create(
@@ -331,13 +341,30 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                 raise
 
     async def embed_batch(self, texts: list[str], batch_size: int | None = None) -> list[list[float]]:
-        """批量生成嵌入向量（别名方法）"""
+        """批量生成嵌入向量（generate_embeddings_batch 的别名）。
+
+        Args:
+            texts: 待嵌入文本列表。
+            batch_size: 每批条数；None 用构造器配置的批次大小。
+
+        Returns:
+            与输入顺序一一对应的嵌入向量列表。
+        """
         return await self.generate_embeddings_batch(texts, batch_size)
 
     async def generate_embeddings_from_dict_list(
         self, text_dicts: list[dict], text_key: str = "text", batch_size: int | None = None
     ) -> list[dict]:
-        """从字典列表生成嵌入向量，保留原始字典结构"""
+        """从字典列表生成嵌入向量，保留原始字典结构。
+
+        Args:
+            text_dicts: 携带待嵌入文本的字典列表。
+            text_key: 取文本的字段名（默认 text）；缺该字段的字典原样保留、不生成向量。
+            batch_size: 每批条数；None 用构造器配置的批次大小。
+
+        Returns:
+            逐项复制输入字典，并在含 text_key 的项上追加 embedding 字段的新列表。
+        """
         if not text_dicts:
             return []
 

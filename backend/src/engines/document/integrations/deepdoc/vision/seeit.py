@@ -102,7 +102,14 @@ def draw_box(
 
 
 def get_color_map_list(num_classes: int) -> list[list[int]]:
-    """按类别数生成 PaddleOCR 风格的可区分配色（按位展开 RGB）。"""
+    """按类别数生成 PaddleOCR 风格的可区分配色（按位展开 RGB）。
+
+    Args:
+        num_classes: 类别数。
+
+    Returns:
+        每类一个 [R, G, B] 的列表。
+    """
     color_map = num_classes * [0, 0, 0]
     for index in range(num_classes):
         bit_index = 0
@@ -117,7 +124,15 @@ def get_color_map_list(num_classes: int) -> list[list[int]]:
 
 
 def imagedraw_textsize_c(draw: ImageDraw.ImageDraw, text: str) -> tuple[int, int]:
-    """兼容 Pillow <10 的 textsize 测宽高（新版回退 textbbox 量测）。"""
+    """兼容 Pillow <10 的 textsize 测宽高（新版回退 textbbox 量测）。
+
+    Args:
+        draw: ImageDraw 实例。
+        text: 待量测文本。
+
+    Returns:
+        (宽, 高) 像素。
+    """
     if int(PIL.__version__.split(".")[0]) < 10:
         return draw.textsize(text)
     left, top, right, bottom = draw.textbbox((0, 0), text)

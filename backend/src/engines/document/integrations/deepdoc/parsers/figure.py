@@ -37,7 +37,17 @@ class RAGFlowFigureParser(VisionFigureParser):
             )
 
     def parse(self, file_path: str | Path) -> tuple[str, list[str], dict[str, Any]]:
-        """解析本地图片文件为（全文、分块、元数据）三元组。"""
+        """解析本地图片文件为（全文、分块、元数据）三元组。
+
+        Args:
+            file_path: 图片文件路径。
+
+        Returns:
+            (全文, 分块列表, 元数据) 三元组；元数据含图片尺寸/格式、OCR 行与框。
+
+        Raises:
+            ValueError: 后缀不在支持列表。
+        """
         path = Path(file_path)
         return self.parse_bytes(path.read_bytes(), path.suffix.lower().lstrip("."))
 

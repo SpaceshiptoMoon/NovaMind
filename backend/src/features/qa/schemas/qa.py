@@ -57,7 +57,14 @@ class QAResponse(BaseModel):
     @field_serializer('created_at')
     @classmethod
     def serialize_datetime(cls, v: datetime) -> str:
-        """序列化 created_at 为 ISO8601 字符串。"""
+        """序列化 created_at 为 ISO8601 字符串。
+
+        Args:
+            v: 待序列化的 created_at 时间值。
+
+        Returns:
+            ISO8601 格式字符串。
+        """
         return v.isoformat()
 
 

@@ -41,7 +41,14 @@ class AppLifespanManager:
 
     @asynccontextmanager
     async def lifespan(self, app):
-        """管理应用的启动和关闭"""
+        """管理应用的启动和关闭（asynccontextmanager，yield 前装配、yield 后清理）。
+
+        Args:
+            app: FastAPI 应用实例（配置与运行时状态挂到 app.state）。
+
+        Returns:
+            异步上下文管理器；启动期完成配置加载/加密密钥注入/Redis 与建表/功能初始化/arq Worker 启动。
+        """
         start_time = time.time()
         self.logger.info("应用正在启动...")
         self._app = app

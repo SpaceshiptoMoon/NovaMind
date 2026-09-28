@@ -32,37 +32,86 @@ class CacheKeyBuilder:
 
     @staticmethod
     def user_key(user_id: int) -> str:
-        """用户缓存键"""
+        """用户缓存键。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            键格式 user:{user_id}。
+        """
         return f"user:{user_id}"
 
     @staticmethod
     def user_by_username(username: str) -> str:
-        """用户名缓存键"""
+        """用户名缓存键（用户名经 SHA-256 前 8 位哈希，避免明文用户名进键位）。
+
+        Args:
+            username: 用户名原文。
+
+        Returns:
+            键格式 user:username:{sha256 前 8 位}。
+        """
         return f"user:username:{hashlib.sha256(username.encode()).hexdigest()[:8]}"
 
     @staticmethod
     def space_key(space_id: int) -> str:
-        """空间缓存键"""
+        """空间缓存键。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            键格式 space:{space_id}。
+        """
         return f"space:{space_id}"
 
     @staticmethod
     def space_stats_key(space_id: int) -> str:
-        """空间统计缓存键"""
+        """空间统计缓存键。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            键格式 space:stats:{space_id}。
+        """
         return f"space:stats:{space_id}"
 
     @staticmethod
     def kb_key(kb_id: int) -> str:
-        """知识库缓存键"""
+        """知识库缓存键。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            键格式 kb:{kb_id}。
+        """
         return f"kb:{kb_id}"
 
     @staticmethod
     def document_key(document_id: int) -> str:
-        """文档缓存键"""
+        """文档缓存键。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            键格式 doc:{document_id}。
+        """
         return f"doc:{document_id}"
 
     @staticmethod
     def session_key(session_id: str) -> str:
-        """会话缓存键"""
+        """会话缓存键。
+
+        Args:
+            session_id: 会话 ID。
+
+        Returns:
+            键格式 session:{session_id}。
+        """
         return f"session:{session_id}"
 
     @staticmethod
@@ -84,12 +133,26 @@ class CacheKeyBuilder:
 
     @staticmethod
     def token_blacklist_key(jti: str) -> str:
-        """Token 黑名单缓存键"""
+        """Token 黑名单缓存键。
+
+        Args:
+            jti: JWT ID（token 唯一标识）。
+
+        Returns:
+            键格式 token:blacklist:{jti}。
+        """
         return f"token:blacklist:{jti}"
 
     @staticmethod
     def user_tokens_key(user_id: int) -> str:
-        """用户 Token 列表键"""
+        """用户 Token 列表键。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            键格式 token:user:{user_id}。
+        """
         return f"token:user:{user_id}"
 
 
@@ -301,17 +364,39 @@ class CacheService:
     # ========== 用户缓存 ==========
 
     async def cache_user(self, user_id: int, user_data: dict) -> bool:
-        """缓存用户信息"""
+        """缓存用户信息（TTL 2 小时）。
+
+        Args:
+            user_id: 用户 ID。
+            user_data: 可 JSON 序列化的用户信息 dict。
+
+        Returns:
+            是否写入成功。
+        """
         key = CacheKeyBuilder.user_key(user_id)
         return await self.set(key, user_data, ttl=self.DEFAULT_TTLS["user"])
 
     async def get_cached_user(self, user_id: int) -> dict | None:
-        """获取缓存的用户信息"""
+        """获取缓存的用户信息。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            缓存的用户信息 dict；未命中或 Redis 异常返回 None。
+        """
         key = CacheKeyBuilder.user_key(user_id)
         return await self.get(key)
 
     async def invalidate_user_cache(self, user_id: int) -> int:
-        """失效用户相关所有缓存（精确匹配模式，避免误删）"""
+        """失效用户相关所有缓存（精确匹配模式，避免误删）。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            删除的键总数（含用户主键与该用户全部 Token 键）。
+        """
         # 使用精确匹配模式，如 user:123:* 不会匹配到 user:1234:*
         patterns = [
             f"user:{user_id}",
@@ -327,27 +412,64 @@ class CacheService:
     # ========== 空间缓存 ==========
 
     async def cache_space(self, space_id: int, space_data: dict) -> bool:
-        """缓存空间信息"""
+        """缓存空间信息（TTL 2 小时）。
+
+        Args:
+            space_id: 空间 ID。
+            space_data: 可 JSON 序列化的空间信息 dict。
+
+        Returns:
+            是否写入成功。
+        """
         key = CacheKeyBuilder.space_key(space_id)
         return await self.set(key, space_data, ttl=self.DEFAULT_TTLS["space"])
 
     async def get_cached_space(self, space_id: int) -> dict | None:
-        """获取缓存的空间信息"""
+        """获取缓存的空间信息。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            缓存的空间信息 dict；未命中或 Redis 异常返回 None。
+        """
         key = CacheKeyBuilder.space_key(space_id)
         return await self.get(key)
 
     async def cache_space_stats(self, space_id: int, stats: dict) -> bool:
-        """缓存空间统计信息"""
+        """缓存空间统计信息（TTL 10 分钟）。
+
+        Args:
+            space_id: 空间 ID。
+            stats: 统计信息 dict（文档数、分块数等）。
+
+        Returns:
+            是否写入成功。
+        """
         key = CacheKeyBuilder.space_stats_key(space_id)
         return await self.set(key, stats, ttl=600)  # 10 分钟
 
     async def get_cached_space_stats(self, space_id: int) -> dict | None:
-        """获取缓存的空间统计信息"""
+        """获取缓存的空间统计信息。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            缓存的统计信息 dict；未命中或 Redis 异常返回 None。
+        """
         key = CacheKeyBuilder.space_stats_key(space_id)
         return await self.get(key)
 
     async def invalidate_space_cache(self, space_id: int) -> int:
-        """失效空间相关所有缓存"""
+        """失效空间相关所有缓存（主键、子键与统计键一并清理）。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            删除的键总数。
+        """
         patterns = [
             f"space:{space_id}",
             f"space:{space_id}:*",
@@ -361,17 +483,39 @@ class CacheService:
     # ========== 知识库缓存 ==========
 
     async def cache_kb(self, kb_id: int, kb_data: dict) -> bool:
-        """缓存知识库信息"""
+        """缓存知识库信息（TTL 1 小时）。
+
+        Args:
+            kb_id: 知识库 ID。
+            kb_data: 可 JSON 序列化的知识库信息 dict。
+
+        Returns:
+            是否写入成功。
+        """
         key = CacheKeyBuilder.kb_key(kb_id)
         return await self.set(key, kb_data, ttl=self.DEFAULT_TTLS["kb"])
 
     async def get_cached_kb(self, kb_id: int) -> dict | None:
-        """获取缓存的知识库信息"""
+        """获取缓存的知识库信息。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            缓存的知识库信息 dict；未命中或 Redis 异常返回 None。
+        """
         key = CacheKeyBuilder.kb_key(kb_id)
         return await self.get(key)
 
     async def invalidate_kb_cache(self, kb_id: int) -> int:
-        """失效知识库相关所有缓存"""
+        """失效知识库相关所有缓存（主键与子键）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            删除的键总数。
+        """
         patterns = [
             f"kb:{kb_id}",
             f"kb:{kb_id}:*",
@@ -436,12 +580,27 @@ class CacheService:
     # ========== Token 缓存 ==========
 
     async def add_token_to_blacklist(self, jti: str, ttl: int = None) -> bool:
-        """将 Token 加入黑名单"""
+        """将 Token 加入黑名单（默认 TTL 7 天）。
+
+        Args:
+            jti: JWT ID（token 唯一标识）。
+            ttl: 黑名单保留秒数；None 用默认 7 天。
+
+        Returns:
+            是否写入成功。
+        """
         key = CacheKeyBuilder.token_blacklist_key(jti)
         return await self.set(key, "1", ttl=ttl or self.DEFAULT_TTLS["token"])
 
     async def is_token_blacklisted(self, jti: str) -> bool:
-        """检查 Token 是否在黑名单中"""
+        """检查 Token 是否在黑名单中。
+
+        Args:
+            jti: JWT ID（token 唯一标识）。
+
+        Returns:
+            在黑名单中返回 True；未命中或 Redis 异常返回 False。
+        """
         key = CacheKeyBuilder.token_blacklist_key(jti)
         result = await self.get(key)
         return result is not None

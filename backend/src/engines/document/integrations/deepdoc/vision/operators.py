@@ -240,14 +240,29 @@ class DetResizeForTest:
         return data
 
     def image_padding(self, im, value=0):
-        """图像零填充到至少 32×32。"""
+        """图像零填充到至少 32×32。
+
+        Args:
+            im: HWC uint8 图像。
+            value: 填充像素值。
+
+        Returns:
+            填充后的图像。
+        """
         h, w, c = im.shape
         im_pad = np.zeros((max(32, h), max(32, w), c), np.uint8) + value
         im_pad[:h, :w, :] = im
         return im_pad
 
     def resize_image_type1(self, img):
-        """按固定 image_shape 缩放；keep_ratio 时以高度定比、宽度向上取整到 32 的倍数。"""
+        """按固定 image_shape 缩放；keep_ratio 时以高度定比、宽度向上取整到 32 的倍数。
+
+        Args:
+            img: HWC 图像。
+
+        Returns:
+            (缩放后图像, [高缩放比, 宽缩放比])。
+        """
         resize_h, resize_w = self.image_shape
         ori_h, ori_w = img.shape[:2]  # (h, w, c)
         if self.keep_ratio is True:
@@ -310,7 +325,14 @@ class DetResizeForTest:
         return img, [ratio_h, ratio_w]
 
     def resize_image_type2(self, img):
-        """长边缩放到 resize_long，两边向上取整到 128 的倍数（大步幅网络要求）。"""
+        """长边缩放到 resize_long，两边向上取整到 128 的倍数（大步幅网络要求）。
+
+        Args:
+            img: HWC 图像。
+
+        Returns:
+            (缩放后图像, [高缩放比, 宽缩放比])。
+        """
         h, w, _ = img.shape
 
         resize_w = w
@@ -468,7 +490,15 @@ def nms(bboxes, scores, iou_thresh):
 
 
 def create_operators(op_param_list, global_config=None):
-    """按配置实例化算子列表（转发 ocr.create_operators，共用 yaml 格式解析逻辑）。"""
+    """按配置实例化算子列表（转发 ocr.create_operators，共用 yaml 格式解析逻辑）。
+
+    Args:
+        op_param_list: 单键算子配置 dict 列表。
+        global_config: 追加进每个算子参数的全局配置，可空。
+
+    Returns:
+        实例化后的算子列表。
+    """
     from novamind.engines.document.integrations.deepdoc.vision.ocr import (
         create_operators as _create_operators,
     )

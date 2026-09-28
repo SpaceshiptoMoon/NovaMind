@@ -32,7 +32,15 @@ class McpServerService:
     async def create_server(
         self, user_id: int | None, data: McpServerCreate
     ) -> McpServerResponse:
-        """落库 MCP 服务器配置并提交；enabled 时自动连接，连接失败仅告警不回滚。"""
+        """落库 MCP 服务器配置并提交；enabled 时自动连接，连接失败仅告警不回滚。
+
+        Args:
+            user_id: 属主用户 ID，None 表示系统级预置服务器。
+            data: 创建参数（名称/传输类型/连接配置/enabled 等）；connection_config 已由 schema 层完成加密。
+
+        Returns:
+            新建服务器的详情响应（status 反映自动连接结果）。
+        """
         server = await self.repo.create(
             user_id=user_id,
             name=data.name,
@@ -53,19 +61,51 @@ class McpServerService:
         return McpServerResponse.model_validate(server)
 
     async def list_servers(self, user_id: int) -> list[McpServerResponse]:
-        """列出系统级与用户自有的 MCP 服务器配置。"""
+        """列出系统级与用户自有的 MCP 服务器配置。
+
+        Args:
+            user_id: 当前用户 ID。
+
+        Returns:
+            响应列表，created_at 倒序。
+        """
         servers = await self.repo.list_by_user(user_id)
         return [McpServerResponse.model_validate(s) for s in servers]
 
     async def get_server(self, user_id: int, server_id: int) -> McpServerResponse:
-        """按归属校验取 MCP 服务器详情。"""
+        """按归属校验取 MCP 服务器详情。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+
+        Returns:
+            服务器详情响应。
+
+        Raises:
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         server = await self._get_and_validate(user_id, server_id)
         return McpServerResponse.model_validate(server)
 
     async def update_server(
         self, user_id: int, server_id: int, data: McpServerUpdate, *, is_admin: bool = False
     ) -> McpServerResponse:
-        """更新配置并提交；连接配置或传输类型变更时对启用中的服务器自动重连（失败仅告警）。"""
+        """更新配置并提交；连接配置或传输类型变更时对启用中的服务器自动重连（失败仅告警）。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+            data: 更新字段集合，仅显式传入的字段生效。
+            is_admin: 是否管理员；系统级服务器须为 True，默认 False。
+
+        Returns:
+            更新后的详情响应。
+
+        Raises:
+            McpServerError: 系统级服务器非管理员操作。
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         update_data = data.model_dump(exclude_unset=True)
 
@@ -89,7 +129,20 @@ class McpServerService:
 
     async def delete_server(self, user_id: int, server_id: int, *, is_admin: bool = False) -> None:
         # 校验归属/权限（不使用返回值，仅为 access-control 副作用：不通过会 raise）
-        """先断开活动连接再删除配置并提交。"""
+        """先断开活动连接再删除配置并提交。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+            is_admin: 是否管理员；系统级服务器须为 True，默认 False。
+
+        Returns:
+            无。
+
+        Raises:
+            McpServerError: 系统级服务器非管理员操作。
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         # 先断开连接
         if self.mcp_manager.is_connected(server_id):
@@ -98,7 +151,21 @@ class McpServerService:
         await self.db.commit()
 
     async def connect_server(self, user_id: int, server_id: int, *, is_admin: bool = False) -> McpServerResponse:
-        """建立连接并持久化状态与工具列表，刷新后返回详情。"""
+        """建立连接并持久化状态与工具列表，刷新后返回详情。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+            is_admin: 是否管理员；系统级服务器须为 True，默认 False。
+
+        Returns:
+            连接后的详情响应（status/available_tools 已更新）。
+
+        Raises:
+            McpConnectionError: 连接失败。
+            McpServerError: 系统级服务器非管理员操作。
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         await self._connect(server)
         await self.db.commit()
@@ -108,7 +175,20 @@ class McpServerService:
     async def disconnect_server(
         self, user_id: int, server_id: int, *, is_admin: bool = False
     ) -> McpServerResponse:
-        """断开连接并将状态置为 disconnected 后提交。"""
+        """断开连接并将状态置为 disconnected 后提交。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+            is_admin: 是否管理员；系统级服务器须为 True，默认 False。
+
+        Returns:
+            断开后的详情响应。
+
+        Raises:
+            McpServerError: 系统级服务器非管理员操作。
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         await self.mcp_manager.disconnect_server(server_id)
         await self.repo.update(server_id, status="disconnected", last_error=None)
@@ -119,7 +199,21 @@ class McpServerService:
     async def refresh_tools(
         self, user_id: int, server_id: int, *, is_admin: bool = False
     ) -> list[dict]:
-        """未连接抛 McpConnectionError；拉取最新工具列表并缓存到服务器配置。"""
+        """未连接抛 McpConnectionError；拉取最新工具列表并缓存到服务器配置。
+
+        Args:
+            user_id: 当前用户 ID。
+            server_id: 服务器配置主键 ID。
+            is_admin: 是否管理员；系统级服务器须为 True，默认 False。
+
+        Returns:
+            最新的工具 schema 列表。
+
+        Raises:
+            McpConnectionError: 服务器当前未连接。
+            McpServerError: 系统级服务器非管理员操作。
+            McpServerNotFoundError: 不存在或私有服务器非属主。
+        """
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         if not self.mcp_manager.is_connected(server_id):
             raise McpConnectionError(f"服务器 {server.name} 未连接")
@@ -131,7 +225,14 @@ class McpServerService:
         return tools
 
     async def test_connection(self, data: McpServerCreate) -> dict:
-        """测试 MCP 连接（不保存）"""
+        """测试 MCP 连接（不保存）。
+
+        Args:
+            data: 待测试的连接参数（传输类型/连接配置），仅临时建连不断言归属。
+
+        Returns:
+            success=True 时附 tools_count 与工具名列表；失败时 success=False 并带提示。
+        """
         try:
             config = McpConnectionConfig.from_db_config(
                 data.transport_type, data.connection_config

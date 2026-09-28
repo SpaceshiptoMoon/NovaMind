@@ -72,13 +72,24 @@ class BaseModel(Base):
 
 
 async def create_tables(engine: AsyncEngine) -> None:
-    """按当前 metadata 全量建表（create_all 不做 ALTER，已有表结构变更走启动期幂等补列钩子）。"""
+    """按当前 metadata 全量建表（create_all 不做 ALTER，已有表结构变更走启动期幂等补列钩子）。
+
+    Args:
+        engine: SQLAlchemy 异步引擎（事务在其 begin 块内执行）。
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 async def ensure_fulltext_indexes(engine: AsyncEngine) -> None:
-    """确保 FULLTEXT 索引存在（ngram 分词，用于中文全文检索）"""
+    """确保 FULLTEXT 索引存在（ngram 分词，用于中文全文检索）。
+
+    Args:
+        engine: SQLAlchemy 异步引擎。
+
+    Returns:
+        无返回值；已存在则跳过，创建失败记 warning 并降级为 ILIKE 方案（不抛）。
+    """
     async with engine.begin() as conn:
         try:
             result = await conn.execute(

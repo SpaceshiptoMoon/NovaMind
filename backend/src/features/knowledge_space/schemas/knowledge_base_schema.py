@@ -245,7 +245,14 @@ class ParsingConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def migrate_legacy_parsing(cls, value):
-        """迁移旧扁平解析配置到按模态分组的新结构（before 校验器）。"""
+        """迁移旧扁平解析配置到按模态分组的新结构（before 校验器）。
+
+        Args:
+            value: 校验前的原始入参，非 dict 原样返回。
+
+        Returns:
+            迁移合并后的配置 dict；无旧键时原样返回。
+        """
         if not isinstance(value, dict):
             return value
 
@@ -503,7 +510,14 @@ class KnowledgeBaseResponse(BaseModel):
 
     @field_serializer("status")
     def serialize_status(self, value) -> int:
-        """状态枚举序列化为 int（None 兜底 1）。"""
+        """状态枚举序列化为 int（None 兜底 1）。
+
+        Args:
+            value: 待序列化的状态值，可能是枚举、整数或 None。
+
+        Returns:
+            枚举取其 value；整数原样返回；None 兜底 1（活跃）。
+        """
         if hasattr(value, "value"):
             return value.value
         return int(value) if value is not None else 1

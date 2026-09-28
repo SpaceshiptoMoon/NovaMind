@@ -321,7 +321,15 @@ class Recognizer:
 
     @staticmethod
     def sort_Y_firstly(arr, threshold):
-        """按 top 升序为主排序，top 差小于阈值时改比 x0（同行内横排）。"""
+        """按 top 升序为主排序，top 差小于阈值时改比 x0（同行内横排）。
+
+        Args:
+            arr: 框 dict 列表（读 top/x0 键）。
+            threshold: 同行判定阈值（top 差，像素）。
+
+        Returns:
+            排序后的新列表。
+        """
         def cmp(c1, c2):
             diff = c1["top"] - c2["top"]
             if abs(diff) < threshold:
@@ -332,7 +340,15 @@ class Recognizer:
 
     @staticmethod
     def sort_X_firstly(arr, threshold):
-        """按 x0 升序为主排序，差小于阈值时改比 top（同列内纵排）。"""
+        """按 x0 升序为主排序，差小于阈值时改比 top（同列内纵排）。
+
+        Args:
+            arr: 框 dict 列表（读 top/x0 键）。
+            threshold: 同列判定阈值（x0 差，像素）。
+
+        Returns:
+            排序后的新列表。
+        """
         def cmp(c1, c2):
             diff = c1["x0"] - c2["x0"]
             if abs(diff) < threshold:
@@ -343,7 +359,15 @@ class Recognizer:
 
     @staticmethod
     def sort_C_firstly(arr, thr=0):
-        """先按 X 排序，再按 C（列号）属性冒泡整理：列号升序、同列按 top（列优先阅读序）。"""
+        """先按 X 排序，再按 C（列号）属性冒泡整理：列号升序、同列按 top（列优先阅读序）。
+
+        Args:
+            arr: 带 C 键的框列表。
+            thr: 前置 X 排序阈值。
+
+        Returns:
+            整理后的列表（冒泡就地，返回原对象）。
+        """
         arr = Recognizer.sort_X_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
@@ -355,7 +379,15 @@ class Recognizer:
 
     @staticmethod
     def sort_R_firstly(arr, thr=0):
-        """先按 Y 排序，再按 R（行号）属性冒泡整理：行号升序、同行按 x0（行优先阅读序）。"""
+        """先按 Y 排序，再按 R（行号）属性冒泡整理：行号升序、同行按 x0（行优先阅读序）。
+
+        Args:
+            arr: 带 R 键的框列表。
+            thr: 前置 Y 排序阈值。
+
+        Returns:
+            整理后的列表（冒泡就地，返回原对象）。
+        """
         arr = Recognizer.sort_Y_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):

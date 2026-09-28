@@ -65,7 +65,14 @@ async def init_knowledge_space_components(app: FastAPI) -> None:
 
 
 def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
-    """注册知识空间模块的异常处理器"""
+    """注册知识空间模块的异常处理器。
+
+    Args:
+        app: FastAPI 应用实例。
+
+    Returns:
+        无返回；把异常类到 HTTP 状态码的 status_map 交给统一注册器。
+    """
     register_module_exceptions(app, status_map={
         # 空间相关
         SpaceNotFoundError: 404,

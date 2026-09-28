@@ -106,7 +106,19 @@ class SystemPromptBuilder:
         model_name: str = "",
         max_prompt_tokens: int | None = None,
     ) -> str:
-        """按层组装完整系统提示（含 Token 预算保护）"""
+        """按层组装完整系统提示（含 Token 预算保护）。
+
+        Args:
+            base_prompt: 基础身份层（最高优先级，不丢弃）。
+            enabled_tools: 已启用工具名列表（skill__ 前缀跳过）。
+            skill_fragments: 技能指令片段列表。
+            frozen_memory: 冻结记忆快照文本。
+            model_name: 模型名（决定适配层内容与 token 计数口径）。
+            max_prompt_tokens: 提示词预算，超限按优先级从低到高丢层；None 不限。
+
+        Returns:
+            组装后的系统提示文本（各层以分隔线连接）。
+        """
         # 收集各层内容
         tool_guidance = self._collect_tool_guidance(enabled_tools)
         model_hints = self._build_model_adaptation(model_name)

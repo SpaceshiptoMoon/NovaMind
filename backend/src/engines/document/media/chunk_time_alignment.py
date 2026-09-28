@@ -11,7 +11,14 @@ _ANCHOR_PREFIX_RE = re.compile(r"\[\d{2}:\d{2}:\d{2}#\d+\]\s*")
 
 
 def format_time(seconds: float) -> str:
-    """格式化秒数为 ``HH:MM:SS``（int 秒，供锚点时间戳展示）。"""
+    """格式化秒数为 ``HH:MM:SS``（int 秒，供锚点时间戳展示）。
+
+    Args:
+        seconds: 秒数（按 int 截断）。
+
+    Returns:
+        补零 HH:MM:SS 字符串。
+    """
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"

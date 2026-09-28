@@ -136,7 +136,14 @@ class SpaceMember(BaseModel):
     # ========== 角色变更方法 ==========
 
     def set_role(self, role: SpaceRole) -> None:
-        """直接改派空间角色（细粒度权限随之重算）。"""
+        """直接改派空间角色（细粒度权限随之重算）。
+
+        Args:
+            role: 目标 SpaceRole 枚举值。
+
+        Returns:
+            无返回；仅改内存字段，持久化由调用方 commit。
+        """
         self.role = role
 
 

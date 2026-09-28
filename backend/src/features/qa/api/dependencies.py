@@ -28,17 +28,38 @@ async def get_minio_client_for_presign():
 
 
 async def get_qa_repository(db: AsyncSession = Depends(get_db)):
-    """获取QARepository实例"""
+    """获取 QARespository 请求级实例。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        QA 仓储实例。
+    """
     return QuestionAnswerRepository(db)
 
 
 async def get_session_config_repository(db: AsyncSession = Depends(get_db)):
-    """获取SessionConfigRepository实例"""
+    """获取 SessionConfigRepository 请求级实例。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        会话配置仓储实例。
+    """
     return SessionConfigRepository(db)
 
 
 async def get_session_summary_repository(db: AsyncSession = Depends(get_db)):
-    """获取SessionSummaryRepository实例"""
+    """获取 SessionSummaryRepository 请求级实例。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        会话摘要仓储实例。
+    """
     return SessionSummaryRepository(db)
 
 
@@ -54,7 +75,18 @@ async def get_qa_service(
     cache_service: QACacheService = Depends(get_qa_cache_service),
     model_config_service=Depends(get_model_config_service),
 ) -> QAService:
-    """装配 QAService（各仓储共享同一 DB 会话保证事务原子性）。"""
+    """装配 QAService（各仓储共享同一 DB 会话保证事务原子性）。
+
+    Args:
+        repository: QA 消息仓储。
+        session_config_repo: 会话配置仓储。
+        session_summary_repo: 会话摘要仓储。
+        cache_service: QA 缓存服务。
+        model_config_service: 用户模型配置服务。
+
+    Returns:
+        装配完成的 QAService。
+    """
     return QAService(
         repository=repository,
         session_config_repo=session_config_repo,

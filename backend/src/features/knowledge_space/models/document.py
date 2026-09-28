@@ -74,7 +74,16 @@ class Document(BaseModel):
         return self.get_storage_info().get("minio_bucket")
 
     def set_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
-        """设置 MinIO 信息"""
+        """设置 MinIO 信息。
+
+        Args:
+            bucket: MinIO 桶名。
+            object_name: 文档对象键。
+            etag: 可选上传返回的 ETag，缺省写 None。
+
+        Returns:
+            无返回；合并进 storage JSON 列并保留既有键。
+        """
         self.storage = {
             **(self.storage or {}),
             "minio_bucket": bucket,

@@ -29,7 +29,15 @@ class PlanFeedbackRegistry:
         return self._event
 
     def resolve(self, decision: str, feedback: str = "") -> bool:
-        """用户决策到达。返回是否命中 pending。"""
+        """记录用户决策并唤醒等待方；无 pending 计划时返回 False。
+
+        Args:
+            decision: 决策值：accepted 或 edit_plan。
+            feedback: 可选用户修改意见；空值归一为空字符串。
+
+        Returns:
+            是否命中 pending 计划（False 表示当时无计划待决，决策被丢弃）。
+        """
         if self._event is None:
             return False
         self._decision = decision
@@ -38,7 +46,14 @@ class PlanFeedbackRegistry:
         return True
 
     async def wait(self, timeout: float = 300.0) -> tuple[str, str]:
-        """等待决策。返回 (decision, feedback)；超时 → ("accepted", "") 自动接受。"""
+        """等待用户决策；超时返回自动接受（与 agent 审批的 fail-closed 相反）。
+
+        Args:
+            timeout: 最长等待秒数，默认 300；超时按 accepted 处理放行研究继续。
+
+        Returns:
+            (decision, feedback) 二元组；超时或无 pending 时为 (accepted, 空串)。
+        """
         if self._event is None:
             return DECISION_ACCEPTED, ""
         try:

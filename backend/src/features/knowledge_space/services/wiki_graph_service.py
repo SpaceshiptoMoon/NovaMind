@@ -19,7 +19,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def finalize_links(repo: WikiPageRepository, kb_id: int) -> None:
-    """死链清理 + in/out 双向对齐（软删页面后调用）。"""
+    """死链清理 + in/out 双向对齐（软删页面后调用）。
+
+    Args:
+        repo: WikiPageRepository 实例。
+        kb_id: 知识库 ID。
+
+    Returns:
+        无返回；flush-only，事务边界归调用方。
+    """
     pages = await repo.all_live_pages(kb_id)
     live_slugs = {p.slug for p in pages}
     slug_map = {p.slug: p for p in pages}

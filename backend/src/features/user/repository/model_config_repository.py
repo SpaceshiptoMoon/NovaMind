@@ -71,7 +71,14 @@ class ModelConfigRepository:
     # ========== 基础查询 ==========
 
     async def get_by_id(self, config_id: int) -> UserModelConfig | None:
-        """根据配置 ID 获取"""
+        """根据配置 ID 获取。
+
+        Args:
+            config_id: 配置 ID（不限定用户，归属由 service 层校验）。
+
+        Returns:
+            模型配置记录，不存在返回 None。
+        """
         stmt = select(UserModelConfig).where(UserModelConfig.id == config_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -160,7 +167,15 @@ class ModelConfigRepository:
         return list(result.scalars().all())
 
     async def count_by_user(self, user_id: int, model_type: str | None = None) -> int:
-        """统计用户配置数量"""
+        """统计用户配置数量。
+
+        Args:
+            user_id: 用户 ID。
+            model_type: 模型类型过滤（llm/embedding 等）；None 表示统计全部。
+
+        Returns:
+            配置数量。
+        """
         stmt = select(func.count(UserModelConfig.id)).where(UserModelConfig.user_id == user_id)
 
         if model_type:

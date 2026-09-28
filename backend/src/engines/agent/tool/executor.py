@@ -52,7 +52,16 @@ class ToolExecutor:
         arguments: dict[str, Any],
         context: dict[str, Any],
     ) -> ToolResult:
-        """执行工具调用（含超时保护 + 钩子异常隔离）"""
+        """执行工具调用（含超时保护 + 钩子异常隔离）。
+
+        Args:
+            tool_name: 工具名（MCP 工具带 mcp__ 前缀）。
+            arguments: 工具参数，可被 before 钩子改写。
+            context: 执行上下文，透传给工具实现。
+
+        Returns:
+            ToolResult：status 为 SUCCESS/TIMEOUT/ERROR，content 或 data 承载结果。
+        """
         tool_def = self._resolve_tool_definition(tool_name)
         timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
 
@@ -108,7 +117,15 @@ class ToolExecutor:
         enabled_tools: list[str],
         enabled_mcp_server_ids: list[int],
     ) -> list[ToolDefinition]:
-        """解析完整工具定义列表"""
+        """解析完整工具定义列表。
+
+        Args:
+            enabled_tools: 启用的内置工具名列表。
+            enabled_mcp_server_ids: 启用的 MCP 服务器 ID 列表。
+
+        Returns:
+            ToolDefinition 列表（内置在前、MCP 在后，按传入顺序）。
+        """
         tools: list[ToolDefinition] = []
 
         # 内置工具
@@ -146,7 +163,15 @@ class ToolExecutor:
         enabled_tools: list[str],
         enabled_mcp_server_ids: list[int],
     ) -> list[dict[str, Any]]:
-        """返回 OpenAI function calling 格式"""
+        """返回 OpenAI function calling 格式。
+
+        Args:
+            enabled_tools: 启用的内置工具名列表。
+            enabled_mcp_server_ids: 启用的 MCP 服务器 ID 列表。
+
+        Returns:
+            OpenAI function calling 格式的 dict 列表。
+        """
         tools = self.resolve_tools(enabled_tools, enabled_mcp_server_ids)
         return [t.to_openai_format() for t in tools]
 

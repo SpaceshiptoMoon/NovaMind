@@ -16,12 +16,28 @@ WIKI_TOMBSTONE_TTL = 3600
 
 
 def tombstone_key(kb_id: int, document_id: int) -> str:
-    """删除墓碑的 Redis 键名（wiki:deleted:{kb}:{doc}）。"""
+    """删除墓碑的 Redis 键名（wiki:deleted:{kb}:{doc}）。
+
+    Args:
+        kb_id: 知识库 ID。
+        document_id: 文档 ID。
+
+    Returns:
+        拼接出的 Redis 键名字符串。
+    """
     return f"wiki:deleted:{kb_id}:{document_id}"
 
 
 async def write_tombstone(kb_id: int, document_id: int) -> bool:
-    """写删除墓碑。Redis 不可用时返回 False（调用方降级为仅同步对账）。"""
+    """写删除墓碑。Redis 不可用时返回 False（调用方降级为仅同步对账）。
+
+    Args:
+        kb_id: 知识库 ID。
+        document_id: 被删除的文档 ID。
+
+    Returns:
+        写入成功 True；Redis 异常告警后 False。
+    """
     try:
         from novamind.shared.storage.client_factory import get_redis_client
 
@@ -35,7 +51,15 @@ async def write_tombstone(kb_id: int, document_id: int) -> bool:
 
 
 async def tombstone_exists(kb_id: int, document_id: int) -> bool:
-    """ingest 管道检查点：该文档是否已被删除（删除竞态守卫）"""
+    """ingest 管道检查点：该文档是否已被删除（删除竞态守卫）。
+
+    Args:
+        kb_id: 知识库 ID。
+        document_id: 文档 ID。
+
+    Returns:
+        墓碑存在 True；不存在或 Redis 异常 False。
+    """
     try:
         from novamind.shared.storage.client_factory import get_redis_client
 

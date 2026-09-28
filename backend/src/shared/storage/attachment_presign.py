@@ -15,7 +15,17 @@ async def enrich_attachments_with_presigned_urls(
     bucket: str | None = None,
     expires: int = 3600,
 ) -> None:
-    """为 extra["attachments"] 中的图片附件注入 preview_url（MinIO presigned URL）"""
+    """为 extra 中的图片附件就地注入 preview_url（MinIO presigned URL）。
+
+    Args:
+        extra: 消息 extra dict（含 attachments 键）；None 或缺 attachments 时原样返回。
+        minio_client: MinIO 客户端实例。
+        bucket: 存储桶名；None 用客户端默认桶。
+        expires: 预签名有效期秒数。
+
+    Returns:
+        无返回值；预签名失败时该附件静默跳过（不抛）。
+    """
     if not extra or "attachments" not in extra:
         return
     bucket = bucket or minio_client.default_bucket

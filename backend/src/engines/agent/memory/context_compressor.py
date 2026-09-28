@@ -73,7 +73,17 @@ class ContextCompressor(ICompressionStrategy):
         token_budget: TokenBudget,
         conversation_id: int | None = None,
     ) -> tuple[list[MemoryMessage], bool, float]:
-        """五阶段压缩历史消息到 token 预算内，返回（压缩后消息, 是否触发, 压缩比）。"""
+        """五阶段压缩历史消息到 token 预算内，返回（压缩后消息, 是否触发, 压缩比）。
+
+        Args:
+            messages: 待压缩的统一消息列表。
+            available_tokens: 消息可用的 token 预算。
+            token_budget: token 计数器。
+            conversation_id: 会话 ID（摘要持久化与记忆提取用），None 时回退构造时注入值。
+
+        Returns:
+            压缩后消息列表、是否执行压缩、压缩比三元组；未触发时原样返回 (原列表, False, 1.0)。
+        """
         if len(messages) <= 4:
             return messages, False, 1.0
 

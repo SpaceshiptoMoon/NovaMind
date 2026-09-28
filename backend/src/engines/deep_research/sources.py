@@ -18,7 +18,15 @@ class SearchSourcePort(Protocol):
     """
 
     async def search(self, query: str, *, top_k: int) -> list[dict[str, Any]]:
-        """执行检索，返回统一 dict 形状结果列表（见模块 docstring 契约）。"""
+        """执行检索，返回统一 dict 形状结果列表（见模块 docstring 契约）。
+
+        Args:
+            query: 检索查询文本。
+            top_k: 返回条数上限。
+
+        Returns:
+            统一形状结果 dict 列表：content 与 score 必填，url/title/chunk_id 等可选。
+        """
         ...
 
 

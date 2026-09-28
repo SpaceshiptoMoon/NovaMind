@@ -60,7 +60,16 @@ class ReadToolResultTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """按 tool_call_id 从 agent_tool_calls 表取回原始结果，超长按 offset/limit 切片并附 has_more 标记。"""
+        """按 tool_call_id 从 agent_tool_calls 表取回原始结果，超长按 offset/limit 切片并附 has_more 标记。
+
+        Args:
+            tool_name: 工具函数名（恒为 read_tool_result，由执行器透传）。
+            arguments: LLM 传入的参数（tool_call_id 必填，offset/limit 可选）。
+            context: 工具上下文，须含 db_session。
+
+        Returns:
+            JSON 字符串：完整正文或切片（content/offset/limit/total_length/has_more）；缺参数或记录不存在返回含 error 的 JSON。
+        """
         tc_id = arguments.get("tool_call_id")
         offset = arguments.get("offset", 0)
         limit = arguments.get("limit", 10000)

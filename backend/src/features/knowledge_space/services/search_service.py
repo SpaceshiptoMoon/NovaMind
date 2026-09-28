@@ -96,7 +96,14 @@ class SearchService:
         return self._retrieval_engine
 
     async def get_knowledge_base(self, kb_id: int):
-        """获取知识库信息（公开方法，供路由层调用）"""
+        """获取知识库信息（公开方法，供路由层调用）。
+
+        Args:
+            kb_id: 知识库 ID。
+
+        Returns:
+            命中返回知识库实例；未命中返回 None。
+        """
         return await self.kb_repo.get_by_id(kb_id)
 
     async def _get_embedding_client(

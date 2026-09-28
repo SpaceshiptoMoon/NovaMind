@@ -17,7 +17,15 @@ async def get_evaluation_service(
     db: AsyncSession = Depends(get_db),
     search_service: SearchService = Depends(get_search_service),
 ) -> EvaluationService:
-    """装配测评服务（单例 ES/MinIO + 检索服务注入）。"""
+    """装配测评服务（单例 ES/MinIO + 检索服务注入）。
+
+    Args:
+        db: 请求级异步数据库会话。
+        search_service: 请求级检索端口，供单条评估即时检索。
+
+    Returns:
+        注入完整依赖的 EvaluationService 实例。
+    """
     model_config_service = ModelConfigService(db)
     minio_client = await get_minio_client()
 

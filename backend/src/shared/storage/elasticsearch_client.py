@@ -101,11 +101,25 @@ class ElasticsearchClient:
     # ========== 索引管理 ==========
 
     def generate_index_name(self, space_id: int) -> str:
-        """生成空间索引名称（经 schema）"""
+        """生成空间索引名称（经 schema）。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            索引名字符串（默认 schema 为 space_{space_id}）。
+        """
         return self._schema.index_name(space_id)
 
     async def index_exists(self, space_id: int) -> bool:
-        """探测空间索引是否已创建。"""
+        """探测空间索引是否已创建。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            索引存在返回 True；探测异常记 error 并返回 False。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             return bool(await self.es_client.indices.exists(index=index_name))
@@ -119,7 +133,19 @@ class ElasticsearchClient:
         embedding_dim: int | None = None,
         analyzer: str | None = None,
     ) -> bool:
-        """创建空间索引（幂等：索引已存在时直接返回成功）"""
+        """创建空间索引（幂等：索引已存在时直接返回成功）。
+
+        Args:
+            space_id: 空间 ID。
+            embedding_dim: 向量维度；None 用客户端默认维度。
+            analyzer: 检索分词器（如 ik_max_word）；None 用客户端默认。
+
+        Returns:
+            创建成功或已存在返回 True。
+
+        Raises:
+            Exception: 创建失败且非已存在类错误时原样抛出。
+        """
         index_name = self.generate_index_name(space_id)
         dim = embedding_dim or self.default_embedding_dim
         _analyzer = analyzer or self.default_analyzer
@@ -146,14 +172,29 @@ class ElasticsearchClient:
     async def ensure_index_exists(
         self, space_id: int, embedding_dim: int | None = None
     ) -> str:
-        """确保索引存在"""
+        """确保索引存在（不存在则按给定维度创建）。
+
+        Args:
+            space_id: 空间 ID。
+            embedding_dim: 向量维度；None 用客户端默认维度。
+
+        Returns:
+            索引名字符串。
+        """
         index_name = self.generate_index_name(space_id)
         if not await self.index_exists(space_id):
             await self.create_index(space_id, embedding_dim)
         return index_name
 
     async def delete_index(self, space_id: int) -> bool:
-        """整索引删除（危险操作：空间内全部分块一并消失）。"""
+        """整索引删除（危险操作：空间内全部分块一并消失）。
+
+        Args:
+            space_id: 空间 ID。
+
+        Returns:
+            删除成功或索引本不存在返回 True；其他失败返回 False。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             await self.es_client.indices.delete(index=index_name)
@@ -168,7 +209,15 @@ class ElasticsearchClient:
             return False
 
     async def delete_kb_chunks(self, space_id: int, kb_id: int) -> int:
-        """删除空间索引中指定知识库的所有文档"""
+        """删除空间索引中指定知识库的所有文档。
+
+        Args:
+            space_id: 空间 ID。
+            kb_id: 知识库 ID。
+
+        Returns:
+            实际删除的分块数（异常降级返回 0）。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.delete_by_query(
@@ -185,7 +234,15 @@ class ElasticsearchClient:
     # ========== 文档操作 ==========
 
     async def index_chunk(self, space_id: int, chunk_data: dict[str, Any]) -> bool:
-        """索引单个分块"""
+        """索引单个分块（按 chunk_id 作为文档 _id 写入）。
+
+        Args:
+            space_id: 空间 ID。
+            chunk_data: 分块数据 dict，须含 chunk_id 键；embedding_dim 键可选用于建索引。
+
+        Returns:
+            写入成功返回 True；失败记 error 返回 False。
+        """
         index_name = await self.ensure_index_exists(
             space_id, embedding_dim=chunk_data.get("embedding_dim")
         )
@@ -204,7 +261,19 @@ class ElasticsearchClient:
         chunks: list[dict[str, Any]],
         embedding_dim: int | None = None,
     ) -> int:
-        """批量索引分块"""
+        """批量索引分块（bulk 写入，逐条统计成败）。
+
+        Args:
+            space_id: 空间 ID。
+            chunks: 分块 dict 列表，每项须含 chunk_id 键。
+            embedding_dim: 向量维度；必须显式传入（不兜底、不从向量长度推断），缺失即抛错。
+
+        Returns:
+            成功写入的分块数（整体异常降级返回 0）。
+
+        Raises:
+            RuntimeError: embedding_dim 为 None（维度缺失会让索引维度不可追踪）。
+        """
         if not chunks:
             return 0
 
@@ -256,7 +325,15 @@ class ElasticsearchClient:
             return 0
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> dict[str, Any] | None:
-        """按 chunk_id 读取分块原文；不存在或异常均返回 None。"""
+        """按 chunk_id 读取分块原文；不存在或异常均返回 None。
+
+        Args:
+            space_id: 空间 ID。
+            chunk_id: 分块 ID（即 ES 文档 _id）。
+
+        Returns:
+            分块 _source dict；未找到或读取失败返回 None。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.get(index=index_name, id=chunk_id)
@@ -268,7 +345,15 @@ class ElasticsearchClient:
             return None
 
     async def delete_chunk(self, space_id: int, chunk_id: str) -> bool:
-        """按 chunk_id 删除单个分块（异常降级返回 False）。"""
+        """按 chunk_id 删除单个分块（异常降级返回 False）。
+
+        Args:
+            space_id: 空间 ID。
+            chunk_id: 分块 ID（即 ES 文档 _id）。
+
+        Returns:
+            删除成功返回 True。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             await self.es_client.delete(index=index_name, id=chunk_id)
@@ -278,7 +363,15 @@ class ElasticsearchClient:
             return False
 
     async def delete_document_chunks(self, space_id: int, document_id: int) -> int:
-        """delete_by_query 清空文档全部分块，返回实际删除数。"""
+        """delete_by_query 清空文档全部分块，返回实际删除数。
+
+        Args:
+            space_id: 空间 ID。
+            document_id: 文档 ID。
+
+        Returns:
+            实际删除的分块数（异常降级返回 0）。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.delete_by_query(
@@ -337,7 +430,22 @@ class ElasticsearchClient:
         field: str | None = None,
         chunk_type_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """向量相似度搜索（统一入口，支持 embedding 字段）"""
+        """向量相似度搜索（统一入口，支持 embedding 字段）。
+
+        Args:
+            space_id: 空间 ID。
+            query_vector: 查询向量。
+            top_k: 返回条数上限（自动截断到 MAX_SEARCH_RESULTS）。
+            kb_id: 知识库过滤；None 表示不过滤。
+            field: 向量字段名；None 用 schema 默认 embedding 字段。
+            chunk_type_filter: 分块类型过滤（如 wiki_page）；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source（分块原文 dict）；失败返回空表。
+
+        Raises:
+            elasticsearch.ConnectionError: ES 连接类基础设施异常原样抛出（不静默吞）。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         # 字段名经 schema 解析；默认 embedding 字段
@@ -408,7 +516,17 @@ class ElasticsearchClient:
         self, space_id: int, query: str, top_k: int = 5,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """全文搜索"""
+        """全文搜索（match 查询 content 字段，保留字符已转义）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            top_k: 返回条数上限（自动截断到 MAX_SEARCH_RESULTS）。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source；失败返回空表。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
@@ -429,7 +547,21 @@ class ElasticsearchClient:
         rrf_k: int = 60,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """混合搜索（向量 + 全文），使用加权 RRF 融合"""
+        """混合搜索（向量 + 全文），使用加权 RRF 融合。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            query_vector: 查询向量。
+            top_k: 融合后返回条数上限。
+            vector_weight: 向量路权重。
+            text_weight: 全文路权重。
+            rrf_k: RRF 平滑常数（默认 60）。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         vector_results, text_results = await asyncio.gather(
@@ -453,7 +585,17 @@ class ElasticsearchClient:
         k: int = 60,
         top_k: int = 10,
     ) -> list[dict[str, Any]]:
-        """加权 RRF 融合去重"""
+        """加权 RRF 融合去重（score = sum(weight / (k + rank))）。
+
+        Args:
+            result_sets: 多路结果列表，每路为含 chunk_id/source 的 dict 列表。
+            weights: 与各路一一对应的权重；None 或缺位按 1.0。
+            k: RRF 平滑常数（排名越靠前贡献越大）。
+            top_k: 融合后保留条数。
+
+        Returns:
+            按融合分降序的结果列表，每项含 chunk_id、score、source、hit_sources。
+        """
         chunk_scores: dict[str, float] = {}
         chunk_data: dict[str, dict] = {}
         chunk_hit_sources: dict[str, list[str]] = {}
@@ -497,14 +639,34 @@ class ElasticsearchClient:
         self, space_id: int, query: str, top_k: int = 10,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """内容 BM25 检索"""
+        """内容 BM25 检索（text_search 的语义别名）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            top_k: 返回条数上限。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source。
+        """
         return await self.text_search(space_id, query, top_k, kb_id=kb_id)
 
     async def content_vector_search(
         self, space_id: int, query_vector: list[float], top_k: int = 10,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """内容向量检索"""
+        """内容向量检索（vector_search 的语义别名）。
+
+        Args:
+            space_id: 空间 ID。
+            query_vector: 查询向量。
+            top_k: 返回条数上限。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source。
+        """
         return await self.vector_search(space_id, query_vector, top_k, kb_id=kb_id)
 
     async def content_hybrid_search(
@@ -512,7 +674,21 @@ class ElasticsearchClient:
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         rrf_k: int = 60, kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """内容混合检索（BM25 + 向量）"""
+        """内容混合检索（BM25 + 向量，RRF 融合）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            query_vector: 查询向量。
+            top_k: 融合后返回条数上限。
+            vector_weight: 向量路权重。
+            bm25_weight: BM25 路权重。
+            rrf_k: RRF 平滑常数。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
+        """
         return await self.hybrid_search(
             space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
         )
@@ -521,7 +697,17 @@ class ElasticsearchClient:
         self, space_id: int, query: str, top_k: int = 10,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """问题 BM25 检索"""
+        """问题 BM25 检索（match 查询 questions 字段）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            top_k: 返回条数上限。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         safe_query = self._escape_query(query)
@@ -535,7 +721,17 @@ class ElasticsearchClient:
         self, space_id: int, query_vector: list[float], top_k: int = 10,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """问题向量检索"""
+        """问题向量检索（nested 路径下 vector 子字段的 knn 查询）。
+
+        Args:
+            space_id: 空间 ID。
+            query_vector: 查询向量。
+            top_k: 返回条数上限。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
@@ -565,7 +761,21 @@ class ElasticsearchClient:
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         rrf_k: int = 60, kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """问题混合检索（BM25 + 向量）"""
+        """问题混合检索（BM25 + 向量，RRF 融合）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            query_vector: 查询向量。
+            top_k: 融合后返回条数上限。
+            vector_weight: 向量路权重。
+            bm25_weight: BM25 路权重。
+            rrf_k: RRF 平滑常数。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         vector_results, text_results = await asyncio.gather(
@@ -585,7 +795,19 @@ class ElasticsearchClient:
         content_weight: float = 0.6, question_weight: float = 0.4,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """全字段 BM25 检索（内容 + 问题）"""
+        """全字段 BM25 检索（内容 + 问题，should 加权求和）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            top_k: 返回条数上限。
+            content_weight: content 字段 boost 权重。
+            question_weight: questions 字段 boost 权重。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，每项含 chunk_id、score、source；失败返回空表。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         safe_query = self._escape_query(query)
@@ -624,7 +846,19 @@ class ElasticsearchClient:
         content_weight: float = 0.6, question_weight: float = 0.4,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """全字段向量检索（内容向量 + 问题向量）"""
+        """全字段向量检索（内容向量 + 问题向量，RRF 融合）。
+
+        Args:
+            space_id: 空间 ID。
+            query_vector: 查询向量。
+            top_k: 融合后返回条数上限。
+            content_weight: 内容向量路权重。
+            question_weight: 问题向量路权重。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         content_results, question_results = await asyncio.gather(
@@ -645,7 +879,23 @@ class ElasticsearchClient:
         content_weight: float = 0.6, question_weight: float = 0.4,
         rrf_k: int = 60, kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """全字段全算法融合检索"""
+        """全字段全算法融合检索（BM25/向量 x 内容/问题 四路 RRF）。
+
+        Args:
+            space_id: 空间 ID。
+            query: 查询文本。
+            query_vector: 查询向量。
+            top_k: 融合后返回条数上限。
+            vector_weight: 向量算法权重。
+            bm25_weight: BM25 算法权重。
+            content_weight: 内容侧权重。
+            question_weight: 问题侧权重。
+            rrf_k: RRF 平滑常数。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            融合排序后的结果列表（单路失败自动剔除该路，不整体失败）。
+        """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         results = await asyncio.gather(
@@ -689,7 +939,29 @@ class ElasticsearchClient:
         rrf_k: int = 60,
         kb_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """根据模式路由到对应的检索方法"""
+        """根据模式路由到对应的检索方法（统一入口）。
+
+        Args:
+            space_id: 空间 ID。
+            mode: 检索模式（content_bm25/content_vector/content_hybrid/question_bm25/
+                question_vector/question_hybrid/all_bm25/all_vector/all_hybrid）；
+                未知模式回退 content_hybrid。
+            query: 查询文本。
+            query_vector: 查询向量；向量类模式缺省时降级为对应 BM25 或返回空表。
+            top_k: 返回条数上限。
+            vector_weight: 向量算法权重。
+            bm25_weight: BM25 算法权重。
+            content_weight: 内容侧权重。
+            question_weight: 问题侧权重。
+            rrf_k: RRF 平滑常数。
+            kb_id: 知识库过滤；None 表示不过滤。
+
+        Returns:
+            结果列表，形状同具体模式方法。
+
+        Raises:
+            elasticsearch.ConnectionError: ES 连接类基础设施异常原样抛出。
+        """
         mode_handlers = {
             "content_bm25": lambda: self.content_bm25_search(space_id, query, top_k, kb_id=kb_id),
             "content_vector": lambda: (

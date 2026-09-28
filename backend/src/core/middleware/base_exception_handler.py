@@ -52,7 +52,14 @@ class BaseAPIError(Exception):
 
 
 def build_trace_context(request: Request) -> dict:
-    """提取请求公共上下文（供异常处理器和日志使用）"""
+    """提取请求公共上下文（供异常处理器和日志使用）。
+
+    Args:
+        request: FastAPI 请求对象（trace_id 从 request.state 读取）。
+
+    Returns:
+        含 endpoint、trace_id、stack_trace 的 dict。
+    """
     return {
         "endpoint": str(request.url.path),
         "trace_id": getattr(request.state, "trace_id", "no-trace"),

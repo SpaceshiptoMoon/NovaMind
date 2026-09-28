@@ -59,7 +59,21 @@ class SpaceStatsService:
         kb_id: int | None = None,
         low_score_threshold: float = DEFAULT_LOW_SCORE_THRESHOLD,
     ) -> dict[str, Any]:
-        """看板全量数据（KPI/趋势/明细/KB 聚合）"""
+        """看板全量数据（KPI/趋势/明细/KB 聚合）。
+
+        Args:
+            space_id: 空间 ID。
+            start: 可选窗口起点，None 回退最近 30 天。
+            end: 可选窗口终点（非含），None 取当前时间。
+            kb_id: 可选知识库过滤，None 表示全空间。
+            low_score_threshold: 低分阈值，默认 0.35。
+
+        Returns:
+            KPI/按日趋势/零命中 Top N/低分明细/KB 维度聚合的字典。
+
+        Raises:
+            KnowledgeBaseNotFoundError: kb_id 指定的知识库不存在或不属于该空间。
+        """
         window_start, window_end = self._resolve_window(start, end)
 
         if kb_id is not None:

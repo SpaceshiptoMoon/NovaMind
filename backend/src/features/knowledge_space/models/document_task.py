@@ -87,7 +87,14 @@ class DocumentTask(BaseModel):
         self.started_at = now_china()
 
     def mark_completed(self, result: dict | None = None) -> None:
-        """标记完成并写完成时间、清空旧错误信息、合并结果字典。"""
+        """标记完成并写完成时间、清空旧错误信息、合并结果字典。
+
+        Args:
+            result: 可选管道结果字典，按键合并进 pipeline_result；None 只改状态。
+
+        Returns:
+            无返回；状态机终态写，不 flush 不 commit。
+        """
         self.status = TaskStatus.COMPLETED
         self.completed_at = now_china()
         # 成功完成即清空先前残留的瞬时错误（如 ASR 忙碌延后、自动重试记录），
@@ -97,7 +104,14 @@ class DocumentTask(BaseModel):
             self.pipeline_result = {**(self.pipeline_result or {}), **result}
 
     def mark_failed(self, error_message: str) -> None:
-        """标记失败并写完成时间与错误信息。"""
+        """标记失败并写完成时间与错误信息。
+
+        Args:
+            error_message: 失败原因，整段写入 error_message 列。
+
+        Returns:
+            无返回；状态机终态写，不 flush 不 commit。
+        """
         self.status = TaskStatus.FAILED
         self.completed_at = now_china()
         self.error_message = error_message
@@ -142,14 +156,29 @@ class DocumentTask(BaseModel):
         self.step_progress = progress
 
     def start_step(self, step_name: str) -> None:
-        """记录节点开始：status=running + started_at。"""
+        """记录节点开始：status=running + started_at。
+
+        Args:
+            step_name: 步骤名，作为 step_progress 字典的键。
+
+        Returns:
+            无返回；重置该节点的耗时/metrics/error 字段。
+        """
         self._set_node(
             step_name, status="running", started_at=now_china().isoformat(),
             finished_at=None, duration_ms=None, metrics={}, error=None,
         )
 
     def finish_step(self, step_name: str, metrics: dict | None = None) -> None:
-        """记录节点完成：status=done + finished_at + duration_ms + metrics。"""
+        """记录节点完成：status=done + finished_at + duration_ms + metrics。
+
+        Args:
+            step_name: 步骤名。
+            metrics: 可选指标字典，None 写空字典。
+
+        Returns:
+            无返回；耗时自 started_at 起算，解析失败写 None。
+        """
         now = now_china()
         prev = self.step_progress.get(step_name) if self.step_progress else None
         started_at_str = prev.get("started_at") if isinstance(prev, dict) else None
@@ -160,7 +189,15 @@ class DocumentTask(BaseModel):
         )
 
     def fail_step(self, step_name: str, error: str) -> None:
-        """记录节点失败：status=failed + finished_at + duration_ms + error。"""
+        """记录节点失败：status=failed + finished_at + duration_ms + error。
+
+        Args:
+            step_name: 步骤名。
+            error: 失败原因。
+
+        Returns:
+            无返回；保留节点既有 metrics。
+        """
         now = now_china()
         prev = self.step_progress.get(step_name) if self.step_progress else None
         started_at_str = prev.get("started_at") if isinstance(prev, dict) else None

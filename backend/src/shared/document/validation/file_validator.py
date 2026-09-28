@@ -160,7 +160,14 @@ class FileValidator:
         return self._magic
 
     def detect_mime_by_magic(self, content: bytes) -> str | None:
-        """libmagic 探测前 2KB 内容的真实 MIME；不可用或失败返回 None（由调用方回落签名表）。"""
+        """libmagic 探测前 2KB 内容的真实 MIME；不可用或失败返回 None（由调用方回落签名表）。
+
+        Args:
+            content: 文件原始字节（只需头部，函数内部截取前 2KB）。
+
+        Returns:
+            MIME 类型字符串；libmagic 缺失或探测异常返回 None。
+        """
         magic = self._get_magic()
         if magic:
             try:
@@ -170,7 +177,14 @@ class FileValidator:
         return None
 
     def detect_mime_by_header(self, content: bytes) -> str | None:
-        """内置魔数签名表检测（无 libmagic 时的兜底层，与 magic 检测互补）。"""
+        """内置魔数签名表检测（无 libmagic 时的兜底层，与 magic 检测互补）。
+
+        Args:
+            content: 文件头部原始字节（至少 12 字节才参与判定）。
+
+        Returns:
+            MIME 类型字符串；RIFF/ftyp 容器按子标识二次判定；无匹配签名返回 None。
+        """
         if len(content) < 12:
             return None
         # RIFF 容器需要二次判定子标识（WAV/AVI）
@@ -195,17 +209,38 @@ class FileValidator:
         return None
 
     def get_extension_from_filename(self, filename: str) -> str:
-        """取文件名小写扩展名；无点号返回空串。"""
+        """取文件名小写扩展名；无点号返回空串。
+
+        Args:
+            filename: 原始文件名。
+
+        Returns:
+            小写扩展名（不含点号）；无扩展名返回空字符串。
+        """
         if "." not in filename:
             return ""
         return filename.rsplit(".", 1)[-1].lower()
 
     def is_dangerous_extension(self, extension: str) -> bool:
-        """判断扩展名是否属于可执行/脚本类黑名单（exe/bat/js/py 等）。"""
+        """判断扩展名是否属于可执行/脚本类黑名单（exe/bat/js/py 等）。
+
+        Args:
+            extension: 扩展名（大小写不敏感）。
+
+        Returns:
+            属于黑名单返回 True。
+        """
         return extension.lower() in self.DANGEROUS_EXTENSIONS
 
     def is_office_document(self, content: bytes) -> tuple[bool, str | None]:
-        """解压 zip 容器读 [Content_Types].xml 判定 docx/xlsx/pptx 具体类型；声明解压体积超限直接拒绝（zip 炸弹防护）。"""
+        """解压 zip 容器读 [Content_Types].xml 判定 docx/xlsx/pptx 具体类型；声明解压体积超限直接拒绝（zip 炸弹防护）。
+
+        Args:
+            content: 文件原始字节（应为 zip 容器）。
+
+        Returns:
+            (是否 OOXML 文档, 具体类型 docx/xlsx/pptx 或 None)；非 zip/解析失败/体积异常返回 (False, None)。
+        """
         import io
         import zipfile
 
@@ -349,7 +384,14 @@ _validator: FileValidator | None = None
 
 
 def get_file_validator(max_file_size: int = 100 * 1024 * 1024) -> FileValidator:
-    """获取全局文件验证器实例"""
+    """获取全局文件验证器单例（首次调用时按传入上限初始化）。
+
+    Args:
+        max_file_size: 大小上限字节数，仅首次初始化生效；后续调用复用既有实例。
+
+    Returns:
+        FileValidator 全局单例。
+    """
 
     global _validator
     if _validator is None:

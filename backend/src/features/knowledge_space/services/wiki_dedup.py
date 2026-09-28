@@ -20,7 +20,15 @@ _SLUG_BASE_SPLIT = re.compile(r"[-_.\s]+")
 
 
 def jaccard(a: set[str], b: set[str]) -> float:
-    """集合 Jaccard 相似度（移植 WeKnora searchutil.Jaccard）"""
+    """集合 Jaccard 相似度（移植 WeKnora searchutil.Jaccard）。
+
+    Args:
+        a: 字符串集合。
+        b: 字符串集合。
+
+    Returns:
+        交并比，双空集合返回 0.0。
+    """
     if not a and not b:
         return 0.0
     if len(a) > len(b):
@@ -62,7 +70,14 @@ def slug_base_tokens(slug: str) -> set[str]:
 
 
 def grams_per_surface(surfaces: Iterable[str]) -> list[set[str]]:
-    """批量计算各 surface（标题+别名）的 bigram 集合，空集合剔除。"""
+    """批量计算各 surface（标题+别名）的 bigram 集合，空集合剔除。
+
+    Args:
+        surfaces: 待切分的字符串可迭代（标题与别名）。
+
+    Returns:
+        与输入等长的非空 bigram 集合列表（空 surface 不占位）。
+    """
     return [g for g in (surface_grams(s) for s in surfaces) if g]
 
 
@@ -196,7 +211,15 @@ def merge_reject_reason(src_slug: str, dst_slug: str, src_candidates: set[str]) 
 
 
 def append_unique(values: list[str], value: str) -> list[str]:
-    """去重追加非空字符串到列表（原地修改并返回）。"""
+    """去重追加非空字符串到列表（原地修改并返回）。
+
+    Args:
+        values: 目标列表，原地修改。
+        value: 待追加字符串，去空白；空串或已存在则跳过。
+
+    Returns:
+        同一个列表引用（便于链式调用）。
+    """
     value = (value or "").strip()
     if value and value not in values:
         values.append(value)

@@ -64,7 +64,15 @@ def _sanitize_search_field(text: str) -> str:
 
 
 def is_sufficient_results(results: list[Any], iteration: int) -> bool:
-    """检查结果是否足够（达到数量阈值，或已有结果且达到最大迭代阈值）。"""
+    """检查结果是否足够（达到数量阈值，或已有结果且达到最大迭代阈值）。
+
+    Args:
+        results: 当前检索结果列表。
+        iteration: 当前迭代轮次（0 起）。
+
+    Returns:
+        数量达标，或已有结果且迭代数达阈值时为 True。
+    """
     if len(results) >= SUFFICIENT_RESULT_COUNT:
         return True
     if len(results) > 0 and iteration >= MAX_ITERATION_THRESHOLD:
@@ -73,7 +81,12 @@ def is_sufficient_results(results: list[Any], iteration: int) -> bool:
 
 
 def deduplicate_results(all_results: list[Any], new_results: list[Any]) -> None:
-    """基于 URL、标题或 chunk_id 过滤重复结果，将去重后的新结果追加到 all_results（原地去重）。"""
+    """基于 URL、标题或 chunk_id 过滤重复结果，将去重后的新结果追加到 all_results（原地去重）。
+
+    Args:
+        all_results: 累积结果列表（就地追加）。
+        new_results: 待并入的新结果列表。
+    """
     existing_urls = {r.get("url") for r in all_results if r.get("url")}
     existing_titles = {r.get("title") for r in all_results if r.get("title")}
     existing_chunk_ids = {r.get("chunk_id") for r in all_results if r.get("chunk_id")}
@@ -97,7 +110,14 @@ def deduplicate_results(all_results: list[Any], new_results: list[Any]) -> None:
 
 
 def extract_key_sources(results: list[Any]) -> list[str]:
-    """提取关键来源（前 10 条去重后取前 5）。"""
+    """提取关键来源（前 10 条去重后取前 5）。
+
+    Args:
+        results: 检索结果列表。
+
+    Returns:
+        来源描述列表（URL 或内部文档标识），至多 5 条。
+    """
     sources: list[str] = []
     seen: set[str] = set()
 
@@ -135,7 +155,14 @@ def extract_citations(results: list[Any]) -> list[dict[str, str]]:
 
 
 def format_search_context(results: list[Any]) -> str:
-    """格式化检索结果为上下文（清理内容防止 prompt 注入）。"""
+    """格式化检索结果为上下文（清理内容防止 prompt 注入）。
+
+    Args:
+        results: 检索结果列表（取前 15 条）。
+
+    Returns:
+        带来源编号的上下文文本；无有效内容为空串。
+    """
     context_parts: list[str] = []
 
     for i, r in enumerate(results[:15], start=1):
@@ -338,7 +365,16 @@ class DeepResearchEngine:
         prompt_provider: PromptManager,
         query: str,
     ) -> str:
-        """分析查询，提取研究主题（接已 sanitize 的 query）。"""
+        """分析查询，提取研究主题（接已 sanitize 的 query）。
+
+        Args:
+            llm_client: LLM 客户端（本次调用注入）。
+            prompt_provider: prompt 提供者。
+            query: 已 sanitize 的用户查询。
+
+        Returns:
+            提炼后的研究主题文本（已去首尾空白）。
+        """
         prompt = prompt_provider.format(KEY_ANALYZE_QUERY, query=query)
         result = await llm_client.generate_text(
             prompt=prompt,

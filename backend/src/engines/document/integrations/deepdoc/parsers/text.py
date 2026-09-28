@@ -24,7 +24,18 @@ class RAGFlowTextParser:
         self._json_parser = RAGFlowJsonParser()
 
     def parse(self, file_path: str | Path, parser_id: str | None = None) -> tuple[str, list[str], dict]:
-        """解析本地文本文件为（全文、分块、元数据）三元组。"""
+        """解析本地文本文件为（全文、分块、元数据）三元组。
+
+        Args:
+            file_path: 文件路径。
+            parser_id: 显式解析器 ID；优先于后缀推断，可空。
+
+        Returns:
+            (全文, 分块列表, 元数据) 三元组；元数据含 parser_class。
+
+        Raises:
+            ValueError: 后缀与 parser_id 均无匹配解析器。
+        """
         path = Path(file_path)
         suffix = path.suffix.lower().lstrip(".")
         return self.parse_bytes(path.read_bytes(), suffix, parser_id=parser_id)

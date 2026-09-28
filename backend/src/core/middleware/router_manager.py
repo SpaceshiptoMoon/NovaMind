@@ -18,7 +18,14 @@ class RouterManager:
     # ==================== manifest 聚合路径（默认） ====================
 
     def get_router(self, name: str) -> APIRouter:
-        """获取指定的路由（仅 legacy 路径填充 self.routers；manifest 路径返回 None）"""
+        """获取指定名字的路由（仅 legacy 路径填充 self.routers；manifest 路径返回 None）。
+
+        Args:
+            name: 路由名（manifest RouterSpec 的注册名）。
+
+        Returns:
+            对应 APIRouter；manifest 路径或名字不存在返回 None。
+        """
         return self.routers.get(name)
 
     def get_all_routers(self) -> list[tuple[APIRouter, str, list[str]]]:

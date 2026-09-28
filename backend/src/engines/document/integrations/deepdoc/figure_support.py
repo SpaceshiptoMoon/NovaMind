@@ -28,7 +28,15 @@ def get_tenant_default_model_by_type(*args, **kwargs):
 
 
 def timeout(_seconds: int, attempts: int = 1):
-    """Retry a callable without introducing RAGFlow's signal-based timeout."""
+    """Retry a callable without introducing RAGFlow's signal-based timeout。
+
+    Args:
+        _seconds: 兼容上游签名的占位参数（不生效）。
+        attempts: 重试次数，最小按 1 计。
+
+    Returns:
+        装饰器：被装饰函数按次数重试，全失败抛最后一次异常。
+    """
 
     def decorator(func):
         """被装饰函数包一层重试。"""
@@ -51,7 +59,14 @@ def timeout(_seconds: int, attempts: int = 1):
 
 
 def ensure_pil_image(image: Any) -> Image.Image | None:
-    """把 PIL/LazyImage/字节流统一转为 RGB PIL 图；不可识别返回 None。"""
+    """把 PIL/LazyImage/字节流统一转为 RGB PIL 图；不可识别返回 None。
+
+    Args:
+        image: PIL 图 / LazyImage / 字节流之一。
+
+    Returns:
+        RGB PIL 图；不可识别输入为 None。
+    """
     if isinstance(image, Image.Image):
         return image
     if isinstance(image, LazyImage):
@@ -79,7 +94,14 @@ def open_image_for_processing(image: Any, allow_bytes: bool = False) -> tuple[Im
 
 
 def is_image_like(image: Any) -> bool:
-    """对象是否为可处理的图片形态（PIL/LazyImage/字节）。"""
+    """对象是否为可处理的图片形态（PIL/LazyImage/字节）。
+
+    Args:
+        image: 待检测对象。
+
+    Returns:
+        是可处理图片形态为 True。
+    """
     return isinstance(image, (Image.Image, LazyImage, bytes, bytearray, memoryview))
 
 
@@ -93,7 +115,15 @@ def vision_llm_figure_describe_prompt_with_context(
     context_above: str = "",
     context_below: str = "",
 ) -> str:
-    """带上下文的图表描述提示词（拼上图/下图文本）。"""
+    """带上下文的图表描述提示词（拼上图/下图文本）。
+
+    Args:
+        context_above: 图表上方文本。
+        context_below: 图表下方文本。
+
+    Returns:
+        拼接后的完整提示词。
+    """
     return (
         f"{vision_llm_figure_describe_prompt()}\n"
         f"Context above:\n{context_above}\n"

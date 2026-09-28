@@ -14,12 +14,27 @@ class EmbeddingEvaluator:
         self.embedding_client = embedding_client
 
     async def compute_similarity(self, text_a: str, text_b: str) -> float:
-        """计算两段文本的 Embedding 余弦相似度"""
+        """计算两段文本的 Embedding 余弦相似度。
+
+        Args:
+            text_a: 待比较文本 A。
+            text_b: 待比较文本 B。
+
+        Returns:
+            余弦相似度（理论 [-1, 1]，实际多在 [0, 1]）。
+        """
         embeddings = await self.embedding_client.generate_embeddings_batch([text_a, text_b])
         return _cosine_similarity(embeddings[0], embeddings[1])
 
     async def compute_similarity_batch(self, text_pairs: list[tuple[str, str]]) -> list[float]:
-        """批量计算文本对的余弦相似度"""
+        """批量计算文本对的余弦相似度。
+
+        Args:
+            text_pairs: (文本 a, 文本 b) 元组列表。
+
+        Returns:
+            与输入等长的相似度列表，顺序对应。
+        """
         all_texts = []
         for a, b in text_pairs:
             all_texts.extend([a, b])
@@ -33,12 +48,28 @@ class EmbeddingEvaluator:
         return results
 
     async def similarity_to_score(self, text_a: str, text_b: str) -> int:
-        """计算余弦相似度并映射到 1-10 分"""
+        """计算余弦相似度并映射到 1-10 分。
+
+        Args:
+            text_a: 待比较文本 A。
+            text_b: 待比较文本 B。
+
+        Returns:
+            1-10 整数分（下限保底 1 分）。
+        """
         sim = await self.compute_similarity(text_a, text_b)
         return _similarity_to_10(sim)
 
     async def avg_similarity_to_score(self, reference: str, candidates: list[str]) -> tuple[float, int]:
-        """计算 reference 与所有 candidates 的平均相似度，映射到 1-10 分"""
+        """计算 reference 与所有 candidates 的平均相似度，映射到 1-10 分。
+
+        Args:
+            reference: 基准文本。
+            candidates: 候选文本列表。
+
+        Returns:
+            (平均相似度, 1-10 整数分)；candidates 为空时平均相似度为 0.0。
+        """
         pairs = [(reference, c) for c in candidates]
         similarities = await self.compute_similarity_batch(pairs)
         avg_sim = sum(similarities) / len(similarities) if similarities else 0.0

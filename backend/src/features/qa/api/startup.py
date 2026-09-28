@@ -24,7 +24,11 @@ logger = get_logger(__name__)
 
 
 def setup_qa_exception_handlers(app: FastAPI) -> None:
-    """注册QA模块的异常处理器"""
+    """注册 QA 模块的异常处理器。
+
+    Args:
+        app: FastAPI 应用实例。
+    """
     register_module_exceptions(app, status_map={
         DatabaseOperationError: 500,
         SessionNotFoundError: 404,

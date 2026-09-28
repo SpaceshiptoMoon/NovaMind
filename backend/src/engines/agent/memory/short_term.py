@@ -176,7 +176,12 @@ class ShortTermMemory(IShortTermMemory):
     async def add_message(
         self, conversation_id: int, message: MemoryMessage
     ) -> None:
-        """添加一条消息到短期记忆（写入数据库）"""
+        """添加一条消息到短期记忆（写入数据库）。
+
+        Args:
+            conversation_id: 会话 ID。
+            message: 统一消息模型实例。
+        """
         await self._msg_repo.create(
             conversation_id=conversation_id,
             role=message.role,
@@ -188,7 +193,14 @@ class ShortTermMemory(IShortTermMemory):
         )
 
     async def get_token_count(self, conversation_id: int) -> int:
-        """获取当前对话的 token 估计值"""
+        """获取当前对话的 token 估计值。
+
+        Args:
+            conversation_id: 会话 ID。
+
+        Returns:
+            消息与工具调用记录折算的 token 总数。
+        """
         db_messages, _ = await self._msg_repo.list_by_conversation(
             conversation_id, limit=200
         )

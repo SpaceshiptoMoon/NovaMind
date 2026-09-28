@@ -18,7 +18,14 @@ from novamind.features.evaluation.exceptions import (
 
 
 def setup_evaluation_exception_handlers(app: FastAPI) -> None:
-    """注册测评模块异常处理器"""
+    """注册测评模块异常处理器。
+
+    Args:
+        app: FastAPI 应用实例。
+
+    Returns:
+        无；按异常类到 HTTP 状态码的映射完成注册。
+    """
     register_module_exceptions(app, status_map={
         EvaluationTestSetNotFoundError: 404,
         EvaluationTaskNotFoundError: 404,

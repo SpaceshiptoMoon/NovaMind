@@ -57,7 +57,14 @@ class SpaceConfig(BaseModel):
     @field_validator('storage', 'ui', 'defaults', 'limits')
     @classmethod
     def validate_json_field_size(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        """验证 JSON 字段序列化后不超过 10KB，防止存储超大配置"""
+        """验证 JSON 字段序列化后不超过 10KB，防止存储超大配置。
+
+        Args:
+            v: 待校验的字段值，None 直接放行。
+
+        Returns:
+            原值透传；超限抛 ValidationError。
+        """
         if v is not None:
             serialized = json.dumps(v, ensure_ascii=False)
             if len(serialized) > 10240:
@@ -94,14 +101,28 @@ class SpaceResponse(BaseModel):
 
     @field_serializer('visibility')
     def serialize_visibility(self, value) -> int:
-        """序列化可见性枚举为整数"""
+        """序列化可见性枚举为整数。
+
+        Args:
+            value: 待序列化的可见性值，可能是枚举、整数或 None。
+
+        Returns:
+            枚举取其 value；整数原样返回；None 兜底 0（私有）。
+        """
         if hasattr(value, 'value'):
             return value.value
         return int(value) if value is not None else 0
 
     @field_serializer('status')
     def serialize_status(self, value) -> int:
-        """序列化状态枚举为整数"""
+        """序列化状态枚举为整数。
+
+        Args:
+            value: 待序列化的状态值，可能是枚举、整数或 None。
+
+        Returns:
+            枚举取其 value；整数原样返回；None 兜底 1（活跃）。
+        """
         if hasattr(value, 'value'):
             return value.value
         return int(value) if value is not None else 1
@@ -145,7 +166,14 @@ class SpaceConfigUpdate(BaseModel):
     @field_validator('defaults', 'limits')
     @classmethod
     def validate_json_field_size(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        """验证 JSON 字段序列化后不超过 10KB"""
+        """验证 JSON 字段序列化后不超过 10KB。
+
+        Args:
+            v: 待校验的字段值，None 直接放行。
+
+        Returns:
+            原值透传；超限抛 ValidationError。
+        """
         if v is not None:
             serialized = json.dumps(v, ensure_ascii=False)
             if len(serialized) > 10240:

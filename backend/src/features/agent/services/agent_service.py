@@ -62,7 +62,15 @@ class AgentService:
     # ==================== Agent CRUD ====================
 
     async def create_agent(self, user_id: int, data: AgentCreate) -> AgentDetailResponse:
-        """创建 Agent 并提交事务，返回详情响应。"""
+        """创建 Agent 并提交事务，返回详情响应。
+
+        Args:
+            user_id: 属主用户 ID。
+            data: 创建参数（名称/系统提示词/模型/采样参数/启用工具与 MCP 服务器等）。
+
+        Returns:
+            新建 Agent 的详情响应模型。
+        """
         agent = await self.agent_repo.create(
             user_id=user_id,
             name=data.name,
@@ -82,18 +90,51 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def get_agent(self, user_id: int, agent_id: int) -> AgentDetailResponse:
-        """按归属校验取 Agent 详情响应，未命中或非本人抛 AgentNotFoundError。"""
+        """按归属校验取 Agent 详情响应，未命中或非本人抛 AgentNotFoundError。
+
+        Args:
+            user_id: 当前用户 ID，系统级 Agent 对所有用户可见。
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            Agent 详情响应模型。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+        """
         agent = await self.get_agent_or_fail(user_id, agent_id)
         return AgentDetailResponse.model_validate(agent)
 
     async def get_agent_definition(
         self, user_id: int, agent_id: int
     ) -> "AgentDefinition":
-        """获取 Agent ORM 对象（供 chat_service 等需要原始模型的场景使用）"""
+        """获取 Agent ORM 对象（供 chat_service 等需要原始模型的场景使用）。
+
+        Args:
+            user_id: 当前用户 ID，系统级 Agent 对所有用户可见。
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            AgentDefinition ORM 实体。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+        """
         return await self.get_agent_or_fail(user_id, agent_id)
 
     async def get_agent_or_fail(self, user_id: int, agent_id: int) -> "AgentDefinition":
-        """取 Agent ORM 实体并做归属校验（系统级对所有用户可见），失败抛 AgentNotFoundError。"""
+        """取 Agent ORM 实体并做归属校验（系统级对所有用户可见），失败抛 AgentNotFoundError。
+
+        Args:
+            user_id: 当前用户 ID，系统级 Agent 对所有用户可见。
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            通过归属校验的 AgentDefinition ORM 实体。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+        """
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent or (agent.user_id is not None and agent.user_id != user_id):
             raise AgentNotFoundError(agent_id)
@@ -102,7 +143,14 @@ class AgentService:
     # ==================== 跨 feature 公共面（skill 消费，原 HostAgentRegistryPort 语义） ====================
 
     async def get_agent_summary(self, agent_id: int) -> AgentSummary | None:
-        """按 id 取 Agent 摘要（不含归属校验，供技能广场安装/卸载侧查询）。"""
+        """按 id 取 Agent 摘要（不含归属校验，供技能广场安装/卸载侧查询）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            Agent 摘要（id/user_id/enabled_tools），Agent 不存在时返回 None。
+        """
         agent = await self.agent_repo.get_by_id(agent_id)
         if agent is None:
             return None
@@ -113,13 +161,30 @@ class AgentService:
         )
 
     async def update_agent_enabled_tools(self, agent_id: int, enabled_tools: list) -> None:
-        """更新 Agent 启用工具集（供技能广场安装/卸载后写回）。"""
+        """更新 Agent 启用工具集（供技能广场安装/卸载后写回）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+            enabled_tools: 新的启用工具名列表，整体替换原集合。
+
+        Returns:
+            无；仅 flush 不 commit，事务由调用方收口。
+        """
         await self.agent_repo.update(agent_id, enabled_tools=enabled_tools)
 
     async def list_agents(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> AgentListResponse:
-        """分页列出系统级与用户自有的 Agent，返回含总数的列表响应。"""
+        """分页列出系统级与用户自有的 Agent，返回含总数的列表响应。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 页大小，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            含 items/total/limit/offset 的列表响应，created_at 倒序。
+        """
         agents, total = await self.agent_repo.list_by_user(user_id, limit, offset)
         return AgentListResponse(
             items=[AgentResponse.model_validate(a) for a in agents],
@@ -131,7 +196,20 @@ class AgentService:
     async def update_agent(
         self, user_id: int, agent_id: int, data: AgentUpdate, is_admin: bool = False
     ) -> AgentDetailResponse:
-        """更新 Agent（系统级仅管理员、普通仅属主），空更新直接返回当前详情。"""
+        """更新 Agent（系统级仅管理员、普通仅属主），空更新直接返回当前详情。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: Agent 主键 ID。
+            data: 更新字段集合，仅显式传入的字段生效。
+            is_admin: 是否管理员；系统级 Agent（user_id 为 NULL）须为 True，默认 False。
+
+        Returns:
+            更新后的详情响应；data 无变更字段时原样返回当前详情。
+
+        Raises:
+            AgentNotFoundError: 不存在、系统级 Agent 非管理员或私有 Agent 非属主。
+        """
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
             raise AgentNotFoundError(agent_id)
@@ -150,7 +228,19 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def delete_agent(self, user_id: int, agent_id: int, is_admin: bool = False) -> None:
-        """删除 Agent 并级联清理工具调用、消息、会话与长期记忆，最后提交事务。"""
+        """删除 Agent 并级联清理工具调用、消息、会话与长期记忆，最后提交事务。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: Agent 主键 ID。
+            is_admin: 是否管理员；系统级 Agent（user_id 为 NULL）须为 True，默认 False。
+
+        Returns:
+            无。
+
+        Raises:
+            AgentNotFoundError: 不存在、系统级 Agent 非管理员或私有 Agent 非属主。
+        """
         from novamind.features.agent.models.agent import AgentMessage, AgentSession
         from novamind.features.agent.models.memory import AgentMemory
         from novamind.features.agent.models.tool_call import AgentToolCall
@@ -191,7 +281,19 @@ class AgentService:
     async def get_or_create_session(
         self, user_id: int, agent_id: int, session_id: str | None = None
     ) -> AgentSession:
-        """带 session_id 时校验归属、所属 Agent 与 active 状态（任一不符抛 SessionNotFoundError），缺省新建会话。"""
+        """带 session_id 时校验归属、所属 Agent 与 active 状态（任一不符抛 SessionNotFoundError），缺省新建会话。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: Agent 主键 ID。
+            session_id: 业务会话 ID；None 时新建会话并提交事务。
+
+        Returns:
+            校验通过的既有会话或新建的会话 ORM 实体。
+
+        Raises:
+            SessionNotFoundError: 会话不存在、非本人、属于其他 Agent 或已非 active。
+        """
         if session_id:
             conv = await self.session_repo.get_by_session_id(session_id)
             if not conv:
@@ -215,7 +317,17 @@ class AgentService:
         limit: int = 20,
         offset: int = 0,
     ) -> AgentSessionListResponse:
-        """分页列出用户会话（仅 active），可按 Agent 过滤，返回含总数的列表响应。"""
+        """分页列出用户会话（仅 active），可按 Agent 过滤，返回含总数的列表响应。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: 按 Agent 过滤，None 列出全部 Agent 的会话。
+            limit: 页大小，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            含 items/total 的列表响应，created_at 倒序。
+        """
         convs, total = await self.session_repo.list_by_user(
             user_id, agent_id, limit, offset
         )
@@ -227,14 +339,36 @@ class AgentService:
         )
 
     async def get_session(self, user_id: int, session_id: str) -> AgentSession:
-        """按 session_id 取会话并校验归属与 active 状态，失败抛 SessionNotFoundError。"""
+        """按 session_id 取会话并校验归属与 active 状态，失败抛 SessionNotFoundError。
+
+        Args:
+            user_id: 当前用户 ID。
+            session_id: 业务会话 ID。
+
+        Returns:
+            校验通过的会话 ORM 实体。
+
+        Raises:
+            SessionNotFoundError: 会话不存在、非本人或已非 active。
+        """
         conv = await self.session_repo.get_by_session_id(session_id)
         if not conv or conv.user_id != user_id or conv.status != "active":
             raise SessionNotFoundError(session_id)
         return conv
 
     async def delete_session(self, user_id: int, session_id: str) -> None:
-        """软删会话（status=deleted），未命中抛 SessionNotFoundError。"""
+        """软删会话（status=deleted），未命中抛 SessionNotFoundError。
+
+        Args:
+            user_id: 当前用户 ID，防止越权软删他人会话。
+            session_id: 业务会话 ID。
+
+        Returns:
+            无。
+
+        Raises:
+            SessionNotFoundError: 会话不存在或不属于该用户。
+        """
         deleted = await self.session_repo.delete(session_id, user_id)
         if not deleted:
             raise SessionNotFoundError(session_id)
@@ -254,7 +388,22 @@ class AgentService:
         reasoning: str | None = None,
         iteration: int | None = None,
     ) -> AgentMessage:
-        """落库一条对话消息（flush 不 commit，随对话事务统一提交），返回消息实体。"""
+        """落库一条对话消息（flush 不 commit，随对话事务统一提交），返回消息实体。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            role: 消息角色（user/assistant/tool/notice/plan 等）。
+            content: 消息正文，工具调用轮等无正文场景可为 None。
+            tool_call_id: 工具调用 ID，仅 role=tool 消息携带。
+            tool_name: 工具名，仅工具消息携带。
+            token_count: 该消息 token 用量。
+            extra: 附加结构化数据（附件引用/工具调用明细/错误标记等）。
+            reasoning: 该轮思考过程文本（assistant 决策消息用）。
+            iteration: 所属 ReAct 迭代轮号。
+
+        Returns:
+            已 flush 的消息 ORM 实体。
+        """
         msg = await self.msg_repo.create(
             conversation_id=conversation_id,
             role=role,
@@ -272,7 +421,20 @@ class AgentService:
     async def get_messages(
         self, user_id: int, session_id: str, limit: int = 50, offset: int = 0
     ) -> MessageListResponse:
-        """分页取会话消息，附全量工具调用记录，并把压缩摘要按时间窗合并为 compaction 标记行。"""
+        """分页取会话消息，附全量工具调用记录，并把压缩摘要按时间窗合并为 compaction 标记行。
+
+        Args:
+            user_id: 当前用户 ID，用于会话归属校验。
+            session_id: 业务会话 ID。
+            limit: 页大小，默认 50。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            items 为当前页消息（created_at 升序，compaction 标记按时间合并），tool_calls 为会话全量工具调用。
+
+        Raises:
+            SessionNotFoundError: 会话不存在、非本人或已非 active。
+        """
         conv = await self.get_session(user_id, session_id)
         messages, total = await self.msg_repo.list_by_conversation(
             conv.id, limit, offset
@@ -335,7 +497,15 @@ class AgentService:
     async def update_session_stats(
         self, conversation_id: int, tokens: int
     ) -> None:
-        """累加会话消息数与 token 用量，会话不存在时静默跳过。"""
+        """累加会话消息数与 token 用量，会话不存在时静默跳过。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            tokens: 本次新增的 token 数。
+
+        Returns:
+            无。
+        """
         conv = await self.session_repo.get_by_id(conversation_id)
         if not conv:
             return
@@ -355,7 +525,21 @@ class AgentService:
         limit: int = 20,
         offset: int = 0,
     ) -> MemoryListResponse:
-        """列出 Agent 的长期记忆"""
+        """列出 Agent 的长期记忆（校验 Agent 归属后按 updated_at 倒序分页）。
+
+        Args:
+            user_id: 当前用户 ID，用于 Agent 归属校验。
+            agent_id: Agent 主键 ID。
+            category: 按记忆类别过滤，None 不过滤。
+            limit: 页大小，默认 20。
+            offset: 偏移量，默认 0。
+
+        Returns:
+            含 items/total 的记忆列表响应。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+        """
         await self.get_agent_or_fail(user_id, agent_id)
         memories, total = await self.memory_repo.list_by_agent(
             agent_id, user_id, category=category, limit=limit, offset=offset,
@@ -370,7 +554,20 @@ class AgentService:
     async def delete_memory(
         self, user_id: int, agent_id: int, memory_id: int
     ) -> None:
-        """删除指定记忆（MySQL + ES）"""
+        """删除指定记忆（MySQL + ES）。
+
+        Args:
+            user_id: 当前用户 ID，用于归属校验。
+            agent_id: Agent 主键 ID。
+            memory_id: 记忆主键 ID。
+
+        Returns:
+            无；ES 删除失败仅告警，仍删除 MySQL 记录。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+            MemoryNotFoundError: 记忆不存在、不属于该 Agent 或非本人所有。
+        """
         await self.get_agent_or_fail(user_id, agent_id)
         memory = await self.memory_repo.get_by_id(memory_id)
         if not memory or memory.agent_id != agent_id or memory.user_id != user_id:
@@ -394,7 +591,18 @@ class AgentService:
     async def get_memory_stats(
         self, user_id: int, agent_id: int
     ) -> MemoryStatsResponse:
-        """汇总该 Agent 的记忆条数/分类分布统计。"""
+        """汇总该 Agent 的记忆条数/分类分布统计。
+
+        Args:
+            user_id: 当前用户 ID，用于 Agent 归属校验。
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            总数、按类别计数与最近创建的 5 条记忆。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
+        """
         await self.get_agent_or_fail(user_id, agent_id)
         memories, total = await self.memory_repo.list_by_agent(
             agent_id, user_id, limit=1000,

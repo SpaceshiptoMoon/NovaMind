@@ -19,7 +19,11 @@ from novamind.features.skill.exceptions import (
 
 
 def setup_skill_exception_handlers(app: FastAPI) -> None:
-    """注册技能广场异常处理器"""
+    """注册技能广场异常处理器。
+
+    Args:
+        app: FastAPI 应用实例。
+    """
     register_module_exceptions(app, status_map={
         SkillNotFoundError: 404,
         SkillAlreadyExistsError: 409,

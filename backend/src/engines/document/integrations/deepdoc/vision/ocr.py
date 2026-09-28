@@ -53,7 +53,15 @@ loaded_models = {}
 
 
 def transform(data, ops=None):
-    """transform"""
+    """依次应用预处理算子链变换数据。
+
+    Args:
+        data: 待变换的预处理 dict（image 等键）。
+        ops: 算子列表；None 视为空链。
+
+    Returns:
+        依次过算子后的数据；任一算子产出 None 即中断返回 None。
+    """
     if ops is None:
         ops = []
     for op in ops:
@@ -292,7 +300,14 @@ class TextDetector:
         self.preprocess_op = create_operators(pre_process_list)
 
     def order_points_clockwise(self, pts):
-        """四边形角点重排为左上、右上、右下、左下。"""
+        """四边形角点重排为左上、右上、右下、左下。
+
+        Args:
+            pts: 4×2 角点坐标数组。
+
+        Returns:
+            重排后的 float32 角点数组。
+        """
         rect = np.zeros((4, 2), dtype="float32")
         s = pts.sum(axis=1)
         rect[0] = pts[np.argmin(s)]
@@ -304,14 +319,31 @@ class TextDetector:
         return rect
 
     def clip_det_res(self, points, img_height, img_width):
-        """把框角点钳制回原图像边界内。"""
+        """把框角点钳制回原图像边界内。
+
+        Args:
+            points: 角点坐标数组（就地修改）。
+            img_height: 原图高度（像素）。
+            img_width: 原图宽度（像素）。
+
+        Returns:
+            钳制后的整型角点数组（即入参对象）。
+        """
         for pno in range(points.shape[0]):
             points[pno, 0] = int(min(max(points[pno, 0], 0), img_width - 1))
             points[pno, 1] = int(min(max(points[pno, 1], 0), img_height - 1))
         return points
 
     def filter_tag_det_res(self, dt_boxes, image_shape):
-        """检测框清理：角点排序、边界钳制，丢弃宽或高不超过 3 像素的退化框。"""
+        """检测框清理：角点排序、边界钳制，丢弃宽或高不超过 3 像素的退化框。
+
+        Args:
+            dt_boxes: 检测框数组（list 或 ndarray 均可）。
+            image_shape: 图像形状 (高, 宽, ...)，取前两维。
+
+        Returns:
+            清理后的框数组。
+        """
         img_height, img_width = image_shape[0:2]
         dt_boxes_new = []
         for box in dt_boxes:
@@ -542,7 +574,16 @@ class OCR:
         return zip(self.sorted_boxes(dt_boxes), [("", 0) for _ in range(len(dt_boxes))])
 
     def recognize(self, ori_im, box, device_id: int | None = None):
-        """识别单个框内文本，置信度低于 drop_score 时返回空串。"""
+        """识别单个框内文本，置信度低于 drop_score 时返回空串。
+
+        Args:
+            ori_im: 原始整页图（BGR ndarray）。
+            box: 四边形框角点（原图像素坐标）。
+            device_id: GPU 设备号；None 用 0。
+
+        Returns:
+            识别文本；低置信度为空串。
+        """
         self.ensure_loaded()
         if device_id is None:
             device_id = 0
@@ -556,7 +597,15 @@ class OCR:
         return text
 
     def recognize_batch(self, img_list, device_id: int | None = None):
-        """批量识别文本行裁剪图，结果按输入顺序返回，置信度低于阈值者为空串。"""
+        """批量识别文本行裁剪图，结果按输入顺序返回，置信度低于阈值者为空串。
+
+        Args:
+            img_list: 文本行裁剪图列表。
+            device_id: GPU 设备号；None 用 0。
+
+        Returns:
+            与输入等长的文本列表。
+        """
         self.ensure_loaded()
         if device_id is None:
             device_id = 0

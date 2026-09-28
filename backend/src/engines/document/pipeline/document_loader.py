@@ -40,7 +40,15 @@ class DocumentRegistry:
 
     @classmethod
     def register_reader(cls, extension: str, reader_class: type[BaseReader] = None):
-        """注册扩展名到读取器类的映射；支持装饰器与直接调用两种用法。"""
+        """注册扩展名到读取器类的映射；支持装饰器与直接调用两种用法。
+
+        Args:
+            extension: 文件扩展名（不带点）。
+            reader_class: 读取器类；None 时返回装饰器。
+
+        Returns:
+            直接调用返回 reader_class 本身；装饰器用法返回 decorator 函数。
+        """
         def decorator(actual_reader_class: type[BaseReader]):
             cls._readers_registry[extension] = actual_reader_class
             return actual_reader_class
@@ -55,13 +63,28 @@ class DocumentRegistry:
 
     @classmethod
     def unregister_reader(cls, extension: str):
-        """注销文档读取器"""
+        """注销文档读取器。
+
+        Args:
+            extension: 文件扩展名。
+
+        Returns:
+            无返回；未注册的扩展名静默无操作。
+        """
         if extension in cls._readers_registry:
             del cls._readers_registry[extension]
 
     @classmethod
     def register_splitter(cls, name: str, splitter_class: type[BaseSplitter] = None):
-        """注册策略名到切分器类的映射；支持装饰器与直接调用两种用法。"""
+        """注册策略名到切分器类的映射；支持装饰器与直接调用两种用法。
+
+        Args:
+            name: 切分策略名。
+            splitter_class: 切分器类；None 时返回装饰器。
+
+        Returns:
+            直接调用返回 splitter_class 本身；装饰器用法返回 decorator 函数。
+        """
         def decorator(actual_splitter_class: type[BaseSplitter]):
             cls._splitters_registry[name] = actual_splitter_class
             return actual_splitter_class
@@ -76,18 +99,39 @@ class DocumentRegistry:
 
     @classmethod
     def unregister_splitter(cls, name: str):
-        """注销文档切分器"""
+        """注销文档切分器。
+
+        Args:
+            name: 切分策略名。
+
+        Returns:
+            无返回；未注册的策略名静默无操作。
+        """
         if name in cls._splitters_registry:
             del cls._splitters_registry[name]
 
     @classmethod
     def get_reader_class(cls, extension: str) -> type[BaseReader] | None:
-        """获取指定扩展名的读取器类"""
+        """获取指定扩展名的读取器类。
+
+        Args:
+            extension: 文件扩展名。
+
+        Returns:
+            读取器类；未注册为 None。
+        """
         return cls._readers_registry.get(extension)
 
     @classmethod
     def get_splitter_class(cls, name: str) -> type[BaseSplitter] | None:
-        """获取指定名称的切分器类"""
+        """获取指定名称的切分器类。
+
+        Args:
+            name: 切分策略名。
+
+        Returns:
+            切分器类；未注册为 None。
+        """
         return cls._splitters_registry.get(name)
 
     @classmethod
@@ -171,7 +215,18 @@ class DocumentLoader:
         return split_documents
 
     async def load_multiple_files(self, file_paths: list[str | Path]) -> list[dict[str, str]]:
-        """顺序加载并切分多个文件，结果合并为一个列表。"""
+        """顺序加载并切分多个文件，结果合并为一个列表。
+
+        Args:
+            file_paths: 文件路径列表。
+
+        Returns:
+            全部文件的切分块合并列表（顺序与输入一致）。
+
+        Raises:
+            FileNotFoundError: 任一文件不存在。
+            ValueError: 任一扩展名未注册读取器。
+        """
         all_documents = []
         for file_path in file_paths:
             documents = await self.load_and_split(file_path)
@@ -397,7 +452,19 @@ class DocumentProcessor:
         parsing_config: dict[str, object] | None = None,
         splitting_config: dict[str, object] | None = None,
     ) -> tuple[str, list[str]]:
-        """解析文档并切分，返回 (full_text, chunks) 二元组；完整元数据请用 parse_document_result。"""
+        """解析文档并切分，返回 (full_text, chunks) 二元组；完整元数据请用 parse_document_result。
+
+        Args:
+            file_path: 文件路径。
+            parsing_config: 解析配置（strategy / deepdoc_parser_id / ocr_enabled 等）。
+            splitting_config: 切分配置（strategy / chunk_size / chunk_overlap 等）。
+
+        Returns:
+            (全文文本, 分块文本列表) 二元组；不含坐标等元数据。
+
+        Raises:
+            ValueError: 文件类型不支持或切分策略名未注册。
+        """
         result = await self.parse_document_result(
             file_path,
             parsing_config=parsing_config,
@@ -411,7 +478,20 @@ class DocumentProcessor:
         parsing_config: dict[str, object] | None = None,
         splitting_config: dict[str, object] | None = None,
     ) -> DeepDocParseResult:
-        """主解析入口：deepdoc 策略走 DeepDoc 引擎加哨兵重切，默认策略走 reader+splitter；返回全文、分块与元数据。"""
+        """主解析入口：deepdoc 策略走 DeepDoc 引擎加哨兵重切，默认走 reader+splitter。
+
+        Args:
+            file_path: 文件路径。
+            parsing_config: 解析配置（strategy / parser_id / pdf_mode / ocr_enabled 等）。
+            splitting_config: 切分配置（strategy/chunk_size 等，无 embedding 时回退）。
+
+        Returns:
+            DeepDocParseResult：full_text 为无坐标标记全文，chunks 按配置重切，
+            metadata 含 split_strategy / chunk_structure 等。
+
+        Raises:
+            ValueError: 文件类型不支持或切分策略名未注册。
+        """
         parsing_config = dict(parsing_config or {})
         splitting_config = dict(splitting_config or {})
         parsing_strategy = str(parsing_config.get("strategy", "default"))
