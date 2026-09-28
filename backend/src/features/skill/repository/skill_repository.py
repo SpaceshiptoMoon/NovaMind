@@ -708,6 +708,20 @@ class SkillInstallationRepository:
         )
         return result.scalars().all()
 
+    async def list_by_skill(self, skill_id: int) -> list[SkillInstallation]:
+        """列出某技能的全部安装记录（拒绝技能时回收已安装 agent 用）。
+
+        Args:
+            skill_id: 技能 ID。
+
+        Returns:
+            安装记录列表。
+        """
+        result = await self.session.execute(
+            select(SkillInstallation).where(SkillInstallation.skill_id == skill_id)
+        )
+        return result.scalars().all()
+
     async def delete_installation(self, skill_id: int, agent_id: int) -> bool:
         """删除 Agent 的技能安装记录。
 

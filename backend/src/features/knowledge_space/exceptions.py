@@ -124,6 +124,17 @@ class CannotRemoveLastAdminError(KnowledgeSpaceError):
         )
 
 
+class SpaceOwnerImmutableError(KnowledgeSpaceError):
+    """空间所有者不可被降级、移除或自行离开"""
+    http_status_code: ClassVar[int] = 403
+
+    def __init__(self):
+        super().__init__(
+            message="空间所有者不可被降级、移除或离开空间（请走空间删除流程）",
+            code="SPACE_OWNER_IMMUTABLE",
+        )
+
+
 class CannotModifySelfRoleError(KnowledgeSpaceError):
     """不能修改自己的角色"""
 

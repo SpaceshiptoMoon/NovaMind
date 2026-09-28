@@ -1,6 +1,6 @@
 """用户模块请求/响应 Pydantic 模型（含密码强度等校验器）。"""
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from novamind.features.user.schemas.validators import (
     validate_password_not_username,
@@ -120,7 +120,7 @@ class UserUpdate(BaseModel):
     - email: 用户邮箱地址，必须符合邮箱格式，用于找回密码等操作
     - phone: 用户手机号码，可选字段，必须符合手机号格式
     - password: 用户登录密码，可选字段，长度8-30个字符，至少包含字母、数字和特殊字符
-    - status: 用户状态，0为禁用，1为启用，默认为None表示不更新
+    - status: 用户状态，0为禁用，1为启用，默认为None表示不更新；封禁/删除不可经更新接口设置
     """
     username: str | None = Field(
         None,
@@ -154,7 +154,7 @@ class UserUpdate(BaseModel):
         None,
         description="角色编码（仅限超级管理员通过专用接口修改，普通更新不传此字段；由 Task 8 专用端点处理）",
     )
-    status: int | None = Field(None, description="用户状态，0为禁用，1为启用，2为封禁，3为已删除", ge=0, le=3)
+    status: Literal[0, 1] | None = Field(None, description="用户状态，0为禁用，1为启用；封禁/删除不可经本接口设置（删除走专用端点）")
 
     @field_validator('username')
     @classmethod

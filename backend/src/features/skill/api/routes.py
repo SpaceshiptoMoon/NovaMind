@@ -363,10 +363,12 @@ async def reject_skill(
 async def get_skill(
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    """查技能详情；私有技能仅所有者可见。"""
-    skill = await service.get_skill(skill_id, user_id)
+    """查技能详情；私有技能仅所有者可见，被拒技能仅作者与管理员可见。"""
+    is_admin = current_user.get("role_code") == "admin"
+    skill = await service.get_skill(skill_id, user_id, is_admin=is_admin)
     if not skill:
         raise SkillNotFoundError(skill_id)
     # 填充 author_name

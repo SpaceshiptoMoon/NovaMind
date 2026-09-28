@@ -13,6 +13,7 @@ from novamind.features.knowledge_space.exceptions import (
     MemberAlreadyExistsError,
     MemberNotFoundError,
     SpaceAccessDeniedError,
+    SpaceOwnerImmutableError,
 )
 from novamind.features.knowledge_space.models.space_member import (
     MemberStatus,
@@ -296,13 +297,19 @@ class MemberService:
         if not target_member:
             raise MemberNotFoundError(space_id, user_id)
 
-        # 3. 检查是否是最后一个管理员（使用行锁防止并发竞态）
+        # 3. owner 保护：空间所有者不可被降级（否则另一 admin 可先降 owner
+        #    再以「最后一名 admin」身份离开触发整空间级联销毁）
+        space = await self.space_repo.get_by_id(space_id)
+        if user_id == space.owner_id and new_role != SpaceRole.ADMIN:
+            raise SpaceOwnerImmutableError()
+
+        # 4. 检查是否是最后一个管理员（使用行锁防止并发竞态）
         if target_member.role == SpaceRole.ADMIN and new_role != SpaceRole.ADMIN:
             admins = await self.member_repo.get_admins_for_update(space_id)
             if len(admins) <= 1:
                 raise CannotRemoveLastAdminError()
 
-        # 4. 更新角色
+        # 5. 更新角色
         target_member.role = new_role
         await self.session.flush()
         await self.session.refresh(target_member)
@@ -410,13 +417,18 @@ class MemberService:
         if not target_member:
             raise MemberNotFoundError(space_id, user_id)
 
-        # 3. 检查是否是最后一个管理员（使用行锁防止并发竞态）
+        # 3. owner 保护：空间所有者不可被移除（同 update_member_role 的销毁链防线）
+        space = await self.space_repo.get_by_id(space_id)
+        if user_id == space.owner_id:
+            raise SpaceOwnerImmutableError()
+
+        # 4. 检查是否是最后一个管理员（使用行锁防止并发竞态）
         if target_member.role == SpaceRole.ADMIN:
             admins = await self.member_repo.get_admins_for_update(space_id)
             if len(admins) <= 1:
                 raise CannotRemoveLastAdminError()
 
-        # 4. 移除成员
+        # 5. 移除成员
         result = await self.member_repo.remove_member(space_id, user_id)
         await self.session.commit()
 
@@ -506,6 +518,7 @@ class MemberService:
         self,
         space_id: int,
         user_id: int,
+        confirm: bool = False,
     ) -> bool:
         """
         用户离开空间
@@ -513,22 +526,36 @@ class MemberService:
         Args:
             space_id: 空间 ID
             user_id: 用户 ID
+            confirm: 级联删除确认；最后一名管理员离开会级联软删整个空间及全部
+                资源（KB/文档/ES 索引/MinIO），必须显式传 True 才执行
 
         Returns:
             是否成功
 
         Raises:
             MemberNotFoundError: 不是空间成员
-            CannotRemoveLastAdminError: 管理员不能离开
+            SpaceOwnerImmutableError: 空间所有者不能离开（请走空间删除流程）
+            InvalidParameterError: 最后一名管理员离开但未显式确认级联删除
         """
         # 检查是否是管理员（使用行锁防止竞态）
         member = await self.member_repo.get_by_space_and_user_for_update(space_id, user_id)
         if not member:
             raise MemberNotFoundError(space_id, user_id)
 
+        # owner 身份闸：owner 离开等价于交出空间控制权乃至触发级联销毁，
+        # 必须走显式的空间删除端点（删除有独立授权与审计路径）
+        space = await self.space_repo.get_by_id(space_id)
+        if user_id == space.owner_id:
+            raise SpaceOwnerImmutableError()
+
         if member.role == SpaceRole.ADMIN:
             admins = await self.member_repo.get_admins_for_update(space_id)
             if len(admins) <= 1:
+                if not confirm:
+                    raise InvalidParameterError(
+                        "最后一名管理员离开将级联删除整个空间及全部资源，需显式确认",
+                        field="confirm",
+                    )
                 # 最后管理员离开，级联删除空间及关联资源
                 # 1. 获取关联知识库（软删除前查询，确保查到未删除的 KB）
                 kbs = await self.kb_repo.get_by_space(space_id)

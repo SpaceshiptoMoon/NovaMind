@@ -364,7 +364,7 @@ async def update_user(
             if field in update_data:
                 raise PermissionDeniedError(message=f"无权修改 {field} 字段，需要管理员权限")
 
-    user = await user_service.update_user(user_id, user_update)
+    user = await user_service.update_user(user_id, user_update, operator_id=current_user["id"])
 
     return user
 

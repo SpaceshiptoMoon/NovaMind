@@ -1007,7 +1007,17 @@ class QAService:
 
         只把「旧摘要 + 自上次边界之后的新消息」喂给 LLM 生成更新摘要，
         不再把全部历史重新压缩——省 LLM 调用，且基于旧摘要融合，信息保留更连贯。
+
+        小增量短路：recent 不超过 keep_recent 条时无新消息可并入摘要，
+        此时绝不推进边界（推进会让这些从未进摘要的消息被 ``id > last_id``
+        永久排除出上下文），直接返回旧摘要 + 全部 recent 原文。
         """
+        if len(recent_msgs) <= keep_recent:
+            return [
+                {"role": "system", "content": f"对话历史摘要: {cached_summary.summary_content}"},
+                *[{"role": m["role"], "content": m["content"]} for m in recent_msgs],
+            ]
+
         llm_client = await self.get_compression_llm_client(user_id)
         compressor = TextCompressor(
             llm_client=llm_client,

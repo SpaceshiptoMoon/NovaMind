@@ -309,7 +309,13 @@ class SkillMarketplaceService:
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
-        if skill.status != SkillStatus.PUBLISHED and skill.skill_source != SkillSource.BUILTIN:
+        # 双条件：已发布 且 审查通过才可安装（BUILTIN 预置技能豁免）。
+        # 仅查 status 时，被管理员拒绝的技能若此前已发布（status 仍为 PUBLISHED）
+        # 会继续可安装，其 allowed_tools 随之为 agent 开启工具提权面
+        if skill.skill_source != SkillSource.BUILTIN and (
+            skill.status != SkillStatus.PUBLISHED
+            or skill.review_status != ReviewStatus.APPROVED
+        ):
             raise SkillNotPublishedError(skill_id)
 
         # 校验 Agent 归属：user_id=None 为系统级预置 Agent，仅管理员可安装
@@ -386,48 +392,69 @@ class SkillMarketplaceService:
         deleted = await self.install_repo.delete_installation(skill_id, agent_id)
         if deleted:
             await self.skill_repo.decrement_install_count(skill_id)
-
-            # 更新 Agent 的 enabled_tools
-            agent = await self._agent_service.get_agent_summary(agent_id)
-            if agent:
-                skill = await self.skill_repo.get_by_id(skill_id)
-                enabled = list(agent.enabled_tools or [])
-                skill_ref = f"skill__{skill_id}_{skill.name}" if skill else f"skill__{skill_id}"
-                enabled = [s for s in enabled if s != skill_ref]
-                # 清理安装时追加的 allowed_tools，仅移除当前技能对应且不属于其他已安装技能的工具
-                if skill and skill.allowed_tools:
-                    other_skills = await self.install_repo.list_by_agent(agent_id)
-                    other_tool_refs = set()
-                    for install in other_skills:
-                        if install.skill_id != skill_id:
-                            skill_def = await self.skill_repo.get_by_id(install.skill_id)
-                            if skill_def and skill_def.allowed_tools:
-                                for tool in skill_def.allowed_tools:
-                                    other_tool_refs.add(tool)
-                    # 仅移除不属于其他已安装技能的工具
-                    enabled = [s for s in enabled if s in other_tool_refs or s not in skill.allowed_tools]
-                await self._agent_service.update_agent_enabled_tools(agent_id, enabled)
+            await self._strip_agent_skill_refs(skill_id, agent_id)
 
         await self.db.commit()
         return deleted
 
+    async def _strip_agent_skill_refs(self, skill_id: int, agent_id: int) -> None:
+        """把某技能从指定 agent 的 enabled_tools 中剥离（不 commit，由调用方收口）。
+
+        安装时写入的 ``skill__{id}_{name}`` 引用与 allowed_tools 追加项在此统一回收；
+        uninstall 与 reject（拒绝即下架，已安装残留必须回收）共用。
+
+        Args:
+            skill_id: 技能 ID。
+            agent_id: 目标 agent 主键 ID。
+        """
+        agent = await self._agent_service.get_agent_summary(agent_id)
+        if not agent:
+            return
+        skill = await self.skill_repo.get_by_id(skill_id)
+        enabled = list(agent.enabled_tools or [])
+        skill_ref = f"skill__{skill_id}_{skill.name}" if skill else f"skill__{skill_id}"
+        enabled = [s for s in enabled if s != skill_ref]
+        # 清理安装时追加的 allowed_tools，仅移除当前技能对应且不属于其他已安装技能的工具
+        if skill and skill.allowed_tools:
+            other_skills = await self.install_repo.list_by_agent(agent_id)
+            other_tool_refs = set()
+            for install in other_skills:
+                if install.skill_id != skill_id:
+                    skill_def = await self.skill_repo.get_by_id(install.skill_id)
+                    if skill_def and skill_def.allowed_tools:
+                        for tool in skill_def.allowed_tools:
+                            other_tool_refs.add(tool)
+            # 仅移除不属于其他已安装技能的工具
+            enabled = [s for s in enabled if s in other_tool_refs or s not in skill.allowed_tools]
+        await self._agent_service.update_agent_enabled_tools(agent_id, enabled)
+
     # ==================== 查询 ====================
 
-    async def get_skill(self, skill_id: int, user_id: int = None) -> SkillDefinition | None:
+    async def get_skill(
+        self, skill_id: int, user_id: int = None, is_admin: bool = False
+    ) -> SkillDefinition | None:
         """查技能详情；私有技能仅所有者可见（他人查询返回 None 不泄露存在性）。
+
+        被拒（REJECTED）技能仅作者与管理员可见——作者需看到拒绝原因
+        （review_result.admin_reason），他人返回 None 防 ID 枚举。
 
         Args:
             skill_id: 技能 ID。
             user_id: 查询者用户 ID；None 时仅可见非私有技能。
+            is_admin: 查询者是否管理员（REJECTED 技能放行）。
 
         Returns:
-            技能记录；不存在或私有且非所有者返回 None。
+            技能记录；不存在、私有且非所有者、或被拒且非作者非管理员返回 None。
         """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             return None
+        is_owner = skill.user_id is not None and skill.user_id == user_id
         # 私有技能仅所有者可查看
         if skill.visibility == SkillVisibility.PRIVATE and user_id is not None and skill.user_id != user_id:
+            return None
+        # 被拒技能仅作者与 admin 可见
+        if skill.review_status == ReviewStatus.REJECTED and not (is_owner or is_admin):
             return None
         return skill
 
@@ -773,6 +800,10 @@ class SkillMarketplaceService:
         update_kwargs = {
             "review_status": ReviewStatus.REJECTED,
             "reviewed_at": now_china(),
+            # 回收可见性（照 update_skill_version/unpublish 先例：未过审内容不得公开），
+            # 否则被拒技能仍可经 get/download/install 三个入口触达
+            "status": SkillStatus.DRAFT,
+            "visibility": SkillVisibility.PRIVATE,
         }
         if reason:
             result = dict(skill.review_result) if skill.review_result else {}
@@ -780,7 +811,16 @@ class SkillMarketplaceService:
             update_kwargs["review_result"] = result
         updated = await self.skill_repo.update(skill_id, **update_kwargs)
         await self.db.commit()
+
+        # 拒绝即下架：剥离全部已安装 agent 的 skill 引用与 allowed_tools（工具提权残留回收）
         if updated:
+            try:
+                for inst in await self.install_repo.list_by_skill(skill_id):
+                    await self._strip_agent_skill_refs(skill_id, inst.agent_id)
+                await self.db.commit()
+            except Exception as e:
+                logger.warning("拒绝技能后回收已安装 agent 失败", skill_id=skill_id, error=str(e))
+
             await self._notify_review_result(updated, ReviewStatus.REJECTED, reason)
         return updated
 
@@ -807,6 +847,13 @@ class SkillMarketplaceService:
         is_owner = skill.user_id is not None and skill.user_id == user_id
         is_accessible = skill.visibility != SkillVisibility.PRIVATE
         if not (is_owner or is_accessible):
+            raise SkillAccessDeniedError(skill_id)
+        # 非作者下载须「已发布且审查通过」：被拒/待审技能不得再经下载入口分发
+        # （作者路径放行——作者需能下载自己被拒的技能以修改重传）
+        if not is_owner and skill.skill_source != SkillSource.BUILTIN and (
+            skill.status != SkillStatus.PUBLISHED
+            or skill.review_status != ReviewStatus.APPROVED
+        ):
             raise SkillAccessDeniedError(skill_id)
 
         # 获取版本信息

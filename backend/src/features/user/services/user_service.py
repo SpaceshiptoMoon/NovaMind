@@ -462,7 +462,12 @@ class UserService:
         return success
 
     async def update_user(
-        self, user_id: int, user_update: UserUpdate, *, allow_super_admin_reset: bool = False
+        self,
+        user_id: int,
+        user_update: UserUpdate,
+        *,
+        allow_super_admin_reset: bool = False,
+        operator_id: int | None = None,
     ) -> UserModel | None:
         """
         更新用户信息
@@ -471,12 +476,15 @@ class UserService:
             user_update: 用户更新数据（Pydantic 模型）
             allow_super_admin_reset: 允许对超管重置密码（启动期 create_admin_user
                 的 YAML 授权通道；API 路径不得传 True）
+            operator_id: 操作者用户 ID（API 路径传入，供状态变更守卫拦「改自己」；
+            启动期 YAML 重置路径不传）
 
         Returns:
             User: 更新后的用户对象，如果用户不存在则返回None
         Raises:
             UserNotFoundError: 如果用户不存在
             UserAlreadyExistsError: 如果新用户名/邮箱/手机号已被占用
+            PermissionDeniedError: 状态变更命中守卫（对超管操作/操作者改自己/已删除用户）
         """
         update_data = user_update.model_dump(exclude_unset=True)
 
@@ -499,6 +507,24 @@ class UserService:
         if "role_code" in update_data or "is_admin" in update_data:
             from novamind.features.user.exceptions import PermissionDeniedError
             raise PermissionDeniedError(message="角色字段请使用专用角色分配端点修改")
+
+        # 状态变更守卫：schema 已限 status ∈ {0,1}，此处补状态机与权限双闸——
+        # 直写 status 不经 toggle 守卫曾是「半删除」脏状态与锁死超管的旁路
+        if "status" in update_data and update_data["status"] is not None:
+            from novamind.features.user.exceptions import PermissionDeniedError
+
+            target = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+            if not target:
+                raise UserNotFoundError(user_id=user_id)
+            if target.status == UserStatus.DELETED:
+                raise PermissionDeniedError(message="已删除用户不可经更新接口变更状态")
+            await self._ensure_status_change_allowed(target, operator_id)
+
+            # 副作用对齐 toggle_user_status：停用拉黑全部 token，启用清黑名单
+            if update_data["status"] == UserStatus.INACTIVE:
+                await AuthService.blacklist_all_user_tokens(user_id)
+            elif update_data["status"] == UserStatus.ACTIVE:
+                await AuthService.clear_user_blacklist(user_id)
 
         # 密码哈希在 Service 层处理（不在 Repository 层）
         password_changed = False
@@ -540,6 +566,26 @@ class UserService:
         if user is not None and getattr(user, "is_super_admin", False):
             raise PermissionDeniedError(message="最高管理员账户不可执行此操作")
 
+    async def _ensure_status_change_allowed(
+        self, target: UserModel, operator_id: int | None
+    ) -> None:
+        """状态变更公共守卫：最高管理员不可被操作，操作者不得变更自身状态。
+
+        toggle_user_status 与 update_user 的 status 字段共用，防止直写路径
+        绕过 toggle 的既有保护。
+
+        Args:
+            target: 被操作的目标用户实体。
+            operator_id: 操作者用户 ID；None 表示非 API 路径（启动期任务），
+                此时仅做超管保护。
+
+        Raises:
+            PermissionDeniedError: 目标是最高管理员，或操作者变更自身状态。
+        """
+        await self._ensure_not_super_admin(target)
+        if operator_id is not None and target is not None and operator_id == target.id:
+            raise PermissionDeniedError(message="不能修改自己的账户状态")
+
     async def toggle_user_status(self, user_id: int) -> tuple[bool, int]:
         """
         切换用户状态（ACTIVE ↔ INACTIVE）
@@ -550,9 +596,8 @@ class UserService:
             tuple[bool, int]: (操作是否成功, 新状态值)
         """
         try:
-            await self._ensure_not_super_admin(
-                await self.user_repository.get_user_by_id(user_id, use_cache=False)
-            )
+            target = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+            await self._ensure_status_change_allowed(target, operator_id=None)
             success, new_status = await self.user_repository.toggle_user_status(user_id)
             if success:
                 status_text = "停用" if new_status == UserStatus.INACTIVE else "激活"

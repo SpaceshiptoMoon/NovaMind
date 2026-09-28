@@ -391,14 +391,16 @@ async def remove_member(
 async def leave_space(
     request: Request,
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    confirm: bool = False,
     user_id: int = Depends(get_current_user_id),
     member_service: MemberService = Depends(get_member_service),
     audit_service: AuditService = Depends(get_audit_service),
 ):
-    """当前用户自愿退出空间；owner 不可自行退出。"""
+    """当前用户自愿退出空间；owner 不可自行退出；最后一名管理员须 confirm=true 确认级联删除。"""
     result = await member_service.leave_space(
         space_id=space_id,
         user_id=user_id,
+        confirm=confirm,
     )
 
     # 业务成功后记录审计日志（避免业务失败产生伪审计）

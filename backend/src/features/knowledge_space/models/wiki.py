@@ -229,6 +229,20 @@ class WikiIngestRecord(BaseModel):
         self.status = WikiIngestStatus.RUNNING
         self.started_at = now_china()
 
+    def mark_pending(self, error_message: str | None = None) -> None:
+        """锁冲突延后重试：RUNNING 回退 PENDING 并清开始时间（非终态，可被重新拾起）。
+
+        Args:
+            error_message: 可选提示（如「wiki 锁忙碌，60s 后重试」），写入 error_message 列。
+
+        Returns:
+            无返回；不 flush 不 commit。
+        """
+        self.status = WikiIngestStatus.PENDING
+        self.started_at = None
+        if error_message:
+            self.error_message = error_message
+
     def mark_done(self, pages_created: int, pages_updated: int) -> None:
         """标记生成完成并记录新建/更新页面数、清空错误信息。
 

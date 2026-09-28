@@ -189,9 +189,45 @@ async def process_wiki_ingest_task(
                 "truncated": outcome.truncated,
             }
 
-        except TransientBusyError:
-            # 拥塞信号：交给 arq 延后重入队（worker 侧统一处理）
-            raise
+        except TransientBusyError as busy:
+            # 锁忙碌必须任务内自处理：arq 0.28 只认 Retry/RetryJob 重试，普通异常
+            # 一律终判 FAILED 且无重试，履历会永久卡 RUNNING。抛出点在生成开始前
+            # （无已落库页面、无锁需释放），照 ASR busy 范本回退 PENDING + 延后重入队。
+            defer_seconds = getattr(busy, "defer_seconds", 60)
+            logger.info(
+                "wiki 生成：同 KB 锁忙碌，任务延后重入队",
+                kb_id=kb_id, document_id=document_id, defer_seconds=defer_seconds,
+            )
+            try:
+                await session.rollback()  # mark_running 已 commit 的行需重取后再改
+                record = (
+                    await WikiIngestRecordRepository(session).get_by_id(record_id)
+                    if record_id
+                    else None
+                )
+                if record:
+                    record.mark_pending(f"[wiki 锁忙碌，{defer_seconds}s 后重试] {busy.message}")
+                    await session.commit()
+            except Exception as db_err:
+                logger.warning("wiki 锁忙碌回退履历失败", document_id=document_id, error=str(db_err))
+            try:
+                from novamind.shared.mq import get_arq_pool
+
+                pool = await get_arq_pool()
+                new_job = await pool.enqueue_job(
+                    "process_wiki_ingest_task",
+                    kb_id=kb_id, space_id=space_id, document_id=document_id,
+                    _defer_by=defer_seconds,
+                )
+                if new_job and record:
+                    record.job_id = new_job.job_id
+                    await session.commit()
+            except Exception as enq_err:
+                logger.warning(
+                    "wiki 锁忙碌重入队失败（履历留 PENDING，待恢复扫描拾起）",
+                    document_id=document_id, error=str(enq_err),
+                )
+            return {"deferred": True, "defer_seconds": defer_seconds}
         except WikiGenerationError as e:
             await _fail_record(session, record_id, str(e))
             await _notify_wiki_terminal(
@@ -324,14 +360,17 @@ async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:
             space = await space_repo.get_by_id(space_id, use_cache=True)
             embedding_model = space.embedding_model if space else None
         except Exception:
+            space = None
             embedding_model = None
         if not embedding_model:
             logger.info("wiki ES 同步跳过：空间未配置 embedding 模型", kb_id=kb_id)
             return 0
 
         model_config_service = ModelConfigService(session)
+        # 凭证按空间属主解析（与 document_pipeline 的 ctx.space_owner_id 同口径）：
+        # user_id=0 恒查不到配置致同步静默跳过，wiki 页永不进向量检索
         embedding_client = await model_config_service.get_embedding_client_by_model(
-            user_id=0, model=embedding_model,
+            user_id=space.owner_id if space else 0, model=embedding_model,
         )
         if not embedding_client:
             logger.info("wiki ES 同步跳过：embedding 客户端解析失败", kb_id=kb_id)
