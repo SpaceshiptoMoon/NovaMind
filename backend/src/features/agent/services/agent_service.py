@@ -8,6 +8,7 @@ from datetime import datetime
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.exceptions import (
     AgentNotFoundError,
+    McpServerError,
     MemoryNotFoundError,
     SessionNotFoundError,
 )
@@ -58,6 +59,30 @@ class AgentService:
         self.tc_repo = ToolCallRepository(db)
         self.memory_repo = MemoryRepository(db)
         self.context_summary_repo = ContextSummaryRepository(db)
+        self._mcp_repo = McpServerRepository(db)
+
+    async def _validate_mcp_ids(self, user_id: int, mcp_ids: list[int] | None) -> None:
+        """校验 enabled_mcp_servers 只含当前用户可见的服务器 id（自有或系统级）。
+
+        enabled_mcp_servers 原样落库会被用来从全局连接缓存按 id 借用他人
+        MCP 服务器（含其 headers/凭证），必须在写入口做归属校验。
+
+        Args:
+            user_id: 当前用户 ID。
+            mcp_ids: 待校验的服务器 id 列表，空/None 直接放行。
+
+        Raises:
+            McpServerError: 含任何不可见（他人私有）服务器 id。
+        """
+        if not mcp_ids:
+            return
+        visible = {s.id for s in await self._mcp_repo.list_by_user(user_id)}
+        invalid = [i for i in mcp_ids if i not in visible]
+        if invalid:
+            raise McpServerError(
+                message=f"启用了不可用的 MCP 服务器: {invalid}",
+                code="MCP_SERVER_IDS_INVALID",
+            )
 
     # ==================== Agent CRUD ====================
 
@@ -70,7 +95,11 @@ class AgentService:
 
         Returns:
             新建 Agent 的详情响应模型。
+
+        Raises:
+            McpServerError: enabled_mcp_servers 含不可见（他人私有）服务器 id。
         """
+        await self._validate_mcp_ids(user_id, data.enabled_mcp_servers)
         agent = await self.agent_repo.create(
             user_id=user_id,
             name=data.name,
@@ -209,6 +238,7 @@ class AgentService:
 
         Raises:
             AgentNotFoundError: 不存在、系统级 Agent 非管理员或私有 Agent 非属主。
+            McpServerError: enabled_mcp_servers 含不可见（他人私有）服务器 id。
         """
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
@@ -221,6 +251,13 @@ class AgentService:
             raise AgentNotFoundError(agent_id)
 
         update_data = data.model_dump(exclude_unset=True)
+        if "enabled_mcp_servers" in update_data:
+            # 归属校验用 agent 实际属主而非操作者：系统级 Agent 的 mcp 集合由管理员维护，
+            # 但校验基准仍是「谁可见」，系统级 Agent 场景操作者即管理员
+            await self._validate_mcp_ids(
+                agent.user_id if agent.user_id is not None else user_id,
+                update_data["enabled_mcp_servers"],
+            )
         if update_data:
             agent = await self.agent_repo.update(agent_id, **update_data)
             await self.db.commit()

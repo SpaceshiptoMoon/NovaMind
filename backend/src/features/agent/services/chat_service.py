@@ -212,7 +212,9 @@ class AgentChatService:
                     user_id=user_id,
                     model=model,
                     enabled_tools=agent.enabled_tools or [],
-                    enabled_mcp_ids=agent.enabled_mcp_servers or [],
+                    enabled_mcp_ids=await self._filter_visible_mcp_ids(
+                        user_id, agent.enabled_mcp_servers or []
+                    ),
                     parent_context=context,
                 )
             else:
@@ -531,6 +533,33 @@ class AgentChatService:
 
         return agent, conv, user_msg
 
+    async def _filter_visible_mcp_ids(self, user_id: int, raw_ids: list[int]) -> list[int]:
+        """过滤掉当前用户不可见（他人私有）的 MCP 服务器 id。
+
+        聊天路径的失败方向安全：历史数据可能含越权 id（归属校验前落库），
+        此处静默剔除并告警而非抛错——能力缺失优于杀死进行中的会话。
+
+        Args:
+            user_id: 当前用户 ID。
+            raw_ids: agent 配置的 MCP 服务器 id 列表。
+
+        Returns:
+            仅含可见（自有或系统级）服务器 id 的列表。
+        """
+        if not raw_ids:
+            return []
+        from novamind.features.agent.repository.agent_repository import McpServerRepository
+
+        visible = {s.id for s in await McpServerRepository(self.db).list_by_user(user_id)}
+        filtered = [i for i in raw_ids if i in visible]
+        dropped = [i for i in raw_ids if i not in visible]
+        if dropped:
+            logger.warning(
+                "agent 启用了不可见的 MCP 服务器，已在本次会话中剔除",
+                user_id=user_id, dropped_mcp_ids=dropped,
+            )
+        return filtered
+
     async def _build_context(
         self,
         agent: AgentDefinition,
@@ -559,7 +588,10 @@ class AgentChatService:
         # 工具列表
         tool_executor = self.agent_engine.tool_executor
         enabled_tools = agent.enabled_tools or []
-        enabled_mcp_ids = agent.enabled_mcp_servers or []
+        # 归属过滤：他人私有 MCP 服务器不可借用（含其凭证），剔除并告警不抛错
+        enabled_mcp_ids = await self._filter_visible_mcp_ids(
+            user_id, agent.enabled_mcp_servers or []
+        )
         tools = tool_executor.resolve_tools_openai_format(enabled_tools, enabled_mcp_ids)
 
         # 自动注入 read_tool_result 工具（始终可用，不受 enabled_tools 限制）
@@ -1291,13 +1323,24 @@ class AgentChatService:
         context_window: int,
         conversation_id: int,
     ) -> list[dict]:
-        """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）"""
+        """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）
+
+        system prompt 不参与压缩：compressor 会把 turns_to_compress（可能含 index 0）
+        序列化进摘要并从消息列表消失，溢出兜底后本轮将失去身份/安全约束。
+        先摘出 system，压缩其余，最终按 [system, 摘要, tail...] 重排。
+        """
         from novamind.engines.agent.memory.interfaces import MemoryMessage
         from novamind.engines.agent.memory.token_budget import TokenBudget
 
-        # OpenAI dicts → MemoryMessage
+        # 摘出全部 system 消息（OpenAI 消息列表 system 只在头部，但按 role 过滤更稳）
+        system_dicts = [m for m in messages if m.get("role") == "system"]
+        rest = [m for m in messages if m.get("role") != "system"]
+        if not rest:
+            return messages
+
+        # OpenAI dicts → MemoryMessage（仅非 system 部分）
         mem_msgs = []
-        for m in messages:
+        for m in rest:
             mem_msgs.append(MemoryMessage(
                 role=m.get("role", "user"),
                 content=m.get("content") or "",
@@ -1318,8 +1361,12 @@ class AgentChatService:
             mem_msgs, available, budget, conversation_id=conversation_id,
         )
 
-        # MemoryMessage → OpenAI dicts
-        result = []
+        # MemoryMessage → OpenAI dicts（system 前置，摘要 role 由 compressor 从
+        # assistant/user 中选，不会产生双 system 冲突）
+        result = [
+            {"role": "system", "content": m.get("content") or ""}
+            for m in system_dicts
+        ]
         for mm in compressed:
             d: dict[str, Any] = {"role": mm.role}
             if mm.content:

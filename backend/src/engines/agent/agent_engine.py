@@ -93,6 +93,10 @@ class AgentEngine:
         pending_warning: str | None = None
         last_iter_usage: CanonicalUsage | None = None
         last_iter_duration_ms: int | None = None
+        # 循环前置初始化：max_iterations<=0 时 while 不进入，循环体内初始化会在
+        # 循环后引用处抛 NameError；completed_naturally 用于区分「自然完成」与「预算耗尽」
+        iteration_had_tools = False
+        completed_naturally = False
 
         if not tools:
             async for event in self._generate_without_tools(
@@ -171,6 +175,8 @@ class AgentEngine:
                     logger.warning("loop_detection hard stop", iteration=iteration)
                     break
                 if not iteration_had_tools:
+                    # 模型本轮未调用任何工具 = 已给出最终回答，属自然完成而非截断
+                    completed_naturally = True
                     break
 
             except ContextOverflowError as e:
@@ -198,7 +204,9 @@ class AgentEngine:
                 yield AgentEvent("error", {"content": f"Agent 执行出错：{str(e)}"})
                 break
 
-        truncated = iteration >= max_iterations
+        # 自然完成（无工具的最终回答）即使恰好落在最后一轮也不是截断；
+        # 只有预算耗尽且最后一轮仍在调工具时才需要兜底总结
+        truncated = (not completed_naturally) and iteration >= max_iterations
 
         # 最大迭代最终摘要：预算耗尽时，做一次无工具调用让模型总结进度
         if truncated and iteration_had_tools:

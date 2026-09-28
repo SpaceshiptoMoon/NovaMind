@@ -99,14 +99,19 @@ class McpClientManager:
 
         exit_stack = AsyncExitStack()
         await exit_stack.__aenter__()
-
-        read, write = await exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        session = await exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
-        await session.initialize()
+        # 任一步失败时栈尚未注册进 _exit_stacks（注册在 connector 返回之后），
+        # 外层清理查表扑空——必须在此处 aclose 已进入的 context，否则 stdio 子进程泄漏
+        try:
+            read, write = await exit_stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            session = await exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+        except BaseException:
+            await exit_stack.aclose()
+            raise
 
         return session, exit_stack
 
@@ -117,15 +122,19 @@ class McpClientManager:
 
         exit_stack = AsyncExitStack()
         await exit_stack.__aenter__()
-
-        transport = await exit_stack.enter_async_context(
-            streamable_http_client(http_config.url, headers=http_config.headers)
-        )
-        read, write, _ = transport
-        session = await exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
-        await session.initialize()
+        # 同 _connect_stdio：失败路径须自行关闭栈，防止连接资源泄漏
+        try:
+            transport = await exit_stack.enter_async_context(
+                streamable_http_client(http_config.url, headers=http_config.headers)
+            )
+            read, write, _ = transport
+            session = await exit_stack.enter_async_context(
+                ClientSession(read, write)
+            )
+            await session.initialize()
+        except BaseException:
+            await exit_stack.aclose()
+            raise
 
         return session, exit_stack
 

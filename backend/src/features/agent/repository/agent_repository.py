@@ -310,6 +310,62 @@ class MessageRepository:
         )
         return result.scalars().all(), total
 
+    async def list_recent_by_conversation(
+        self, conversation_id: int, limit: int = 200
+    ) -> tuple[list[AgentMessage], int]:
+        """按会话取**最新** limit 条消息，返回仍为时间升序。
+
+        供 ShortTermMemory 加载上下文窗口使用：asc+limit 会取到最旧一段，
+        长会话下丢最新消息乃至当前提问，必须从尾部取。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            limit: 尾部窗口大小，默认 200。
+
+        Returns:
+            （最新 limit 条消息（时间升序）, 符合条件的总数）元组。
+        """
+        base = select(AgentMessage).where(AgentMessage.conversation_id == conversation_id)
+        count_result = await self.session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+        total = count_result.scalar() or 0
+
+        result = await self.session.execute(
+            base.order_by(AgentMessage.created_at.desc()).limit(limit)
+        )
+        return list(reversed(result.scalars().all())), total
+
+    async def list_recent_by_conversation_after(
+        self,
+        conversation_id: int,
+        after: datetime,
+        limit: int = 200,
+    ) -> tuple[list[AgentMessage], int]:
+        """取 cutoff 之后**最新** limit 条消息（时间升序返回），语义同 list_recent_by_conversation。
+
+        Args:
+            conversation_id: 会话主键 ID。
+            after: 时间下界（摘要 cutoff），仅加载 ``created_at > after`` 的消息。
+            limit: 尾部窗口大小，默认 200。
+
+        Returns:
+            （最新 limit 条消息（时间升序）, 符合条件的总数）元组。
+        """
+        base = select(AgentMessage).where(
+            AgentMessage.conversation_id == conversation_id,
+            AgentMessage.created_at > after,
+        )
+        count_result = await self.session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+        total = count_result.scalar() or 0
+
+        result = await self.session.execute(
+            base.order_by(AgentMessage.created_at.desc()).limit(limit)
+        )
+        return list(reversed(result.scalars().all())), total
+
 
 class ToolCallRepository:
     """工具调用记录仓储"""
