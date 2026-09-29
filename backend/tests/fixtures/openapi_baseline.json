@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "Achievement": {
+        "description": "单条量化成果（描述/指标/影响）。",
         "properties": {
           "description": {
             "default": "",
@@ -1043,6 +1044,7 @@
         "type": "object"
       },
       "Certification": {
+        "description": "单条职业认证（名称/获得时间）。",
         "properties": {
           "date": {
             "default": "",
@@ -1059,6 +1061,7 @@
         "type": "object"
       },
       "Challenge": {
+        "description": "单条挑战应对（挑战/解决方案/结果）。",
         "properties": {
           "challenge": {
             "default": "",
@@ -2184,6 +2187,7 @@
         "type": "object"
       },
       "DocumentTaskItemListResponse": {
+        "description": "任务项列表分页响应。",
         "properties": {
           "items": {
             "description": "任务项列表",
@@ -2207,6 +2211,7 @@
         "type": "object"
       },
       "DocumentTaskItemResponse": {
+        "description": "文档任务项响应（document_task_items 行 + 后端填充的文档名）。",
         "properties": {
           "completed_at": {
             "anyOf": [
@@ -2372,6 +2377,7 @@
         "type": "object"
       },
       "DocumentTaskListResponse": {
+        "description": "批次列表分页响应。",
         "properties": {
           "items": {
             "description": "任务列表",
@@ -2395,6 +2401,7 @@
         "type": "object"
       },
       "DocumentTaskResponse": {
+        "description": "文档任务批次响应（document_tasks 行 + 子任务项列表）。",
         "properties": {
           "action": {
             "description": "任务动作",
@@ -2588,6 +2595,7 @@
         "type": "object"
       },
       "EducationExperience": {
+        "description": "单段教育经历（学校/专业/学位/GPA/论文/核心课程）。",
         "properties": {
           "core_courses": {
             "default": [],
@@ -4097,6 +4105,7 @@
         "type": "object"
       },
       "LanguageSkill": {
+        "description": "单条语言能力（语言/熟练度/证书）。",
         "properties": {
           "certificate": {
             "default": "",
@@ -5787,6 +5796,7 @@
         "type": "object"
       },
       "Paper": {
+        "description": "单篇论文（标题/作者排序/发表载体/引用数/个人贡献/关联项目）。",
         "properties": {
           "abstract": {
             "default": "",
@@ -6106,6 +6116,7 @@
         "type": "object"
       },
       "Patent": {
+        "description": "单项专利（类型/号/状态/申请时间/发明人排序/简述）。",
         "properties": {
           "brief": {
             "default": "",
@@ -6188,6 +6199,7 @@
         "type": "object"
       },
       "PermissionResponse": {
+        "description": "权限定义响应模型。",
         "properties": {
           "code": {
             "title": "Code",
@@ -6227,6 +6239,7 @@
         "type": "object"
       },
       "PersonalInfo": {
+        "description": "候选人基本信息（姓名/联系方式/所在地/个人简介/求职意向/社交链接）。",
         "properties": {
           "age": {
             "anyOf": [
@@ -6344,6 +6357,7 @@
         "type": "object"
       },
       "ProjectExperience": {
+        "description": "单段项目经历（背景/角色/技术栈/职责/挑战/成果/亮点/可追问方向）。",
         "properties": {
           "achievements": {
             "default": [],
@@ -6448,6 +6462,7 @@
         "type": "object"
       },
       "Promotion": {
+        "description": "单次晋升记录（时间/前后职级/理由）。",
         "properties": {
           "date": {
             "default": "",
@@ -6474,6 +6489,7 @@
         "type": "object"
       },
       "PublicationsData": {
+        "description": "学术成果总览（论文/专利/技术文章三类聚合）。",
         "properties": {
           "papers": {
             "default": [],
@@ -7443,6 +7459,7 @@
         "type": "object"
       },
       "ResumeMetadata": {
+        "description": "解析元数据（源文件/总工作月数/公司与项目等计数）。",
         "properties": {
           "companies_count": {
             "default": 0,
@@ -7484,6 +7501,7 @@
         "type": "object"
       },
       "ResumeSessionListResponse": {
+        "description": "简历会话列表响应（含总数）。",
         "properties": {
           "sessions": {
             "items": {
@@ -7505,6 +7523,7 @@
         "type": "object"
       },
       "ResumeSessionResponse": {
+        "description": "简历会话响应模型（含结构化简历与报告链接）。",
         "properties": {
           "config": {
             "additionalProperties": true,
@@ -7619,6 +7638,7 @@
         "type": "object"
       },
       "RoleCreate": {
+        "description": "创建角色请求（附初始权限码列表）。",
         "properties": {
           "code": {
             "maxLength": 50,
@@ -7659,6 +7679,7 @@
         "type": "object"
       },
       "RoleResponse": {
+        "description": "角色响应模型（含系统内置标记与权限列表）。",
         "properties": {
           "code": {
             "maxLength": 50,
@@ -7709,6 +7730,7 @@
         "type": "object"
       },
       "RoleUpdate": {
+        "description": "更新角色请求（None 字段不更新，权限码全量替换语义）。",
         "properties": {
           "description": {
             "anyOf": [
@@ -9117,6 +9139,7 @@
         "type": "object"
       },
       "SkillGroup": {
+        "description": "按类别聚合的技能组（类别/标签/技能项列表）。",
         "properties": {
           "category": {
             "default": "",
@@ -9192,6 +9215,7 @@
         "type": "object"
       },
       "SkillItem": {
+        "description": "单条技能项（名称/熟练度/年限/来源项目）。",
         "properties": {
           "name": {
             "default": "",
@@ -9840,6 +9864,7 @@
         "type": "object"
       },
       "SkillsData": {
+        "description": "技能总览（技能组/认证/语言能力三类聚合）。",
         "properties": {
           "certifications": {
             "default": [],
@@ -10654,6 +10679,7 @@
         "type": "object"
       },
       "StructuredResume": {
+        "description": "结构化简历聚合根：个人信息 + 教育/工作/项目经历 + 技能与学术成果 + 校验警告。",
         "properties": {
           "education": {
             "default": [],
@@ -10770,6 +10796,7 @@
         "type": "object"
       },
       "TechStackDetail": {
+        "description": "分类技术栈明细（语言/框架/中间件/基础设施/工具）。",
         "properties": {
           "frameworks": {
             "default": [],
@@ -10816,6 +10843,7 @@
         "type": "object"
       },
       "TechnicalWriting": {
+        "description": "单篇技术文章（平台/链接/发布时间/浏览与点赞数）。",
         "properties": {
           "likes": {
             "default": 0,
@@ -11830,6 +11858,7 @@
         "type": "object"
       },
       "UserRoleAssignRequest": {
+        "description": "用户角色分配请求。",
         "properties": {
           "role_id": {
             "description": "目标角色ID",
@@ -11845,7 +11874,7 @@
         "type": "object"
       },
       "UserUpdate": {
-        "description": "用户更新模型\n\n字段规范：\n- username: 用户唯一标识符，长度为3-50个字符，支持字母、数字、下划线\n- email: 用户邮箱地址，必须符合邮箱格式，用于找回密码等操作\n- phone: 用户手机号码，可选字段，必须符合手机号格式\n- password: 用户登录密码，可选字段，长度8-30个字符，至少包含字母、数字和特殊字符\n- status: 用户状态，0为禁用，1为启用，默认为None表示不更新",
+        "description": "用户更新模型\n\n字段规范：\n- username: 用户唯一标识符，长度为3-50个字符，支持字母、数字、下划线\n- email: 用户邮箱地址，必须符合邮箱格式，用于找回密码等操作\n- phone: 用户手机号码，可选字段，必须符合手机号格式\n- password: 用户登录密码，可选字段，长度8-30个字符，至少包含字母、数字和特殊字符\n- status: 用户状态，0为禁用，1为启用，默认为None表示不更新；封禁/删除不可经更新接口设置",
         "properties": {
           "email": {
             "anyOf": [
@@ -11922,15 +11951,17 @@
           "status": {
             "anyOf": [
               {
-                "maximum": 3.0,
-                "minimum": 0.0,
+                "enum": [
+                  0,
+                  1
+                ],
                 "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "用户状态，0为禁用，1为启用，2为封禁，3为已删除",
+            "description": "用户状态，0为禁用，1为启用；封禁/删除不可经本接口设置（删除走专用端点）",
             "title": "Status"
           },
           "username": {
@@ -11989,6 +12020,7 @@
         "type": "object"
       },
       "ValidationWarning": {
+        "description": "交叉校验警告（类型/消息/严重度/追问建议）。",
         "properties": {
           "message": {
             "default": "",
@@ -12285,6 +12317,7 @@
         "type": "object"
       },
       "WikiGraphEdge": {
+        "description": "链接图有向边（source 指向 target）。",
         "properties": {
           "source": {
             "title": "Source",
@@ -12303,6 +12336,7 @@
         "type": "object"
       },
       "WikiGraphMeta": {
+        "description": "图响应元信息（模式/总量/返回数/截断标记/ego 参数）。",
         "properties": {
           "center": {
             "anyOf": [
@@ -12353,6 +12387,7 @@
         "type": "object"
       },
       "WikiGraphNode": {
+        "description": "链接图节点（slug/标题/类型/链接数）。",
         "properties": {
           "link_count": {
             "title": "Link Count",
@@ -12381,6 +12416,7 @@
         "type": "object"
       },
       "WikiGraphResponse": {
+        "description": "链接图响应（节点+边+元信息）。",
         "properties": {
           "edges": {
             "items": {
@@ -12569,6 +12605,7 @@
         "type": "object"
       },
       "WikiIssueResponse": {
+        "description": "问题登记响应。",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -12613,6 +12650,7 @@
         "type": "object"
       },
       "WikiIssueStatusUpdateRequest": {
+        "description": "问题状态流转请求（pending/ignored/resolved）。",
         "properties": {
           "status": {
             "description": "pending/ignored/resolved",
@@ -12666,6 +12704,7 @@
         "type": "object"
       },
       "WikiLintResponse": {
+        "description": "巡检响应：问题列表、检查页数、健康分与摘要。",
         "properties": {
           "checked_pages": {
             "title": "Checked Pages",
@@ -12896,6 +12935,7 @@
         "type": "object"
       },
       "WikiPageListResponse": {
+        "description": "页面列表分页响应。",
         "properties": {
           "page": {
             "title": "Page",
@@ -13041,6 +13081,7 @@
         "type": "object"
       },
       "WikiPageSearchItem": {
+        "description": "搜索命中条目（含加权 rank 与前后 60 字符摘要）。",
         "properties": {
           "aliases": {
             "default": [],
@@ -13248,6 +13289,7 @@
         "type": "object"
       },
       "WikiRevertRequest": {
+        "description": "回滚请求：目标 slug 与版本号。",
         "properties": {
           "slug": {
             "maxLength": 255,
@@ -13269,6 +13311,7 @@
         "type": "object"
       },
       "WikiRevertResponse": {
+        "description": "回滚结果：回滚到的版本与产生的新版本号。",
         "properties": {
           "new_version": {
             "title": "New Version",
@@ -13292,6 +13335,7 @@
         "type": "object"
       },
       "WikiSearchResponse": {
+        "description": "页面搜索响应。",
         "properties": {
           "items": {
             "items": {
@@ -13318,6 +13362,7 @@
         "type": "object"
       },
       "WikiStatsResponse": {
+        "description": "KB 统计响应（页数/类型分布/链接数/孤儿数）。",
         "properties": {
           "is_active": {
             "default": false,
@@ -13354,6 +13399,7 @@
         "type": "object"
       },
       "WorkExperience": {
+        "description": "单段工作经历（公司/职位/时间/职责要点/关键项目/晋升史/离职原因）。",
         "properties": {
           "achievements": {
             "default": [],
@@ -13460,6 +13506,7 @@
         "type": "object"
       },
       "WorkProjectRef": {
+        "description": "工作经历内嵌项目的轻量引用（名称/角色/简述）。",
         "properties": {
           "brief": {
             "default": "",
@@ -15187,6 +15234,7 @@
     },
     "/api/v1/apps/resume/sessions": {
       "get": {
+        "description": "分页列出当前用户的简历会话（可按状态筛选）。",
         "operationId": "list_resume_sessions_api_v1_apps_resume_sessions_get",
         "parameters": [
           {
@@ -15310,6 +15358,7 @@
         ]
       },
       "get": {
+        "description": "查单个简历会话详情（校验归属）。",
         "operationId": "get_resume_session_api_v1_apps_resume_sessions__session_id__get",
         "parameters": [
           {
@@ -15495,6 +15544,7 @@
     },
     "/api/v1/apps/resume/upload": {
       "post": {
+        "description": "上传简历并创建解析会话（校验扩展名/大小/config JSON），入队后台 S1-S12 流程后立即返回。",
         "operationId": "upload_resume_api_v1_apps_resume_upload_post",
         "requestBody": {
           "content": {
@@ -24033,6 +24083,16 @@
               "exclusiveMinimum": 0,
               "title": "Space Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm",
+              "type": "boolean"
             }
           }
         ],

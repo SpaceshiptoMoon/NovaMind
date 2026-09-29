@@ -42,7 +42,7 @@ async def test_build_context_emits_token_breakdown() -> None:
     """build_context 透出 system/tools/messages 三项，total = 三者之和，不超阈值不压缩"""
     stm = _build_short_term()
     stm._summary_store.get_latest_summary = AsyncMock(return_value=None)
-    stm._msg_repo.list_by_conversation = AsyncMock(
+    stm._msg_repo.list_recent_by_conversation = AsyncMock(
         return_value=([_msg(1, "user", content="你好，请帮我搜索知识库")], 1)
     )
     stm._tc_repo.list_by_conversation = AsyncMock(return_value=[])
@@ -75,7 +75,7 @@ async def test_build_context_dry_run_skips_compress() -> None:
     stm._summary_store.get_latest_summary = AsyncMock(return_value=None)
     # 大量消息超出小窗口阈值
     big_msgs = [_msg(i, "user", content="这是一段很长的对话内容用于触发超阈值" * 20) for i in range(10)]
-    stm._msg_repo.list_by_conversation = AsyncMock(return_value=(big_msgs, len(big_msgs)))
+    stm._msg_repo.list_recent_by_conversation = AsyncMock(return_value=(big_msgs, len(big_msgs)))
     stm._tc_repo.list_by_conversation = AsyncMock(return_value=[])
 
     snapshot = await stm.build_context(
@@ -107,7 +107,7 @@ async def test_build_context_compress_fills_metadata() -> None:
     )
     stm._summary_store.get_latest_summary = AsyncMock(side_effect=[None, new_summary])
     big_msgs = [_msg(i, "user", content="超阈值长内容" * 20) for i in range(10)]
-    stm._msg_repo.list_by_conversation = AsyncMock(return_value=(big_msgs, len(big_msgs)))
+    stm._msg_repo.list_recent_by_conversation = AsyncMock(return_value=(big_msgs, len(big_msgs)))
     stm._tc_repo.list_by_conversation = AsyncMock(return_value=[])
     # 压缩返回压缩后消息列表 + compressed=True + ratio
     stm._compression.compress = AsyncMock(
