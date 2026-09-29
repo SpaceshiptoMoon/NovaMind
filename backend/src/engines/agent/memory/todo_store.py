@@ -12,6 +12,14 @@ logger = get_logger(__name__)
 
 _VALID_STATUSES = frozenset({"pending", "in_progress", "completed", "cancelled"})
 
+# 硬上限防御：todo 清单会被 format_for_injection 在上下文压缩后重注入，
+# 无上限时模型写入的超长内容/超多条目会让重注入块无界膨胀，架空压缩本身。
+# 上限参照 Hermes TodoTool 同款防御；单条超长保头部——任务是简短行动描述，
+# 头部即要点。上限相对真实计划极宽裕（清单是个位数条目，不是上百条）。
+MAX_TODO_CONTENT_CHARS = 4000
+MAX_TODO_ITEMS = 256
+_TRUNCATION_MARKER = "… [truncated]"
+
 
 class TodoStore:
     """压缩后存活的任务跟踪器"""
@@ -19,6 +27,14 @@ class TodoStore:
     def __init__(self) -> None:
         """初始化内存任务表（key 为 conversation_id），仅进程内有效、不持久化。"""
         self._store: dict[int, list[dict[str, str]]] = {}
+
+    @staticmethod
+    def _cap_content(content: str) -> str:
+        """单条内容超长保头部截断（任务描述的要点在前部）。"""
+        if len(content) > MAX_TODO_CONTENT_CHARS:
+            keep = MAX_TODO_CONTENT_CHARS - len(_TRUNCATION_MARKER)
+            return content[:keep] + _TRUNCATION_MARKER
+        return content
 
     def write(
         self,
@@ -45,7 +61,7 @@ class TodoStore:
                 status = "pending"
             normalized.append({
                 "id": str(item.get("id", "")),
-                "content": str(item.get("content", "")),
+                "content": self._cap_content(str(item.get("content", ""))),
                 "status": status,
             })
 
@@ -57,6 +73,10 @@ class TodoStore:
             self._store[conversation_id] = list(existing_by_id.values())
         else:
             self._store[conversation_id] = normalized
+
+        # 总条数上限：保列表头部（顺序即优先级，Hermes 同款截断方向）
+        if len(self._store[conversation_id]) > MAX_TODO_ITEMS:
+            self._store[conversation_id] = self._store[conversation_id][:MAX_TODO_ITEMS]
 
         logger.debug(
             "TodoStore 写入",

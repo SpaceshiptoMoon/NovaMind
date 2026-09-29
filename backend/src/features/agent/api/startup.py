@@ -19,7 +19,7 @@ from novamind.engines.agent.tool.builtins import (
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.hooks import LoggingHook, ResultBudgetHook, ToolOutputBudgetHook
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.features.agent.tool.builtins import ReadToolResultTool
+from novamind.features.agent.tool.builtins import PlanOutputTool, ReadToolResultTool
 
 logger = get_logger(__name__)
 
@@ -57,6 +57,8 @@ async def init_agent_components(app):
     # 4. 注册工具结果读取工具（始终可用）
     registry.register(ReadToolResultTool())
     registry.register(TaskTool())
+    # 计划步骤产出回查工具（无状态；仅 plan_mode 会话由 chat_service 注入工具列表）
+    registry.register(PlanOutputTool())
 
     # 4.1 注册 Wiki 工具（读取/搜索/撰写/问题标记，权限在工具内校验）
     from novamind.features.agent.tool.builtins import WikiTool

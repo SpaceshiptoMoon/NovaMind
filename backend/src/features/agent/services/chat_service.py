@@ -24,6 +24,7 @@ from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
 from novamind.features.agent.repository.agent_repository import (
     MessageRepository,
     SessionRepository,
@@ -662,6 +663,10 @@ class AgentChatService:
             except Exception:
                 pass
 
+        # 计划模式注入 plan_output 工具：各步产出上下文里只有头尾节选，
+        # 模型经本工具按步骤号回查落库全文（非计划模式不注入，防止误用）
+        self._inject_plan_output_tool(tools, agent)
+
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
         frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
@@ -800,6 +805,23 @@ class AgentChatService:
         return SystemPromptResponse(system_prompt=system_prompt, tokens=tokens)
 
     # ==================== 系统提示辅助 ====================
+
+    @staticmethod
+    def _inject_plan_output_tool(tools: list, agent: Any) -> None:
+        """计划模式自动注入 plan_output 工具（原地追加，去重防御）。
+
+        各步产出的上下文注入只有头尾节选（planning_flow._bound_step_output），
+        本工具让模型按步骤号回查落库全文；非计划模式不注入防止误用。
+        """
+        if not bool((agent.extra_config or {}).get("plan_mode")):
+            return
+        if any(t.get("function", {}).get("name") == "plan_output" for t in tools):
+            return
+        try:
+            tool_def = PlanOutputTool().get_tools()[0]
+            tools.append(tool_def)
+        except Exception as e:
+            logger.warning("plan_output 工具注入失败", error=str(e))
 
     def _format_base_prompt(self, system_prompt: str, enabled_tools: list) -> str:
         """格式化基础提示词中的占位符"""

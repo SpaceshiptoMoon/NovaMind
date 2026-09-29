@@ -15,6 +15,8 @@ from novamind.engines.agent.flow.planning_flow import (
     IN_PROGRESS,
     NOT_STARTED,
     PlanningFlow,
+    _STEP_OUTPUT_HEAD_CHARS,
+    _STEP_OUTPUT_TAIL_CHARS,
 )
 from novamind.shared.ai_models.base_model import BaseLLM
 
@@ -64,6 +66,50 @@ def test_build_step_prompt():
     assert "研究 RAG" in p
     assert "步骤 2" in p
     assert "b" in p
+
+
+# ==================== _bound_step_output 双窗截断 ====================
+
+
+def test_bound_step_output_short_text_passthrough():
+    """短产出（<= 头+尾预算）原样返回零损失"""
+    pf = PlanningFlow.__new__(PlanningFlow)
+    text = "短产出结论"
+    assert pf._bound_step_output(text) == text
+
+
+def test_bound_step_output_exact_budget_passthrough():
+    """恰好等于头+尾预算的产出原样返回（边界不出省略标记）"""
+    pf = PlanningFlow.__new__(PlanningFlow)
+    text = "y" * (_STEP_OUTPUT_HEAD_CHARS + _STEP_OUTPUT_TAIL_CHARS)
+    assert pf._bound_step_output(text) == text
+
+
+def test_bound_step_output_long_text_head_tail_kept():
+    """超长产出：头窗保开头、尾窗保结论、中间显式省略标记含字符数与工具指引"""
+    pf = PlanningFlow.__new__(PlanningFlow)
+    # 多轮拼接模拟：头部任务定位 + 大段中间过程 + 尾部最终结论
+    text = "任务开头定位信息" + "\n" + "过程" * 2000 + "\n" + "最终结论：推荐按席位计费"
+    bounded = pf._bound_step_output(text)
+    assert "任务开头定位信息" in bounded          # 头窗
+    assert "最终结论：推荐按席位计费" in bounded  # 尾窗（结论可达）
+    assert text not in bounded                    # 整段不注入
+    assert "已省略约" in bounded and "plan_output" in bounded  # 截断可见 + 回查指引
+    # 预算约束：头尾窗之和不超过预算 + 标记的合理余量
+    assert len(bounded) < _STEP_OUTPUT_HEAD_CHARS + _STEP_OUTPUT_TAIL_CHARS + 200
+
+
+def test_bound_step_output_snaps_to_line_boundaries():
+    """切点对齐行边界：头窗尾部/尾窗开头不出现半行"""
+    pf = PlanningFlow.__new__(PlanningFlow)
+    lines = [f"line-{i:03d}-" + "z" * 30 for i in range(100)]
+    text = "\n".join(lines)
+    bounded = pf._bound_step_output(text)
+    # 头窗最后一段与尾窗第一段都是完整的行（无行内截断的残句）
+    head_section = bounded.split("[...")[0].strip().split("\n")
+    tail_section = bounded.split("...]")[-1].strip().split("\n")
+    for line in head_section + tail_section:
+        assert line in lines, f"切出了不完整的行: {line!r}"
 
 
 # ==================== execute() 主循环 ====================
@@ -256,7 +302,7 @@ async def test_execute_fail_fast_on_context_overflow() -> None:
 
 @pytest.mark.asyncio
 async def test_execute_finalize_receives_step_outputs() -> None:
-    """finalize prompt 含各步产出文本与状态符号；超长产出被截断"""
+    """finalize prompt 含各步产出头尾节选与状态符号；超长产出不整段注入"""
     llm = _PlanStubLLM()
     long_output = "x" * 3000
     engine = _StubInnerEngine([
@@ -270,9 +316,12 @@ async def test_execute_finalize_receives_step_outputs() -> None:
     prompt = llm.finalize_prompts[0]
     # 步骤状态符号可见
     assert "[✓]" in prompt
-    # 步 1 产出被截到 1500 字符（不整段 3000 注入）
+    # 头窗保住开头、尾窗保住结论（双窗语义），整段不注入
     assert long_output[:100] in prompt
+    assert long_output[-100:] in prompt
     assert long_output not in prompt
+    # 蒸馏块引导句指向 plan_output 工具
+    assert "plan_output" in prompt
     # 步 2 产出可见
     assert "步2短产出" in prompt
 
@@ -291,6 +340,24 @@ async def test_execute_finalize_notes_interrupted_plan() -> None:
     prompt = llm.finalize_prompts[0]
     assert "中断" in prompt
     assert "[!]" in prompt
+
+
+@pytest.mark.asyncio
+async def test_execute_failed_step_empty_output_not_in_prior_block() -> None:
+    """失败步（空产出）不进蒸馏块：截断步不产生空「结果：」条目污染后续步骤上下文"""
+    llm = _PlanStubLLM()
+    engine = _StubInnerEngine([
+        [_step_done("正常产出", iterations=1)],
+        [AgentEvent("error", {"content": "boom"})],  # 步 2 报错，无产出
+        [_step_done("不应执行")],
+    ])
+    flow = PlanningFlow(engine)  # type: ignore[arg-type]
+    await _collect(flow, llm_client=llm)
+
+    prompt = llm.finalize_prompts[0]
+    assert "正常产出" in prompt
+    # 步 2 无产出 → 不出现空条目（步骤号只出现一次且来自步 1 的标注）
+    assert prompt.count("步骤2「") == 0
 
 
 @pytest.mark.asyncio

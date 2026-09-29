@@ -23,8 +23,11 @@ IN_PROGRESS = "in_progress"
 COMPLETED = "completed"
 BLOCKED = "blocked"
 
-# 各步产出注入后续步骤上下文时的单条截断长度：保住关键结论、防长产出撑爆上下文
-_STEP_OUTPUT_MAX_CHARS = 1500
+# 各步产出注入后续步骤上下文时的双窗截断：头窗保任务定位（步骤开头回扣目标）、
+# 尾窗保结论（full_response 是整步多轮文本拼接，最终结论总在尾部）。
+# 省略的中间部分不丢失——chat_service 已把全文落库，模型可经 plan_output 工具按步骤号回查。
+_STEP_OUTPUT_HEAD_CHARS = 400
+_STEP_OUTPUT_TAIL_CHARS = 1000
 
 _PLAN_SYSTEM = (
     "你是一个规划助手。把用户任务拆成简洁可执行的步骤列表。\n"
@@ -173,7 +176,7 @@ class PlanningFlow:
 
             if step_output:
                 prior_outputs.append(
-                    f"步骤{i + 1}「{step}」结果：{step_output[:_STEP_OUTPUT_MAX_CHARS]}"
+                    f"步骤{i + 1}「{step}」结果：{self._bound_step_output(step_output)}"
                 )
 
             if step_truncated or step_errored:
@@ -316,9 +319,42 @@ class PlanningFlow:
             return f"计划已完成（{len(steps)} 步），但总结生成失败：{str(e)}"
 
     @staticmethod
+    def _bound_step_output(text: str) -> str:
+        """超长步产出的双窗截断：保头窗（任务定位）+ 尾窗（结论），中间插显式省略标记。
+
+        短产出（<= 头+尾预算）原样返回零损失。切点对齐行边界，避免截出半行；
+        省略字符数写实写入标记（截断必须可见），并引导模型用 plan_output 工具回查全文。
+        """
+        head = _STEP_OUTPUT_HEAD_CHARS
+        tail = _STEP_OUTPUT_TAIL_CHARS
+        total = len(text)
+        if total <= head + tail:
+            return text
+
+        # 头窗：切点回退到最近行边界（短窗内无换行则保持原切点）
+        head_part = text[:head]
+        nl = head_part.rfind("\n")
+        if nl > 0:
+            head_part = head_part[:nl]
+        # 尾窗：切点前进到下一个行边界（尾窗内无换行则保持原切点）
+        tail_part = text[-tail:]
+        nl = tail_part.find("\n")
+        if 0 <= nl < len(tail_part) - 1:
+            tail_part = tail_part[nl + 1 :]
+        omitted = total - len(head_part) - len(tail_part)
+        marker = (
+            f"\n[... 已省略约 {omitted} 字符；需要本步骤完整内容时"
+            "可调用 plan_output 工具（按步骤号查询）...]\n"
+        )
+        return head_part + marker + tail_part
+
+    @staticmethod
     def _prior_outputs_block(prior_outputs: list[str]) -> str:
         """把已完成步骤的产出组装为后续步骤可见的上下文块。"""
-        return "此前步骤产出：\n" + "\n\n".join(prior_outputs)
+        return (
+            "此前步骤产出（各步仅含开头与结论节选；需要某步完整内容时"
+            "可调用 plan_output 工具按步骤号查询）：\n" + "\n\n".join(prior_outputs)
+        )
 
     def _build_step_prompt(
         self, query: str, steps: list[str], statuses: list[str], current: int
