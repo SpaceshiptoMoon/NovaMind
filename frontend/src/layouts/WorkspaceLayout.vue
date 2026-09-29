@@ -4,23 +4,40 @@
 
     <!-- 顶栏：全宽置顶（全局导航 + 全局项；频道分段在侧栏，折叠切换经 prop 传入） -->
     <AppHeader
-      :sidebar-collapsed="isWorkspaceRoute ? sidebarCollapsed : undefined"
-      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+      :sidebar-collapsed="
+        isWorkspaceRoute ? (sidebarAsDrawer ? !sidebarOverlayOpen : sidebarCollapsed) : undefined
+      "
+      @toggle-sidebar="
+        sidebarAsDrawer ? (sidebarOverlayOpen = !sidebarOverlayOpen) : (sidebarCollapsed = !sidebarCollapsed)
+      "
     />
 
     <!-- 下方：侧栏（频道分段 + 上下文列表，可折叠；仅工作台路由） + 主内容 -->
     <div class="workspace-body">
+      <!-- 抽屉拉出按钮（agent 对话页、抽屉收起时浮在主区左上角） -->
+      <button
+        v-if="sidebarAsDrawer && !sidebarOverlayOpen"
+        class="sidebar-drawer-toggle"
+        title="打开导航面板"
+        @click="sidebarOverlayOpen = true"
+      >
+        <el-icon :size="14"><Expand /></el-icon>
+      </button>
       <aside
         v-if="isWorkspaceRoute"
         class="workspace-sidebar"
-        :class="{ collapsed: sidebarCollapsed }"
+        :class="{
+          collapsed: sidebarAsDrawer ? !sidebarOverlayOpen : sidebarCollapsed,
+          'as-drawer': sidebarAsDrawer,
+        }"
         role="navigation"
         aria-label="工作台侧边栏"
       >
-        <!-- 频道分段（侧栏顶部，展开态显示） -->
+        <!-- 频道分段（侧栏顶部，展开态显示；抽屉态尾挂收起按钮） -->
         <nav
-          v-if="!sidebarCollapsed"
+          v-if="!sidebarCollapsed || sidebarAsDrawer"
           class="channel-segments"
+          :class="{ 'has-drawer-close': sidebarAsDrawer }"
           role="tablist"
           aria-label="工作台频道"
         >
@@ -37,10 +54,19 @@
             <NavIcon :name="ch.icon" :size="15" />
             <span class="channel-seg-label">{{ ch.label }}</span>
           </button>
+          <button
+            v-if="sidebarAsDrawer"
+            class="drawer-close-btn"
+            title="收起侧栏"
+            @click="sidebarOverlayOpen = false"
+          >
+            <el-icon :size="14"><Close /></el-icon>
+          </button>
         </nav>
 
-        <!-- 展开模式：上下文列表 -->
-        <template v-if="!sidebarCollapsed">
+        <!-- 展开模式：上下文列表（抽屉态始终渲染展开内容——overlay 悬浮时即全宽侧栏，
+             无 48px 图标列形态；collapsed 时整体滑出屏幕不可见，无需切换内容） -->
+        <template v-if="!sidebarCollapsed || sidebarAsDrawer">
           <!-- Chat: session list（可折叠） -->
           <div class="sidebar-body">
             <template v-if="activeChannelKey === 'chat'">
@@ -179,8 +205,8 @@
           </div>
         </template>
 
-        <!-- 折叠模式：频道 icon 列表 -->
-        <template v-else>
+        <!-- 折叠模式：频道 icon 列表（抽屉态无此形态——收起即整体滑出） -->
+        <template v-else-if="!sidebarAsDrawer">
           <div class="channel-icons">
             <button
               v-for="ch in channels"
@@ -195,6 +221,13 @@
           </div>
         </template>
       </aside>
+
+      <!-- 抽屉遮罩（agent 对话页、overlay 拉出时）：点击收回 -->
+      <div
+        v-if="sidebarAsDrawer && sidebarOverlayOpen"
+        class="sidebar-overlay"
+        @click="sidebarOverlayOpen = false"
+      />
 
       <!-- Agent 创建/编辑弹窗 + 配置抽屉（广场页已删，管理动作收编侧栏；append-to-body 需挂布局层） -->
       <el-dialog
@@ -414,7 +447,7 @@
 import { ref, reactive, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Expand, ArrowDown, Plus, Setting, EditPen } from '@element-plus/icons-vue'
+import { Delete, Expand, ArrowDown, Plus, Setting, EditPen, Close } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
@@ -444,10 +477,28 @@ const workbench = useWorkbenchStore()
 provide('isInWorkspace', true)
 
 const sidebarCollapsed = ref(false)
+// 抽屉态（仅 agent 对话页）下 overlay 是否拉出；收起时侧栏滑出屏幕不占位
+const sidebarOverlayOpen = ref(false)
 
 const permStore = usePermissionStore()
 
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
+
+// agent 对话页：对话页自带会话侧栏，布局层侧栏退让为 overlay 抽屉（主区占满全宽）
+const isAgentChatPage = computed(() => route.name === 'WorkspaceAgentChat')
+const sidebarAsDrawer = computed(() => isWorkspaceRoute.value && isAgentChatPage.value)
+
+// 路由切换：同步频道高亮（此前只在 onMounted 调，路由变后高亮滞留）；进出对话页切换抽屉态
+watch(
+  () => route.name,
+  () => {
+    syncChannelFromRoute()
+    sidebarOverlayOpen.value = false
+    if (!sidebarAsDrawer.value) {
+      sidebarCollapsed.value = false // 离开对话页恢复常驻展开
+    }
+  },
+)
 
 // 频道清单：app 键对应应用门禁代码（AppCode）；research 属空间功能不进门禁（常驻）
 const allChannels = [
@@ -601,6 +652,7 @@ provide('openAgentDialog', openAgentDialog)
 function handleSelectAgent(agent: Agent) {
   agentStore.currentAgent = agent
   agentStore.fetchConversations(agent.id)
+  sidebarOverlayOpen.value = false // 抽屉拉出时选中 agent：跳转后抽屉收回
   router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
 }
 
@@ -831,6 +883,9 @@ onMounted(async () => {
   display: flex;
   min-height: 0;
   overflow: hidden;
+  /* 定位参照：抽屉浮动拉出按钮 absolute 定位须锚定在本层（顶栏之下），
+     否则回溯到 layout 顶层被 56px 顶栏盖住不可点 */
+  position: relative;
 }
 
 /* ========================================
@@ -851,6 +906,86 @@ onMounted(async () => {
 .workspace-sidebar.collapsed {
   width: var(--sidebar-width-collapsed);
   border-right-color: transparent;
+}
+
+/* ========================================
+   Sidebar as Drawer — agent 对话页抽屉态
+   （对话页自带会话侧栏，布局层侧栏退让为 overlay：
+   收起时滑出屏幕不占位，左缘浮动按钮拉出）
+   ======================================== */
+.workspace-sidebar.as-drawer {
+  position: fixed;
+  top: var(--header-height); /* 避开顶栏 */
+  left: 0;
+  bottom: 0;
+  z-index: var(--z-drawer); /* 低于 el-dialog（modal 400），创建弹窗可盖住抽屉 */
+  width: var(--sidebar-width);
+  border-right-color: var(--color-border-light);
+  box-shadow: var(--shadow-lg);
+  /* 宽度恒定，收/拉动画走 transform（比 width 过渡流畅） */
+  transition: transform var(--transition-slow);
+}
+
+.workspace-sidebar.as-drawer.collapsed {
+  transform: translateX(-100%);
+  box-shadow: none;
+  pointer-events: none; /* 滑出后不拦交互 */
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--z-drawer) - 1); /* 垫在抽屉下 */
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.sidebar-drawer-toggle {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: var(--z-raised);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card, #fff);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar-drawer-toggle:hover {
+  color: var(--color-primary);
+  border-color: var(--color-border-focus);
+}
+
+/* 抽屉频道分段行尾的收起按钮 */
+.drawer-close-btn {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.drawer-close-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 /* ========================================
