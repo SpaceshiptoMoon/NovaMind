@@ -1218,6 +1218,10 @@ onMounted(async () => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* 定位包含块必须闭合在本层：内层视图（ChatView 等）用 absolute+inset:0 铺满，
+     若本层非定位祖先会越级命中 .workspace-main，抽屉展开后视图仍按主区全宽绘制
+     盖住抽屉（现象即「点开引用面板没反应」） */
+  position: relative;
 }
 
 /* 非工作台页面（首页/知识空间/系统等）：页内滚动（各页面自管 padding，
