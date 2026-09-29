@@ -1634,9 +1634,10 @@ export interface AgentCompactionData {
   created_at?: string
 }
 
-// Plan-and-Execute 事件数据（plan.created/step_started/step_completed/completed 并集）
+// Plan-and-Execute 事件数据（plan.created/step_started/step_completed/step_failed/completed 并集）
 // plan.created: title/steps/step_count；step_started: step_index/step/plan_status；
-// step_completed: step_index/plan_status；completed: summary
+// step_completed: step_index/plan_status；step_failed: step_index/step/reason/plan_status；
+// completed: summary/interrupted
 export interface PlanData {
   title?: string
   steps?: string[]
@@ -1644,6 +1645,10 @@ export interface PlanData {
   step_index?: number
   step?: string
   plan_status?: string
+  /** 步骤失败原因（step_failed 事件）：truncated | error */
+  reason?: string
+  /** 计划是否被中断（plan.completed 事件）：任一步失败 fail-fast 时为 true */
+  interrupted?: boolean
   summary?: string
 }
 
@@ -1742,6 +1747,10 @@ export interface AgentChatDoneData {
   iterations: number
   truncated: boolean
   sources?: SourceRef[]
+  /** 归一化 token 用量分项（后端 _record_usage 透传，plan 模式为全流程聚合） */
+  usage_breakdown?: Record<string, number>
+  /** 估算成本 USD（模型命中价格表时存在） */
+  cost_usd?: number
 }
 
 export interface ToolCallRecord {

@@ -21,6 +21,7 @@ import type {
   SourceRef,
   OpenAICompatToolCall,
   AgentContextUsageData,
+  PlanData,
 } from '@/api/types'
 
 // 后端工具状态归并到前端 ToolCallRecord.status 四态
@@ -36,6 +37,67 @@ function normalizeToolStatus(status: string): ToolCallRecord['status'] {
     default:
       return 'failed'
   }
+}
+
+/** plan.created 时构造的 extra.plan 初始形状 */
+interface PlanExtra {
+  title: string
+  steps: string[]
+  statuses: string[]
+  summary?: string
+  interrupted?: boolean
+}
+
+/**
+ * plan.* 事件统一处理（流式/非流式两路共用）：
+ * created 建 role='plan' 消息（statuses 初始化 not_started）；
+ * step_started/step_completed/step_failed 推进 statuses；
+ * completed 写 summary + interrupted。
+ * 返回是否处理了 plan.created（调用方据此把 summary 写进最终气泡）。
+ */
+function applyPlanEvent(
+  planMsg: { value: AgentMessage | null },
+  messages: AgentMessage[],
+  type: string,
+  d: PlanData,
+): boolean {
+  if (type === 'plan.created') {
+    const steps = d.steps || []
+    const msg: AgentMessage = {
+      id: Date.now() + Math.random(),
+      conversation_id: 0,
+      role: 'plan',
+      content: d.title || null,
+      tool_call_id: null,
+      tool_name: null,
+      token_count: null,
+      created_at: new Date().toISOString(),
+      extra: {
+        plan: {
+          title: d.title || '',
+          steps,
+          statuses: steps.map(() => 'not_started'),
+        } satisfies PlanExtra,
+      },
+    }
+    messages.push(msg)
+    planMsg.value = msg
+    return true
+  }
+  if (!planMsg.value) return false
+  const plan = (planMsg.value.extra as { plan?: PlanExtra } | null)?.plan
+  if (!plan?.statuses) return false
+  if (type === 'plan.step_started' && d.step_index != null) {
+    plan.statuses[d.step_index] = 'in_progress'
+  } else if (type === 'plan.step_completed' && d.step_index != null) {
+    plan.statuses[d.step_index] = 'completed'
+  } else if (type === 'plan.step_failed' && d.step_index != null) {
+    plan.statuses[d.step_index] = 'blocked'
+  } else if (type === 'plan.completed') {
+    if (d.summary) plan.summary = d.summary
+    plan.interrupted = !!d.interrupted
+  }
+  return false
 }
 
 export const useAgentStore = defineStore('agent', () => {
@@ -398,43 +460,13 @@ export const useAgentStore = defineStore('agent', () => {
             contextUsage.value = d
           },
           onPlan(type, d) {
-            if (type === 'plan.created') {
-              const steps = d.steps || []
-              const msg: AgentMessage = {
-                id: Date.now() + Math.random(),
-                conversation_id: 0,
-                role: 'plan',
-                content: d.title || null,
-                tool_call_id: null,
-                tool_name: null,
-                token_count: null,
-                created_at: new Date().toISOString(),
-                extra: {
-                  plan: {
-                    title: d.title || '',
-                    steps,
-                    statuses: steps.map(() => 'not_started'),
-                  },
-                },
-              }
-              messages.value.push(msg)
-              planMsg.value = msg
-            } else if (planMsg.value) {
-              const plan = (
-                planMsg.value.extra as {
-                  plan?: { statuses?: string[]; summary?: string }
-                }
-              ).plan
-              if (plan?.statuses) {
-                if (type === 'plan.step_started' && d.step_index != null) {
-                  plan.statuses[d.step_index] = 'in_progress'
-                } else if (type === 'plan.step_completed' && d.step_index != null) {
-                  plan.statuses[d.step_index] = 'completed'
-                }
-              }
-              if (type === 'plan.completed' && d.summary) {
-                if (plan) plan.summary = d.summary
-              }
+            const created = applyPlanEvent(planMsg, messages.value, type, d)
+            if (created) return
+            // plan.completed：最终气泡显示总结（与后端落库口径一致——外层 done 的
+            // full_response 即 summary，而非最后一步的结论文本）
+            if (type === 'plan.completed' && d.summary) {
+              ensureAssistant()
+              assistantMsg!.content = d.summary
             }
           },
           onLoopWarning(d) {
@@ -674,44 +706,9 @@ export const useAgentStore = defineStore('agent', () => {
             contextUsage.value = d
           },
           onPlan(type, d) {
-            if (type === 'plan.created') {
-              const steps = d.steps || []
-              const msg: AgentMessage = {
-                id: Date.now() + Math.random(),
-                conversation_id: 0,
-                role: 'plan',
-                content: d.title || null,
-                tool_call_id: null,
-                tool_name: null,
-                token_count: null,
-                created_at: new Date().toISOString(),
-                extra: {
-                  plan: {
-                    title: d.title || '',
-                    steps,
-                    statuses: steps.map(() => 'not_started'),
-                  },
-                },
-              }
-              messages.value.push(msg)
-              planMsg.value = msg
-            } else if (planMsg.value) {
-              const plan = (
-                planMsg.value.extra as {
-                  plan?: { statuses?: string[]; summary?: string }
-                }
-              ).plan
-              if (plan?.statuses) {
-                if (type === 'plan.step_started' && d.step_index != null) {
-                  plan.statuses[d.step_index] = 'in_progress'
-                } else if (type === 'plan.step_completed' && d.step_index != null) {
-                  plan.statuses[d.step_index] = 'completed'
-                }
-              }
-              if (type === 'plan.completed' && d.summary) {
-                if (plan) plan.summary = d.summary
-              }
-            }
+            // 非流式路径：plan.completed 的 summary 已在 applyPlanEvent 写入 plan 消息；
+            // 最终气泡由 onDone 重建（finalText 切片 = 外层 done 的 full_response = summary）
+            applyPlanEvent(planMsg, messages.value, type, d)
           },
           onLoopWarning(d) {
             messages.value.push({

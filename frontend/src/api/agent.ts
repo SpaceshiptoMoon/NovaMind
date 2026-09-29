@@ -150,6 +150,7 @@ export const agentApi = {
           case 'plan.created':
           case 'plan.step_started':
           case 'plan.step_completed':
+          case 'plan.step_failed':
           case 'plan.completed':
             callbacks.onPlan?.(e.type, e.data as PlanData)
             break
