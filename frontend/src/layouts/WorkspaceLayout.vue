@@ -261,6 +261,12 @@
           <el-form-item label="最大工具调用">
             <el-input-number v-model="agentForm.max_tool_calls_per_turn" :min="1" :max="50" />
           </el-form-item>
+          <el-form-item label="计划模式">
+            <div class="plan-mode-switch">
+              <el-switch v-model="agentForm.plan_mode" />
+              <span class="plan-mode-tip">开启后按「计划 → 逐步执行 → 总结」的 Plan-and-Execute 流程工作</span>
+            </div>
+          </el-form-item>
           <el-form-item label="启用工具">
             <el-select
               v-model="agentForm.enabled_tools"
@@ -341,6 +347,12 @@
           <div class="config-card">
             <div class="config-label">Top P</div>
             <div class="config-value">{{ configAgent?.top_p ?? '-' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">计划模式</div>
+            <div class="config-value">
+              {{ configAgent?.extra_config?.plan_mode === true ? '开启' : '关闭' }}
+            </div>
           </div>
           <div class="config-card config-card--full">
             <div class="config-label">工具</div>
@@ -605,6 +617,7 @@ const agentForm = reactive<
     top_p: number
     max_tokens: number
     max_tool_calls_per_turn: number
+    plan_mode: boolean
   }
 >({
   name: '',
@@ -616,6 +629,7 @@ const agentForm = reactive<
   max_tokens: 4096,
   context_window: 32768,
   max_tool_calls_per_turn: 10,
+  plan_mode: false,
   enabled_tools: [],
   enabled_mcp_servers: [],
 })
@@ -635,14 +649,19 @@ function resetAgentForm() {
   agentForm.max_tokens = 4096
   agentForm.context_window = 32768
   agentForm.max_tool_calls_per_turn = 10
+  agentForm.plan_mode = false
   agentForm.enabled_tools = []
   agentForm.enabled_mcp_servers = []
 }
+
+// 编辑中的 Agent 原始 extra_config（提交时保留既有扩展键，仅覆写 plan_mode）
+const editingAgentExtra = ref<Record<string, unknown> | null>(null)
 
 // 不传 agent = 创建；传 = 编辑（name 保留历史语义）
 function openAgentDialog(agent?: Agent) {
   if (agent) {
     agentEditingId.value = agent.id
+    editingAgentExtra.value = agent.extra_config || null
     agentForm.name = agent.name
     agentForm.description = agent.description || ''
     agentForm.system_prompt = agent.system_prompt ?? ''
@@ -652,10 +671,12 @@ function openAgentDialog(agent?: Agent) {
     agentForm.max_tokens = agent.max_tokens
     agentForm.context_window = agent.context_window || 32768
     agentForm.max_tool_calls_per_turn = agent.max_tool_calls_per_turn
+    agentForm.plan_mode = agent.extra_config?.plan_mode === true
     agentForm.enabled_tools = agent.enabled_tools || []
     agentForm.enabled_mcp_servers = agent.enabled_mcp_servers || []
   } else {
     agentEditingId.value = null
+    editingAgentExtra.value = null
     resetAgentForm()
   }
   agentDialogVisible.value = true
@@ -667,6 +688,8 @@ async function handleAgentSubmit() {
 
   agentSubmitLoading.value = true
   try {
+    // extra_config 保留既有键（编辑时不丢其他扩展配置），仅覆写 plan_mode
+    const existingExtra = (agentEditingId.value ? editingAgentExtra.value : null) || {}
     const data: CreateAgentRequest | UpdateAgentRequest = {
       name: agentForm.name,
       description: agentForm.description || undefined,
@@ -677,6 +700,7 @@ async function handleAgentSubmit() {
       max_tokens: agentForm.max_tokens,
       context_window: agentForm.context_window,
       max_tool_calls_per_turn: agentForm.max_tool_calls_per_turn,
+      extra_config: { ...existingExtra, plan_mode: agentForm.plan_mode },
       enabled_tools: agentForm.enabled_tools?.length ? agentForm.enabled_tools : undefined,
       enabled_mcp_servers: agentForm.enabled_mcp_servers?.length
         ? agentForm.enabled_mcp_servers
@@ -1313,6 +1337,21 @@ onMounted(async () => {
   font-size: var(--text-sm);
   color: var(--color-text);
   line-height: var(--leading-relaxed);
+  word-break: break-word;
+}
+
+/* 计划模式开关行：开关 + 说明文案横排，窄屏折行 */
+.plan-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.plan-mode-tip {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
   word-break: break-word;
 }
 
