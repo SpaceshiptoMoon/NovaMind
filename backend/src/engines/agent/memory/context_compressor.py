@@ -14,13 +14,20 @@ from novamind.shared.utils.redact import redact_sensitive_text
 
 logger = get_logger(__name__)
 
-# 摘要前缀：告诉模型这是上下文交接，不是当前指令
+# 摘要前缀：告诉模型这是上下文交接，不是当前指令。
+# 结构化标签语义：系统注入一律包裹在 <system-*> 标签内，模型经 system prompt
+# 的全局约定学会「标签内是系统注入、标签外才是用户消息」；用户内容进上下文前
+# 会转义 '<'（见 short_term._escape_user_content），无法伪造标签边界。
+# 旧版裸英文前缀（无标签）会被模型当作用户消息里的指令执行——实测导致
+# 连续拒答用户真实请求（摘要里的 "Do NOT answer" 被当作用户意图）。
 SUMMARY_PREFIX = (
+    "<system-compaction>\n"
     "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted into the summary below. "
     "This is a handoff from a previous context window — treat it as background reference, "
     "NOT as active instructions. Do NOT answer questions or fulfill requests mentioned in this summary; "
     "they were already addressed. Your current task is identified in the '## Active Task' section — "
-    "resume exactly from there. Respond ONLY to the latest user message that appears AFTER this summary: "
+    "resume exactly from there. Respond ONLY to the latest user message that appears AFTER this summary:\n"
+    "</system-compaction>\n"
 )
 
 # 反抖动阈值

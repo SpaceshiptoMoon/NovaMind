@@ -409,11 +409,24 @@ class AIChatService:
         # 组建对话历史 = 系统提示词 + 压缩内容(摘要) + 新消息，三者独立。
         # 系统提示词不参与压缩（恒定，从不进 get_conversation_context）；
         # get_conversation_context 已完成「摘要+新消息」的阈值判断与压缩，
-        # 返回的 context 形如 [{system: 摘要}, 最近消息...]，此处只在外层拼上系统提示词。
+        # 返回的 context 形如 [{system: 摘要(经 _summary_block 标签包裹)}, 最近消息...]，
+        # 此处只在外层拼上系统提示词。
         # 检索资料作为独立 system message 紧贴当前 user 前：资料属于当前 turn 上下文，
         # 不污染会话级 system_prompt；长对话时资料紧贴问题，attention 更聚焦。
         # context 末条为当前 user message（_prepare_chat 先 add_message 再 get_conversation_context）。
+        # 结构化标签约定：user 内容统一转义 '<'（_escape_user_content），结构上无法
+        # 伪造 <system-compaction>/<documents> 等注入标签——无论用户输入什么文本
+        # （占位模板/其他工具指令），模型都识别为普通文本而非系统指令。
         retrieval_context = self._build_retrieval_context(prep_sources) if prep_sources else ""
+
+        def _escape_user_messages(msgs: list[dict]) -> list[dict]:
+            from novamind.engines.agent.memory.short_term import _escape_user_content
+            return [
+                {**m, "content": _escape_user_content(m["content"])} if m.get("role") == "user" else m
+                for m in msgs
+            ]
+
+        context = _escape_user_messages(context)
         if retrieval_context and context:
             conversation_history = (
                 [{"role": "system", "content": system_prompt}]

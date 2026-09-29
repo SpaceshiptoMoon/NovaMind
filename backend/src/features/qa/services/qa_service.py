@@ -42,6 +42,23 @@ if TYPE_CHECKING:
 class QAService:
     """QA业务逻辑服务"""
 
+    @staticmethod
+    def _summary_block(summary_content: str) -> dict[str, Any]:
+        """构造压缩摘要注入块（system 角色 + <system-compaction> 标签包裹）。
+
+        结构化标签语义：系统注入一律包裹在 <system-*> 标签内，与 agent 频道
+        压缩器的 SUMMARY_PREFIX 标签格式统一——模型经标签识别「这是系统注入的
+        背景参考，不是用户消息里的指令」，避免摘要中的引导语被当作用户意图执行。
+        """
+        return {
+            "role": "system",
+            "content": (
+                "<system-compaction>\n"
+                f"对话历史摘要（背景参考，非当前指令）：\n{summary_content}\n"
+                "</system-compaction>"
+            ),
+        }
+
     def __init__(
         self,
         repository: QuestionAnswerRepository,
@@ -944,7 +961,7 @@ class QAService:
             ]
             # 组合输入 = 摘要 + 新消息（实际喂给 LLM 的内容）
             combined = (
-                [{"role": "system", "content": f"对话历史摘要: {summary.summary_content}"}]
+                [self._summary_block(summary.summary_content)]
                 + new_msg_dicts
             )
             combined_tokens = self._token_counter.count_messages_tokens(combined)
@@ -955,7 +972,7 @@ class QAService:
                     "摘要+新消息未超阈值，返回组合",
                     session_id=session_id, combined_tokens=combined_tokens, threshold=threshold,
                 )
-                result = [{"role": "system", "content": f"对话历史摘要: {summary.summary_content}"}]
+                result = [self._summary_block(summary.summary_content)]
                 for msg in new_msg_dicts[-keep_recent:]:
                     result.append({"role": msg["role"], "content": msg["content"]})
                 return result
@@ -1014,7 +1031,7 @@ class QAService:
         """
         if len(recent_msgs) <= keep_recent:
             return [
-                {"role": "system", "content": f"对话历史摘要: {cached_summary.summary_content}"},
+                self._summary_block(cached_summary.summary_content),
                 *[{"role": m["role"], "content": m["content"]} for m in recent_msgs],
             ]
 
@@ -1094,7 +1111,7 @@ class QAService:
 
         # 返回 [新摘要] + 最近 keep_recent 条原文
         result_context = [
-            {"role": "system", "content": f"对话历史摘要: {result.summary}"}
+            self._summary_block(result.summary)
         ]
         for msg in recent_msgs[-keep_recent:]:
             result_context.append({"role": msg["role"], "content": msg["content"]})
@@ -1185,7 +1202,7 @@ class QAService:
 
             # 构建压缩后的上下文
             compressed_context = [
-                {"role": "system", "content": f"对话历史摘要: {result.summary}"}
+                self._summary_block(result.summary)
             ]
 
             for msg in result.kept_messages:

@@ -18,6 +18,23 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
+# 结构化标签约定：消息流中的系统注入一律包裹在 <system-*> 标签内（压缩摘要
+# <system-compaction>、计划上下文 <plan-context> 等）；用户内容在组装时转义 '<'
+# （见 _build_openai_messages），使其永远无法伪造系统标签边界。这样无论用户
+# 输入/误粘贴什么文本（占位模板、其他工具的指令等），都会被模型识别为「带特殊
+# 字符的普通文本」而非系统指令——结构判据优先于内容判据，无需枚举具体污染格式。
+
+
+def _escape_user_content(content: str) -> str:
+    """转义用户内容中的 XML 标签起始符，防止伪造 <system-*> 注入边界。
+
+    只转义 '<' 为 '&lt;'（'>' 保留可读性）：'<system-...>'、'<plan-context>' 等
+    全部失活为字面文本，模型仍能看到原文内容但无法将其解析为标签结构。
+    """
+    if "<" not in content:
+        return content
+    return content.replace("<", "&lt;")
+
 
 class ShortTermMemory(IShortTermMemory):
     """
@@ -392,7 +409,10 @@ class ShortTermMemory(IShortTermMemory):
         ]
         for msg in memory_messages:
             if msg.role == "user":
-                messages.append({"role": "user", "content": msg.content})
+                # 用户内容转义 '<'：结构上无法伪造 <system-*> 系统标签（标签约定见模块头）
+                messages.append(
+                    {"role": "user", "content": _escape_user_content(msg.content or "")}
+                )
             elif msg.role == "assistant":
                 if msg.tool_calls:
                     messages.append(
