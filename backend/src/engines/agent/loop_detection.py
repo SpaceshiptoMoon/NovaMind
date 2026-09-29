@@ -33,8 +33,15 @@ class LoopDetector:
         self._warned: set[str] = set()
 
     def _stable_key(self, tool_name: str, args: dict[str, Any]) -> str:
-        """显著参数分桶 hash。"""
+        """显著参数分桶 hash。
+
+        参数中不含任何显著字段时回退为全参数 hash：这类工具（如 plan_output
+        只有 step 字段、read_tool_result 只有 tool_call_id）的区分度恰恰在
+        被忽略的字段上——按空 sig 归桶会把「查询不同步骤」误判成「重复调用」。
+        """
         sig = {k: args[k] for k in _SIG_FIELDS if k in args}
+        if not sig:
+            sig = dict(args)
         return f"{tool_name}:{json.dumps(sig, sort_keys=True, default=str)}"
 
     def track(

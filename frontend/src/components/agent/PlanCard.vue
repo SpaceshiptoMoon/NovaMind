@@ -17,9 +17,10 @@
           <span class="plan-step-text">{{ step }}</span>
         </li>
       </ol>
-      <div v-if="plan.summary" class="plan-card-summary">
-        <div class="plan-card-summary-label">总结</div>
-        <MarkdownRenderer :content="plan.summary" />
+      <!-- 中断说明保留在卡内（用户需要知道计划没走完）；正常完成时不渲染总结——
+         最终答案与计划卡是同一段文本，只渲染在下方 final-answer，避免重复 -->
+      <div v-if="plan.interrupted" class="plan-card-interrupted">
+        计划被中断，最终回复基于已完成部分作答。
       </div>
     </div>
   </div>
@@ -27,11 +28,11 @@
 
 <script setup lang="ts">
 /**
- * Plan-and-Execute 计划卡：标题 + 进度 + 状态 tag 胶囊行，展开看步骤清单与总结。
+ * Plan-and-Execute 计划卡：标题 + 进度 + 状态 tag 胶囊行，展开看步骤清单。
  * statuses 缺失（历史数据无终态持久化）统一按已完成 [✓] 兜底，与轨迹视图口径一致。
+ * 不渲染 summary：最终答案由下方 final-answer 承载，计划卡只负责计划本身。
  */
 import { computed } from 'vue'
-import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 
 const props = defineProps<{
   plan: {
@@ -214,15 +215,11 @@ const statusType = computed(() => {
   min-width: 0;
 }
 
-.plan-card-summary {
+.plan-card-interrupted {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px dashed var(--color-border-light);
-}
-
-.plan-card-summary-label {
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-1);
+  color: var(--color-warning, #b45309);
 }
 </style>

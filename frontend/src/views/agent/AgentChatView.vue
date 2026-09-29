@@ -136,9 +136,11 @@
                     <span class="fold-status">{{
                       turn.isActive
                         ? '生成中…'
-                        : turn.steps.length > 0
-                          ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
-                          : '思考过程'
+                        : turn.planItems.length && turn.planItems.length > 0
+                          ? `已执行 ${turn.steps.length} 轮 · ${turnDurationLabel(turn)}`
+                          : turn.steps.length > 0
+                            ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
+                            : '思考过程'
                     }}</span>
                     <el-icon
                       :size="12"
