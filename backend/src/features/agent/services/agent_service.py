@@ -18,6 +18,7 @@ from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.repository.agent_repository import (
     AgentRepository,
+    McpServerRepository,
     MessageRepository,
     SessionRepository,
     ToolCallRepository,
