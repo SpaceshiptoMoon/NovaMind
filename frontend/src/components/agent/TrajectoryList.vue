@@ -244,6 +244,14 @@
  * Agent 轨迹时间线（左列表 + 右 inspector 双栏）：以 Session → Turn → Step 层级平铺展示
  * 消息与工具调用记录，支持搜索过滤、一键折叠、hierarchy 跳转和拖拽调整 inspector 宽度。
  */
+import { onErrorCaptured } from 'vue'
+// inspector 渲染异常此前只以 Vue warn（无堆栈）出现在 console，选中行后面板静默消失
+// 极难定位；在此捕获一次让异常带堆栈落到 console，且不让错误冒泡打断列表渲染。
+onErrorCaptured((err, _inst, info) => {
+  // eslint-disable-next-line no-console
+  console.error(`[Trajectory] ${info}:`, err)
+  return false
+})
 import { ref, computed, watch, nextTick } from 'vue'
 import type { AgentMessage, ToolCallRecord } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'

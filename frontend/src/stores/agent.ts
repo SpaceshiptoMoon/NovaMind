@@ -845,6 +845,10 @@ export const useAgentStore = defineStore('agent', () => {
 
   /** 进入某 Agent 聊天页的入口：拉 Agent 详情 + 会话列表 */
   async function initForAgent(agentId: number) {
+    // 切换智能体必须先清聊天态：currentSessionId 归属上一个 agent，残留时发消息
+    // 会把旧会话 ID 传给新 agent（后端 500「会话不存在」）；messages 残留则串台显示
+    // 上一个 agent 的历史。同 agent 重进也只需重拉列表，清态无副作用。
+    clearChat()
     await fetchAgent(agentId)
     await fetchConversations(agentId)
   }
