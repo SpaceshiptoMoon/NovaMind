@@ -426,7 +426,8 @@
         </button>
       </main>
 
-      <!-- 抽屉拉出按钮（agent 对话页、抽屉收起时浮在主区右下角；» 语义=向右拉出侧栏） -->
+      <!-- 抽屉拉出按钮（agent 对话页、抽屉收起时吸附在对话页自带会话侧栏右缘垂直居中；
+           » 语义=向右拉出布局层侧栏） -->
       <button
         v-if="sidebarAsDrawer && !sidebarOverlayOpen"
         class="sidebar-drawer-toggle"
@@ -954,11 +955,14 @@ onMounted(async () => {
 
 .sidebar-drawer-toggle {
   position: absolute;
-  bottom: var(--space-4);
-  right: var(--space-4);
+  /* 吸附在对话页自带会话侧栏（chat-sidebar，展开 260px / compact 220px）的右缘，
+     垂直居中：left 取 compact 宽度 220px 再内缩半个按钮，两种宽度下都压在侧栏边上 */
+  left: calc(220px - 14px);
+  top: 50%;
+  transform: translateY(-50%);
   z-index: var(--z-raised);
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -969,6 +973,7 @@ onMounted(async () => {
   cursor: pointer;
   transition: all var(--transition-fast);
   box-shadow: var(--shadow-md);
+  padding: 0;
 }
 
 .sidebar-drawer-toggle:hover {
