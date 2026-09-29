@@ -388,6 +388,21 @@ class MessageRepository:
         )
         return list(reversed(result.scalars().all())), total
 
+    async def update_extra(self, message_id: int, extra: dict) -> None:
+        """按主键整体替换消息 extra（JSON 直更，flush 不 commit，随会话事务统一提交）。
+
+        Plan-and-Execute 计划终态持久化用：plan.* 事件推进 statuses/summary 时
+        整体写回 plan 消息的 extra.plan（调用方必须传完整 plan dict，非局部 patch）。
+
+        Args:
+            message_id: 消息主键 ID。
+            extra: 完整的 extra dict（整体替换，不合并）。
+        """
+        await self.session.execute(
+            update(AgentMessage).where(AgentMessage.id == message_id).values(extra=extra)
+        )
+        await self.session.flush()
+
 
 class ToolCallRepository:
     """工具调用记录仓储"""

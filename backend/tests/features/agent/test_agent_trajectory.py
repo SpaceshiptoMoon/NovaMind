@@ -137,8 +137,8 @@ async def test_get_system_prompt_returns_full_prompt() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_plan_created_persists_role_plan() -> None:
-    """_handle_plan_created 落 role='plan' 消息，extra.plan 存 title/steps/step_count。
-    验证 Plan-and-Execute 计划清单持久化（历史回放可见）。
+    """_handle_plan_created 落 role='plan' 消息，extra.plan 存 title/steps/step_count/statuses。
+    并在 context 建立 plan_state/plan_msg_id 供后续 plan.* 事件推进终态。
     """
     svc = AgentChatService.__new__(AgentChatService)
     captured: dict = {}
@@ -152,11 +152,15 @@ async def test_handle_plan_created_persists_role_plan() -> None:
         "title": "调研计划", "steps": ["步骤1", "步骤2", "步骤3"], "step_count": 3,
     })
     conv = SimpleNamespace(id=7)
-    await svc._handle_plan_created(event, conv)
+    context: dict = {}
+    await svc._handle_plan_created(event, conv, context)
     assert captured["role"] == "plan"
     assert captured["content"] == "调研计划"
     assert captured["extra"]["plan"]["step_count"] == 3
     assert len(captured["extra"]["plan"]["steps"]) == 3
+    assert captured["extra"]["plan"]["statuses"] == ["not_started"] * 3
+    assert context["plan_msg_id"] == 101
+    assert context["plan_state"]["statuses"] == ["not_started"] * 3
 
 
 @pytest.mark.asyncio

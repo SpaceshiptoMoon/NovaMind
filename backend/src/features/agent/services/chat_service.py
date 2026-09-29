@@ -50,6 +50,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
+# Plan-and-Execute 步骤状态值（与 novamind.engines.agent.flow.planning_flow 常量对齐；
+# 本地定义避免 features → engines 仅为此拉 import）
+NOT_STARTED_VALUE = "not_started"
+IN_PROGRESS_VALUE = "in_progress"
+
 
 class AgentChatService:
     """Agent 对话服务"""
@@ -259,6 +264,9 @@ class AgentChatService:
                     temperature=agent.temperature,
                     top_p=agent.top_p,
                     enable_thinking=enable_thinking,
+                    stream=stream,
+                    compress_fn=_compress_on_overflow,
+                    max_iterations=agent.max_tool_calls_per_turn or 5,
                 )
             else:
                 event_gen = self.agent_engine.run(
@@ -280,14 +288,37 @@ class AgentChatService:
                 # 注意最终回答属于最后一轮（无工具调用那轮），其 iteration 由该轮 content/reasoning
                 # 事件推进，故不能只在 assistant_tool_calls 分支设置。
                 if "iteration" in event.data:
+                    raw_iter = event.data.get("iteration")
+                    if plan_mode:
+                        # plan 模式 iteration 全局连续化：内层引擎每步从 1 重计数，
+                        # 加 plan 步偏移后写回 event.data——落库与前端收到的事件同源同值，
+                        # 前端按 iteration 分组不再跨计划步碰撞。偏移仅在内层 done 时推进。
+                        event.data["iteration"] = context.get("plan_iter_offset", 0) + (raw_iter or 0)
                     context["current_iteration"] = event.data.get("iteration")
                 if event.event_type == "plan.created":
                     # 计划生成：落库 role='plan' 消息（extra.plan 存 title/steps），
-                    # 供历史回放还原 Plan-and-Execute 计划清单；step 状态变化不持久化（实时靠 emit）
-                    await self._handle_plan_created(event, conv)
+                    # 并在 context 建立 plan_state 单一事实源——后续 plan.* 事件推进
+                    # statuses，经 update_extra 持久化终态（历史回放可还原进度）
+                    await self._handle_plan_created(event, conv, context)
                     yield self._emit("plan.created", event.data)
+                elif event.event_type == "plan.step_started":
+                    context["plan_step_index"] = event.data.get("step_index")
+                    await self._apply_plan_step_status(context, event.data.get("step_index"), IN_PROGRESS_VALUE)
+                    yield self._emit("plan.step_started", event.data)
+                elif event.event_type == "plan.step_completed":
+                    await self._apply_plan_step_status(context, event.data.get("step_index"), "completed")
+                    yield self._emit("plan.step_completed", event.data)
+                elif event.event_type == "plan.step_failed":
+                    await self._apply_plan_step_status(context, event.data.get("step_index"), "blocked")
+                    yield self._emit("plan.step_failed", event.data)
                 elif event.event_type == "plan.completed":
-                    # 外层 done 前置标志：plan 模式下区分内层/外层 done，外层才落最终 summary
+                    # 外层 done 前置标志：plan 模式下区分内层/外层 done，外层才落最终 summary；
+                    # 同时把 summary/interrupted 写入 plan_state 持久化（计划终态）
+                    state = context.get("plan_state")
+                    if state is not None:
+                        state["summary"] = event.data.get("summary", "")
+                        state["interrupted"] = bool(event.data.get("interrupted"))
+                        await self._persist_plan_state(context)
                     context["plan_finalizing"] = True
                     yield self._emit("plan.completed", event.data)
                 elif event.event_type.startswith("plan."):
@@ -338,9 +369,27 @@ class AgentChatService:
                         yield self._emit("content", {"content": cleaned})
 
                 elif event.event_type == "done":
-                    # plan 模式内层 ReAct 的 done：跳过最终消息落库与 emit，继续下一步；
-                    # 只有 plan.completed 之后的 done（plan_finalizing）才落最终 summary
+                    # plan 模式内层 ReAct 的 done：先 flush 再切片落库该步结论文本
+                    # （role='assistant' + extra.plan_step_index），推进迭代偏移并按步
+                    # 重置累积器；只有 plan.completed 之后的 done（plan_finalizing）才落最终 summary
                     if plan_mode and not context.get("plan_finalizing"):
+                        remaining = scrubber.flush()
+                        if remaining:
+                            full_response += remaining
+                        remaining_r = reasoning_scrubber.flush()
+                        if remaining_r:
+                            full_reasoning += remaining_r
+                        step_text = full_response[iteration_start:]
+                        step_reasoning = full_reasoning[iteration_reasoning_start:] or None
+                        if event.data.get("truncated", False):
+                            step_text += "\n\n[本步因达到迭代上限被截断]"
+                        await self._handle_plan_step_result(conv, context, step_text, step_reasoning)
+                        # 迭代偏移推进 + 累积器按步重置（防跨步串文本 + 内存有界）
+                        context["plan_iter_offset"] = context.get("current_iteration", 0)
+                        full_response = ""
+                        full_reasoning = ""
+                        iteration_start = 0
+                        iteration_reasoning_start = 0
                         continue
                     # flush scrubber buffer
                     remaining = scrubber.flush()
@@ -1083,22 +1132,91 @@ class AgentChatService:
     # ==================== 事件处理 ====================
 
     async def _handle_plan_created(
-        self, event: AgentEvent, conv: AgentSession
+        self, event: AgentEvent, conv: AgentSession, context: dict[str, Any]
     ) -> None:
         """处理 plan.created 事件：落库 role='plan' 消息（extra.plan 存计划清单），
-        供历史回放还原 Plan-and-Execute 计划。step 状态变化不持久化（实时靠 emit）。
+        并在 context 建立 plan_state 单一事实源（statuses 全 not_started）与 plan_msg_id，
+        供后续 plan.* 事件推进状态后经 _persist_plan_state 持久化终态。
         """
         plan = event.data
-        await self.agent_service.save_message(
+        steps = plan.get("steps", [])
+        msg = await self.agent_service.save_message(
             conversation_id=conv.id,
             role="plan",
             content=plan.get("title") or None,
             extra={"plan": {
                 "title": plan.get("title", ""),
-                "steps": plan.get("steps", []),
-                "step_count": plan.get("step_count", 0),
+                "steps": steps,
+                "step_count": plan.get("step_count", len(steps)),
+                "statuses": [NOT_STARTED_VALUE] * len(steps),
             }},
         )
+        context["plan_msg_id"] = msg.id
+        context["plan_state"] = {
+            "title": plan.get("title", ""),
+            "steps": steps,
+            "step_count": plan.get("step_count", len(steps)),
+            "statuses": [NOT_STARTED_VALUE] * len(steps),
+        }
+
+    async def _apply_plan_step_status(
+        self, context: dict[str, Any], step_index: Any, status: str
+    ) -> None:
+        """推进 plan_state 中指定步骤的状态并持久化（step_started/completed/failed 共用）。
+
+        Args:
+            context: 执行上下文（含 plan_state/plan_msg_id）。
+            step_index: 步骤下标；None 或越界时静默跳过（防御畸形事件）。
+            status: 目标状态（in_progress/completed/blocked）。
+        """
+        state = context.get("plan_state")
+        if state is None or not isinstance(step_index, int):
+            return
+        statuses = state.get("statuses")
+        if not isinstance(statuses, list) or step_index < 0 or step_index >= len(statuses):
+            return
+        statuses[step_index] = status
+        await self._persist_plan_state(context)
+
+    async def _persist_plan_state(self, context: dict[str, Any]) -> None:
+        """把 context['plan_state'] 整体写回 plan 消息 extra（statuses/summary 终态）。
+
+        update_extra 是整体替换：调用方必须传完整 plan dict。失败不阻断对话（warning）。
+        """
+        plan_msg_id = context.get("plan_msg_id")
+        state = context.get("plan_state")
+        if not plan_msg_id or not state:
+            return
+        try:
+            await self.msg_repo.update_extra(plan_msg_id, {"plan": dict(state)})
+        except Exception as e:
+            logger.warning("计划状态持久化失败", error=str(e))
+
+    async def _handle_plan_step_result(
+        self,
+        conv: AgentSession,
+        context: dict[str, Any],
+        step_text: str,
+        step_reasoning: str | None,
+    ) -> None:
+        """落库单步结论文本：role='assistant' + extra.plan_step_index 标记归属。
+
+        内层 ReAct 最后一轮（不调工具、给出该步结论）不走决策消息落库路径，
+        此处接通持久化（原三断路之一）。步内无产出时跳过；失败不阻断（warning）。
+        """
+        if not step_text and not step_reasoning:
+            return
+        try:
+            await self.agent_service.save_message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=step_text or None,
+                reasoning=step_reasoning,
+                extra={"plan_step_index": context.get("plan_step_index")},
+                iteration=context.get("current_iteration"),
+            )
+        except Exception as e:
+            logger.warning("计划步骤结论落库失败", conversation_id=conv.id, error=str(e))
 
     async def _save_error_message(
         self, conv: AgentSession, content: str, extra: dict[str, Any] | None = None
