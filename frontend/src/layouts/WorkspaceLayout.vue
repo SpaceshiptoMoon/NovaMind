@@ -14,15 +14,6 @@
 
     <!-- 下方：侧栏（频道分段 + 上下文列表，可折叠；仅工作台路由） + 主内容 -->
     <div class="workspace-body">
-      <!-- 抽屉拉出按钮（agent 对话页、抽屉收起时浮在主区左上角） -->
-      <button
-        v-if="sidebarAsDrawer && !sidebarOverlayOpen"
-        class="sidebar-drawer-toggle"
-        title="打开导航面板"
-        @click="sidebarOverlayOpen = true"
-      >
-        <el-icon :size="14"><Expand /></el-icon>
-      </button>
       <aside
         v-if="isWorkspaceRoute"
         class="workspace-sidebar"
@@ -434,6 +425,16 @@
           <el-icon :size="14"><Expand /></el-icon>
         </button>
       </main>
+
+      <!-- 抽屉拉出按钮（agent 对话页、抽屉收起时浮在主区右下角；» 语义=向右拉出侧栏） -->
+      <button
+        v-if="sidebarAsDrawer && !sidebarOverlayOpen"
+        class="sidebar-drawer-toggle"
+        title="打开导航面板"
+        @click="sidebarOverlayOpen = true"
+      >
+        <el-icon :size="14"><DArrowRight /></el-icon>
+      </button>
     </div>
   </div>
 </template>
@@ -447,7 +448,16 @@
 import { ref, reactive, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Expand, ArrowDown, Plus, Setting, EditPen, Close } from '@element-plus/icons-vue'
+import {
+  Delete,
+  Expand,
+  ArrowDown,
+  Plus,
+  Setting,
+  EditPen,
+  Close,
+  DArrowRight,
+} from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
@@ -944,21 +954,21 @@ onMounted(async () => {
 
 .sidebar-drawer-toggle {
   position: absolute;
-  top: var(--space-3);
-  left: var(--space-3);
+  bottom: var(--space-4);
+  right: var(--space-4);
   z-index: var(--z-raised);
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   background: var(--color-bg-card, #fff);
   color: var(--color-text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .sidebar-drawer-toggle:hover {
