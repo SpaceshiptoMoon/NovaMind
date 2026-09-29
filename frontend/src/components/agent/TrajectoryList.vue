@@ -90,12 +90,15 @@
                 <span class="compaction-label">{{ rec.summary }}</span>
               </button>
             </div>
-          </div>
-          <div
-            v-if="rec.kind === 'compaction' && expandedCompactions.has(rec.recordId)"
-            class="traj-compaction-body"
-          >
-            <MarkdownRenderer :content="compactionSummary(rec)" />
+            <!-- 展开摘要体（在专属分支内部，维持 v-if/v-else 链完整：
+               曾放在行外独立 v-if 导致后面的 v-else 与它配对，compaction 记录
+              额外渲染一条空内容普通行——轨迹中 COMPACTED 显示两条） -->
+            <div
+              v-if="expandedCompactions.has(rec.recordId)"
+              class="traj-compaction-body"
+            >
+              <MarkdownRenderer :content="compactionSummary(rec)" />
+            </div>
           </div>
 
           <!-- 普通记录行（tool 行若挂靠 assistant 决策则缩进，呈 Step 层级） -->
@@ -978,6 +981,9 @@ function cssEscape(s: string): string {
 
 /* compaction 行展开体 */
 .traj-compaction-body {
+  /* 已改为 traj-row(compaction) 的内部子元素：traj-row 是 flex row，展开体需
+     占满整行换行展示（flex-basis:100%），缩进对齐内容列 */
+  flex-basis: 100%;
   margin: var(--space-1) 0 var(--space-2) 40px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-light);
