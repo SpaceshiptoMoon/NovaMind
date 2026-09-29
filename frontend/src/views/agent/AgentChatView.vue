@@ -159,6 +159,25 @@
                     @toggle="toggleCompaction(c.id)"
                   />
 
+                  <!-- 计划卡（Plan-and-Execute）：常驻胶囊行，展开看步骤清单/进度/总结 -->
+                  <PlanCard
+                    v-for="p in turn.planItems"
+                    :key="`plan-${p.id}`"
+                    :plan="getPlanData(p)"
+                    :expanded="expandedPlans.has(p.id)"
+                    @toggle="togglePlan(p.id)"
+                  />
+
+                  <!-- 纠偏警告行（loop_detection）：常显轻量提示，不折叠（用户应看到的异常信号） -->
+                  <div
+                    v-for="n in turn.noticeItems"
+                    :key="`notice-${n.id}`"
+                    class="notice-row"
+                  >
+                    <el-icon :size="12" class="notice-icon"><Warning /></el-icon>
+                    <span class="notice-text">{{ n.content }}</span>
+                  </div>
+
                   <!-- 工作过程：按 ReAct 步骤渲染。完成后默认折叠，进行中默认展开（实时看工具进度）。
                      无步骤且无思考过程时不渲染空容器 -->
                   <div
@@ -470,6 +489,7 @@ import {
   Expand,
   MagicStick,
   Lightning,
+  Warning,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -485,6 +505,7 @@ import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
 import ContextMeter from '@/components/common/ContextMeter.vue'
 import CompactionItem from '@/components/agent/CompactionItem.vue'
+import PlanCard from '@/components/agent/PlanCard.vue'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 
 const route = useRoute()
@@ -519,6 +540,13 @@ function toggleCompaction(id: number) {
   else expandedCompactions.value.add(id)
 }
 
+// 计划卡就地展开态：按 plan 消息 id 记忆（同 expandedCompactions 模式）
+const expandedPlans = ref(new Set<number>())
+function togglePlan(id: number) {
+  if (expandedPlans.value.has(id)) expandedPlans.value.delete(id)
+  else expandedPlans.value.add(id)
+}
+
 // 视图模式：聊天（产品化气泡）/ 轨迹（调试向消息时间线，平铺每条消息 + 点击展开详情）
 const viewMode = ref<'chat' | 'trajectory'>('chat')
 
@@ -537,6 +565,8 @@ interface ChatTurn {
   userMsg: AgentMessage | null
   items: AgentMessage[]
   compactionItems: AgentMessage[]
+  planItems: AgentMessage[]
+  noticeItems: AgentMessage[]
   finalAssistant: AgentMessage | null
   workItems: AgentMessage[]
   steps: ReActStep[]
@@ -575,6 +605,8 @@ const turns = computed<ChatTurn[]>(() => {
         userMsg: msg,
         items: [],
         compactionItems: [],
+        planItems: [],
+        noticeItems: [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -583,10 +615,15 @@ const turns = computed<ChatTurn[]>(() => {
         isActive: false,
       }
     } else if (current) {
-      // compaction 标记行分流到 compactionItems，不计入 items/workItems/steps，
-      // 也不参与 finalAssistant 检测（role!=='assistant' 天然排除）
+      // compaction/plan/notice 标记行分流到专属列表，不计入 items/workItems/steps，
+      // 也不参与 finalAssistant 检测（role!=='assistant' 天然排除）。
+      // plan/notice 不分流会掉进 byIter（iteration ?? 0 建空步虚增 steps.length）
       if (msg.role === 'compaction') {
         current.compactionItems.push(msg)
+      } else if (msg.role === 'plan') {
+        current.planItems.push(msg)
+      } else if (msg.role === 'notice') {
+        current.noticeItems.push(msg)
       } else {
         current.items.push(msg)
       }
@@ -595,8 +632,10 @@ const turns = computed<ChatTurn[]>(() => {
       current = {
         key: `turn-orphan-${msg.id}`,
         userMsg: null,
-        items: msg.role === 'compaction' ? [] : [msg],
+        items: msg.role === 'compaction' || msg.role === 'plan' || msg.role === 'notice' ? [] : [msg],
         compactionItems: msg.role === 'compaction' ? [msg] : [],
+        planItems: msg.role === 'plan' ? [msg] : [],
+        noticeItems: msg.role === 'notice' ? [msg] : [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -789,6 +828,26 @@ function getCompactionData(msg: AgentMessage): AgentCompactionData | undefined {
   return (msg.extra as Record<string, unknown> | null | undefined)?.compaction as
     | AgentCompactionData
     | undefined
+}
+
+/** 计划卡的 extra.plan 提取（字段缺省安全：历史数据无 statuses/summary） */
+function getPlanData(msg: AgentMessage): {
+  title?: string
+  steps: string[]
+  statuses?: string[]
+  summary?: string
+  interrupted?: boolean
+} {
+  const plan = (
+    msg.extra as { plan?: Record<string, unknown> } | null | undefined
+  )?.plan
+  return {
+    title: typeof plan?.title === 'string' ? plan.title : undefined,
+    steps: Array.isArray(plan?.steps) ? (plan?.steps as string[]) : [],
+    statuses: Array.isArray(plan?.statuses) ? (plan?.statuses as string[]) : undefined,
+    summary: typeof plan?.summary === 'string' ? plan.summary : undefined,
+    interrupted: plan?.interrupted === true,
+  }
 }
 
 function getFileIconClass(type?: string): string {
@@ -1557,6 +1616,34 @@ onBeforeUnmount(() => {
 
 .fold-chevron.expanded {
   transform: rotate(180deg);
+}
+
+/* 纠偏警告行（loop_detection）：常显轻量提示 */
+.notice-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 12px;
+  border: 1px solid var(--color-warning-border, rgba(245, 158, 11, 0.35));
+  border-radius: var(--radius-full);
+  background: var(--color-warning-bg, rgba(245, 158, 11, 0.08));
+  color: var(--color-warning-text, #b45309);
+  font-size: var(--text-xs);
+  margin: var(--space-1) 0;
+  min-width: 0;
+}
+
+.notice-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notice-text {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* 工作过程时间线 */

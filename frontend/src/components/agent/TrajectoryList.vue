@@ -616,11 +616,15 @@ function planSteps(rec: TrajectoryRecord): string[] {
   const plan = rec.msg.extra?.plan as { steps?: string[] } | undefined
   return plan?.steps ?? []
 }
+/** plan 步骤状态符号（判定表与 PlanCard/TrajectoryInspector.planGlyph 统一）：
+ * statuses 整体缺失 → 历史数据视为已完成 [✓]；单步缺失/未知 → completed 兜底 */
 function planStatusGlyph(rec: TrajectoryRecord, i: number): string {
   const plan = rec.msg.extra?.plan as { statuses?: string[] } | undefined
-  const s = plan?.statuses?.[i]
+  if (!plan?.statuses) return '[✓]'
+  const s = plan.statuses[i] ?? 'completed'
   if (s === 'completed') return '[✓]'
   if (s === 'in_progress') return '[→]'
+  if (s === 'blocked') return '[!]'
   return '[ ]'
 }
 function cssEscape(s: string): string {

@@ -496,13 +496,15 @@ const planStepsList = computed(() => {
   const plan = props.record?.msg.extra?.plan as { steps?: string[] } | undefined
   return plan?.steps ?? []
 })
+/** plan 步骤状态符号（判定表与 PlanCard/TrajectoryList.planStatusGlyph 统一）：
+ * statuses 整体缺失 → 历史数据视为已完成；单步缺失/未知 → completed 兜底 */
 function planGlyph(i: number): string {
   const plan = props.record?.msg.extra?.plan as { statuses?: string[] } | undefined
-  // 历史回放无 statuses（后端不持久化中间状态），视为已完成
   if (!plan?.statuses) return '[✓]'
-  const s = plan.statuses[i]
+  const s = plan.statuses[i] ?? 'completed'
   if (s === 'completed') return '[✓]'
   if (s === 'in_progress') return '[→]'
+  if (s === 'blocked') return '[!]'
   return '[ ]'
 }
 
