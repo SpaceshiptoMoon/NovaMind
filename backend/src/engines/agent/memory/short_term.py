@@ -304,6 +304,39 @@ class ShortTermMemory(IShortTermMemory):
                     )
                 )
 
+            elif msg.role == "plan":
+                # 计划上下文 → user 角色文本块（_build_openai_messages 的 user 分支天然映射；
+                # 不映射为 system——压缩器 _pick_summary_role 明确不选 system，user 是唯一
+                # 能同时通过消息组装与压缩角色共存规则的形态）。状态符号缺失（历史数据）兜底 [✓]。
+                plan = (msg.extra or {}).get("plan") or {}
+                steps = plan.get("steps") or []
+                statuses = plan.get("statuses")
+                symbols = {
+                    "completed": "[✓]", "in_progress": "[→]",
+                    "blocked": "[!]", "not_started": "[ ]",
+                }
+                lines = [f"计划: {plan.get('title') or ''}"]
+                for j, step in enumerate(steps):
+                    glyph = "[✓]"
+                    if statuses and j < len(statuses):
+                        glyph = symbols.get(statuses[j], "[✓]")
+                    lines.append(f"{j + 1}. {glyph} {step}")
+                messages.append(MemoryMessage(
+                    role="user",
+                    content=(
+                        "<plan-context>\n"
+                        "[系统提示：以下是本会话此前制定的执行计划与进度，仅作背景参考]\n"
+                        + "\n".join(lines) + "\n"
+                        "</plan-context>"
+                    ),
+                    token_count=msg.token_count,
+                ))
+
+            elif msg.role == "notice":
+                # loop 纠偏警告是瞬时过程性信息，后续 assistant 行为已体现纠偏结果，
+                # 回放进上下文只会引入噪声 → 有意跳过（非遗漏）
+                continue
+
         self._assert_tool_call_pairing(messages, assistant_tc_meta)
         return messages
 
