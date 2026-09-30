@@ -19,17 +19,19 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 # 结构化标签约定：消息流中的系统注入一律包裹在 <system-*> 标签内（压缩摘要
-# <system-compaction>、计划上下文 <plan-context> 等）；用户内容在组装时转义 '<'
-# （见 _build_openai_messages），使其永远无法伪造系统标签边界。这样无论用户
-# 输入/误粘贴什么文本（占位模板、其他工具的指令等），都会被模型识别为「带特殊
-# 字符的普通文本」而非系统指令——结构判据优先于内容判据，无需枚举具体污染格式。
+# <system-compaction>、计划上下文 <plan-context> 等）；用户内容在**写入时**
+# 消毒（sanitize_user_content，chat_service._prepare 落库前调用），DB 与上下文
+# 组装链路全程零变换——同一条消息的字节从第一轮起恒定不变，prompt cache 的
+# 前缀稳定性由构造保证（组装路径没有 per-message 变换，也就没有非确定性口子）。
+# 系统提示词侧约定：<system-tag-convention> 约定层恒定注入 prompt 顶部
+# （prompt_builder._TAG_CONVENTION），教模型识别两类标记——系统注入标签（可信）
+# 与用户消息中已失活的标签样文本（不可信）。
 #
 # 裸前缀历史兼容：标签化改造前的压缩摘要以裸文本 "[CONTEXT COMPACTION ..."
 # 开头（存量 DB 摘要 + 用户从旧轨迹复制的占位文本）。这类文本没有 '<' 可转义，
 # 结构防线对它无效——模型会把它当成真实的系统交接指令执行（实测导致整轮任务
-# 在"寻找不存在的原文"上空转）。防御：识别裸前缀结构并降格为显式不可信块
-# （_neutralise_legacy_compaction_prefix），模型看到的始终是"这是普通文本"
-# 的结构化声明，而非裸指令。
+# 在"寻找不存在的原文"上空转）。防御：写入时识别裸前缀结构并降格为显式不可信
+# 块，模型看到的始终是"这是普通文本"的结构化声明，而非裸指令。
 
 
 def _escape_user_content(content: str) -> str:
@@ -77,6 +79,21 @@ def _neutralise_legacy_compaction_prefix(content: str) -> str:
     if not any(stripped.startswith(m) for m in _LEGACY_PREFIX_MARKERS):
         return content
     return _NEUTRALISED_WRAP.format(payload=content)
+
+
+def sanitize_user_content(content: str) -> str:
+    """用户消息写入时消毒（唯一入口，落库前调用）。
+
+    两道防线（顺序敏感：先转义原文再套壳——壳自身带 <system-user-pasted-note>
+    标签，反向顺序会把它转义失活）：
+    1) 转义 '<'——结构上无法伪造 <system-*> 系统标签
+    2) 旧版裸 compaction 前缀降格——无 '<' 可转义的存量占位文本
+       不能以裸指令形态进入任何 LLM 上下文
+
+    消毒后的文本即该消息的最终形态：DB 存储、上下文组装、压缩器序列化、
+    qa 复用等全部下游零变换零重复防御。"""
+    content = _escape_user_content(content)
+    return _neutralise_legacy_compaction_prefix(content)
 
 
 class ShortTermMemory(IShortTermMemory):
@@ -459,22 +476,12 @@ class ShortTermMemory(IShortTermMemory):
                 # 表现为压缩后模型"失忆"（上下文交接失败的暗病根因）。
                 messages.append({"role": "system", "content": msg.content or ""})
             elif msg.role == "user":
-                # 系统注入面（压缩摘要等）可能以 user 角色存在（_pick_summary_role
-                # 避免连续同角色的产物），metadata.system_injection 声明其来源——
-                # 内容本身就是 <system-*> 标签块，跳过转义与降格，否则自我失活。
-                if msg.metadata.get("system_injection"):
-                    messages.append({"role": "user", "content": msg.content or ""})
-                    continue
-                # 用户内容两道防线（顺序敏感：先转义原文再套壳——壳自身带
-                # <system-user-pasted-note> 标签，反向顺序会把它转义失活）：
-                # 1) 转义 '<'——结构上无法伪造 <system-*> 系统标签
-                # 2) 旧版裸 compaction 前缀降格——无 '<' 可转义的存量占位文本
-                #    （标签化前的摘要格式）不能让它以裸指令形态直达模型
-                content = msg.content or ""
-                if isinstance(content, str):
-                    content = _escape_user_content(content)
-                    content = _neutralise_legacy_compaction_prefix(content)
-                messages.append({"role": "user", "content": content})
+                # user 消息纯透传：用户输入已在落库前经 sanitize_user_content 消毒
+                # （写入时变换，字节此后恒定→prompt cache 前缀稳定），系统注入面
+                # （压缩摘要等以 user 角色存在，_pick_summary_role 避免连续同角色
+                # 的产物）metadata.system_injection 标记，两者都不在此处变换——
+                # 组装路径零 per-message 处理，无缓存扰动源。
+                messages.append({"role": "user", "content": msg.content or ""})
             elif msg.role == "assistant":
                 if msg.tool_calls:
                     messages.append(

@@ -103,8 +103,19 @@ class QAService:
 
             session_id = request.session_id or str(uuid.uuid4())
 
+            # 写入时消毒（与 agent 频道 sanitize-at-write 架构对齐）：user 消息
+            # 转义 '<' 防伪造系统标签 + 裸 compaction 前缀降格。DB 存安全形态后，
+            # get_conversation_context 组装链路无需再对历史消息做 per-message 变换
+            # （前缀字节恒定→prompt cache 稳定），assistant 消息不消毒（非注入面）。
+            from novamind.engines.agent.memory.short_term import sanitize_user_content
+            content_to_store = (
+                sanitize_user_content(request.content)
+                if request.role == "user"
+                else request.content
+            )
+
             message = await self.repository.create(
-                content=request.content,
+                content=content_to_store,
                 role=request.role,
                 user_id=user_id,
                 session_id=session_id,

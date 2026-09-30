@@ -139,6 +139,10 @@ class AgentChatService:
             agent, conv, user_msg = await self._prepare(
                 user_id, agent_id, content, session_id, llm_model, attachment_ids
             )
+            # 消毒后 content 统一贯穿后续全部消费点（PlanningFlow user_query/
+            # 会话标题等）：与 DB 落库形态一致，避免「上下文里消毒、step prompt
+            # 里裸原文」的双版本不一致。
+            content = user_msg.content or content
 
             yield self._emit("session", {
                 "session_id": conv.session_id,
@@ -556,7 +560,7 @@ class AgentChatService:
         llm_model: str | None,
         attachment_ids: list[int] | None = None,
     ) -> tuple[AgentDefinition, AgentSession, AgentMessage]:
-        """准备阶段：获取 Agent、创建/恢复会话、保存用户消息（原始 content + extra）"""
+        """准备阶段：获取 Agent、创建/恢复会话、保存用户消息（消毒后 content + extra）"""
         agent = await self.agent_service.get_agent_definition(user_id, agent_id)
 
         conv = await self.agent_service.get_or_create_session(
@@ -574,10 +578,16 @@ class AgentChatService:
                     for a in attachments
                 ])
 
+        # 写入时消毒（prompt 注入防护唯一入口）：转义 '<' 防伪造系统标签 +
+        # 旧版裸 compaction 前缀降格。DB 存安全形态，此后上下文组装/压缩序列化/
+        # 历史回放零变换——消息字节从第一轮起恒定，prompt cache 前缀稳定由构造保证。
+        from novamind.engines.agent.memory.short_term import sanitize_user_content
+        safe_content = sanitize_user_content(content)
+
         user_msg = await self.agent_service.save_message(
             conversation_id=conv.id,
             role="user",
-            content=content,
+            content=safe_content,
             extra=extra,
         )
 
