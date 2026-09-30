@@ -103,7 +103,9 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
     res = await svc._retrieve_web(query="q", user_id=10, max_results=3)
     assert res is not None
     text, sources = res
-    assert "<web-search-results>" in text
+    # 资料块文本已收敛到 _build_retrieval_context 单一权威（_retrieve_web 只产 sources，
+    # 首元为占位空串），不再返回渲染文本
+    assert text == ""
     assert len(sources) == 1
     assert sources[0]["kind"] == "web"
     assert sources[0]["score"] == 0.9

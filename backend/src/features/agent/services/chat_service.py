@@ -1075,19 +1075,30 @@ class AgentChatService:
                         b64_data = await self._download_attachment_as_base64(rec)
                         if b64_data:
                             mime = f"image/{rec.file_type}"
-                            img_parts.append({"type": "text", "text": f"[图片: {rec.filename}]"})
+                            img_parts.append({
+                                "type": "text",
+                                "text": f"[图片: {str(rec.filename or '').replace('<', '&lt;')}]",
+                            })
                             img_parts.append({
                                 "type": "image_url",
                                 "image_url": {"url": f"data:{mime};base64,{b64_data}"},
                             })
                     except Exception as e:
                         logger.warning("图片下载失败，跳过", filename=rec.filename, error=str(e))
-                        img_parts.append({"type": "text", "text": f"[图片: {rec.filename}（加载失败）]"})
+                        img_parts.append({
+                            "type": "text",
+                            "text": f"[图片: {str(rec.filename or '').replace('<', '&lt;')}（加载失败）]",
+                        })
             else:
                 for a in current_imgs:
                     img_parts.append({
                         "type": "text",
-                        "text": f"[图片: {a.get('filename')}（当前模型不支持视觉，无法查看）]",
+                        # filename 来自上传文件（可含标签样文本），转义 '<'
+                        # 与清单字段同款防御
+                        "text": (
+                            f"[图片: {str(a.get('filename') or '').replace('<', '&lt;')}"
+                            "（当前模型不支持视觉，无法查看）]"
+                        ),
                     })
 
         # 注入：字符串 content 直接 prepend；list content（多模态）prepend 为首个 text block

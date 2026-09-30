@@ -998,15 +998,18 @@ class QAService:
             combined_tokens = self._token_counter.count_messages_tokens(combined)
 
             if combined_tokens <= threshold:
-                # 组合没超 → 直接返回摘要 + 最近 keep_recent 条新消息
+                # 组合没超 → 摘要 + 全部新消息原样返回。
+                # 不截 keep_recent：中间新消息既没进摘要也没进窗口会被静默丢
+                # （当轮 LLM 看不到自己上一问）；且截取起点随消息数滑动会改写
+                # 历史前缀破坏 prompt cache。组合 token 已 ≤ 阈值，无超窗风险。
                 self.logger.debug(
                     "摘要+新消息未超阈值，返回组合",
                     session_id=session_id, combined_tokens=combined_tokens, threshold=threshold,
                 )
-                result = [self._summary_block(summary.summary_content)]
-                for msg in new_msg_dicts[-keep_recent:]:
-                    result.append({"role": msg["role"], "content": msg["content"]})
-                return result
+                return [
+                    self._summary_block(summary.summary_content),
+                    *[{"role": m["role"], "content": m["content"]} for m in new_msg_dicts],
+                ]
 
             # 组合超了（新消息积累多）→ 增量压缩：旧摘要 + 新消息 → 新摘要
             return await self._incremental_compress_and_return(
