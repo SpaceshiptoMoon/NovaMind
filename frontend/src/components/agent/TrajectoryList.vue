@@ -70,7 +70,10 @@
               >
             </span>
           </div>
-          <!-- compaction 行：统一序号 + 展开摘要 -->
+          <!-- compaction 行：统一序号 + 展开摘要。
+               行容器改 flex-wrap：头行元素（序号/徽标/toggle）占第一行，
+               展开体 flex-basis:100% 自然换行到第二行，不再与头行元素挤同一行
+               （旧结构展开时头行被挤到竖排——「已压缩 29 条」逐字换行） -->
           <div
             v-if="rec.kind === 'compaction'"
             class="traj-row compaction"
@@ -621,7 +624,14 @@ function toolStatusLabel(rec: TrajectoryRecord): string {
 }
 function compactionSummary(rec: TrajectoryRecord): string {
   const comp = rec.msg.extra?.compaction as { summary?: string } | undefined
-  return comp?.summary || ''
+  if (!comp?.summary) return ''
+  // 剥离给模型看的前言段，用户轨迹只展示摘要本体：
+  // 1) <system-compaction> 标签块（SUMMARY_PREFIX，模型侧注入约定，含英文指令文本）
+  // 2) 旧版裸前缀 "[CONTEXT COMPACTION — REFERENCE ONLY] ..." 段（历史存量数据）
+  return comp.summary
+    .replace(/<system-compaction>[\s\S]*?<\/system-compaction>\s*/g, '')
+    .replace(/^\[CONTEXT COMPACTION[^\n]*\n(?=[\s\S]*## Active Task)/, '')
+    .trim()
 }
 function planSteps(rec: TrajectoryRecord): string[] {
   const plan = rec.msg.extra?.plan as { steps?: string[] } | undefined
@@ -979,16 +989,22 @@ function cssEscape(s: string): string {
   color: var(--color-text-muted);
 }
 
+.traj-row.compaction {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
 /* compaction 行展开体 */
 .traj-compaction-body {
-  /* 已改为 traj-row(compaction) 的内部子元素：traj-row 是 flex row，展开体需
-     占满整行换行展示（flex-basis:100%），缩进对齐内容列 */
+  /* traj-row(compaction) 已 flex-wrap：flex-basis:100% 使展开体独占第二行，
+     头行元素（序号/徽标/toggle）保持单行不被挤压 */
   flex-basis: 100%;
   margin: var(--space-1) 0 var(--space-2) 40px;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border-light);
+  border-left: 3px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-bg-card, #fff);
+  background: var(--color-bg-card-elevated);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   color: var(--color-text-secondary);
@@ -1047,6 +1063,10 @@ function cssEscape(s: string): string {
   transform: rotate(90deg);
 }
 .compaction-label {
+  /* 防长 summary 撑破头行：单行省略（flex-wrap 后头行自身空间充足） */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-secondary);
 }
 
