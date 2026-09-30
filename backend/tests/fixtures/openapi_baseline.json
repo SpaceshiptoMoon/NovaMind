@@ -6557,11 +6557,10 @@
           },
           "role": {
             "default": "user",
-            "description": "消息角色",
+            "description": "消息角色（system 保留给服务端注入面——压缩摘要/检索资料，客户端直写会被模型当作真系统指令，属提示词注入原语）",
             "enum": [
               "user",
-              "assistant",
-              "system"
+              "assistant"
             ],
             "title": "Role",
             "type": "string"
@@ -6683,6 +6682,7 @@
         "type": "object"
       },
       "QAUpdateRequest": {
+        "additionalProperties": false,
         "description": "消息更新请求模式",
         "properties": {
           "content": {
@@ -6697,22 +6697,6 @@
             ],
             "description": "消息内容（非空）",
             "title": "Content"
-          },
-          "role": {
-            "anyOf": [
-              {
-                "enum": [
-                  "user",
-                  "assistant"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "消息角色",
-            "title": "Role"
           }
         },
         "title": "QAUpdateRequest",

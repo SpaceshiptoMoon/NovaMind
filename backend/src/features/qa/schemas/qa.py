@@ -16,9 +16,10 @@ class QARequest(BaseModel):
         max_length=10000,
         description="消息内容"
     )
-    role: Literal["user", "assistant", "system"] = Field(
+    role: Literal["user", "assistant"] = Field(
         default="user",
-        description="消息角色"
+        description="消息角色（system 保留给服务端注入面——压缩摘要/检索资料，"
+        "客户端直写会被模型当作真系统指令，属提示词注入原语）"
     )
     session_id: str | None = Field(
         default=None,
@@ -84,8 +85,12 @@ class ChatSessionListResponse(BaseModel):
 
 class QAUpdateRequest(BaseModel):
     """消息更新请求模式"""
+    # extra="forbid"：role 已移除，客户端传 role 直接 422 而非静默忽略——
+    # 翻转 user/assistant 会重构会话指令结构（assistant 伪装 user 发新指令），
+    # 且写入时消毒按角色判据，翻转即绕过消毒
+    model_config = ConfigDict(extra="forbid")
+
     content: str | None = Field(default=None, min_length=1, description="消息内容（非空）")
-    role: Literal["user", "assistant"] | None = Field(default=None, description="消息角色")
 
 
 class MessageFeedbackRequest(BaseModel):

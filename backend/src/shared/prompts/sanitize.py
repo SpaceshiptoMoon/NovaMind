@@ -1,6 +1,6 @@
 """提示词输入净化工具。
 
-仅用于拼入提示词前的轻量净化（剥结构性分隔标签与行首 markdown 标题），不是完整的 prompt 注入防御。
+仅用于拼入提示词前的轻量净化（剥结构性分隔标签、转义系统标签前缀与行首 markdown 标题），不是完整的 prompt 注入防御。
 """
 from __future__ import annotations
 
@@ -22,12 +22,24 @@ _STRUCTURE_TAGS = (
 # 任意属性组合，用正则剥除整个开标签。
 _STRUCTURE_OPEN_TAG_PATTERN = re.compile(r"<document\b[^>]*>")
 
+# 系统注入标签前缀：第三方内容（网页 snippet/KB chunk/工具输出）中出现的
+# <system-*>/</system-*> 样式文本一律转义失活——与消息流的 <system-*> 系统注入
+# 标签约定（prompt_builder._TAG_CONVENTION）对齐。只转义前缀而非全部 '<'：
+# 保留工具输出/代码片段中的正常 HTML 可读性，同时结构性掐断伪造系统边界的可能。
+# 注意 '<system-' 与 '</system-' 互不为子串（'<s' vs '</'），替换顺序无关。
+_SYSTEM_TAG_ESCAPES = (
+    ("</system-", "&lt;/system-"),
+    ("<system-", "&lt;system-"),
+)
+
 
 def sanitize_prompt_input(text: Any) -> str:
     """
     净化将拼入提示词的文本。
 
     - 剥离已知的结构性 XML 分隔标签；
+    - 转义 ``<system-`` / ``</system-`` 标签前缀为 ``&lt;system-`` / ``&lt;/system-``，
+      防止第三方内容伪造系统注入边界（标签失活为字面文本，内容仍可读）；
     - 剥离行首 markdown 标题标记（`#`/`##`/`###` 等），防止用户内容伪造模板
       的 `## Retrieved Documents` / `## User Question` / `## Requirements`
       等区段结构。
@@ -46,6 +58,9 @@ def sanitize_prompt_input(text: Any) -> str:
     for tag in _STRUCTURE_TAGS:
         text = text.replace(tag, "")
     text = _STRUCTURE_OPEN_TAG_PATTERN.sub("", text)
+    # 转义 <system- 前缀（覆盖任意 <system-xxx> 标签名，无需枚举）
+    for marker, escaped in _SYSTEM_TAG_ESCAPES:
+        text = text.replace(marker, escaped)
 
     # 剥离行首 markdown 标题标记（1-6 个 # 后接空白），
     # 防止用户内容伪造模板的 `## Retrieved Documents`/`## User Question`/`## Requirements` 等区段。

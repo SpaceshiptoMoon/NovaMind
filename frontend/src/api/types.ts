@@ -846,7 +846,8 @@ export interface SearchModelConfigResponse {
 
 export interface AddMessageRequest {
   content: string
-  role?: 'user' | 'assistant' | 'system'
+  /** system 保留给服务端注入面（压缩摘要/检索资料），客户端不可直写 */
+  role?: 'user' | 'assistant'
   session_id?: string
   kb_id?: number
   space_id?: number
@@ -854,7 +855,6 @@ export interface AddMessageRequest {
 
 export interface UpdateMessageRequest {
   content?: string
-  role?: 'user' | 'assistant'
 }
 
 export interface QAContextResponse {

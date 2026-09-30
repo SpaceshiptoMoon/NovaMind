@@ -1404,7 +1404,12 @@ class AIChatService:
         docs = []
         used = 0
         for att in attachments:
+            # 附件正文/文件名是用户上传的第三方内容，可内埋标签指令——过
+            # sanitize_prompt_input（剥块边界标签 + 转义 <system- 前缀）防
+            # 伪造 </document></documents> 逃逸或系统注入边界
             text = att.extracted_text or "(无法提取文档文本)"
+            text = _sanitize_input(text)
+            safe_filename = _sanitize_input(att.filename or "")
             if max_tokens is not None:
                 remaining = max_tokens - used
                 text_tokens = self._token_counter.count_tokens(text)
@@ -1417,7 +1422,7 @@ class AIChatService:
                     used = max_tokens
                 else:
                     used += text_tokens
-            docs.append(f'  <document filename="{att.filename}">\n{text}\n  </document>')
+            docs.append(f'  <document filename="{safe_filename}">\n{text}\n  </document>')
         return "<documents>\n" + "\n".join(docs) + "\n</documents>"
 
     async def _inject_attachments_to_context(

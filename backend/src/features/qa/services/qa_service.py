@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.agent.memory.short_term import sanitize_user_content
 from novamind.features.qa.exceptions import (
     DatabaseOperationError,
     InvalidMessageContentError,
@@ -107,7 +108,6 @@ class QAService:
             # 转义 '<' 防伪造系统标签 + 裸 compaction 前缀降格。DB 存安全形态后，
             # get_conversation_context 组装链路无需再对历史消息做 per-message 变换
             # （前缀字节恒定→prompt cache 稳定），assistant 消息不消毒（非注入面）。
-            from novamind.engines.agent.memory.short_term import sanitize_user_content
             content_to_store = (
                 sanitize_user_content(request.content)
                 if request.role == "user"
@@ -330,11 +330,11 @@ class QAService:
         request: QAUpdateRequest,
         user_id: int,
     ) -> QAResponse | None:
-        """更新消息内容（校验归属，非本人消息视为不存在）。
+        """更新消息内容（校验归属，非本人消息视为不存在；role 不可改）。
 
         Args:
             message_id: 消息 ID。
-            request: 更新请求（content/role，None 字段跳过）。
+            request: 更新请求（content，None 跳过）；role 字段已从 schema 移除。
             user_id: 当前用户 ID，用于归属校验。
 
         Returns:
@@ -355,10 +355,24 @@ class QAService:
                 if not request.content.strip():
                     raise InvalidMessageContentError("消息内容不能为空")
 
+                # 编辑路径同样过写入时消毒：API 编辑可把已消毒的历史消息改回
+                # 任意内容（伪造 <system-*> 标签/裸 compaction 前缀），是
+                # sanitize-at-write 的旁路；仅 user 角色消毒（与 add_message 判据一致）
+                content_to_update = (
+                    sanitize_user_content(request.content)
+                    if message.role == "user"
+                    else request.content
+                )
+            else:
+                content_to_update = None
+
+            # role 已从 QAUpdateRequest 移除（客户端翻转 user/assistant 会重构
+            # 会话指令结构并绕过按角色判据的消毒）；存量 DB 行可能有旧 role 值，
+            # update 显式传 None 不触碰 role 列
             updated_message = await self.repository.update(
                 message_id=message_id,
-                content=request.content,
-                role=request.role,
+                content=content_to_update,
+                role=None,
             )
 
             if updated_message:
@@ -866,6 +880,12 @@ class QAService:
         """
         try:
             messages = await self.get_session_messages(session_id, user_id)
+
+            # 纵深兜底：role="system" 是服务端注入面专属（压缩摘要/检索资料）。
+            # schema 已禁止客户端直写 system，但存量 DB 行（旧 schema 时代）可能
+            # 残留客户端伪造的 system 消息——组装进上下文即成为真 system 角色
+            # 指令（最强注入原语），此处按白名单过滤，只放行 user/assistant。
+            messages = [m for m in messages if m.role in ("user", "assistant")]
 
             if not messages:
                 return []
