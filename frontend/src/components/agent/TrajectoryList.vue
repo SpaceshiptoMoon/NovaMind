@@ -38,7 +38,7 @@
           data-record-id="system"
           @click="selectRecord('system')"
         >
-          <span class="traj-index">#0</span>
+          <span class="traj-index">0</span>
           <span class="traj-role system">SYSTEM</span>
           <div class="traj-content">
             <span class="traj-preview">Initial System Prompt</span>
@@ -80,7 +80,7 @@
             :data-record-id="rec.recordId"
             @click="selectRecord(rec.recordId)"
           >
-            <span class="traj-index">#{{ rec.seq }}</span>
+            <span class="traj-index">{{ rec.seq }}</span>
             <span class="traj-role compaction">COMPACTED</span>
             <div class="traj-content">
               <span class="traj-preview">{{ rec.summary }}</span>
@@ -102,7 +102,7 @@
             :data-record-id="rec.recordId"
             @click="selectRecord(rec.recordId)"
           >
-            <span class="traj-index">#{{ rec.seq }}</span>
+            <span class="traj-index">{{ rec.seq }}</span>
             <span class="traj-role" :class="rec.kind">{{ roleLabel(rec.kind) }}</span>
             <span
               v-if="rec.msg.iteration != null"
