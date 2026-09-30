@@ -147,16 +147,9 @@
                 >
               </template>
 
-              <!-- plan -->
+              <!-- plan：纯展示行，详情（标题/步数/带状态步骤清单）走右侧 inspector -->
               <template v-else-if="rec.kind === 'plan'">
-                <button class="compaction-toggle" @click.stop="togglePlan(rec.recordId)">
-                  <span
-                    class="compaction-chevron"
-                    :class="{ expanded: expandedPlans.has(rec.recordId) }"
-                    >▶</span
-                  >
-                  <span class="compaction-label">{{ rec.summary }}</span>
-                </button>
+                <span class="traj-preview">{{ rec.summary }}</span>
               </template>
 
               <!-- notice -->
@@ -189,13 +182,6 @@
                 :class="rec.toolCall?.status"
                 >{{ toolStatusLabel(rec) }}</span
               >
-            </div>
-          </div>
-          <!-- plan 行展开体：步骤清单 + 状态符号 -->
-          <div v-if="rec.kind === 'plan' && expandedPlans.has(rec.recordId)" class="traj-plan-body">
-            <div v-for="(step, i) in planSteps(rec)" :key="i" class="plan-step">
-              <span class="plan-status-glyph">{{ planStatusGlyph(rec, i) }}</span>
-              <span class="plan-step-text">{{ step }}</span>
             </div>
           </div>
         </template>
@@ -292,7 +278,6 @@ const selectedRecord = computed<TrajectoryRecord | null>(() => {
 // ===== 折叠态 =====
 const collapsedSessions = ref(new Set<number>())
 const collapsedAssistants = ref(new Set<string>())
-const expandedPlans = ref(new Set<string>())
 
 function toggleSession(sessionIndex: number) {
   const next = new Set(collapsedSessions.value)
@@ -305,12 +290,6 @@ function toggleSteps(recordId: string) {
   if (next.has(recordId)) next.delete(recordId)
   else next.add(recordId)
   collapsedAssistants.value = next
-}
-function togglePlan(recordId: string) {
-  const next = new Set(expandedPlans.value)
-  if (next.has(recordId)) next.delete(recordId)
-  else next.add(recordId)
-  expandedPlans.value = next
 }
 
 const sessionKeys = computed(() => {
@@ -596,21 +575,6 @@ function toolStatusLabel(rec: TrajectoryRecord): string {
     default:
       return ''
   }
-}
-function planSteps(rec: TrajectoryRecord): string[] {
-  const plan = rec.msg.extra?.plan as { steps?: string[] } | undefined
-  return plan?.steps ?? []
-}
-/** plan 步骤状态符号（判定表与 PlanCard/TrajectoryInspector.planGlyph 统一）：
- * statuses 整体缺失 → 历史数据视为已完成 [✓]；单步缺失/未知 → completed 兜底 */
-function planStatusGlyph(rec: TrajectoryRecord, i: number): string {
-  const plan = rec.msg.extra?.plan as { statuses?: string[] } | undefined
-  if (!plan?.statuses) return '[✓]'
-  const s = plan.statuses[i] ?? 'completed'
-  if (s === 'completed') return '[✓]'
-  if (s === 'in_progress') return '[→]'
-  if (s === 'blocked') return '[!]'
-  return '[ ]'
 }
 function cssEscape(s: string): string {
   if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(s)
@@ -951,31 +915,6 @@ function cssEscape(s: string): string {
 .traj-tool-status.pending {
   background: var(--color-primary-muted);
   color: var(--color-text-muted);
-}
-
-/* plan 行展开体 */
-.traj-plan-body {
-  margin: var(--space-1) 0 var(--space-2) 40px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card, #fff);
-  font-size: var(--text-sm);
-  max-height: 320px;
-  overflow-y: auto;
-}
-.plan-step {
-  display: flex;
-  gap: var(--space-2);
-  padding: 2px 0;
-}
-.plan-status-glyph {
-  flex-shrink: 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  color: var(--color-text-muted);
-}
-.plan-step-text {
-  color: var(--color-text-secondary);
 }
 
 /* ===== 拖拽分隔条 ===== */
