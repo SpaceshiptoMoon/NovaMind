@@ -509,6 +509,7 @@ import ContextMeter from '@/components/common/ContextMeter.vue'
 import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const route = useRoute()
 const router = useRouter()
@@ -1056,15 +1057,22 @@ function handleCancelStream() {
 }
 
 function handleCopyMessage(content: string, e: MouseEvent) {
-  navigator.clipboard.writeText(content).then(() => {
-    const btn = e.currentTarget as HTMLElement
+  // currentTarget 只在事件派发同步阶段有效，异步回调里是 null——必须先捕获
+  const btn = e.currentTarget as HTMLElement
+  copyToClipboard(content).then((ok) => {
+    if (!ok) {
+      ElMessage.error('复制失败，请手动选择文本复制')
+      return
+    }
     btn.classList.add('copied')
-    const label = btn.querySelector('span')!
-    label.textContent = '已复制'
-    setTimeout(() => {
-      btn.classList.remove('copied')
-      label.textContent = '复制'
-    }, 2000)
+    const label = btn.querySelector('span')
+    if (label) {
+      label.textContent = '已复制'
+      setTimeout(() => {
+        btn.classList.remove('copied')
+        label.textContent = '复制'
+      }, 2000)
+    }
   })
 }
 

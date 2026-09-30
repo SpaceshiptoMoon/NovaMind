@@ -555,6 +555,7 @@ import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
 import { useUserStore } from '@/stores/user'
 import { normalizeSpaceTypes } from '@/components/knowledge'
+import { copyToClipboard } from '@/utils/clipboard'
 import type {
   SpaceConfigResponse,
   SpaceConfigStats,
@@ -854,8 +855,10 @@ async function handleInvite() {
 }
 
 function copyInviteLink() {
-  navigator.clipboard.writeText(inviteLink.value)
-  ElMessage.success('链接已复制到剪贴板')
+  copyToClipboard(inviteLink.value).then((ok) => {
+    if (ok) ElMessage.success('链接已复制到剪贴板')
+    else ElMessage.error('复制失败，请手动选择链接复制')
+  })
 }
 
 function showRoleDialog(member: Member) {

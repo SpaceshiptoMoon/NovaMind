@@ -189,15 +189,12 @@ import AddToTestSetDialog from '@/components/qa/AddToTestSetDialog.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { sessionApi } from '@/api/session'
 import { useChatAttachments } from '@/composables/useChatAttachments'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps<{
   messages: ChatMessage[]
   isStreaming: boolean
   loading: boolean
-}>()
-
-const emit = defineEmits<{
-  'copy-message': [content: string, event: MouseEvent]
 }>()
 
 const { isImageFile, getImagePreviewUrl, getFileExt, handleDownloadAttachment, formatFileSize } =
@@ -412,7 +409,24 @@ function onSourceLocate(source: ChatSource) {
 
 function handleCopyMessage(content: string, e: MouseEvent) {
   e.stopPropagation()
-  emit('copy-message', content, e)
+  // currentTarget 只在事件派发同步阶段有效，异步回调里是 null——必须先捕获
+  const btn = e.currentTarget as HTMLElement
+  // 复制逻辑收敛在组件内完成：此前只 emit 给父层，ChatView 未监听导致按钮纯死
+  copyToClipboard(content).then((ok) => {
+    if (!ok) {
+      ElMessage.error('复制失败，请手动选择文本复制')
+      return
+    }
+    btn.classList.add('copied')
+    const label = btn.querySelector('span')
+    if (label) {
+      label.textContent = '已复制'
+      setTimeout(() => {
+        btn.classList.remove('copied')
+        label.textContent = '复制'
+      }, 2000)
+    }
+  })
 }
 </script>
 

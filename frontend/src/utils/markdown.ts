@@ -1,6 +1,16 @@
 import { Marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
+import { copyToClipboard } from '@/utils/clipboard'
+
+// 代码块复制按钮是渲染产物里的内联 onclick，拿不到模块作用域，
+// 把统一复制工具挂到 window 供其调用（幂等，重复挂载无副作用）
+declare global {
+  interface Window {
+    __copyToClipboard?: typeof copyToClipboard
+  }
+}
+window.__copyToClipboard = copyToClipboard
 
 /**
  * Markdown 渲染工具
@@ -23,15 +33,15 @@ const marked = new Marked({
         : hljs.highlightAuto(text).value
       const id = `code-block-${++codeBlockId}`
       const displayLang = language || 'code'
+      // 复制走 window.__copyToClipboard（clipboard.ts 挂到 window）：内联 onclick
+      // 拿不到模块作用域，直接内联 navigator.clipboard.writeText 无降级、失败静默
       return `<div class="code-block" data-id="${id}">
   <div class="code-header">
     <span class="code-lang">${displayLang}</span>
     <button class="code-copy-btn" onclick="(function(btn){
       var code=btn.closest('.code-block').querySelector('code');
-      navigator.clipboard.writeText(code.textContent||'');
-      btn.classList.add('copied');
-      btn.textContent='已复制';
-      setTimeout(function(){btn.classList.remove('copied');btn.textContent='复制代码';},2000);
+      var done=function(){btn.classList.add('copied');btn.textContent='已复制';setTimeout(function(){btn.classList.remove('copied');btn.textContent='复制代码';},2000);};
+      window.__copyToClipboard(code.textContent||'').then(function(ok){if(ok){done();}});
     })(this)">复制代码</button>
   </div>
   <pre><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre>
