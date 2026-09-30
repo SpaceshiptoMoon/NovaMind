@@ -257,10 +257,11 @@ class AgentChatService:
             # 供前端每个 ReAct 步骤显示 think
             iteration_reasoning_start = 0
 
-            # 上下文溢出时的自动压缩回调
+            # 上下文溢出时的自动压缩回调（tools 透传：前缀对齐压缩 + 预算扣减）
             async def _compress_on_overflow(msgs):
                 return await self._compress_messages(
-                    msgs, memory_manager, model, agent.context_window or 32768, conv.id
+                    msgs, memory_manager, model, agent.context_window or 32768, conv.id,
+                    tools=tools,
                 )
 
             # E7 Plan-and-Execute：Agent extra_config.plan_mode 时用 PlanningFlow 编排
@@ -1545,12 +1546,16 @@ class AgentChatService:
         model: str,
         context_window: int,
         conversation_id: int,
+        tools: list[dict] | None = None,
     ) -> list[dict]:
         """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）
 
         system prompt 不参与压缩：compressor 会把 turns_to_compress（可能含 index 0）
         序列化进摘要并从消息列表消失，溢出兜底后本轮将失去身份/安全约束。
         先摘出 system，压缩其余，最终按 [system, 摘要, tail...] 重排。
+
+        tools 透传给前缀缓存对齐压缩（重放请求头使命中 KV cache），并计入
+        压缩预算扣减——溢出重试的下一请求仍带同一 tools schema，不扣会二次溢出。
         """
         from novamind.engines.agent.memory.interfaces import MemoryMessage
         from novamind.engines.agent.memory.token_budget import TokenBudget
@@ -1577,11 +1582,17 @@ class AgentChatService:
         # 是两套语义而非不一致——溢出兜底发生在流式生成中途，必须为"剩余生成量"留足空间
         # （该次请求可能还要输出长回复），故预留更大；build_context 的 reserve 仅是常规安全边际。
         available = context_window - 4096  # 留出生成空间
+        if tools:
+            available -= budget.count_text_tokens(json.dumps(tools, ensure_ascii=False))
         if available < 2000:
             return messages
 
+        system_prompt = "\n\n".join(
+            (d.get("content") or "") for d in system_dicts
+        ) or None
         compressed, _, _ = await memory_manager._short_term._compression.compress(
             mem_msgs, available, budget, conversation_id=conversation_id,
+            system_prompt=system_prompt, tools=tools or None,
         )
 
         # MemoryMessage → OpenAI dicts（system 前置，摘要 role 由 compressor 从

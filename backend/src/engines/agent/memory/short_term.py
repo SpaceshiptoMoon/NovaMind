@@ -202,7 +202,8 @@ class ShortTermMemory(IShortTermMemory):
         compressed_count = 0
         compaction_summary = ""
 
-        # 4. 超出预算，触发压缩（dry_run 只算 token，不压缩不写 summary）
+        # 4. 超出预算，触发压缩（dry_run 只算 token，不压缩不写 summary）；
+        # 透传 system_prompt/tools 供前缀缓存对齐压缩（重放请求头使命中 KV cache）
         if total_tokens > available_tokens and not dry_run:
             memory_messages, compressed, compression_ratio = (
                 await self._compression.compress(
@@ -210,6 +211,8 @@ class ShortTermMemory(IShortTermMemory):
                     available_tokens=available_tokens - system_tokens - tools_tokens,
                     token_budget=self._token_budget,
                     conversation_id=conversation_id,
+                    system_prompt=system_prompt,
+                    tools=tools,
                 )
             )
             messages_tokens = self._token_budget.count_messages_tokens(

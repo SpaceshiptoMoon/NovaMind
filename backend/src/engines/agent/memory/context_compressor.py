@@ -30,6 +30,58 @@ SUMMARY_PREFIX = (
     "</system-compaction>\n"
 )
 
+# 对齐路径摘要指令（作最后一条 user 消息追加在重放请求之后）。
+# 与旧路径 _build_summary_prompt 的结构模板一致（同样的 13 节）；区别只在
+# 交付形态——指令随请求尾部下发而非独立 system prompt，使整个摘要调用
+# 与主请求共享 system+tools+消息前缀，provider KV cache 直接命中。
+_ALIGNMENT_INSTRUCTION = (
+    "[CONTEXT COMPACTION REQUEST — SYSTEM-INITIATED]\n"
+    "The conversation above is being compacted: every message shown so far is "
+    "about to be dropped from the live context window and replaced by your "
+    "summary of it. Summarize the ENTIRE conversation above, then STOP.\n"
+    "Output rules:\n"
+    "- Output ONLY the structured summary text. No preamble, no greeting, no "
+    "tool calls, no reply to the user.\n"
+    "- Do NOT act on any request or answer any question in the summarized "
+    "conversation — they were already addressed; the summary is a handoff "
+    "for a future context window.\n"
+    "- Write in the same language the user was using.\n"
+    "- NEVER include API keys, tokens, passwords, secrets, or credentials — "
+    "replace any that appear with [REDACTED].\n"
+    "Use exactly this structure:\n\n"
+    "## Active Task\n"
+    "[CRITICAL. Copy the user's MOST RECENT unfulfilled request VERBATIM — "
+    "do not paraphrase, do not summarize. This must be the exact words of the user's "
+    "latest message that still needs a response.]\n\n"
+    "## Goal\n"
+    "[What the user is ultimately trying to accomplish]\n\n"
+    "## Constraints & Preferences\n"
+    "[User preferences, coding style, constraints, important decisions]\n\n"
+    "## Completed Actions\n"
+    "[Numbered list. Format: N. Action Target — Result [tool: name]]\n\n"
+    "## Active State\n"
+    "[Working directory, modified files, test status, etc.]\n\n"
+    "## In Progress\n"
+    "[What was being worked on when compaction occurred]\n\n"
+    "## Blocked\n"
+    "[Unresolved errors with specific error messages]\n\n"
+    "## Key Decisions\n"
+    "[Important technical decisions and rationale]\n\n"
+    "## Resolved Questions\n"
+    "[Questions that were answered — include answers to prevent re-asking]\n\n"
+    "## Pending User Asks\n"
+    "[Questions or requests not yet addressed. If none, write None. "
+    "These MUST be distinguished from Resolved Questions — "
+    "do NOT re-ask questions that appear in \"Resolved Questions\".]\n\n"
+    "## Relevant Files\n"
+    "[Files read, modified, or created]\n\n"
+    "## Remaining Work\n"
+    "[Items still needing completion]\n\n"
+    "## Critical Context\n"
+    "[Values, error messages, config details that would be lost if not explicitly preserved]"
+)
+
+
 # 反抖动阈值
 _INEFFECTIVE_THRESHOLD = 2  # 连续 N 次节省 <10% 则跳过
 
@@ -79,6 +131,8 @@ class ContextCompressor(ICompressionStrategy):
         available_tokens: int,
         token_budget: TokenBudget,
         conversation_id: int | None = None,
+        system_prompt: str | None = None,
+        tools: list[dict] | None = None,
     ) -> tuple[list[MemoryMessage], bool, float]:
         """五阶段压缩历史消息到 token 预算内，返回（压缩后消息, 是否触发, 压缩比）。
 
@@ -87,6 +141,11 @@ class ContextCompressor(ICompressionStrategy):
             available_tokens: 消息可用的 token 预算。
             token_budget: token 计数器。
             conversation_id: 会话 ID（摘要持久化与记忆提取用），None 时回退构造时注入值。
+            system_prompt: 当前请求的 system prompt 全文，可空。与 tools 配对齐全时
+                摘要 LLM 调用重放「system + tools + 被压缩区原文 + 指令（末条 user）」
+                ——与主请求共享前缀，命中 provider KV cache（前缀缓存对齐压缩）；
+                任一缺失或重放超预算时降级独立摘要 prompt 路径。
+            tools: 当前请求的 OpenAI tools schema 列表，可空。
 
         Returns:
             压缩后消息列表、是否执行压缩、压缩比三元组；未触发时原样返回 (原列表, False, 1.0)。
@@ -124,9 +183,41 @@ class ContextCompressor(ICompressionStrategy):
         # 记忆提取：在压缩丢弃前从旧轮次中提取长期记忆
         await self._extract_memories(turns_to_compress, conversation_id or self._conversation_id)
 
-        # Phase 3/4: 结构化 LLM 摘要
-        summary = await self._generate_summary(turns_to_compress, token_budget, conversation_id)
+        # 资源清单跨代累积：旧摘要已携带段（上一代 DB/内存缓存解析）∪ 本代新提取。
+        # carried 必须从**旧摘要**解析而非新 LLM 输出——摘要模型可能丢段，清单
+        # 传承不能依赖它的取舍。本代新提取取自 turns_to_compress 的 assistant
+        # tool_calls（Phase 1 剪枝只动 tool 结果消息与超长参数，工具名与
+        # query/filename 关键字段保留在 500 字符截断内，不受理）。
+        cid = conversation_id or self._conversation_id
+        old_summary_for_resources = self._previous_summary
+        if not old_summary_for_resources and self._summary_store and cid:
+            try:
+                latest = await self._summary_store.get_latest_summary(cid)
+                if latest:
+                    old_summary_for_resources = latest.summary_text
+            except Exception as e:
+                logger.warning("资源清单解析用旧摘要加载失败", error=str(e))
+        new_resource_lines = self._extract_resource_usages(turns_to_compress)
+
+        # Phase 3/4: 结构化 LLM 摘要（前缀缓存对齐优先，降级独立 prompt）
+        summary = await self._generate_summary(
+            turns_to_compress, token_budget, conversation_id,
+            system_prompt=system_prompt, tools=tools,
+        )
         summary_content = summary or self._static_fallback(len(turns_to_compress))
+
+        # 摘要尾部追加跨代资源清单段（摘要成功时才携带；静态降级不带——
+        # 该段是结构化信息，拼在降级占位文本后会破坏下次解析）
+        if summary:
+            carried = self._parse_carried_resources(old_summary_for_resources)
+            merged_lines = carried + [
+                line for line in new_resource_lines if line not in carried
+            ]
+            if merged_lines:
+                summary_content = summary_content + self._resources_section(merged_lines)
+            # 内存缓存与持久化形态保持一致（都带清单段），否则下次迭代时
+            # _previous_summary 优先于 DB 会把已携带段丢掉
+            self._previous_summary = summary_content
 
         # Phase 5: 工具对清理
         # 智能选择摘要角色：避免和 head 末尾、tail 开头连续同角色
@@ -484,10 +575,14 @@ class ContextCompressor(ICompressionStrategy):
     # ==================== Phase 3/4: 结构化 LLM 摘要 ====================
 
     async def _generate_summary(
-        self, turns: list[MemoryMessage], token_budget: TokenBudget,
+        self,
+        turns: list[MemoryMessage],
+        token_budget: TokenBudget,
         conversation_id: int | None = None,
+        system_prompt: str | None = None,
+        tools: list[dict] | None = None,
     ) -> str | None:
-        """生成结构化摘要（首次或迭代更新）"""
+        """生成结构化摘要（前缀缓存对齐优先，异常/降级条件不满足时退回独立 prompt）"""
         if not self._llm_factory:
             return None
 
@@ -496,30 +591,65 @@ class ContextCompressor(ICompressionStrategy):
             logger.debug("摘要生成在冷却中")
             return None
 
-        # 序列化 + 脱敏 + 块转义：用户文本出现 "</conversation>" 可伪造摘要结构
-        # （block-breakout，对齐 deer-flow #4162 的防御），escape 后只作纯文本
-        content = self._serialize_turns(turns)
-        content = redact_sensitive_text(content)
-        content = f"<conversation>\n{html.escape(content, quote=False)}\n</conversation>"
+        try:
+            # 前缀缓存对齐路径：重放请求头 + region 原文，摘要指令作末条 user。
+            # 重放超重放预算（过长 region 截尾后仍超）时降级独立 prompt。
+            if system_prompt and tools:
+                aligned = self._build_aligned_messages(
+                    turns, token_budget, system_prompt, tools,
+                )
+                if aligned is not None:
+                    summary = await self._call_summary_llm(
+                        prompt=aligned, token_budget=token_budget,
+                    )
+                    if summary is not None:
+                        return summary
+                    # LLM 失败进入冷却 → 直接返回（旧路径同样会被冷却拦住）
+                    return None
+                logger.debug("对齐重放超预算，降级独立摘要 prompt")
 
-        # 加载旧摘要：优先内存缓存，其次从 DB 加载
-        old_summary = self._previous_summary
-        if not old_summary and self._summary_store and conversation_id:
-            try:
-                latest = await self._summary_store.get_latest_summary(conversation_id)
-                if latest:
-                    old_summary = latest.summary_text
-                    logger.debug("从 DB 加载旧摘要用于增量融合", conversation_id=conversation_id)
-            except Exception as e:
-                logger.warning("加载旧摘要失败", error=str(e))
+            # 旧路径：独立摘要 prompt（工厂失败/不支持工具时同样落到这里）
+            # 序列化 + 脱敏 + 块转义：用户文本出现 "</conversation>" 可伪造摘要结构
+            # （block-breakout，对齐 deer-flow #4162 的防御），escape 后只作纯文本
+            content = self._serialize_turns(turns)
+            content = redact_sensitive_text(content)
+            content = f"<conversation>\n{html.escape(content, quote=False)}\n</conversation>"
 
-        if old_summary:
-            prompt = self._build_merge_prompt(old_summary, content, token_budget=token_budget)
-        else:
-            # 首次摘要：输入限 4000 token（头尾兼顾——Active Task 依赖末尾的最近消息）
-            content = self._bound_text_head_tail(content, token_budget, 4000)
-            prompt = self._build_summary_prompt(content)
+            # 加载旧摘要：优先内存缓存，其次从 DB 加载
+            old_summary = self._previous_summary
+            if not old_summary and self._summary_store and conversation_id:
+                try:
+                    latest = await self._summary_store.get_latest_summary(conversation_id)
+                    if latest:
+                        old_summary = latest.summary_text
+                        logger.debug("从 DB 加载旧摘要用于增量融合", conversation_id=conversation_id)
+                except Exception as e:
+                    logger.warning("加载旧摘要失败", error=str(e))
 
+            if old_summary:
+                prompt = self._build_merge_prompt(old_summary, content, token_budget=token_budget)
+            else:
+                # 首次摘要：输入限 4000 token（头尾兼顾——Active Task 依赖末尾的最近消息）
+                content = self._bound_text_head_tail(content, token_budget, 4000)
+                prompt = self._build_summary_prompt(content)
+
+            return await self._call_summary_llm(prompt=prompt, token_budget=token_budget)
+
+        except Exception as e:
+            self._cooldown_until = time.monotonic() + _TRANSIENT_COOLDOWN
+            self._last_error = str(e)[:200]
+            logger.warning("摘要生成失败", error=str(e)[:200])
+            return None
+
+    async def _call_summary_llm(
+        self, prompt: Any, token_budget: TokenBudget,
+    ) -> str | None:
+        """经辅助（或主）LLM 工厂生成摘要文本；失败置冷却返回 None。
+
+        prompt 为 str（独立 prompt 路径）或 messages list（对齐重放路径），
+        generate_text 两者皆收（list 直通 OpenAI messages）。返回值统一带
+        <system-compaction> 标签前缀（SUMMARY_PREFIX）。
+        """
         try:
             # 优先使用廉价辅助模型，降级到主模型
             factory = self._aux_llm_factory or self._llm_factory
@@ -533,6 +663,10 @@ class ContextCompressor(ICompressionStrategy):
             )
             summary = summary.strip()
             summary = redact_sensitive_text(summary)
+            # <system-compaction> 标签前缀在此统一包装（对齐路径的模型输出是裸摘要，
+            # 旧路径 merge 时 _previous_summary 同样消费裸正文后的带前缀形态——与
+            # 旧实现一致：标签壳在返回值统一加，merge prompt 内的 old_summary 经
+            # html.escape 后以字面文本出现）
             summary = f"{SUMMARY_PREFIX}\n{summary}"
 
             # 存储用于下次迭代
@@ -546,6 +680,94 @@ class ContextCompressor(ICompressionStrategy):
             self._last_error = str(e)[:200]
             logger.warning("摘要生成失败", error=str(e)[:200])
             return None
+
+    @staticmethod
+    def _memory_message_to_openai(msg: MemoryMessage) -> dict[str, Any]:
+        """MemoryMessage → OpenAI dict（**零变换**直转）。
+
+        对齐重放的每一字节都取自当前请求自身——即 DB 中的安全形态（用户内容
+        写入时已消毒），序列化/转义/截断都会破坏与主请求的字节一致性、使
+        KV cache 失配，因此此处不做任何文本加工（对比 _serialize_turns 的
+        摘要输入形态）。
+        """
+        d: dict[str, Any] = {"role": msg.role}
+        if msg.content is not None:
+            d["content"] = msg.content
+        if msg.tool_calls:
+            d["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            d["tool_call_id"] = msg.tool_call_id
+        if msg.tool_name:
+            d["name"] = msg.tool_name
+        return d
+
+    @classmethod
+    def _build_aligned_messages(
+        cls,
+        turns: list[MemoryMessage],
+        token_budget: TokenBudget,
+        system_prompt: str,
+        tools: list[dict],
+    ) -> list[dict[str, Any]] | None:
+        """构造对齐重放 messages：system + region 原文 + 指令（末条 user）。
+
+        原文重放保持零变换（_memory_message_to_openai）——前缀字节与主请求
+        一致是 KV cache 命中的前提。region 过长时确定性截尾（保头部前缀窗口
+        内的最长截点，对齐路径优先保「前缀对齐」而非内容完整，被截掉的中段
+        信息由 head/tail 窗口兜底）。截尾后仍超重放预算则放弃对齐（返回 None，
+        调用方降级独立 prompt 路径）。
+
+        Returns:
+            重放 messages 列表；超预算且无法截尾时 None。
+        """
+        # 重放预算：region 原文 + system + tools schema + 指令的 token 上限。
+        # 32000 ≈ 长上下文摘要调用的合理上限：对齐收益的前提是辅助调用本身
+        # 也不至于太贵；超过该值时独立 prompt 路径（region 截到 4000 token）
+        # 反而更省。量级依据同 deer-flow/dsh 的摘要输入限幅思想。
+        _REPLAY_BUDGET_TOKENS = 32_000
+
+        instruction_tokens = token_budget.count_text_tokens(_ALIGNMENT_INSTRUCTION)
+        header_tokens = (
+            token_budget.count_text_tokens(system_prompt)
+            + token_budget.count_text_tokens(json.dumps(tools, ensure_ascii=False))
+            + instruction_tokens
+        )
+        budget = _REPLAY_BUDGET_TOKENS - header_tokens
+        if budget < 1000:
+            # 请求头本身超重放预算（异常巨大的 system/tools），放弃对齐
+            return None
+
+        # 确定性截尾：从头部按序累加，超出预算的尾部消息整体丢弃
+        kept: list[MemoryMessage] = []
+        used = 0
+        for msg in turns:
+            t = token_budget.count_messages_tokens([msg])
+            if used + t > budget:
+                break
+            kept.append(msg)
+            used += t
+
+        if not kept:
+            return None
+        dropped = len(turns) - len(kept)
+        tail_note = (
+            "\n\n[CONTEXT COMPACTION NOTICE] The conversation above was truncated "
+            f"for this compaction request: the most recent {dropped} message(s) in "
+            "the compaction region are NOT shown here, and your summary must NOT "
+            "cover them."
+            if dropped
+            else ""
+        )
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt}
+        ]
+        messages.extend(cls._memory_message_to_openai(m) for m in kept)
+        messages.append({
+            "role": "user",
+            "content": _ALIGNMENT_INSTRUCTION + tail_note,
+        })
+        return messages
 
     def _serialize_turns(self, turns: list[MemoryMessage]) -> str:
         """序列化消息为文本供摘要器使用"""
@@ -722,6 +944,117 @@ class ContextCompressor(ICompressionStrategy):
             "(exact words, not paraphrased). If the user's latest message is a follow-up or correction, "
             "the Active Task must reflect that latest message, not the original. "
             "Use the same 13-section structure."
+        )
+
+    # ==================== 资源清单跨代累积 ====================
+    # 对齐 pi 的压缩文件操作跨代累积（readFiles/modifiedFiles 进摘要与 details）：
+    # 压缩丢掉的原始对话里「模型查过哪些资源」这一工作记忆，若只存在于被压缩的
+    # tool 消息中，摘要 LLM 可能省略——后续轮次重复检索/重读同一附件。
+    # 此处以确定性提取兜底（不依赖摘要 LLM 的取舍）：从被压缩区的 assistant
+    # tool_calls 参数提取 read_attachment / knowledge_search / web_search 调用，
+    # 与旧摘要已携带的清单合并去重，作为确定性格式段落追加在摘要尾部。
+    # 判据是**工具名**（结构性），非内容枚举——任何历史消息都按同一规则解析。
+
+    _RESOURCE_TRACKING_TOOLS = ("read_attachment", "knowledge_search", "web_search")
+
+    # 摘要尾部资源清单段的开始/结束标记（供迭代时从旧摘要解析已携带清单）
+    _RESOURCES_SECTION_OPEN = "<compacted-resources>"
+    _RESOURCES_SECTION_CLOSE = "</compacted-resources>"
+
+    @classmethod
+    def _extract_resource_usages(
+        cls, turns: list[MemoryMessage]
+    ) -> list[str]:
+        """从被压缩区提取资源使用记录行（确定性，保序去重）。
+
+        Args:
+            turns: 被压缩的消息序列（含 assistant tool_calls）。
+
+        Returns:
+            清单行列表，如 ``read_attachment("手册.pdf")``；无命中为空列表。
+        """
+        lines: list[str] = []
+        seen: set[str] = set()
+
+        def _add(line: str) -> None:
+            if line not in seen:
+                seen.add(line)
+                lines.append(line)
+
+        for msg in turns:
+            if msg.role != "assistant" or not msg.tool_calls:
+                continue
+            for tc in msg.tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                fn = tc.get("function") or {}
+                name = fn.get("name") or ""
+                if name not in cls._RESOURCE_TRACKING_TOOLS:
+                    continue
+                args = fn.get("arguments") or ""
+                parsed: Any = None
+                if isinstance(args, str):
+                    try:
+                        parsed = json.loads(args)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed = None
+                else:
+                    parsed = args
+                if not isinstance(parsed, dict):
+                    continue
+
+                if name == "read_attachment":
+                    filename = str(parsed.get("filename") or "").strip()
+                    if filename:
+                        _add(f'read_attachment("{filename[:120]}")')
+                elif name == "knowledge_search":
+                    query = str(parsed.get("query") or "").strip()
+                    if query:
+                        _add(f'knowledge_search("{query[:120]}")')
+                elif name == "web_search":
+                    query = str(parsed.get("query") or "").strip()
+                    if query:
+                        _add(f'web_search("{query[:120]}")')
+        return lines
+
+    @classmethod
+    def _parse_carried_resources(cls, old_summary: str | None) -> list[str]:
+        """从旧摘要解析已携带的资源清单行（跨代继承）。
+
+        Args:
+            old_summary: 上一代摘要正文（含标签前缀形态亦可，按段标记定位）。
+
+        Returns:
+            旧清单行列表；旧摘要无该段为空列表。
+        """
+        if not old_summary:
+            return []
+        start = old_summary.find(cls._RESOURCES_SECTION_OPEN)
+        end = old_summary.find(cls._RESOURCES_SECTION_CLOSE)
+        if start == -1 or end == -1 or end < start:
+            return []
+        block = old_summary[start + len(cls._RESOURCES_SECTION_OPEN):end]
+        lines = []
+        for line in block.strip().splitlines():
+            line = line.strip()
+            # 只认清单项（"- " 前缀，_resources_section 的渲染形态）；引导语等
+            # 非项行跳过，防止被当成资源行继承
+            if line.startswith("- "):
+                lines.append(line[2:].strip())
+        return lines
+
+    @classmethod
+    def _resources_section(cls, lines: list[str]) -> str:
+        """渲染资源清单段（空清单返回空串）。"""
+        if not lines:
+            return ""
+        return (
+            f"\n\n{cls._RESOURCES_SECTION_OPEN}\n"
+            "Resources consulted earlier in this conversation (deduplicated; "
+            "avoid re-reading/re-searching them unless the user asks again or "
+            "you need to verify):\n"
+            + "\n".join(f"- {line}" for line in lines)
+            + f"\n{cls._RESOURCES_SECTION_CLOSE}"
         )
 
     # ==================== Phase 5: 工具对清理 ====================

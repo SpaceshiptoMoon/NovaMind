@@ -533,6 +533,22 @@ class ModelConfigService:
             _client_cache[cache_key] = (time.time(), client)
             return client
 
+    @staticmethod
+    def _resolve_prompt_cache_key(extra_config: dict | None, model: str) -> str | None:
+        """解析 extra_config.prompt_cache_key → 客户端构造参数。
+
+        三态：缺失/None → 不启用（None，请求不带该字段）；布尔 true → 按模型名
+        生成稳定键（"novamind:{model}"，同模型同键跨请求稳定）；非空字符串 →
+        字面量键（用户自定义分片，如按会话/按应用维度）。其他类型（false/数字）
+        一律视为未启用，不猜测。
+        """
+        raw = (extra_config or {}).get("prompt_cache_key")
+        if raw is True:
+            return f"novamind:{model}"
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        return None
+
     async def get_llm_client_by_model(
         self,
         user_id: int,
@@ -560,6 +576,7 @@ class ModelConfigService:
                 timeout=(c.extra_config or {}).get("timeout", 120),
                 max_retries=(c.extra_config or {}).get("max_retries", 3),
                 max_concurrent=(c.extra_config or {}).get("max_concurrent", 5),
+                prompt_cache_key=self._resolve_prompt_cache_key(c.extra_config, c.model),
             ),
         )
 
@@ -590,6 +607,7 @@ class ModelConfigService:
                 timeout=(c.extra_config or {}).get("timeout", 120),
                 max_retries=(c.extra_config or {}).get("max_retries", 3),
                 max_concurrent=(c.extra_config or {}).get("max_concurrent", 5),
+                prompt_cache_key=self._resolve_prompt_cache_key(c.extra_config, c.model),
             ),
         )
 

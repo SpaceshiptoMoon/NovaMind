@@ -49,6 +49,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_retries: int = 3,
         max_concurrent: int = 10,
         default_system_prompt: str = "You are a helpful assistant.",
+        prompt_cache_key: str | None = None,
         **kwargs,
     ):
         """
@@ -62,6 +63,12 @@ class OpenAICompatibleLLM(BaseLLM):
             max_retries: 最大重试次数
             max_concurrent: 最大并发调用数
             default_system_prompt: 默认系统提示词
+            prompt_cache_key: OpenAI prompt caching 路由键，可空。非空时注入请求
+                extra_body.prompt_cache_key，引导服务端把同键请求路由到同缓存分片，
+                提高 prompt cache 命中率（官方口径：相同前缀 + 相同 cache key 才稳定
+                命中；对不支持该字段的自建/第三方网关，多传字段通常被忽略，无害）。
+                构造链从用户模型配置 extra_config 读取：布尔 true → 按模型名生成
+                稳定键，字符串 → 字面量键（见 model_config_service）。
         """
         super().__init__(
             api_key=api_key,
@@ -72,6 +79,7 @@ class OpenAICompatibleLLM(BaseLLM):
             max_concurrent=max_concurrent,
         )
         self.default_system_prompt = default_system_prompt
+        self._prompt_cache_key = prompt_cache_key
 
         # OpenAI 客户端：禁用 SDK 内置重试，由 tenacity 统一管理重试。
         http_client = build_openai_http_client(
@@ -94,6 +102,15 @@ class OpenAICompatibleLLM(BaseLLM):
             {"role": "system", "content": self.default_system_prompt},
             {"role": "user", "content": prompt},
         ]
+
+    def _apply_prompt_cache_key(self, extra_body: dict) -> None:
+        """向请求 extra_body 注入 prompt_cache_key（配置了才注入）。
+
+        Args:
+            extra_body: 各请求方法已构造的 extra_body dict，原地追加。
+        """
+        if self._prompt_cache_key:
+            extra_body["prompt_cache_key"] = self._prompt_cache_key
 
     @retry(
         stop=stop_after_attempt(3),
@@ -130,6 +147,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if response_format:
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+            self._apply_prompt_cache_key(kwargs["extra_body"])
 
             logger.info(
                 "LLM 请求开始",
@@ -212,6 +230,7 @@ class OpenAICompatibleLLM(BaseLLM):
                     "stream": True,
                 }
                 create_kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+                self._apply_prompt_cache_key(create_kwargs["extra_body"])
                 stream = await self.client.chat.completions.create(**create_kwargs)
             except Exception as e:
                 elapsed = time.monotonic() - start_time
@@ -275,6 +294,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if response_format:
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+            self._apply_prompt_cache_key(kwargs["extra_body"])
 
             start_time = time.monotonic()
             try:
@@ -339,6 +359,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 "stream": True,
                 "extra_body": {"enable_thinking": enable_thinking},
             }
+            self._apply_prompt_cache_key(create_kwargs["extra_body"])
 
             try:
                 stream = await self.client.chat.completions.create(**create_kwargs)
@@ -415,6 +436,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+            self._apply_prompt_cache_key(kwargs["extra_body"])
 
             response = await self.client.chat.completions.create(**kwargs)
 
@@ -488,6 +510,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+            self._apply_prompt_cache_key(kwargs["extra_body"])
 
             stream = await self.client.chat.completions.create(**kwargs)
 
