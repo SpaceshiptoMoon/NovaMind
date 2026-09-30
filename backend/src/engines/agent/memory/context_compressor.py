@@ -135,8 +135,17 @@ class ContextCompressor(ICompressionStrategy):
         summary_role = self._pick_summary_role(head_last_role, tail_first_role)
 
         if summary_role:
-            # 正常情况：插入一条独立消息
-            summary_msg = MemoryMessage(role=summary_role, content=summary_content)
+            # 正常情况：插入一条独立消息。
+            # metadata.system_injection=True 声明这是系统注入面（非用户输入）：
+            # _build_openai_messages 的 user 分支据此跳过 '<' 转义——summary_content
+            # 以 <system-compaction> 标签开头，转义会打掉标签使约定层失效。
+            # 角色仍可能是 "user"（_pick_summary_role 避免连续同角色的产物），
+            # 那只是 OpenAI 消息角色，不代表内容来源是用户。
+            summary_msg = MemoryMessage(
+                role=summary_role,
+                content=summary_content,
+                metadata={"system_injection": True},
+            )
             compressed = [summary_msg] + tail
         else:
             # 两种角色都冲突：合并到第一条 tail 消息
@@ -162,6 +171,7 @@ class ContextCompressor(ICompressionStrategy):
                 compressed.append(MemoryMessage(
                     role="user",
                     content=todo_text,
+                    metadata={"system_injection": True},
                 ))
                 logger.debug("TodoStore 任务已注入压缩结果")
 

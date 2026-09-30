@@ -104,16 +104,19 @@ class TodoStore:
             conversation_id: 会话 ID。
 
         Returns:
-            带序号的注入文本；无待办任务为 None。
+            带序号的注入文本（<system-todos> 标签包裹）；无待办任务为 None。
         """
         todos = self._store.get(conversation_id, [])
         active = [t for t in todos if t["status"] in ("pending", "in_progress")]
         if not active:
             return None
 
-        lines = ["## 当前任务清单"]
+        # <system-todos> 标签：对齐系统注入标签约定（消息流中的系统注入一律包裹
+        # <system-*> 标签）；条目内容经 _escape_item 防任务正文伪造闭合标签
+        lines = ["<system-todos>", "## 当前任务清单"]
         for i, t in enumerate(active, 1):
-            lines.append(f"{i}. [{t['status']}] {t['content']}")
+            lines.append(f"{i}. [{t['status']}] {t['content'].replace('<', '&lt;')}")
+        lines.append("</system-todos>")
         return "\n".join(lines)
 
     def clear(self, conversation_id: int) -> None:
