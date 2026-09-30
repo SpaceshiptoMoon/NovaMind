@@ -385,6 +385,8 @@ class ShortTermMemory(IShortTermMemory):
                 # 计划上下文 → user 角色文本块（_build_openai_messages 的 user 分支天然映射；
                 # 不映射为 system——压缩器 _pick_summary_role 明确不选 system，user 是唯一
                 # 能同时通过消息组装与压缩角色共存规则的形态）。状态符号缺失（历史数据）兜底 [✓]。
+                # title/steps 来自规划 LLM 输出（可被投毒工具输出间接污染），转义 '<'
+                # 防步骤文本伪造 </plan-context> 闭合或 <system-*> 注入边界
                 plan = (msg.extra or {}).get("plan") or {}
                 steps = plan.get("steps") or []
                 statuses = plan.get("statuses")
@@ -392,12 +394,14 @@ class ShortTermMemory(IShortTermMemory):
                     "completed": "[✓]", "in_progress": "[→]",
                     "blocked": "[!]", "not_started": "[ ]",
                 }
-                lines = [f"计划: {plan.get('title') or ''}"]
+                title = (plan.get("title") or "").replace("<", "&lt;")
+                lines = [f"计划: {title}"]
                 for j, step in enumerate(steps):
                     glyph = "[✓]"
                     if statuses and j < len(statuses):
                         glyph = symbols.get(statuses[j], "[✓]")
-                    lines.append(f"{j + 1}. {glyph} {step}")
+                    step_text = str(step).replace("<", "&lt;")
+                    lines.append(f"{j + 1}. {glyph} {step_text}")
                 messages.append(MemoryMessage(
                     role="user",
                     content=(

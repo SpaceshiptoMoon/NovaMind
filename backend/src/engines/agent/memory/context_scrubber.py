@@ -7,7 +7,9 @@ _SYSTEM_NOTE_PATTERN = re.compile(
 )
 
 # 需要清洗的标签对：(open_tag, close_tag)
+# <system-memory-context>：动态记忆注入块改名后纳入 <system-*> 约定（旧名 <memory-context>）
 _SCRUB_TAGS = (
+    ("<system-memory-context>", "</system-memory-context>"),
     ("<memory-context>", "</memory-context>"),
     ("<documents>", "</documents>"),
 )

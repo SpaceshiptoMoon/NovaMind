@@ -78,7 +78,7 @@ def test_manifest_prepended_only_to_last_user_message():
     assert msgs[2]["content"] == "中间纯文本追问"
 
     last = msgs[4]["content"]
-    assert last.startswith("<uploaded_files>")
+    assert last.startswith("<system-uploaded-files>")
     assert "本轮上传的文件：" in last
     assert "新文档.pdf" in last
     assert "之前轮次上传的文件（仍然可用）：" in last
@@ -129,7 +129,7 @@ def test_current_image_non_vlm_becomes_placeholder_parts():
     assert any("截图.png" in t and "不支持视觉" in t for t in texts)
     assert texts[-1] == "这张图里有什么"  # 原问题保留在末尾
     joined = "\n".join(texts)
-    assert joined.startswith("<uploaded_files>")
+    assert joined.startswith("<system-uploaded-files>")
 
 
 def test_manifest_sections_cap_at_ten_files():

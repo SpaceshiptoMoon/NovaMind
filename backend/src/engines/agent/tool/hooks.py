@@ -108,9 +108,67 @@ class LoggingHook(ToolHook):
         return result
 
 
-class ResultTruncationHook(ToolHook):
+class ToolResultSanitizeHook(ToolHook):
+    """工具结果系统标签消毒钩子 — 第三方内容防伪造系统注入边界
+
+    工具输出（web 搜索/知识检索/MCP/文件读取）是不可信第三方内容，其中出现的
+    <system-*>/</system-*> 样式文本会被转义为 &lt;system- 失活形态：内容对模型
+    仍可读，但无法解析为系统注入边界（与 prompt_builder._TAG_CONVENTION 约定层
+    配套——约定层教模型"标签样文本=字面内容"）。
+
+    落点在 executor 钩子链（写入时消毒）：SSE 预览与 DB 落库（chat_service
+    _handle_tool_result → save_message(role="tool")）都取自钩子链产出，消毒
+    一次全程生效，后续每轮回放（组装零变换）看到的是恒定的安全形态。
     """
-    结果截断钩子
+
+    async def before_execute(
+        self,
+        tool: ToolDefinition,
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """前置无操作，原样放行。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            context: 执行上下文。
+
+        Returns:
+            恒 None。
+        """
+        return None
+
+    async def after_execute(
+        self,
+        tool: ToolDefinition,
+        arguments: dict[str, Any],
+        result: ToolResult,
+        context: dict[str, Any],
+    ) -> ToolResult:
+        """转义工具结果中的 <system- 前缀（含 '<' 才处理，快路径零开销）。
+
+        Args:
+            tool: 工具定义。
+            arguments: 工具参数。
+            result: 工具结果，content 可能被改写。
+            context: 执行上下文。
+
+        Returns:
+            消毒后的 ToolResult（无系统标签样文本时原样）。
+        """
+        content = result.content
+        # 快路径：'<system-' 与 '</system-' 都要查（'</system-x' 不含子串 '<system-'，
+        # 只查开标签形态会漏掉全部闭合标签）
+        if content and ("<system-" in content or "</system-" in content):
+            content = content.replace("</system-", "&lt;/system-")
+            content = content.replace("<system-", "&lt;system-")
+            result.content = content
+        return result
+
+
+class ResultTruncationHook(ToolHook):
+    """    结果截断钩子
 
     防止工具结果过大撑爆上下文窗口。
     """

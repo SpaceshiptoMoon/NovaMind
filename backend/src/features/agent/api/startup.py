@@ -17,7 +17,12 @@ from novamind.engines.agent.tool.builtins import (
     WebSearchTool,
 )
 from novamind.engines.agent.tool.executor import ToolExecutor
-from novamind.engines.agent.tool.hooks import LoggingHook, ResultBudgetHook, ToolOutputBudgetHook
+from novamind.engines.agent.tool.hooks import (
+    LoggingHook,
+    ResultBudgetHook,
+    ToolOutputBudgetHook,
+    ToolResultSanitizeHook,
+)
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.tool.builtins import PlanOutputTool, ReadToolResultTool
 
@@ -73,9 +78,11 @@ async def init_agent_components(app):
     mcp_manager = McpClientManager()
 
     # 5. 创建工具执行器（含 Hook 链）+ Agent 引擎
+    # 消毒钩子在截断/预算钩子之前：SSE 预览与 metadata 基于消毒后内容生成
     hooks = [
         LoggingHook(),
         ApprovalHook(),
+        ToolResultSanitizeHook(),
         ToolOutputBudgetHook(max_tokens=10_000),
         ResultBudgetHook(preview_threshold=10_000, preview_chars=1_500),
     ]

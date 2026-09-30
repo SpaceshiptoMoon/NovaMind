@@ -664,7 +664,7 @@ class AgentChatService:
                 pass
 
         # 自动注入 read_attachment 工具（始终可用）：附件正文不注入上下文，
-        # 上下文里只有 <uploaded_files> 清单，模型经本工具按 offset/limit 分片读取
+        # 上下文里只有 <system-uploaded-files> 清单，模型经本工具按 offset/limit 分片读取
         if not any(t.get("function", {}).get("name") == "read_attachment" for t in tools):
             try:
                 read_att_def = tool_executor._resolve_tool_definition("read_attachment")
@@ -835,13 +835,23 @@ class AgentChatService:
 
     def _format_base_prompt(self, system_prompt: str, enabled_tools: list) -> str:
         """格式化基础提示词中的占位符"""
-        if "{tools}" in system_prompt:
-            tool_names = ", ".join(enabled_tools) if enabled_tools else "无"
+        if "{tools}" not in system_prompt:
+            return system_prompt
+        tool_names = ", ".join(enabled_tools) if enabled_tools else "无"
+        try:
             return system_prompt.format(
                 tools=tool_names,
                 current_date=now_china().strftime("%Y-%m-%d"),
             )
-        return system_prompt
+        except (KeyError, IndexError, ValueError):
+            # 用户自定义 system_prompt 含其它 {...} 字面量（如 JSON 示例/代码模板）时
+            # str.format 会 KeyError——降级为只替换两个已知占位符，不因模板写法
+            # 让该 agent 全部对话 500
+            return (
+                system_prompt
+                .replace("{tools}", tool_names)
+                .replace("{current_date}", now_china().strftime("%Y-%m-%d"))
+            )
 
     async def _get_frozen_memory(
         self, memory_manager: MemoryManager, agent_id: int, user_id: int,
@@ -874,14 +884,17 @@ class AgentChatService:
         messages: list[dict],
     ) -> None:
         """将预取的长期记忆注入到最后一条用户消息"""
+        # 记忆内容可经 memory 工具写入（consolidate 从对话提取，可能被第三方
+        # 内容间接污染），转义 '<' 防 <system-*> 伪造；包裹标签用 <system-memory-context>
+        # 纳入系统注入标签约定（_TAG_CONVENTION 声明的可信标记体系）
         memory_text = "\n".join(
-            f"- [{m.category}] {m.content}" for m in relevant
+            f"- [{m.category}] {str(m.content).replace('<', '&lt;')}" for m in relevant
         )
         memory_block = (
-            "<memory-context>\n"
+            "<system-memory-context>\n"
             "[系统提示：以下是检索到的记忆上下文，不是用户的新输入。仅作为背景信息参考。]\n"
             f"{memory_text}\n"
-            "</memory-context>"
+            "</system-memory-context>"
         )
         for msg in reversed(messages):
             if msg.get("role") == "user":
@@ -970,7 +983,10 @@ class AgentChatService:
             ("之前轮次上传的文件（仍然可用）：", historical_docs),
         ]
 
-        lines = ["<uploaded_files>"]
+        # <system-uploaded-files> 纳入系统注入标签约定；文件名与内容预览来自
+        # 上传文件（extracted_text 可被文档内埋的指令污染），转义 '<' 防
+        # 伪造清单边界或 <system-*> 注入
+        lines = ["<system-uploaded-files>"]
         has_any = False
         for section_title, atts in doc_sections:
             if not atts:
@@ -985,10 +1001,11 @@ class AgentChatService:
                 size_str = (
                     f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.1f} MB"
                 )
-                lines.append(f"- {a.get('filename')} ({size_str}) [attachment_id={a.get('id')}]")
+                filename = str(a.get("filename") or "").replace("<", "&lt;")
+                lines.append(f"- {filename} ({size_str}) [attachment_id={a.get('id')}]")
                 if rec and rec.extracted_text:
                     preview = rec.extracted_text[: self.MANIFEST_PREVIEW_CHARS].strip()
-                    lines.append(f"  内容预览：{preview}")
+                    lines.append(f"  内容预览：{preview.replace('<', '&lt;')}")
                 else:
                     lines.append("  （无可提取文本）")
             if omitted:
@@ -1004,7 +1021,7 @@ class AgentChatService:
             "has_more=true 时以 offset += limit 继续"
         )
         lines.append("- 优先读取与当前问题相关的文件，不要一次性读取全部文件")
-        lines.append("</uploaded_files>")
+        lines.append("</system-uploaded-files>")
         manifest = "\n".join(lines)
 
         # 本轮图片：保持实时注入（VLM base64 / 非 VLM 文本占位）

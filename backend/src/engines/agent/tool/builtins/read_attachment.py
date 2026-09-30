@@ -1,7 +1,7 @@
 """
 内置工具：会话附件按需读取（对齐 deer-flow read_file 模式）。
 
-附件正文不注入上下文——上下文里只有 <uploaded_files> 清单（文件名/大小/
+附件正文不注入上下文——上下文里只有 <system-uploaded-files> 清单（文件名/大小/
 attachment_id/预览），模型通过本工具按 offset/limit 分片读取完整内容。
 """
 import json
@@ -38,7 +38,7 @@ class ReadAttachmentTool(BaseTool):
                         "Read the extracted text of a user-uploaded attachment "
                         "in the current conversation.\n\n"
                         "USAGE:\n"
-                        "- attachment_id comes from the <uploaded_files> manifest "
+                        "- attachment_id comes from the <system-uploaded-files> manifest "
                         "prepended to the user's message\n"
                         "- Start with offset=0; if has_more is true, continue "
                         "reading with offset += limit\n"
@@ -49,7 +49,7 @@ class ReadAttachmentTool(BaseTool):
                         "properties": {
                             "attachment_id": {
                                 "type": "integer",
-                                "description": "Attachment ID from the <uploaded_files> manifest",
+                                "description": "Attachment ID from the <system-uploaded-files> manifest",
                             },
                             "offset": {
                                 "type": "integer",
@@ -120,7 +120,7 @@ class ReadAttachmentTool(BaseTool):
                 {
                     "error": (
                         f"附件不存在或无权访问：attachment_id={attachment_id}。"
-                        "请以 <uploaded_files> 清单中的 attachment_id 为准。"
+                        "请以 <system-uploaded-files> 清单中的 attachment_id 为准。"
                     )
                 },
                 ensure_ascii=False,
