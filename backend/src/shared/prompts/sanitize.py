@@ -33,6 +33,29 @@ _SYSTEM_TAG_ESCAPES = (
 )
 
 
+def escape_system_tags(text: Any) -> str:
+    """转义文本中的 <system- 标签前缀（含闭合形态），防伪造系统注入边界。
+
+    供技能片段/MCP 工具描述/计划产出等拼入 prompt 的派生文本共用——
+    与 sanitize_prompt_input 的转义行为一致（本函数即其转义步骤的独立出口）。
+
+    Args:
+        text: 任意输入，非字符串先 str() 转换。
+
+    Returns:
+        转义后的字符串（无系统标签样文本时原样）。
+    """
+    if not text:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    if "<system-" not in text and "</system-" not in text:
+        return text
+    for marker, escaped in _SYSTEM_TAG_ESCAPES:
+        text = text.replace(marker, escaped)
+    return text
+
+
 def sanitize_prompt_input(text: Any) -> str:
     """
     净化将拼入提示词的文本。
@@ -59,8 +82,7 @@ def sanitize_prompt_input(text: Any) -> str:
         text = text.replace(tag, "")
     text = _STRUCTURE_OPEN_TAG_PATTERN.sub("", text)
     # 转义 <system- 前缀（覆盖任意 <system-xxx> 标签名，无需枚举）
-    for marker, escaped in _SYSTEM_TAG_ESCAPES:
-        text = text.replace(marker, escaped)
+    text = escape_system_tags(text)
 
     # 剥离行首 markdown 标题标记（1-6 个 # 后接空白），
     # 防止用户内容伪造模板的 `## Retrieved Documents`/`## User Question`/`## Requirements` 等区段。

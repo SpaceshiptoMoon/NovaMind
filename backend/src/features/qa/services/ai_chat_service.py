@@ -1278,8 +1278,8 @@ class AIChatService:
     MAX_EXTRACTED_TEXT_LENGTH = 50000  # 50000 字符
     # 附件注入 token 预算：所有文档附件合计不超此值，避免撑爆上下文
     ATTACHMENT_TOKEN_BUDGET = 20000   # 总预算
-    ATTACHMENT_MIN_KEEP = 2000        # 剩余 ≥ 此值才截断到剩余（否则走头部保留）
-    ATTACHMENT_HEAD_KEEP = 800        # 预算耗尽后，每个老附件至少保留的头部 token
+    ATTACHMENT_MSG_BUDGET = 5000      # 单条消息附件预算（常量——形态确定性前提）
+    ATTACHMENT_HEAD_KEEP = 800        # 超出槽位的最老消息注入的头部保底 token
 
     async def upload_attachment(
         self,
@@ -1471,21 +1471,20 @@ class AIChatService:
         if not items_with_att:
             return context
 
-        # 预留制：先统计文档附件总数，每个预分配 HEAD_KEEP 作为必保阅读量
-        reserved = 0
-        for item in reversed(items_with_att):
-            msg_id = item.get("id")
-            records = [att_by_id[aid] for aid in msg_att_map.get(msg_id, []) if aid in att_by_id]
-            if not records:
-                continue
-            doc_records = [r for r in records if r.file_type not in IMAGE_TYPES]
-            if doc_records:
-                reserved += len(doc_records) * self.ATTACHMENT_HEAD_KEEP
-        remaining_budget = max(0, self.ATTACHMENT_TOKEN_BUDGET - reserved)
+        # 确定性 per-message 分配（prompt cache 前缀稳定）：每条消息的注入形态
+        # 只由**自身附件数据**决定，与其它消息无关、与消息总数无关——
+        # - 自身附件全量 ≤ ATTACHMENT_MSG_BUDGET（常量）→ 全量注入
+        # - 超预算 → 确定性截断到常量预算（同一文本每次截同一位置）
+        # 新附件到达只影响**它所在的那条消息**，历史消息字节永不漂移（旧实现按
+        # 剩余预算反向分配，新增附件/新消息都会改写历史消息的三态形态）。
+        # 总预算约束退化为静态槽位数：只有最近 full_slots 条消息走全量/常量截断，
+        # 更老的消息注入头部保底（槽位按 id 升序静态划定——已存在消息的序位
+        # 不随新消息变化，形态恒定）。
+        full_slots = max(1, self.ATTACHMENT_TOKEN_BUDGET // self.ATTACHMENT_MSG_BUDGET)
 
         injected = 0
-        # 反向遍历：最近的消息优先占用剩余预算（全量），老的逐级截断 / 头部保底
-        for item in reversed(items_with_att):
+        # 正向遍历（旧→新）；超出 full_slots 的最老消息注入头部保底
+        for order, item in enumerate(items_with_att):
             msg_id = item.get("id")
             records = [att_by_id[aid] for aid in msg_att_map.get(msg_id, []) if aid in att_by_id]
             if not records:
@@ -1497,23 +1496,22 @@ class AIChatService:
             parts: list = []
             original_content = item.get("content", "")
 
-            # 文档附件：每个至少 HEAD_KEEP 保底（已预留），剩余预算从最近开始按全量/截断分配
+            # 文档附件：确定性形态——自身数据决定全量或截断，与轮次/消息数无关
             if doc_records:
-                full_xml = self._format_attachments_prompt(doc_records)
-                full_tokens = self._token_counter.count_tokens(full_xml)
-                head_xml = self._format_attachments_prompt(doc_records, max_tokens=self.ATTACHMENT_HEAD_KEEP)
-
-                if remaining_budget >= full_tokens:
-                    # 剩余预算够 → 全量注入
-                    doc_xml = full_xml
-                    remaining_budget -= full_tokens
-                elif remaining_budget >= self.ATTACHMENT_MIN_KEEP:
-                    # 不够全量但够截断 → 截断到剩余
-                    doc_xml = self._format_attachments_prompt(doc_records, max_tokens=remaining_budget)
-                    remaining_budget = 0
+                if order < len(items_with_att) - full_slots:
+                    # 超出总预算槽位的最老消息：头部保底（静态判定，形态恒定）
+                    doc_xml = self._format_attachments_prompt(
+                        doc_records, max_tokens=self.ATTACHMENT_HEAD_KEEP
+                    )
                 else:
-                    # 预算用完 → 用必保头部（已预留，不占 remaining_budget）
-                    doc_xml = head_xml
+                    full_xml = self._format_attachments_prompt(doc_records)
+                    full_tokens = self._token_counter.count_tokens(full_xml)
+                    if full_tokens <= self.ATTACHMENT_MSG_BUDGET:
+                        doc_xml = full_xml
+                    else:
+                        doc_xml = self._format_attachments_prompt(
+                            doc_records, max_tokens=self.ATTACHMENT_MSG_BUDGET
+                        )
                 parts.append({"type": "text", "text": doc_xml})
 
             # 图片附件 → multimodal（仅 VLM；图片不占文本预算）
@@ -1542,9 +1540,10 @@ class AIChatService:
 
         if injected:
             self.logger.info(
-                "附件文本已注入上下文（按 token 预算）",
+                "附件文本已注入上下文（确定性 per-message 预算）",
                 session_id=session_id, injected_count=injected,
-                budget=self.ATTACHMENT_TOKEN_BUDGET, remaining=remaining_budget,
+                budget=self.ATTACHMENT_TOKEN_BUDGET,
+                msg_budget=self.ATTACHMENT_MSG_BUDGET, full_slots=full_slots,
             )
 
         return context

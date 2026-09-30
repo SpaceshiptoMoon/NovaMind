@@ -238,9 +238,12 @@ def _sanitize_user_input(text: str) -> str:
     """
     清理用户输入中的特殊标记，防止 prompt 注入
 
-    注意：此方法基于黑名单机制，覆盖主流 LLM 的特殊标记。
-    黑名单方式无法 100% 防御所有注入，但结合 prompt 中的分隔标记
-    （---用户查询开始---/---用户查询结束---）提供双重防护。
+    三层防线：
+    1. 黑名单移除主流 LLM 的特殊标记（<|im_start|> 等）
+    2. 转义 <system- 前缀——与主链路 sanitize-at-write 对齐：查询会被拼进
+       research prompt 的 User query 槽位，伪系统标签必须失活为字面文本
+    3. 结合 prompt 模板的结构化标记（<context>/<step_findings> 包裹检索资料）
+       隔离第三方内容
     """
     if not text or not text.strip():
         raise InvalidResearchQueryError("查询内容不能为空")
@@ -251,7 +254,9 @@ def _sanitize_user_input(text: str) -> str:
     for marker in markers:
         sanitized = sanitized.replace(marker, "")
 
-    sanitized = sanitized.strip()
+    from novamind.shared.prompts.sanitize import escape_system_tags
+
+    sanitized = escape_system_tags(sanitized).strip()
     if len(sanitized) < 2:
         raise InvalidResearchQueryError("清理后的查询内容过短，请提供更有意义的查询")
 

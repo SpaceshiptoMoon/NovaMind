@@ -62,6 +62,16 @@ class AgentChatService:
 
     _CACHE_TTL = 300  # 系统提示缓存 5 分钟
 
+    # 类级共享缓存（prompt cache 前缀稳定性）：service 每请求新建，实例级缓存
+    # 永远跨不了请求（形同虚设）。提到类级后同 agent+tools+model 的 system
+    # prompt 在 TTL 窗口内字节恒定，frozen_memory 同理——记忆写入不会即时
+    # 反映到当前会话（这正是"冻结"语义：新记忆下一个 TTL 窗口/会话才可见）。
+    # 单进程 asyncio 下 dict 读写无 await 点即原子；多 worker 部署各自独立，
+    # 前缀稳定性按 worker 内保证。上限防长生命周期进程无限增长。
+    _PROMPT_CACHE: dict[str, tuple[str, float]] = {}
+    _FROZEN_MEMORY_CACHE: dict[str, tuple[str, float]] = {}
+    _CLASS_CACHE_MAX = 256
+
     def __init__(
         self,
         db: AsyncSession,
@@ -99,7 +109,6 @@ class AgentChatService:
         self._prompt_builder = SystemPromptBuilder(
             tool_registry=agent_engine.tool_executor.tool_registry,
         )
-        self._prompt_cache: dict[str, tuple[str, float]] = {}
 
     async def chat_stream(
         self,
@@ -856,25 +865,55 @@ class AgentChatService:
     async def _get_frozen_memory(
         self, memory_manager: MemoryManager, agent_id: int, user_id: int,
     ) -> str:
-        """获取长期记忆冻结快照"""
+        """获取长期记忆冻结快照（类级 TTL 缓存，会话内多轮命中同一字节）。
+
+        记忆条目写入（consolidate/memory 工具）不会即时反映到 system prompt——
+        这正是冻结语义：prompt cache 的 system 前缀在 TTL 窗口内字节恒定，
+        新记忆在下个窗口才进入快照。MemoryManager 实例级的 _frozen_snapshot_cache
+        因每请求新建从未生效，此处类级缓存才是真正的冻结层。
+        """
+        cache_key = f"fm:{agent_id}:{user_id}"
+        cached = self._get_class_cached(self._FROZEN_MEMORY_CACHE, cache_key)
+        if cached is not None:
+            return cached
         try:
-            return await memory_manager.build_frozen_snapshot(agent_id, user_id) or ""
+            snapshot = await memory_manager.build_frozen_snapshot(agent_id, user_id) or ""
         except Exception as e:
             logger.warning("冻结快照加载失败", error=str(e))
             return ""
+        self._set_class_cached(self._FROZEN_MEMORY_CACHE, cache_key, snapshot)
+        return snapshot
+
+    @classmethod
+    def _get_class_cached(cls, cache: dict, key: str) -> str | None:
+        """读类级 TTL 缓存，过期即删并返回 None。"""
+        entry = cache.get(key)
+        if entry is None:
+            return None
+        prompt, ts = entry
+        if monotonic() - ts < cls._CACHE_TTL:
+            return prompt
+        del cache[key]
+        return None
+
+    @classmethod
+    def _set_class_cached(cls, cache: dict, key: str, value: str) -> None:
+        """写类级 TTL 缓存；超上限时先淘汰全部过期项，仍超则清空（简单防膨胀）。"""
+        if key not in cache and len(cache) >= cls._CLASS_CACHE_MAX:
+            now = monotonic()
+            for k in [k for k, (_, ts) in cache.items() if now - ts >= cls._CACHE_TTL]:
+                del cache[k]
+            if len(cache) >= cls._CLASS_CACHE_MAX:
+                cache.clear()
+        cache[key] = (value, monotonic())
 
     def _get_cached_prompt(self, cache_key: str) -> str | None:
-        """查询系统提示缓存"""
-        if cache_key in self._prompt_cache:
-            prompt, ts = self._prompt_cache[cache_key]
-            if monotonic() - ts < self._CACHE_TTL:
-                return prompt
-            del self._prompt_cache[cache_key]
-        return None
+        """查询系统提示缓存（类级——service 每请求新建，实例级缓存永远跨不了请求）"""
+        return self._get_class_cached(self._PROMPT_CACHE, cache_key)
 
     def _set_cached_prompt(self, cache_key: str, prompt: str):
         """写入系统提示缓存"""
-        self._prompt_cache[cache_key] = (prompt, monotonic())
+        self._set_class_cached(self._PROMPT_CACHE, cache_key, prompt)
 
     # ==================== 记忆注入 ====================
 
@@ -1120,8 +1159,14 @@ class AgentChatService:
                     and skill_def.status == SkillStatus.PUBLISHED
                     and skill_def.review_status == ReviewStatus.APPROVED
                 ):
+                    # 技能片段直拼 system prompt（PUBLISHED+APPROVED 门禁之外无
+                    # 内容消毒）——转义 <system- 前缀防审核漏过的伪标签伪造
+                    # 系统注入边界；display_name 同理
+                    from novamind.shared.prompts.sanitize import escape_system_tags
+
                     fragments.append(
-                        f"## 技能: {skill_def.display_name}\n\n{skill_def.body_markdown}"
+                        f"## 技能: {escape_system_tags(skill_def.display_name)}\n\n"
+                        f"{escape_system_tags(skill_def.body_markdown)}"
                     )
             except (ValueError, IndexError, Exception) as e:
                 logger.warning("技能指令注入失败", skill_ref=skill_ref, error=str(e))

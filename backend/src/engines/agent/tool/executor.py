@@ -240,8 +240,14 @@ class ToolExecutor:
     def _raw_to_definition(
         raw_tool: dict[str, Any], source: ToolSource
     ) -> ToolDefinition:
-        """将 OpenAI 格式工具定义转换为 ToolDefinition"""
+        """将 OpenAI 格式工具定义转换为 ToolDefinition。
+
+        MCP 工具的 description/参数描述由外部服务器提供（用户自选启用，仍属
+        不可信面）——转义 <system- 前缀，防恶意服务器借 description 下伪系统
+        指令（tools schema 在请求头部，权威位置高于消息体）。
+        """
         from novamind.engines.agent.tool.definition import ToolParameter
+        from novamind.shared.prompts.sanitize import escape_system_tags
 
         func = raw_tool.get("function", {})
         params_schema = func.get("parameters", {})
@@ -249,13 +255,16 @@ class ToolExecutor:
         required = params_schema.get("required", [])
 
         parameters = {
-            name: ToolParameter(**prop)
+            name: ToolParameter(**{
+                **prop,
+                "description": escape_system_tags(prop.get("description", "")),
+            })
             for name, prop in properties.items()
         }
 
         return ToolDefinition(
             name=func.get("name", ""),
-            description=func.get("description", ""),
+            description=escape_system_tags(func.get("description", "")),
             parameters=parameters,
             required=required,
             source=source,

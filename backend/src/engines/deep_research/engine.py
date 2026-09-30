@@ -53,14 +53,21 @@ KEY_TASK_FINDING = "research_task_finding"
 
 
 def _sanitize_search_field(text: str) -> str:
-    """清理搜索结果字段中的特殊标记，空值时返回空字符串而不抛异常。"""
+    """清理搜索结果字段中的特殊标记，空值时返回空字符串而不抛异常。
+
+    搜索结果是第三方不可信内容：黑名单移除 LLM 特殊标记 + 转义 <system-
+    前缀（结果经 format_search_context 拼进 <context> 块，伪系统标签须失活，
+    与主链路注入防护对齐）。"""
     if not text or not text.strip():
         return ""
     markers = ["<|im_start|>", "<|im_end|>", "", "[INST]", "[/INST]", "<<SYS>>", "<</SYS>>"]
     sanitized = text
     for marker in markers:
         sanitized = sanitized.replace(marker, "")
-    return sanitized.strip()
+
+    from novamind.shared.prompts.sanitize import escape_system_tags
+
+    return escape_system_tags(sanitized).strip()
 
 
 def is_sufficient_results(results: list[Any], iteration: int) -> bool:
