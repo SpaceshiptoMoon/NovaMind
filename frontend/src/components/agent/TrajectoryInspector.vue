@@ -485,7 +485,14 @@ const totalTokens = computed(() => props.record?.usage?.total_tokens ?? null)
 
 const compactionSummary = computed(() => {
   const comp = props.record?.msg.extra?.compaction as { summary?: string } | undefined
-  return comp?.summary || ''
+  if (!comp?.summary) return ''
+  // 剥离给模型看的前言段，用户只看摘要本体（与 TrajectoryList 曾有实现同口径）：
+  // 1) <system-compaction> 标签块（SUMMARY_PREFIX，模型侧注入约定，含英文指令文本）
+  // 2) 旧版裸前缀 "[CONTEXT COMPACTION — REFERENCE ONLY] ..." 段（历史存量数据）
+  return comp.summary
+    .replace(/<system-compaction>[\s\S]*?<\/system-compaction>\s*/g, '')
+    .replace(/^\[CONTEXT COMPACTION[^\n]*\n(?=[\s\S]*## Active Task)/, '')
+    .trim()
 })
 
 const planTitle = computed(() => {

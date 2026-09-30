@@ -70,10 +70,9 @@
               >
             </span>
           </div>
-          <!-- compaction 行：统一序号 + 展开摘要。
-               行容器改 flex-wrap：头行元素（序号/徽标/toggle）占第一行，
-               展开体 flex-basis:100% 自然换行到第二行，不再与头行元素挤同一行
-               （旧结构展开时头行被挤到竖排——「已压缩 29 条」逐字换行） -->
+          <!-- compaction 行：统一序号 + 徽标 + 摘要文案；详情走右侧 inspector
+               （与其他记录行交互一致），行内不再展开——曾做过行内展开体，
+               展开态与 flex 头行相互挤压且详情双入口维护成本高 -->
           <div
             v-if="rec.kind === 'compaction'"
             class="traj-row compaction"
@@ -84,23 +83,7 @@
             <span class="traj-index">#{{ rec.seq }}</span>
             <span class="traj-role compaction">COMPACTED</span>
             <div class="traj-content">
-              <button class="compaction-toggle" @click.stop="toggleCompaction(rec.recordId)">
-                <span
-                  class="compaction-chevron"
-                  :class="{ expanded: expandedCompactions.has(rec.recordId) }"
-                  >▶</span
-                >
-                <span class="compaction-label">{{ rec.summary }}</span>
-              </button>
-            </div>
-            <!-- 展开摘要体（在专属分支内部，维持 v-if/v-else 链完整：
-               曾放在行外独立 v-if 导致后面的 v-else 与它配对，compaction 记录
-              额外渲染一条空内容普通行——轨迹中 COMPACTED 显示两条） -->
-            <div
-              v-if="expandedCompactions.has(rec.recordId)"
-              class="traj-compaction-body"
-            >
-              <MarkdownRenderer :content="compactionSummary(rec)" />
+              <span class="traj-preview">{{ rec.summary }}</span>
             </div>
           </div>
 
@@ -260,7 +243,6 @@ onErrorCaptured((err, _inst, info) => {
 })
 import { ref, computed, watch, nextTick } from 'vue'
 import type { AgentMessage, ToolCallRecord } from '@/api/types'
-import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import TrajectoryInspector from './TrajectoryInspector.vue'
 import {
   useTrajectoryRecords,
@@ -310,7 +292,6 @@ const selectedRecord = computed<TrajectoryRecord | null>(() => {
 // ===== 折叠态 =====
 const collapsedSessions = ref(new Set<number>())
 const collapsedAssistants = ref(new Set<string>())
-const expandedCompactions = ref(new Set<string>())
 const expandedPlans = ref(new Set<string>())
 
 function toggleSession(sessionIndex: number) {
@@ -324,12 +305,6 @@ function toggleSteps(recordId: string) {
   if (next.has(recordId)) next.delete(recordId)
   else next.add(recordId)
   collapsedAssistants.value = next
-}
-function toggleCompaction(recordId: string) {
-  const next = new Set(expandedCompactions.value)
-  if (next.has(recordId)) next.delete(recordId)
-  else next.add(recordId)
-  expandedCompactions.value = next
 }
 function togglePlan(recordId: string) {
   const next = new Set(expandedPlans.value)
@@ -621,17 +596,6 @@ function toolStatusLabel(rec: TrajectoryRecord): string {
     default:
       return ''
   }
-}
-function compactionSummary(rec: TrajectoryRecord): string {
-  const comp = rec.msg.extra?.compaction as { summary?: string } | undefined
-  if (!comp?.summary) return ''
-  // 剥离给模型看的前言段，用户轨迹只展示摘要本体：
-  // 1) <system-compaction> 标签块（SUMMARY_PREFIX，模型侧注入约定，含英文指令文本）
-  // 2) 旧版裸前缀 "[CONTEXT COMPACTION — REFERENCE ONLY] ..." 段（历史存量数据）
-  return comp.summary
-    .replace(/<system-compaction>[\s\S]*?<\/system-compaction>\s*/g, '')
-    .replace(/^\[CONTEXT COMPACTION[^\n]*\n(?=[\s\S]*## Active Task)/, '')
-    .trim()
 }
 function planSteps(rec: TrajectoryRecord): string[] {
   const plan = rec.msg.extra?.plan as { steps?: string[] } | undefined
@@ -989,32 +953,6 @@ function cssEscape(s: string): string {
   color: var(--color-text-muted);
 }
 
-.traj-row.compaction {
-  flex-wrap: wrap;
-  row-gap: 2px;
-}
-
-/* compaction 行展开体 */
-.traj-compaction-body {
-  /* traj-row(compaction) 已 flex-wrap：flex-basis:100% 使展开体独占第二行，
-     头行元素（序号/徽标/toggle）保持单行不被挤压 */
-  flex-basis: 100%;
-  margin: var(--space-1) 0 var(--space-2) 40px;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border-light);
-  border-left: 3px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card-elevated);
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
-  color: var(--color-text-secondary);
-  max-height: 320px;
-  overflow-y: auto;
-}
-.traj-compaction-body :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
 /* plan 行展开体 */
 .traj-plan-body {
   margin: var(--space-1) 0 var(--space-2) 40px;
@@ -1037,36 +975,6 @@ function cssEscape(s: string): string {
   color: var(--color-text-muted);
 }
 .plan-step-text {
-  color: var(--color-text-secondary);
-}
-
-.compaction-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-.compaction-toggle:hover {
-  color: var(--color-text);
-}
-.compaction-chevron {
-  font-size: 9px;
-  color: var(--color-text-muted);
-  transition: transform var(--transition-fast);
-}
-.compaction-chevron.expanded {
-  transform: rotate(90deg);
-}
-.compaction-label {
-  /* 防长 summary 撑破头行：单行省略（flex-wrap 后头行自身空间充足） */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--color-text-secondary);
 }
 
