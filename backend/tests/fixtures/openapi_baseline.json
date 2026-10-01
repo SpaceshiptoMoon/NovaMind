@@ -2264,6 +2264,67 @@
         "title": "DocumentResponse",
         "type": "object"
       },
+      "DocumentReviewSettingsUpdate": {
+        "additionalProperties": false,
+        "description": "文档复审策略设置（kb-ops B2 收尾：全字段可选，None=不修改）",
+        "properties": {
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "生效日期（ISO8601）；不传=不修改",
+            "title": "Effective Date"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "下次复审时间（ISO8601）；不传=不修改",
+            "title": "Next Review At"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "内容责任人改派（仅空间管理员）；不传=不修改",
+            "title": "Owner Id"
+          },
+          "review_cycle_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "复审周期（天）；null=不修改（清除周期走确认复审回退默认）",
+            "title": "Review Cycle Days"
+          }
+        },
+        "title": "DocumentReviewSettingsUpdate",
+        "type": "object"
+      },
       "DocumentTaskItemListResponse": {
         "description": "任务项列表分页响应。",
         "properties": {
@@ -21983,6 +22044,87 @@
           }
         ],
         "summary": "重试文档处理",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/review-settings": {
+      "patch": {
+        "description": "kb-ops B2 收尾补全：设置复审周期/下次复审时间/生效日期/内容责任人。没有初始设置入口则复审提醒对存量文档永不触发——本端点是提醒链路的启动器。owner 本人或空间管理员可操作；owner_id 改派仅空间管理员。review_cycle_days 传 null 清除周期（确认复审时回退默认 90 天）；next_review_at 显式传 null 可清除到期提醒。",
+        "operationId": "update_document_review_settings_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__review_settings_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentReviewSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置文档复审策略",
         "tags": [
           "文档管理",
           "文档管理"

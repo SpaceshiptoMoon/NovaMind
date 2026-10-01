@@ -205,6 +205,25 @@ class DocumentCancelResponse(BaseModel):
     message: str = "取消请求已发送"
 
 
+class DocumentReviewSettingsUpdate(BaseModel):
+    """文档复审策略设置（kb-ops B2 收尾：全字段可选，None=不修改）"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    review_cycle_days: int | None = Field(
+        default=None, ge=1, le=3650, description="复审周期（天）；null=不修改（清除周期走确认复审回退默认）",
+    )
+    next_review_at: datetime | None = Field(
+        default=None, description="下次复审时间（ISO8601）；不传=不修改",
+    )
+    effective_date: datetime | None = Field(
+        default=None, description="生效日期（ISO8601）；不传=不修改",
+    )
+    owner_id: int | None = Field(
+        default=None, gt=0, description="内容责任人改派（仅空间管理员）；不传=不修改",
+    )
+
+
 class DocumentBatchProcessResponse(BaseModel):
     """批量处理响应"""
     task_id: int | None = None

@@ -40,6 +40,7 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentDetailResponse,
     DocumentListResponse,
     DocumentProcessResponse,
+    DocumentReviewSettingsUpdate,
     DocumentResponse,
     DocumentUploadResponse,
     FailedFileItem,
@@ -962,5 +963,71 @@ async def confirm_document_review(
     await db.commit()
     return {
         "document_id": doc.id,
+        "next_review_at": doc.next_review_at.isoformat() if doc.next_review_at else None,
+    }
+
+@router.patch(
+    "/{kb_id}/documents/{document_id}/review-settings",
+    summary="设置文档复审策略",
+    description=(
+        "kb-ops B2 收尾补全：设置复审周期/下次复审时间/生效日期/内容责任人。"
+        "没有初始设置入口则复审提醒对存量文档永不触发——本端点是提醒链路的"
+        "启动器。owner 本人或空间管理员可操作；owner_id 改派仅空间管理员。"
+        "review_cycle_days 传 null 清除周期（确认复审时回退默认 90 天）；"
+        "next_review_at 显式传 null 可清除到期提醒。"
+    ),
+)
+async def update_document_review_settings(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    request: DocumentReviewSettingsUpdate,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """设置复审策略字段（owner 或空间管理员；owner 改派仅管理员）"""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from novamind.features.knowledge_space.models.document import Document
+
+    await validate_kb_access(kb_id, space_id, db)
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == document_id)
+    )).scalar_one_or_none()
+    if doc is None or doc.kb_id != kb_id or doc.deleted_at is not None:
+        raise DocumentNotFoundError(document_id)
+
+    is_admin = member.is_admin()
+    # owner 本人或空间管理员可改复审策略
+    if doc.owner_id != current_user_id and not is_admin:
+        raise SpaceAccessDeniedError(space_id, current_user_id, "仅文档 owner 或空间管理员可设置复审策略")
+    # owner 改派仅空间管理员（责任人变更属管理动作）
+    if request.owner_id is not None and request.owner_id != doc.owner_id and not is_admin:
+        raise SpaceAccessDeniedError(space_id, current_user_id, "改派内容责任人需空间管理员权限")
+
+    # 请求体各字段 None=不修改（PATCH 语义）；显式清除用 null 的字段单独处理
+    if request.review_cycle_days is not None:
+        if request.review_cycle_days < 1 or request.review_cycle_days > 3650:
+            raise DocumentInvalidTypeError("review_cycle_days 须在 1~3650 天之间")
+        doc.review_cycle_days = request.review_cycle_days
+    if request.next_review_at is not None:
+        doc.next_review_at = request.next_review_at
+    if request.effective_date is not None:
+        doc.effective_date = request.effective_date
+    if request.owner_id is not None:
+        doc.owner_id = request.owner_id
+
+    async with db.begin_nested():
+        await db.flush()
+    await db.commit()
+    return {
+        "document_id": doc.id,
+        "owner_id": doc.owner_id,
+        "effective_date": doc.effective_date.isoformat() if doc.effective_date else None,
+        "review_cycle_days": doc.review_cycle_days,
         "next_review_at": doc.next_review_at.isoformat() if doc.next_review_at else None,
     }
