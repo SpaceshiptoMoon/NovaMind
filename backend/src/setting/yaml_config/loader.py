@@ -23,6 +23,7 @@ from .config import (
     FeaturesConfig,
     HybridSearchConfig,
     KnowledgeBaseConfig,
+    KnowledgeOpsConfig,
     LLMConfig,
     MinioConfig,
     ParsingConfig,
@@ -384,6 +385,12 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         max_tries=tq.get("max_tries", 3),
         retry_base_delay=tq.get("retry_base_delay", 60),
         queue_name=tq.get("queue_name", "arq:queue"),
+    )
+
+    ko = data.get("knowledge_ops", {})
+    config.knowledge_ops = KnowledgeOpsConfig(
+        reformulate_window_seconds=ko.get("reformulate_window_seconds", 120),
+        reformulate_similarity_threshold=ko.get("reformulate_similarity_threshold", 0.5),
     )
 
     smtp = data.get("smtp", {})

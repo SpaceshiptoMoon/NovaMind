@@ -474,6 +474,25 @@ class AIChatService:
                 "max_score": max(kb_scores) if kb_scores else None,
             }
 
+        # 运营信号：会话内改写检测（kb-ops O1 旁路，失败不影响问答）。
+        # 仅 RAG 会话参与：改写信号的业务语义是「检索失败后换问法」，非 RAG 对话
+        # 无检索语义。挂 _prepare_chat 尾部使 chat/chat_stream 两出口自动全覆盖。
+        if do_rag:
+            try:
+                from novamind.features.knowledge_ops.services.query_reformulate_detector import (
+                    QueryReformulateDetector,
+                )
+
+                await QueryReformulateDetector().check_after_new_query(
+                    session_id=session_id,
+                    user_id=user_id,
+                    space_id=rag_space,
+                    current_message_id=user_message.id,
+                    current_query=content,
+                )
+            except Exception as reformulate_err:
+                self.logger.warning("改写检测调用异常（已忽略）", error=str(reformulate_err))
+
         return ChatPreparation(
             session_id=session_id,
             user_message=user_message,

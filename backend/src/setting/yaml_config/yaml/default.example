@@ -83,6 +83,11 @@ task_queue:
   retry_base_delay: 60
   queue_name: "arq:queue"
 
+knowledge_ops:
+  # 知识运营事件账本（kb_events）：会话内改写检测参数
+  reformulate_window_seconds: 120
+  reformulate_similarity_threshold: 0.5
+
 knowledge_base:
   parsing:
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。

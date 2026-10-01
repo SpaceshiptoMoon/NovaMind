@@ -298,6 +298,16 @@ class DeepResearchConfig:
 
 
 @dataclass
+class KnowledgeOpsConfig:
+    """知识运营（kb-ops）feature 的 YAML 配置段。"""
+
+    # 会话内改写检测：时间窗（秒）与字符 3-gram 相似度阈值。
+    # 判定保守：宁可漏标不可误标（误标会污染 gap 统计）。
+    reformulate_window_seconds: int = 120
+    reformulate_similarity_threshold: float = 0.5
+
+
+@dataclass
 class ProjectConfig:
     """project 段：项目名、版本与描述（健康检查与根路径信息展示用）。"""
     name: str = "novamind"
@@ -347,6 +357,7 @@ class AppConfig:
     agent: AgentConfig = field(default_factory=AgentConfig)
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
+    knowledge_ops: KnowledgeOpsConfig = field(default_factory=KnowledgeOpsConfig)
     smtp: SmtpConfig = field(default_factory=SmtpConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     cors_origins: str = "*"

@@ -4,11 +4,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-import pytest_asyncio
-from novamind.core.database.base import Base
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
+# 路径设置必须先于任何 novamind import：venv 的 editable 安装
+# （__editable__.novamind-0.1.0.pth）会把主仓库 backend/src 注入 sys.path，
+# 若 conftest 先 import 后插路径，novamind 包已被绑定到主仓库（worktree 的
+# 新 feature 找不到）。先插路径再 import，保证 novamind 解析到当前工作树。
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -21,6 +20,11 @@ if str(BACKEND_ROOT) not in sys.path:
 SOURCE_ROOT = BACKEND_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
+
+import pytest
+import pytest_asyncio
+from novamind.core.database.base import Base
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
 @pytest.fixture(scope="session", autouse=True)
