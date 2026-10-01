@@ -42,7 +42,8 @@
 | **qa** | 埋点接线 `_maybe_detect_query_reformulate`（_prepare_chat 尾部，chat/chat_stream 两出口全覆盖）；`POST /qa/message/{id}/citation-click`；反馈落行 space 从会话配置兜底 | O1/O2/A2 |
 | **knowledge_space** | Document 模型生命周期六列（lifecycle_status/owner_id/effective_date/review_cycle_days/next_review_at/superseded_by_doc_id）+ `SCHEMA_MIGRATIONS` 幂等补列 + owner 存量回填；**LifecycleService 状态机**（ES chunk `update_by_query` 同步，失败回滚 DB；转换后失效检索缓存）；chunk 写入注入 lifecycle_status；转换/确认复审/复审策略 API | B1/B2 |
 | **shared/storage** | ES mapping 加 `lifecycle_status` keyword；**检索排除式过滤挂 `_build_kb_filter` 单点**（5 处检索路径全生效）：`must_not terms superseded/archived`——missing 字段自动可召回，存量零回填（语义已对真实 ES 实测钉死） | B1 |
-| **evaluation** | 合成测试集生成（chunks 采样→LLM 出 QA→落测试集，配额 YAML 默认 20 成本硬闸）；`config_fingerprint`（EvaluationConfig 质量子集稳定 hash）；gap→测试集 flywheel；修三处存量并发缺陷（后台协程 session 生命周期/单 session 并发撞 aiomysql——并发退化为串行，正确性优先） | C |
+| **knowledge_space（权限）** | `document_permission_filter`：`custom_permissions.documents.hidden_doc_ids` → 检索结果宿主侧剔除（挂 `_search_via_engine`，引擎不感知权限；缓存键按 user_id 分段不串）；SpaceAccessChecker 校验器支持清单键；`SearchService.search` 加 `bypass_document_permission` 供归因绕权限重放 | backlog |
+| **evaluation** | 合成测试集生成（chunks 采样→LLM 出 QA→落测试集，配额 YAML 默认 20 成本硬闸）；`config_fingerprint`（EvaluationConfig 质量子集稳定 hash）；gap→测试集 flywheel；修三处存量并发缺陷（后台协程 session 生命周期/单 session 并发撞 aiomysql——并发退化为串行，正确性优先）；**每协程独立 session + 独立检索端口恢复真并发**（实测 94.6s vs 串行 538s = 5.7x，零冲突）；`standalone_factory`（无请求依赖装配，供 cron） | C / backlog |
 | **notification** | NotificationType 三枚举：KB_OPS_WEEKLY_DIGEST / KB_REVIEW_DUE（kb_contradiction_confirmed 以字符串常量发送） | A2/B2/D |
 | **frontend** | `SpaceGapReportView`（KPI/归因分布/缺口清单）、`SpaceKbOpsView`（建议处置/重复内容/文档价值三 tab + 矛盾扫描触发）、洞察页↔缺口报告↔运营页互链、通知中心四类型文案、正文角标与来源卡点击上报 | O2/前端批次 |
 
@@ -71,6 +72,7 @@ POST /spaces/{id}/knowledge-bases/{kb}/evaluation/test-sets/generate           �
 | `attribute_pending_events` | 每 30 分钟 | 失败问答四分归因 |
 | `send_weekly_kb_ops_digest` | 周一 09:23 | 知识运营周报 |
 | `send_review_reminders` | 每日 10:07 | 复审到期提醒 |
+| `run_quality_baseline` | 周六 06:41 | 质量基线自动跑批（YAML `quality_baseline_enabled` **默认关**；同指纹基线 <7 天跳过；`judge_regression` 关键指标回归判定） |
 
 ### 2.5 YAML 配置（`knowledge_ops` 段，全部可在 `default.example` 查阅）
 
@@ -116,13 +118,19 @@ POST /spaces/{id}/knowledge-bases/{kb}/evaluation/test-sets/generate           �
 - **矛盾检测带上限 0.99**：「v2 抄 v1 改关键事实」实测 sim=0.98 是矛盾最高发形态，不能武断排除；
 - **生命周期转换 ES 同步失败回滚 DB**：不留「DB 下线但检索照出」的错误状态。
 
-### 4.3 遗留 backlog（有意推迟，非缺陷）
+### 4.3 遗留事项（backlog 三项已于 2026-10-02 落地，commit `269befd`）
 
-1. `permission_boundary` 归因 stub——待检索层权限过滤（原 IMPROVEMENT 文档 P2-1）接线后补第四分；
-2. 质量基线自动跑批——需先给 EvaluationService 做无请求依赖的装配工厂；
-3. 归因/矛盾/相似度全套阈值——跑两三周真实数据看误报率后校准；
-4. `EVALUATION_CONCURRENCY` 退化为串行——彻底修复需每协程独立 session（evaluation 存量架构债）；
-5. kb_events 分区/归档——等真实量级数据。
+**已完成**（原 backlog 1/2/4）：
+
+1. ✅ **检索级文档权限过滤 + permission_boundary 第四分归因**——`hidden_doc_ids` 宿主侧剔除（真实验证：设清单后同查询即时消失）；归因四分法全部落地（绕权限重放命中判定，不进 gap 统计）。已知边界：hidden_doc_ids 暂无成员管理 UI 入口（检索面全通，UI 属成员管理页迭代另立项）；
+2. ✅ **质量基线自动跑批**——`standalone_factory` 无请求依赖装配 + 周六 cron（YAML 默认关）+ 同指纹回归判定；
+3. ✅ **评估并发恢复**——每协程独立 session + 独立检索端口，删除串行锁；实测 20 题 94.6s（串行基线 538s，**5.7x**），零 aiomysql 冲突，指标不降。
+
+**仍开放（纯数据依赖，不再排期）**：
+
+- 归因/矛盾/相似度全套阈值校准——需两三周真实误报率数据，回顾性任务；
+- kb_events 分区/归档——等真实量级；
+- hidden_doc_ids 的成员管理 UI 入口——随成员管理页迭代。
 
 ---
 
@@ -141,3 +149,5 @@ POST /spaces/{id}/knowledge-bases/{kb}/evaluation/test-sets/generate           �
 | `1228925` | D | 重复视图 + 矛盾队列 + 贡献统计（M5 收官） |
 | `fa7b737` | 收尾 | 复审策略设置 API（提醒链路启动器） |
 | `4a825ff` | 前端 | 运营管理页 + 入口互链 + 通知文案（浏览器走查 + 375px 零溢出） |
+| `fe1e503` | docs | 收官总结本文 |
+| `269befd` | backlog | 检索级文档权限 + 第四分归因 + 评估并发恢复（5.7x）+ 基线 cron |
