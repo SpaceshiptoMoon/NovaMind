@@ -395,6 +395,8 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         attribution_replay_low_threshold=ko.get("attribution_replay_low_threshold", 0.15),
         attribution_lookback_days=ko.get("attribution_lookback_days", 7),
         attribution_batch_limit=ko.get("attribution_batch_limit", 50),
+        review_advance_days=ko.get("review_advance_days", 7),
+        review_fallback_cycle_days=ko.get("review_fallback_cycle_days", 90),
     )
 
     smtp = data.get("smtp", {})

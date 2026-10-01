@@ -913,3 +913,54 @@ async def transition_document_lifecycle(
         "lifecycle_status": doc.lifecycle_status,
         "superseded_by_doc_id": doc.superseded_by_doc_id,
     }
+
+@router.post(
+    "/{kb_id}/documents/{document_id}/confirm-review",
+    summary="确认复审",
+    description=(
+        "kb-ops B2：owner 确认文档内容仍然有效，next_review_at 按复审周期顺延"
+        "（无周期文档默认 90 天）。owner 本人或空间管理员可操作。"
+    ),
+)
+async def confirm_document_review(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """确认复审：顺延 next_review_at（owner 或空间管理员）"""
+    from datetime import datetime
+
+    from sqlalchemy import select
+
+    from novamind.features.knowledge_ops.repository.suggestion_repository import STATUS_OPEN
+    from novamind.features.knowledge_ops.tasks.review_reminder import (
+        compute_next_review_at,
+        load_review_config,
+    )
+    from novamind.features.knowledge_space.models.document import Document
+
+    await validate_kb_access(kb_id, space_id, db)
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == document_id)
+    )).scalar_one_or_none()
+    if doc is None or doc.kb_id != kb_id or doc.deleted_at is not None:
+        raise DocumentNotFoundError(document_id)
+    # 归属校验：owner 本人或空间管理员（member 为 admin 时放行）
+    if doc.owner_id != current_user_id and not member.is_admin():
+        raise SpaceAccessDeniedError(space_id, current_user_id, "仅文档 owner 或空间管理员可确认复审")
+
+    cfg = load_review_config()
+    doc.next_review_at = compute_next_review_at(
+        doc.review_cycle_days, cfg["fallback_cycle_days"], base=datetime.now()
+    )
+    async with db.begin_nested():
+        await db.flush()
+    await db.commit()
+    return {
+        "document_id": doc.id,
+        "next_review_at": doc.next_review_at.isoformat() if doc.next_review_at else None,
+    }

@@ -1,6 +1,6 @@
 """知识运营 API schema：事件查询与 gap 清单响应模型。"""
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,3 +56,45 @@ class GapReportResponse(BaseModel):
         description="内容缺口清单（content_gap 聚类，频次降序）",
     )
     window: dict[str, str] = Field(..., description="统计窗口（start/end ISO 串）")
+
+
+class KbReviewSuggestionResponse(BaseModel):
+    """复审建议条目"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    space_id: int
+    kb_id: int
+    suggestion_type: str
+    status: str
+    score: int | None = None
+    reason: str | None = None
+    old_doc_id: int | None = None
+    new_doc_id: int | None = None
+    resolved_by: int | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime
+
+
+class KbReviewSuggestionListResponse(BaseModel):
+    """建议列表"""
+
+    items: list[KbReviewSuggestionResponse] = Field(default_factory=list)
+    total: int
+
+
+class SuggestionResolveRequest(BaseModel):
+    """建议处置请求"""
+
+    action: Literal["accepted", "dismissed"] = Field(..., description="处置动作")
+
+
+class SuggestionResolveResponse(BaseModel):
+    """建议处置响应（accept 时附带 supersede 结果）"""
+
+    suggestion_id: int
+    status: str
+    superseded_doc_id: int | None = Field(
+        default=None, description="accept 且类型为 new_version 时：被下线的旧文档 ID"
+    )

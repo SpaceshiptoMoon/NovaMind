@@ -133,6 +133,9 @@ class AppLifespanManager:
             from novamind.features.knowledge_ops.tasks.attribution_worker import (
                 attribute_pending_events,
             )
+            from novamind.features.knowledge_ops.tasks.review_reminder import (
+                send_review_reminders,
+            )
             from novamind.features.knowledge_ops.tasks.weekly_digest import (
                 send_weekly_kb_ops_digest,
             )
@@ -148,6 +151,8 @@ class AppLifespanManager:
                     attribute_pending_events,
                     # kb-ops A2：知识运营周报（cron 驱动，见下）
                     send_weekly_kb_ops_digest,
+                    # kb-ops B2：复审到期提醒（cron 驱动，见下）
+                    send_review_reminders,
                 ],
                 task_queue=config.task_queue,
                 cron_jobs=[
@@ -157,6 +162,8 @@ class AppLifespanManager:
                     cron(attribute_pending_events, minute=0, second=30),
                     # kb-ops A2 知识运营周报：每周一 09:23（错开整点防任务风暴）
                     cron(send_weekly_kb_ops_digest, weekday=0, hour=9, minute=23),
+                    # kb-ops B2 复审到期提醒：每天 10:07（提前量 YAML 可配）
+                    cron(send_review_reminders, hour=10, minute=7),
                 ],
             )
             self.logger.info("嵌入式 arq Worker 已启动")

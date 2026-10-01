@@ -3837,6 +3837,134 @@
         "title": "KbGapStatItem",
         "type": "object"
       },
+      "KbReviewSuggestionListResponse": {
+        "description": "建议列表",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KbReviewSuggestionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "KbReviewSuggestionListResponse",
+        "type": "object"
+      },
+      "KbReviewSuggestionResponse": {
+        "description": "复审建议条目",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kb_id": {
+            "title": "Kb Id",
+            "type": "integer"
+          },
+          "new_doc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Doc Id"
+          },
+          "old_doc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Doc Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "space_id": {
+            "title": "Space Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggestion_type": {
+            "title": "Suggestion Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "space_id",
+          "kb_id",
+          "suggestion_type",
+          "status",
+          "created_at"
+        ],
+        "title": "KbReviewSuggestionResponse",
+        "type": "object"
+      },
       "KnowledgeBaseConfig-Input": {
         "description": "Full knowledge-base config.",
         "properties": {
@@ -11004,6 +11132,56 @@
         "title": "StructuredResume",
         "type": "object"
       },
+      "SuggestionResolveRequest": {
+        "description": "建议处置请求",
+        "properties": {
+          "action": {
+            "description": "处置动作",
+            "enum": [
+              "accepted",
+              "dismissed"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "SuggestionResolveRequest",
+        "type": "object"
+      },
+      "SuggestionResolveResponse": {
+        "description": "建议处置响应（accept 时附带 supersede 结果）",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggestion_id": {
+            "title": "Suggestion Id",
+            "type": "integer"
+          },
+          "superseded_doc_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accept 且类型为 new_version 时：被下线的旧文档 ID",
+            "title": "Superseded Doc Id"
+          }
+        },
+        "required": [
+          "suggestion_id",
+          "status"
+        ],
+        "title": "SuggestionResolveResponse",
+        "type": "object"
+      },
       "SystemPromptResponse": {
         "description": "会话当前 system prompt 全文（轨迹视图 inspector 展开 system 行按需拉）。\n\n含 base prompt + tool guidance + skill fragments + frozen memory 的完整拼接，\ndry_run 路径构造无副作用。tokens 为 system_tokens 估算。",
         "properties": {
@@ -16092,6 +16270,145 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/review-suggestions": {
+      "get": {
+        "description": "kb-ops B2：平台生成的待人工处置建议（疑似新旧版本等），得分降序。空间成员可读；处置（accept/dismiss）需空间管理员。",
+        "operationId": "list_review_suggestions_api_v1_kb_ops_spaces__space_id__review_suggestions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "类型过滤",
+            "in": "query",
+            "name": "suggestion_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "类型过滤",
+              "title": "Suggestion Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KbReviewSuggestionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "复审建议列表",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/review-suggestions/{suggestion_id}/resolve": {
+      "post": {
+        "description": "accept：执行建议动作（new_version 类型触发 B1 supersede，旧文档下线）；dismiss：忽略。幂等：已处置建议再次处置拒绝。空间管理员权限。",
+        "operationId": "resolve_review_suggestion_api_v1_kb_ops_spaces__space_id__review_suggestions__suggestion_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "建议ID",
+            "in": "path",
+            "name": "suggestion_id",
+            "required": true,
+            "schema": {
+              "description": "建议ID",
+              "exclusiveMinimum": 0,
+              "title": "Suggestion Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionResolveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "处置复审建议",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "description": "获取当前用户的通知列表（分页）",
@@ -20730,6 +21047,77 @@
           }
         ],
         "summary": "获取文档分块",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/confirm-review": {
+      "post": {
+        "description": "kb-ops B2：owner 确认文档内容仍然有效，next_review_at 按复审周期顺延（无周期文档默认 90 天）。owner 本人或空间管理员可操作。",
+        "operationId": "confirm_document_review_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__confirm_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "确认复审",
         "tags": [
           "文档管理",
           "文档管理"

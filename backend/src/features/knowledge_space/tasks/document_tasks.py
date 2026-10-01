@@ -388,6 +388,21 @@ async def process_document_task(
                     document_id=document_id, kb_id=kb_id, error=str(wiki_err),
                 )
 
+            # 9. kb-ops 新版识别（B2 旁路：判定失败不影响上传；只建议不自动）
+            try:
+                from novamind.features.knowledge_ops.services.new_version_detector import (
+                    detect_new_version_suggestions,
+                )
+
+                await detect_new_version_suggestions(
+                    space_id=space_id, kb_id=kb_id, new_doc_id=document_id,
+                )
+            except Exception as nv_err:
+                logger.warning(
+                    "新版识别判定异常（已忽略）",
+                    document_id=document_id, kb_id=kb_id, error=str(nv_err),
+                )
+
         except DocumentCancelledError:
             # 用户主动取消
             logger.info("文档处理被用户取消", document_id=document_id, job_id=job_id)

@@ -311,6 +311,9 @@ class KnowledgeOpsConfig:
     attribution_replay_low_threshold: float = 0.15
     attribution_lookback_days: int = 7
     attribution_batch_limit: int = 50
+    # 复审提醒（B2）：到期前提前提醒天数；确认复审时无周期文档的顺延天数
+    review_advance_days: int = 7
+    review_fallback_cycle_days: int = 90
 
 
 @dataclass

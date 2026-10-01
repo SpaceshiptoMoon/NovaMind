@@ -6,6 +6,9 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     from novamind.features.knowledge_ops.models.kb_event import KbEvent  # noqa: F401
+    from novamind.features.knowledge_ops.models.kb_review_suggestion import (  # noqa: F401
+        KbReviewSuggestion,
+    )
 
 
 def manifest() -> FeatureManifest:

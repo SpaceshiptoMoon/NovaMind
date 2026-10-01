@@ -19,6 +19,7 @@ class NotificationType(str, Enum):
     PASSWORD_RESET = "password_reset"
     WIKI_READY = "wiki_ready"
     KB_OPS_WEEKLY_DIGEST = "kb_ops_weekly_digest"
+    KB_REVIEW_DUE = "kb_review_due"
 
 
 class Notification(BaseModel):

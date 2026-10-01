@@ -1,7 +1,8 @@
-"""知识运营事件查询路由：运营账本的只读查询面。前缀 /api/v1/kb-ops。
+"""知识运营事件查询与复审建议路由：运营账本只读查询面 + 建议人工裁决面。前缀 /api/v1/kb-ops。
 
 权限域硬约束：所有查询强制按空间过滤（validate_space_member 门禁 +
-repository 空间谓词双保险），跨空间数据不可见。
+repository 空间谓词双保险），跨空间数据不可见；建议处置（accept 会下线
+旧文档）要求空间管理员。
 """
 from __future__ import annotations
 
@@ -11,10 +12,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query
 from novamind.core.auth import get_current_user
 from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.api.dependencies import validate_space_member
+from novamind.features.knowledge_space.api.dependencies import (
+    validate_space_admin,
+    validate_space_member,
+)
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_ops.repository.kb_event_repository import KbEventRepository
-from novamind.features.knowledge_ops.schemas import GapReportResponse, KbEventListResponse
+from novamind.features.knowledge_ops.repository.suggestion_repository import (
+    SuggestionRepository,
+)
+from novamind.features.knowledge_ops.schemas import (
+    GapReportResponse,
+    KbEventListResponse,
+    KbReviewSuggestionListResponse,
+    KbReviewSuggestionResponse,
+    SuggestionResolveRequest,
+    SuggestionResolveResponse,
+)
 from novamind.features.knowledge_ops.services.gap_report_service import GapReportService
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,3 +103,72 @@ async def get_space_gap_report(
         gap_limit=gap_limit,
     )
     return GapReportResponse(**report)
+
+# ========== 复审建议（kb-ops B2：疑似新旧版本/矛盾的人工裁决队列） ==========
+
+
+@router.get(
+    "/spaces/{space_id}/review-suggestions",
+    response_model=KbReviewSuggestionListResponse,
+    summary="复审建议列表",
+    description=(
+        "kb-ops B2：平台生成的待人工处置建议（疑似新旧版本等），得分降序。"
+        "空间成员可读；处置（accept/dismiss）需空间管理员。"
+    ),
+)
+async def list_review_suggestions(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    suggestion_type: Annotated[str | None, Query(max_length=32, description="类型过滤")] = None,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """open 建议列表（kb-ops B2）"""
+    repo = SuggestionRepository(db)
+    items = await repo.list_open_suggestions(space_id, suggestion_type=suggestion_type)
+    return KbReviewSuggestionListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/spaces/{space_id}/review-suggestions/{suggestion_id}/resolve",
+    response_model=SuggestionResolveResponse,
+    summary="处置复审建议",
+    description=(
+        "accept：执行建议动作（new_version 类型触发 B1 supersede，旧文档下线）；"
+        "dismiss：忽略。幂等：已处置建议再次处置拒绝。空间管理员权限。"
+    ),
+)
+async def resolve_review_suggestion(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    suggestion_id: Annotated[int, Path(gt=0, description="建议ID")],
+    request: SuggestionResolveRequest,
+    member: SpaceMember = Depends(validate_space_admin),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """处置建议（accept 联动 supersede）"""
+    from novamind.features.knowledge_ops.repository.suggestion_repository import (
+        STATUS_ACCEPTED,
+        SUGGESTION_NEW_VERSION,
+    )
+    from novamind.features.knowledge_ops.exceptions import KbOpsNotFoundError
+    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
+
+    repo = SuggestionRepository(db)
+    suggestion = await repo.get_by_id(suggestion_id)
+    if suggestion is None or suggestion.space_id != space_id:
+        raise KbOpsNotFoundError("复审建议不存在")
+
+    resolved = await repo.resolve(suggestion_id, request.action, current_user["id"])
+    superseded_doc_id = None
+    if request.action == STATUS_ACCEPTED and suggestion.suggestion_type == SUGGESTION_NEW_VERSION:
+        # 联动 B1 supersede（旧文档下线；ES 同步失败会抛 RuntimeError 由全局兜底）
+        if suggestion.old_doc_id and suggestion.new_doc_id:
+            await LifecycleService(db).supersede(suggestion.old_doc_id, suggestion.new_doc_id)
+            superseded_doc_id = suggestion.old_doc_id
+    await db.commit()
+    return SuggestionResolveResponse(
+        suggestion_id=suggestion_id,
+        status=resolved.status,
+        superseded_doc_id=superseded_doc_id,
+    )
