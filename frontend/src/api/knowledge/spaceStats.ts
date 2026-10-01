@@ -3,6 +3,11 @@ import type {
   KnowledgeGapStatsResponse,
   ActionStatsResponse,
   KbOpsGapReport,
+  KbOpsSuggestionList,
+  KbOpsSuggestionResolve,
+  KbOpsDuplicates,
+  KbOpsCitationStats,
+  KbOpsContradictionScan,
 } from '../types'
 
 /**
@@ -34,5 +39,35 @@ export const spaceStatsApi = {
   /** kb-ops 知识缺口报告（归因分布 + 内容缺口清单，A2） */
   getGapReport(spaceId: number, params?: { start?: string; end?: string; gap_limit?: number }) {
     return request.get<KbOpsGapReport>(`/kb-ops/spaces/${spaceId}/gap-report`, params)
+  },
+
+  /** kb-ops 复审建议列表（open 状态，得分降序，B2/D） */
+  getReviewSuggestions(spaceId: number, params?: { suggestion_type?: string }) {
+    return request.get<KbOpsSuggestionList>(`/kb-ops/spaces/${spaceId}/review-suggestions`, params)
+  },
+
+  /** kb-ops 处置建议（accept: new_version 触发 supersede / contradiction 通知 owner；dismiss 忽略） */
+  resolveSuggestion(spaceId: number, suggestionId: number, action: 'accepted' | 'dismissed') {
+    return request.post<KbOpsSuggestionResolve>(
+      `/kb-ops/spaces/${spaceId}/review-suggestions/${suggestionId}/resolve`,
+      { action },
+    )
+  },
+
+  /** kb-ops 重复文档分组（精确 hash + 同归一化名，D1） */
+  getDuplicates(spaceId: number, params?: { kb_id?: number; limit?: number }) {
+    return request.get<KbOpsDuplicates>(`/kb-ops/spaces/${spaceId}/duplicates`, params)
+  },
+
+  /** kb-ops 文档贡献统计（点击核验 + 支撑回答，D3） */
+  getCitationStats(spaceId: number, params?: { limit?: number }) {
+    return request.get<KbOpsCitationStats>(`/kb-ops/spaces/${spaceId}/citation-stats`, params)
+  },
+
+  /** kb-ops 触发矛盾检测（空间 admin，D2；LLM 成本操作） */
+  runContradictionScan(spaceId: number, kbId: number) {
+    return request.post<KbOpsContradictionScan>(
+      `/kb-ops/spaces/${spaceId}/contradiction-scan?kb_id=${kbId}`,
+    )
   },
 }

@@ -124,6 +124,10 @@ const typeLabels: Record<string, string> = {
   research_done: '深度研究',
   skill_review: '技能审核',
   password_reset: '密码重置',
+  wiki_ready: 'Wiki 生成',
+  kb_ops_weekly_digest: '知识运营周报',
+  kb_review_due: '复审提醒',
+  kb_contradiction_confirmed: '内容矛盾',
 }
 
 function getTypeLabel(type: string): string {

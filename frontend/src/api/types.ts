@@ -1017,6 +1017,72 @@ export interface KbOpsGapReport {
   window: { start: string; end: string }
 }
 
+/** kb-ops 复审建议条目（new_version=疑似新旧版本 / contradiction=内容矛盾） */
+export interface KbOpsSuggestion {
+  id: number
+  space_id: number
+  kb_id: number
+  suggestion_type: 'new_version' | 'contradiction' | string
+  status: 'open' | 'accepted' | 'dismissed' | string
+  score: number | null
+  reason: string | null
+  old_doc_id: number | null
+  new_doc_id: number | null
+  resolved_by: number | null
+  resolved_at: string | null
+  created_at: string
+}
+
+export interface KbOpsSuggestionList {
+  items: KbOpsSuggestion[]
+  total: number
+}
+
+export interface KbOpsSuggestionResolve {
+  suggestion_id: number
+  status: string
+  superseded_doc_id: number | null
+}
+
+/** kb-ops 重复文档组（exact_hash=同内容上传 / same_normalized_name=同归一化名） */
+export interface KbOpsDuplicateGroup {
+  group_type: 'exact_hash' | 'same_normalized_name' | string
+  kb_id: number
+  key: string
+  documents: Array<{
+    document_id: number
+    kb_id: number
+    filename: string
+    lifecycle_status: string
+    created_at: string | null
+    superseded_by_doc_id: number | null
+  }>
+}
+
+export interface KbOpsDuplicates {
+  items: KbOpsDuplicateGroup[]
+  total: number
+}
+
+/** kb-ops 文档贡献统计（点击核验 + 支撑回答） */
+export interface KbOpsCitationStats {
+  items: Array<{ document_id: number; click_count: number }>
+  support_stats: Array<{ document_id: number; support_count: number }>
+  total: number
+}
+
+export interface KbOpsContradictionScan {
+  kb_id: number
+  suggestions_created: number
+  suggestions: Array<{
+    suggestion_id: number
+    doc_a: number | null
+    doc_b: number | null
+    similarity: number
+    reason: string
+  }>
+}
+
 /** 两次测评报告对比（批次 3b） */
 export interface EvaluationComparisonResponse {
   task_id: number

@@ -193,6 +193,12 @@ const router = createRouter({
               component: () => import('@/views/space/SpaceGapReportView.vue'),
               meta: { title: '知识缺口报告' },
             },
+            {
+              path: ':id/kb-ops',
+              name: 'SpaceKbOps',
+              component: () => import('@/views/space/SpaceKbOpsView.vue'),
+              meta: { title: '知识运营' },
+            },
           ],
         },
         {

@@ -5,6 +5,7 @@
       :description="`用户问了但知识库答不上的内容清单——内容建设的直接依据（近 7 天）`"
     >
       <template #actions>
+        <el-button @click="goKbOps">知识运营</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -68,7 +69,7 @@
 <script setup lang="ts">
 /** 知识缺口报告页（kb-ops A2）：失败问答归因分布 + 内容缺口清单 */
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { spaceStatsApi } from '@/api/knowledge'
 import type { KbOpsGapReport } from '@/api/types'
@@ -76,7 +77,12 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import StatCard from '@/components/common/StatCard.vue'
 
 const route = useRoute()
+const router = useRouter()
 const spaceId = Number(route.params.id)
+
+function goKbOps() {
+  void router.push(`/home/spaces/${spaceId}/kb-ops`)
+}
 
 const loading = ref(false)
 const report = ref<KbOpsGapReport | null>(null)

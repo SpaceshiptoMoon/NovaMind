@@ -20,6 +20,7 @@
           <el-option label="最近 90 天" :value="90" />
         </el-select>
         <el-button :icon="Refresh" :loading="loading" @click="load" />
+        <el-button type="primary" plain @click="goGapReport">知识缺口报告</el-button>
       </div>
     </div>
 
@@ -213,6 +214,11 @@ function goDocuments() {
 function goSession(sessionId: string) {
   // 跳回会话：工作台对话页按 session 恢复（query 带 session_id）
   void router.push({ path: '/home/workspace/chat', query: { session_id: sessionId } })
+}
+
+/** 跳转知识缺口报告页（kb-ops 归因分布 + 内容缺口清单 + 建议处置） */
+function goGapReport() {
+  void router.push(`/home/spaces/${spaceId.value}/gap-report`)
 }
 
 /** 拉取当前时间窗 + KB 过滤下的知识缺口统计，成功后重渲染趋势图。 */
