@@ -181,4 +181,14 @@ TEMPLATES = {
         "Question: {question}\n\n"
         "Provide your answer directly:"
     ),
+
+    # ==================== Synthetic Test Set Generation（kb-ops C） ====================
+    # 注册供检索/审计；运行时经 testset_generation.build_generation_prompt 拼变量
+    # （批式模板带循环结构，注册表存结构说明即可——两处文本须保持同义）
+    "eval_testset_generation": (
+        "根据知识库片段生成「问题 + 期望答案」测试用例：问题只基于片段原文、"
+        "期望答案是片段内容 50 字内提炼；输出 JSON "
+        '{{"cases": [{{"chunk_index": 1, "question": "...", "expected_answer": "..."}}]}}。'
+        "片段内容：\n{chunks_text}"
+    ),
 }

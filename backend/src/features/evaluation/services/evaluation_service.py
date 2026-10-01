@@ -871,8 +871,17 @@ class EvaluationService:
                 await session.commit()
 
                 # 创建评估器
-                llm_client, resolved_llm_model = await self._get_llm_client(user_id, config.llm_model)
-                embedding_client, resolved_embedding_model = await self._get_embedding_client(user_id, config.embedding_model)
+                # 模型客户端解析必须用后台独立会话的 ModelConfigService：
+                # 本协程在 HTTP 请求结束后运行，self.model_config_service 绑定的
+                # 请求级 session 已随 get_db 关闭——复用它会撞 prepared/closed
+                # session（真实跑批验证抓到的存量 bug，任务恒 FAILED）。
+                bg_model_config_service = ModelConfigService(session)
+                llm_client, resolved_llm_model = await self._get_llm_client(
+                    user_id, config.llm_model, model_config_service=bg_model_config_service,
+                )
+                embedding_client, resolved_embedding_model = await self._get_embedding_client(
+                    user_id, config.embedding_model, model_config_service=bg_model_config_service,
+                )
 
                 # 客户端不可用时直接失败
                 if llm_client is None and embedding_client is None:
@@ -887,6 +896,12 @@ class EvaluationService:
                 #   evaluation 不再直接 import knowledge_space.services.search_service /
                 #   shared.clients.get_elasticsearch_client / user.services.model_config_service）
                 bg_retrieval_port = self._retrieval_factory(session)
+                # 检索端口串行闸：SearchService 绑定单个 DB session（embedding 凭证
+                # 查询走 aiomysql），aiomysql 连接非并发安全——5 并发协程同时检索
+                # 会撞 "readexactly() called while another coroutine is already
+                # waiting"（真实跑批抓到的存量 bug，任务恒 FAILED）。LLM/embedding
+                # 客户端是 HTTP 层各自独立连接，不受此闸影响，仍并发。
+                retrieval_lock = asyncio.Lock()
 
                 # 回写实际使用的模型名
                 config_changed = False
@@ -930,27 +945,33 @@ class EvaluationService:
 
                 async def evaluate_case(i: int, case: dict) -> tuple[int, dict]:
                     async with semaphore:
-                        # 检查共享取消信号
+                        # 取消判定只用内存 cancel_event：并发协程共享单个 DB session
+                        # 做取消检查会并发撞 aiomysql 连接（同上 readexactly 根因）。
+                        # DB 级取消由外层周期 commit 时顺带检查 + cancel API 直接
+                        # 置 CANCELLED 后任务在下一检查点自然停（延迟可接受）。
                         if cancel_event.is_set():
                             return i, {"index": i, "question": case["question"],
                                        "expected_answer": case["expected_answer"], "cancelled": True}
-                        # DB 取消检查
-                        t = await task_repo.get_by_id(task_id)
-                        if t and t.status == EvaluationStatus.CANCELLED:
-                            cancel_event.set()
-                            return i, {"index": i, "question": case["question"],
-                                       "expected_answer": case["expected_answer"], "cancelled": True}
                         try:
-                            detail = await self._evaluate_single_case(
-                                index=i, question=case["question"],
-                                expected_answer=case["expected_answer"],
-                                test_set_obj=test_set_obj, config=config,
-                                retrieval_evaluator=retrieval_evaluator,
-                                generation_evaluator=generation_evaluator,
-                                embedding_evaluator=embedding_eval,
-                                llm_client=llm_client, user_id=user_id,
-                                retrieval_port=bg_retrieval_port,
-                            )
+                            # 单闸锁整个单题评估：_evaluate_single_case 内部
+                            # （检索的 embedding 凭证查询、评估器、进度写）全部
+                            # 绑定同一个后台 session——aiomysql 连接非并发安全，
+                            # 任何并发路径都会撞 readexactly/prepared state
+                            # （两次真实跑批抓到的同根因）。EVALUATION_CONCURRENCY
+                            # 实际退化为串行——正确性优先；LLM HTTP 调用仍占大头，
+                            # 损失的是理论并发收益。彻底修复需每协程独立 session，
+                            # 属 evaluation 存量架构债，不在本批次范围。
+                            async with retrieval_lock:
+                                detail = await self._evaluate_single_case(
+                                    index=i, question=case["question"],
+                                    expected_answer=case["expected_answer"],
+                                    test_set_obj=test_set_obj, config=config,
+                                    retrieval_evaluator=retrieval_evaluator,
+                                    generation_evaluator=generation_evaluator,
+                                    embedding_evaluator=embedding_eval,
+                                    llm_client=llm_client, user_id=user_id,
+                                    retrieval_port=bg_retrieval_port,
+                                )
                             return i, detail
                         except Exception as e:
                             logger.error("测试用例评估失败", index=i, error=str(e))
@@ -967,8 +988,13 @@ class EvaluationService:
                     details.append(detail)
                     completed += 1
                     if completed % commit_interval == 0:
-                        await task_repo.update_progress(task_id, {"current": completed, "total": len(cases)})
-                        await session.commit()
+                        # 进度写必须拿同一把锁：as_completed 消费结果时下一个
+                        # evaluate_case 已持锁运行，此处无锁 commit 会与锁内
+                        # 检索的 DB 读并发撞 aiomysql 连接（第三次真实跑批抓到
+                        # 的最后漏网点——锁内看似全覆盖，锁外 commit 漏网）。
+                        async with retrieval_lock:
+                            await task_repo.update_progress(task_id, {"current": completed, "total": len(cases)})
+                            await session.commit()
 
                 # as_completed 返回顺序不确定，按 index 排序
                 details.sort(key=lambda d: d.get("index", 0))
@@ -1240,26 +1266,41 @@ class EvaluationService:
             logger.warning("生成回答失败", error=str(e))
             return None
 
-    async def _get_llm_client(self, user_id: int, model: str | None = None) -> tuple:
-        """按指定模型或用户默认配置解析 LLM 客户端，失败返回 (None, None)。"""
+    async def _get_llm_client(
+        self, user_id: int, model: str | None = None, *, model_config_service=None,
+    ) -> tuple:
+        """按指定模型或用户默认配置解析 LLM 客户端，失败返回 (None, None)。
+
+        Args:
+            model_config_service: 后台协程须传入独立会话构造的实例；None 用请求级
+                self.model_config_service（仅请求上下文安全）。
+        """
+        mcs = model_config_service or self.model_config_service
         try:
             if not model:
-                model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
+                model = await mcs.get_user_default_model_name(user_id, "llm")
             if model:
-                client = await self.model_config_service.get_llm_client_by_model(user_id, model)
+                client = await mcs.get_llm_client_by_model(user_id, model)
                 return (client, model)
             return (None, None)
         except Exception as e:
             logger.warning("获取 LLM 客户端失败", error=str(e))
             return (None, None)
 
-    async def _get_embedding_client(self, user_id: int, model: str | None = None) -> tuple:
-        """按指定模型或用户默认配置解析 Embedding 客户端，失败返回 (None, None)。"""
+    async def _get_embedding_client(
+        self, user_id: int, model: str | None = None, *, model_config_service=None,
+    ) -> tuple:
+        """按指定模型或用户默认配置解析 Embedding 客户端，失败返回 (None, None)。
+
+        Args:
+            model_config_service: 后台协程须传入独立会话构造的实例（同 _get_llm_client）。
+        """
+        mcs = model_config_service or self.model_config_service
         try:
             if not model:
-                model = await self.model_config_service.get_user_default_model_name(user_id, "embedding")
+                model = await mcs.get_user_default_model_name(user_id, "embedding")
             if model:
-                client = await self.model_config_service.get_embedding_client_by_model(user_id, model)
+                client = await mcs.get_embedding_client_by_model(user_id, model)
                 return (client, model)
             return (None, None)
         except Exception as e:

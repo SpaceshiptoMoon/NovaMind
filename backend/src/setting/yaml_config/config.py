@@ -314,6 +314,9 @@ class KnowledgeOpsConfig:
     # 复审提醒（B2）：到期前提前提醒天数；确认复审时无周期文档的顺延天数
     review_advance_days: int = 7
     review_fallback_cycle_days: int = 90
+    # 质量基线（C）：合成测试集单 KB 配额上限（LLM 成本硬闸）；跑批 cron 开关
+    testset_max_cases: int = 20
+    quality_baseline_enabled: bool = False
 
 
 @dataclass

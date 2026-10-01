@@ -153,6 +153,48 @@ async def create_test_set_from_cases(
 
 
 @router.post(
+    "/test-sets/generate",
+    status_code=201,
+    response_model=TestSetCreateResponse,
+    summary="从知识库合成测试集",
+    description=(
+        "kb-ops C：从 KB chunks 均匀采样，LLM 生成「问题+期望答案」用例落测试集。"
+        "配额 YAML knowledge_ops.testset_max_cases（默认 20，LLM 成本硬闸）；"
+        "生成失败返回部分结果或 422（可重试）。空间 editor 权限。"
+    ),
+)
+async def generate_test_set_from_chunks(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    db: AsyncSession = Depends(get_db),
+):
+    await validate_kb_access(kb_id, space_id, db)
+    from novamind.features.evaluation.exceptions import InvalidTestSetError
+    from novamind.features.evaluation.services.testset_generation import (
+        generate_cases_from_chunks,
+    )
+
+    cases = await generate_cases_from_chunks(db, space_id=space_id, kb_id=kb_id, user_id=user_id)
+    if not cases:
+        raise InvalidTestSetError(
+            "未能生成任何测试用例（KB 无可用 chunks 或 LLM 生成失败），请稍后重试"
+        )
+    test_set_obj = await evaluation_service.create_test_set_from_cases(
+        space_id=space_id, kb_id=kb_id, user_id=user_id,
+        name=f"合成测试集-{kb_id}", cases=cases,
+    )
+    return TestSetCreateResponse(
+        test_set_id=test_set_obj.id, name=test_set_obj.name,
+        filename=test_set_obj.filename, file_type=test_set_obj.file_type,
+        file_size=test_set_obj.file_size, total_cases=test_set_obj.total_cases,
+        message=f"已从知识库合成 {len(cases)} 条测试用例",
+    )
+
+
+@router.post(
     "/test-sets/{test_set_id}/cases",
     response_model=TestSetCreateResponse,
     summary="追加用例进已有测试集",

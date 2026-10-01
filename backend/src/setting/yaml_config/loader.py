@@ -397,6 +397,8 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         attribution_batch_limit=ko.get("attribution_batch_limit", 50),
         review_advance_days=ko.get("review_advance_days", 7),
         review_fallback_cycle_days=ko.get("review_fallback_cycle_days", 90),
+        testset_max_cases=ko.get("testset_max_cases", 20),
+        quality_baseline_enabled=ko.get("quality_baseline_enabled", False),
     )
 
     smtp = data.get("smtp", {})

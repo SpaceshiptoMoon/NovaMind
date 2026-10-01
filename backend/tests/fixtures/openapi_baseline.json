@@ -16270,6 +16270,84 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/gap-report/test-set": {
+      "post": {
+        "description": "kb-ops C flywheel：把内容缺口清单的 query 转成检索命中验证型测试用例，追加进指定测试集（无则创建）。用例语义：补充文档后该 query 应能命中。空间 editor 权限。",
+        "operationId": "convert_gap_to_testset_api_v1_kb_ops_spaces__space_id__gap_report_test_set_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "目标知识库ID",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "目标知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "已有测试集ID（不传则创建新集）",
+            "in": "query",
+            "name": "test_set_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "已有测试集ID（不传则创建新集）",
+              "title": "Test Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "gap 条目转测试用例",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/kb-ops/spaces/{space_id}/review-suggestions": {
       "get": {
         "description": "kb-ops B2：平台生成的待人工处置建议（疑似新旧版本等），得分降序。空间成员可读；处置（accept/dismiss）需空间管理员。",
@@ -22787,6 +22865,67 @@
           }
         ],
         "summary": "用用例列表直接建测试集",
+        "tags": [
+          "知识库测评",
+          "知识库测评"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/test-sets/generate": {
+      "post": {
+        "description": "kb-ops C：从 KB chunks 均匀采样，LLM 生成「问题+期望答案」用例落测试集。配额 YAML knowledge_ops.testset_max_cases（默认 20，LLM 成本硬闸）；生成失败返回部分结果或 422（可重试）。空间 editor 权限。",
+        "operationId": "generate_test_set_from_chunks_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_generate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestSetCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "从知识库合成测试集",
         "tags": [
           "知识库测评",
           "知识库测评"
