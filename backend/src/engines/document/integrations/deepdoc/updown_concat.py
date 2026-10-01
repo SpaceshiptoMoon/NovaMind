@@ -482,7 +482,13 @@ class UpDownConcatMerger:
             next_text = (state.get("text", "") or "").strip()
             if not next_text:
                 continue
-            if current_text and current_text[-1].isalnum() and next_text[0].isalnum():
+            # 词边界判据对齐上游（VEN naive_merge 同款）：仅 ASCII 字母/数字/点
+            # 相邻才补空格。不能用 isalnum()——CJK 字符 isalnum()==True，会把
+            # 中文正文拼成「数据 处理」假空格形态（污染分词/embedding；中文金样
+            # 断言历来 replace(" ","") 洗掉了该缺陷，英文金样补齐时暴露）。
+            if current_text and re.match(r"[0-9a-zA-Z.]", current_text[-1]) and re.match(
+                r"[0-9a-zA-Z.]", next_text[0]
+            ):
                 merged["text"] = current_text + " " + next_text
             else:
                 merged["text"] = current_text + next_text
