@@ -391,6 +391,10 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     config.knowledge_ops = KnowledgeOpsConfig(
         reformulate_window_seconds=ko.get("reformulate_window_seconds", 120),
         reformulate_similarity_threshold=ko.get("reformulate_similarity_threshold", 0.5),
+        attribution_low_score_threshold=ko.get("attribution_low_score_threshold", 0.35),
+        attribution_replay_low_threshold=ko.get("attribution_replay_low_threshold", 0.15),
+        attribution_lookback_days=ko.get("attribution_lookback_days", 7),
+        attribution_batch_limit=ko.get("attribution_batch_limit", 50),
     )
 
     smtp = data.get("smtp", {})

@@ -87,6 +87,13 @@ knowledge_ops:
   # 知识运营事件账本（kb_events）：会话内改写检测参数
   reformulate_window_seconds: 120
   reformulate_similarity_threshold: 0.5
+  # 归因流水线（A1）：低分阈值与知识缺口看板同口径；降级阈值用于区分
+  # content_gap（降阈值仍零命中）与 retrieval_failure（降阈值能命中）；
+  # 回溯窗/批上限控制归因追赶成本（cron 每 30 分钟扫一批）
+  attribution_low_score_threshold: 0.35
+  attribution_replay_low_threshold: 0.15
+  attribution_lookback_days: 7
+  attribution_batch_limit: 50
 
 knowledge_base:
   parsing:
