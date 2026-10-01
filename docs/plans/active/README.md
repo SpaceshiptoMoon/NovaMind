@@ -16,6 +16,7 @@
 - [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（loop detection / 审批 / 观测 / planning flow）
 - [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
 - [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（MCP / 搜索 / 工具；G2/G3 已被 2026-08 用户决策推翻，仅保留参考价值）
+- [`knowledge-operations-loop-plan.md`](./knowledge-operations-loop-plan.md)：知识运营闭环开发计划（事件账本→gap 闭环→生命周期→质量基线→治理增强，八批次三里程碑）
 
 已完成的仓库结构清理四部曲与媒体问题修复记录（2026-07）已移入 [`../historical/`](../historical/)。
 

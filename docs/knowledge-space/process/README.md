@@ -10,6 +10,7 @@
 - [`knowledge-reorg-plan.md`](./knowledge-reorg-plan.md)：原始重组计划
 - [`knowledge-reorg-migration-summary.md`](./knowledge-reorg-migration-summary.md)：迁移结果和引用更新摘要
 - [`IMPROVEMENT-enterprise-kb.md`](./IMPROVEMENT-enterprise-kb.md)：更长期的企业知识库改进草案
+- [`knowledge-operations-loop-design.md`](./knowledge-operations-loop-design.md)：知识库数据运营闭环设计（痛点→归因模型→回路→路线图，改进草案）
 
 ## 使用约定
 
