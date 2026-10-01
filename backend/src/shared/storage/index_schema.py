@@ -125,6 +125,10 @@ class DefaultIndexSchema:
                 },
             },
             "chunk_type": {"type": "keyword"},
+            # 文档生命周期（kb-ops B1）：chunk 级冗余文档状态，检索侧排除式过滤
+            # （must_not superseded/archived）。存量 chunk 无此字段——terms 查询
+            # 不命中 missing 字段，自动视为可召回，零回填。
+            "lifecycle_status": {"type": "keyword"},
             "image_url": {"type": "keyword"},
             "media_url": {"type": "keyword"},
             "metadata": {

@@ -268,6 +268,9 @@ def build_es_chunks(
             "chunk_index": i,
             "content": text,
             "chunk_type": chunk_type,
+            # 文档生命周期冗余（kb-ops B1）：检索侧按此字段排除式过滤。
+            # 上传即 active（draft 是前端暂存概念，未入库前无 chunk）。
+            "lifecycle_status": getattr(document, "lifecycle_status", None) or "active",
             "media_url": media_url,
             "file_info": {
                 "filename": document.filename,

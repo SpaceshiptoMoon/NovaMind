@@ -417,10 +417,23 @@ class ElasticsearchClient:
     # ========== 搜索辅助 ==========
 
     def _build_kb_filter(self, kb_id: int | None = None) -> list[dict]:
-        """构建知识库过滤条件"""
+        """构建知识库过滤条件 + 文档生命周期排除式过滤（kb-ops B1）。
+
+        排除式而非白名单式（must lifecycle_status=active）：存量 chunk 无该字段，
+        must_not terms 对 missing 字段不命中 → 自动视为可召回，零回填；
+        白名单式会把全部存量 chunk 一刀切出检索（误杀）。
+        """
+        filters: list[dict] = []
         if kb_id is not None:
-            return [{"term": {self._schema.field_names.kb_id: kb_id}}]
-        return []
+            filters.append({"term": {self._schema.field_names.kb_id: kb_id}})
+        filters.append({
+            "bool": {
+                "must_not": [
+                    {"terms": {"lifecycle_status": ["superseded", "archived"]}}
+                ]
+            }
+        })
+        return filters
 
     # ========== 搜索功能 ==========
 

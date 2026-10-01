@@ -74,4 +74,37 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "is_super_admin",
         "ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN NOT NULL DEFAULT 0 COMMENT '最高管理员标记（不可被其他管理员降级/删除/停用）'",
     ),
+    # ===== kb-ops B1 文档生命周期治理（六列一批，模型见 knowledge_space/models/document.py） =====
+    (
+        "documents",
+        "lifecycle_status",
+        "ALTER TABLE documents ADD COLUMN lifecycle_status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT '生命周期：draft/active/superseded/archived；检索默认只召回 active'",
+    ),
+    (
+        "documents",
+        "owner_id",
+        # 存量回填：owner 先取 uploader（Glean 四要素的落地起点；后续可在 UI 改派）。
+        # 补列与回填分两步走：本条只补列，回填由 startup_manager 的数据迁移钩子执行。
+        "ALTER TABLE documents ADD COLUMN owner_id BIGINT NULL COMMENT '内容责任人（新上传默认 uploader_id；存量由迁移回填）'",
+    ),
+    (
+        "documents",
+        "effective_date",
+        "ALTER TABLE documents ADD COLUMN effective_date DATETIME NULL COMMENT '生效时间（时效性过滤/展示用）'",
+    ),
+    (
+        "documents",
+        "review_cycle_days",
+        "ALTER TABLE documents ADD COLUMN review_cycle_days INT NULL COMMENT '复审周期（天）；KB 级默认值可被文档覆盖'",
+    ),
+    (
+        "documents",
+        "next_review_at",
+        "ALTER TABLE documents ADD COLUMN next_review_at DATETIME NULL COMMENT '下次复审时间（到期提醒扫描字段）'",
+    ),
+    (
+        "documents",
+        "superseded_by_doc_id",
+        "ALTER TABLE documents ADD COLUMN superseded_by_doc_id BIGINT NULL COMMENT '被哪个新版文档替代（版本链锚点，superseded 态必填）'",
+    ),
 )

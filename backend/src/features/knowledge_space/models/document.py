@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
 )
@@ -23,6 +24,30 @@ class DocumentStatus(IntEnum):
     COMPLETED = 2    # 已完成 → 请用 TaskStatus.COMPLETED
     FAILED = 3       # 处理失败 → 请用 TaskStatus.FAILED
     DELETED = 4      # 已删除 → Document.deleted_at
+
+
+class DocumentLifecycleStatus:
+    """文档生命周期状态常量（kb-ops B1）。
+
+    状态机：draft → active → superseded → archived，仅 archived → active 允许回退。
+    检索默认只召回 active（及无该字段的存量数据——排除式过滤语义）。
+    """
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+
+    # 合法转换表（单向为主，archived → active 为唯一回退）
+    ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        DRAFT: {ACTIVE},
+        ACTIVE: {SUPERSEDED, ARCHIVED},
+        SUPERSEDED: {ARCHIVED, ACTIVE},  # superseded → active：误替换恢复
+        ARCHIVED: {ACTIVE},              # 归档误操作恢复
+    }
+
+    # 参与检索的状态白名单（排除式过滤的补集面）
+    RETIREMENT_STATES = {SUPERSEDED, ARCHIVED}
 
 
 class Document(BaseModel):
@@ -49,12 +74,37 @@ class Document(BaseModel):
 
     deleted_at = Column(DateTime, nullable=True, index=True, comment="软删除时间")
 
+    # ========== 生命周期治理（kb-ops B1：Glean 式新鲜度四要素） ==========
+    # 存量表由 SCHEMA_MIGRATIONS 幂等补列；owner 回填 uploader_id 见迁移注释。
+
+    lifecycle_status = Column(
+        String(16),
+        nullable=False,
+        default=DocumentLifecycleStatus.ACTIVE,
+        comment="生命周期：draft/active/superseded/archived；检索默认只召回 active",
+    )
+    owner_id = Column(
+        BigInteger,
+        ForeignKey("users.id"),
+        nullable=True,
+        comment="内容责任人（新上传默认 uploader_id；存量由迁移回填）",
+    )
+    effective_date = Column(DateTime, nullable=True, comment="生效时间（时效性过滤/展示用）")
+    review_cycle_days = Column(Integer, nullable=True, comment="复审周期（天）；KB 级默认值可被文档覆盖")
+    next_review_at = Column(DateTime, nullable=True, index=True, comment="下次复审时间（到期提醒扫描字段）")
+    superseded_by_doc_id = Column(
+        BigInteger,
+        nullable=True,
+        comment="被哪个新版文档替代（版本链锚点，superseded 态必填）",
+    )
+
     # 索引和约束
     __table_args__ = (
         # 去重范围：同知识库 + 同上传者 + 同内容哈希。不同成员可各自上传同一文件。
         # 存量库由 startup 期 CONSTRAINT_MIGRATIONS 把旧 uq_kb_file_hash 换成此约束。
         UniqueConstraint("kb_id", "uploader_id", "file_hash", name="uq_kb_uploader_file_hash"),
         Index("idx_space_created", "space_id", "created_at"),
+        Index("idx_space_lifecycle", "space_id", "lifecycle_status"),
         {"comment": "文档表，存储文件元数据；处理状态见 document_task_items 表"},
     )
 

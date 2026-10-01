@@ -928,6 +928,25 @@
         "title": "Body_create_test_set_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_post",
         "type": "object"
       },
+      "Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post": {
+        "properties": {
+          "new_doc_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "新版文档ID（supersede 必填）",
+            "title": "New Doc Id"
+          }
+        },
+        "title": "Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post",
+        "type": "object"
+      },
       "Body_update_skill_version_api_v1_skills__skill_id__upload_put": {
         "properties": {
           "file": {
@@ -20924,6 +20943,98 @@
           }
         ],
         "summary": "获取文档图片",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/lifecycle/{action}": {
+      "post": {
+        "description": "kb-ops B1：supersede（新版替代，body 传 new_doc_id）/ archive（下线归档）/ reactivate（恢复召回）。转换后 ES chunk 状态同步，检索侧排除式过滤即时生效；ES 同步失败自动回滚 DB 状态。空间管理员权限。",
+        "operationId": "transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "转换动作",
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "description": "转换动作",
+              "pattern": "^(supersede|archive|reactivate)$",
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "文档生命周期转换",
         "tags": [
           "文档管理",
           "文档管理"

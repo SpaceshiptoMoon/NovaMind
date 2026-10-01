@@ -309,6 +309,25 @@ class AppLifespanManager:
                     error=str(e),
                 )
 
+        # 数据迁移（kb-ops B1）：documents.owner_id 存量回填 uploader_id。
+        # 幂等：只回填 owner_id IS NULL 的行；幂等迁移本体的 DDL 若失败（列未建成）
+        # 此处会抛错被 except 吞为 warning，owner 留空不阻塞启动。
+        try:
+            async with db_engine.begin() as conn:
+                result = await conn.execute(
+                    text(
+                        "UPDATE documents SET owner_id = uploader_id "
+                        "WHERE owner_id IS NULL AND deleted_at IS NULL"
+                    )
+                )
+                if result.rowcount:
+                    self.logger.info(
+                        "数据迁移：documents.owner_id 存量回填 uploader_id",
+                        rows=result.rowcount,
+                    )
+        except Exception as e:
+            self.logger.warning("documents.owner_id 回填失败（owner 留空）", error=str(e))
+
     async def _init_features(self, app):
         """初始化各功能模块（按 manifest 拓扑序）
 

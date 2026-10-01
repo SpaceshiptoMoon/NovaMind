@@ -19,6 +19,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_document_upload_service,
     validate_kb_access,
     validate_kb_writable,
+    validate_space_admin,
     validate_space_editor,
     validate_space_member,
 )
@@ -861,3 +862,54 @@ async def get_document_preview(
             "Cache-Control": "private, max-age=3600",
         },
     )
+
+# ========== 文档生命周期（kb-ops B1：supersede/archive/reactivate，空间 admin） ==========
+
+
+@router.post(
+    "/{kb_id}/documents/{document_id}/lifecycle/{action}",
+    summary="文档生命周期转换",
+    description=(
+        "kb-ops B1：supersede（新版替代，body 传 new_doc_id）/ archive（下线归档）/ "
+        "reactivate（恢复召回）。转换后 ES chunk 状态同步，检索侧排除式过滤即时生效；"
+        "ES 同步失败自动回滚 DB 状态。空间管理员权限。"
+    ),
+)
+async def transition_document_lifecycle(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    action: Annotated[str, Path(pattern="^(supersede|archive|reactivate)$", description="转换动作")],
+    member: SpaceMember = Depends(validate_space_admin),
+    current_user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    new_doc_id: Annotated[int | None, Body(embed=True, gt=0, description="新版文档ID（supersede 必填）")] = None,
+):
+    """文档生命周期转换（supersede/archive/reactivate）"""
+    from novamind.features.knowledge_space.services.lifecycle_service import (
+        DocumentLifecycleError,
+        LifecycleService,
+    )
+
+    await validate_kb_access(kb_id, space_id, db)
+
+    service = LifecycleService(db)
+    try:
+        if action == "supersede":
+            if new_doc_id is None:
+                raise DocumentLifecycleError("supersede 动作必须提供 new_doc_id（新版文档ID）")
+            doc = await service.supersede(document_id, new_doc_id)
+        elif action == "archive":
+            doc = await service.archive(document_id)
+        else:
+            doc = await service.reactivate(document_id)
+    except DocumentLifecycleError as e:
+        raise DocumentInvalidTypeError(str(e)) from e
+    except ValueError as e:
+        raise DocumentNotFoundError(document_id) from e
+
+    return {
+        "document_id": doc.id,
+        "lifecycle_status": doc.lifecycle_status,
+        "superseded_by_doc_id": doc.superseded_by_doc_id,
+    }
