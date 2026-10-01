@@ -88,17 +88,25 @@ class QueryReformulateDetector:
             window, threshold = _load_detection_config()
 
             previous = await self._get_previous_user_query(
-                session_id, current_message_id
+                session_id, user_id, current_message_id
             )
             if previous is None:
                 return
 
             # 时间窗：与上一条 user 消息的间隔超窗即不视为改写（回到旧会话重问
-            # 不构成检索失败信号）
-            from novamind.shared.utils.time_utils import now_china
+            # 不构成检索失败信号）。created_at 判空须先于减法（None 参与减法
+            # 是 TypeError）；DB 读回的时间是 naive（MySQL DATETIME / SQLite
+            # 均不保时区），与 aware 的 now_china() 相减前必须先对齐——此处
+            # 按中国时区解释 naive 值（与 BaseModel 写入语义一致）。
+            from novamind.shared.utils.time_utils import CHINA_TZ, now_china
 
-            delta = (now_china() - previous.created_at).total_seconds()
-            if previous.created_at is None or delta > window:
+            if previous.created_at is None:
+                return
+            stored_at = previous.created_at
+            if stored_at.tzinfo is None:
+                stored_at = stored_at.replace(tzinfo=CHINA_TZ)
+            delta = (now_china() - stored_at).total_seconds()
+            if delta > window:
                 return
 
             similarity = char_trigram_similarity(
@@ -123,11 +131,15 @@ class QueryReformulateDetector:
             # 旁路语义：检测失败不影响问答主链路
             logger.warning("改写检测失败（已忽略）", error=str(e))
 
-    async def _get_previous_user_query(self, session_id: str, exclude_message_id: int):
-        """取会话内最新一条 user 消息（排除当前消息），无则 None。
+    async def _get_previous_user_query(
+        self, session_id: str, user_id: int, exclude_message_id: int
+    ):
+        """取会话内该用户最新一条 user 消息（排除当前消息），无则 None。
 
-        独立短会话查询；调用时机在当前消息 commit 前，未提交行不可见，
-        此处再显式按 id 排除兜底（不依赖隔离级别细节）。
+        按 user_id 过滤：改写比对仅在同用户连续提问间成立（多用户共享会话
+        场景下，别人的提问不是「我的改写」）。独立短会话查询；调用时机在
+        当前消息 commit 前，未提交行不可见，此处再显式按 id 排除兜底
+        （不依赖隔离级别细节）。
         """
         from novamind.core.database.database import get_session_factory
         from novamind.features.qa.models.question_answer import QuestionAnswer
@@ -138,6 +150,7 @@ class QueryReformulateDetector:
             .where(
                 and_(
                     QuestionAnswer.session_id == session_id,
+                    QuestionAnswer.user_id == user_id,
                     QuestionAnswer.role == "user",
                     QuestionAnswer.id != exclude_message_id,
                 )

@@ -474,24 +474,11 @@ class AIChatService:
                 "max_score": max(kb_scores) if kb_scores else None,
             }
 
-        # 运营信号：会话内改写检测（kb-ops O1 旁路，失败不影响问答）。
-        # 仅 RAG 会话参与：改写信号的业务语义是「检索失败后换问法」，非 RAG 对话
-        # 无检索语义。挂 _prepare_chat 尾部使 chat/chat_stream 两出口自动全覆盖。
-        if do_rag:
-            try:
-                from novamind.features.knowledge_ops.services.query_reformulate_detector import (
-                    QueryReformulateDetector,
-                )
-
-                await QueryReformulateDetector().check_after_new_query(
-                    session_id=session_id,
-                    user_id=user_id,
-                    space_id=rag_space,
-                    current_message_id=user_message.id,
-                    current_query=content,
-                )
-            except Exception as reformulate_err:
-                self.logger.warning("改写检测调用异常（已忽略）", error=str(reformulate_err))
+        # 运营信号：会话内改写检测（kb-ops O1 旁路，失败不影响问答）
+        await self._maybe_detect_query_reformulate(
+            do_rag=do_rag, session_id=session_id, user_id=user_id,
+            space_id=rag_space, user_message_id=user_message.id, content=content,
+        )
 
         return ChatPreparation(
             session_id=session_id,
@@ -531,6 +518,38 @@ class AIChatService:
         if content is None:
             return ""
         return str(content)
+
+    async def _maybe_detect_query_reformulate(
+        self,
+        do_rag: bool,
+        session_id: str,
+        user_id: int,
+        space_id: int | None,
+        user_message_id: int,
+        content: str,
+    ) -> None:
+        """运营信号接线：会话内改写检测（kb-ops O1）。
+
+        仅 RAG 会话参与：改写信号的业务语义是「检索失败后换问法」，非 RAG 对话
+        无检索语义。挂 _prepare_chat 尾部使 chat/chat_stream 两出口自动全覆盖。
+        检测器内部吞异常，此处再兜一层（接线层失败同样不影响问答）。
+        """
+        if not do_rag:
+            return
+        try:
+            from novamind.features.knowledge_ops.services.query_reformulate_detector import (
+                QueryReformulateDetector,
+            )
+
+            await QueryReformulateDetector().check_after_new_query(
+                session_id=session_id,
+                user_id=user_id,
+                space_id=space_id,
+                current_message_id=user_message_id,
+                current_query=content,
+            )
+        except Exception as reformulate_err:
+            self.logger.warning("改写检测调用异常（已忽略）", error=str(reformulate_err))
 
     def _build_retrieval_context(self, sources: list[dict]) -> str:
         """构造检索上下文文本（引用规则 + web/kb 资料块），作为独立 system message 紧贴当前 user 前。
