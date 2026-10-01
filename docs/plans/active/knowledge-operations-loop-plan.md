@@ -15,7 +15,8 @@
 | eval 引擎 | 🟢 `engines/eval/` 四评估器齐备，无编排层 | 批次 C 是纯编排开发 |
 | Document 模型 | 🟡 纯文件元数据（`document.py`），无 owner/review/lifecycle 字段；有 `_run_schema_migrations` 幂等补列钩子（无 Alembic） | 批次 B1 走 startup 补列钩子，不走迁移工具 |
 | 通知系统 | 🟢 已接线多个业务点 | 批次 A2/B2 复用，需新增 NotificationType 枚举值 |
-| 前端引用渲染 + 点击 | ❓ **未核实**（IMPROVEMENT 文档 2026-07-04 基线称 ChatView 无 citation 渲染，此后可能已变） | 批次 O2 开工前第一件事：核实引用 UI 现状 |
+| 前端引用渲染 + 点击 | 🟢 **已核实并接入（O2 交付）**：citation_click 上报端点 + 前端点击埋点已合并 main（799627e） | O2 前置核实已完成；引用完整抽屉 UI 如有需要另立项 |
+| feature 路由/init 注册 | 🟢 **manifest 自动发现机制已取代 router_manager/startup_manager 硬编码注册**（O1 实测：无路由的 feature 声明 `manifest.routers=[]` 即可，不碰单点共享文件） | 后续批次（A1/A2/B1/B2/C/D）新建模块均无需手动注册；「单点共享文件提醒」中 router/startup 两项对 kb-ops 批次不再适用 |
 
 ---
 
@@ -38,7 +39,7 @@
 | **C** | 质量基线（eval 编排） | 合成测试集 + 定时跑批 + 基线对比 | A2（flywheel 部分） |
 | **D** | 治理增强 | 重复视图 + 矛盾建议队列 + 贡献者视图 | A2 + B2 |
 
-**单点共享文件提醒**（多 agent 串行编辑，见根 CLAUDE.md）：`router_manager.py`、`startup_manager.py`、DB 模型、`shared/prompts/`、`*.example` 配置。每批次开工前 `git status` 确认基线干净。
+**单点共享文件提醒**（多 agent 串行编辑，见根 CLAUDE.md）：DB 模型、`shared/prompts/`、`*.example` 配置（~~`router_manager.py`、`startup_manager.py`~~ ——manifest 自动发现已取代硬编码注册，见「零」新增行；B1 动 Document 模型时仍需串行）。每批次开工前 `git status` 确认基线干净。
 
 ---
 
@@ -87,6 +88,15 @@ knowledge_ops/
 - 入参即模型字段 + 脱敏在 recorder 内做（复用 `shared/utils/redact.py`，`query_text` 默认脱敏，可经配置关闭）。
 
 **埋点位置**（`qa/services/ai_chat_service.py`）：
+
+> **⚠ O1 落地修正（2026-10-01，A1 开工必读）**：实际实现与下述原计划有出入——
+> **query 事件不进账本**。账本只记「无归宿事件」（`query_reformulate` / `citation_click` /
+> `attribution`），因为 main 已有「批次 2b 知识缺口看板」：retrieval_meta 落
+> `question_answers.extra` + `knowledge_space/space_stats`（KPI/趋势/零命中 TopN/低分列表），
+> 已覆盖 query 侧观测，重复建账只会双口径。**A1 的「低置信/拒答事件」来源是
+> question_answers（answer_status 口径），不是 kb_events 的 query 行**；归因写回同样
+> 遵循事件空间锚点从会话配置兜底（RAG 绑定在 session_config，消息行无 space_id）。
+> 下文保留原计划文本仅供对照实现差异。
 
 - `_prepare_chat` 返回 `ChatPrep` 后、响应返回前：`event_type=query`（记 answer_status、top1 score、sources 数量、检索模式）；
 - 拒答分支（`refusal_on and not prep_sources`）：`event_type=query` + `answer_status=refused`（同一条事件，不单独建 refusal 类型，聚合按 answer_status 过滤——避免两种口径）。
