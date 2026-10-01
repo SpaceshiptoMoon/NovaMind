@@ -31,6 +31,7 @@
 - [`knowledge-space/current/document-processing-flow.md`](./knowledge-space/current/document-processing-flow.md)：文档处理流程摘要
 - [`knowledge-space/current/knowledge-config-structure-design.md`](./knowledge-space/current/knowledge-config-structure-design.md)：知识配置结构设计
 - [`knowledge-space/current/wiki-architecture.md`](./knowledge-space/current/wiki-architecture.md)：Wiki 自动生成与浏览架构
+- [`knowledge-space/current/kb-ops-loop-summary.md`](./knowledge-space/current/kb-ops-loop-summary.md)：知识运营闭环总结（事件账本/归因/gap 闭环/生命周期/建议队列/质量基线/治理视图）
 
 ### DeepDoc
 
