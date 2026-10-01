@@ -271,13 +271,16 @@ class ContextCompressor(ICompressionStrategy):
         ratio = new_tokens / original_tokens if original_tokens > 0 else 1.0
         savings = 1.0 - ratio
 
-        # 持久化摘要到 agent_context_summaries
+        # 持久化摘要到 agent_context_summaries——必须存 summary_content（带资源
+        # 清单段的最终形态）而非 summary：compressor 每请求新建实例，跨请求的
+        # 清单传承只能靠 DB（内存 _previous_summary 帮不上下次请求）；前端压缩
+        # 标记展示的也是 DB 形态，缺段即清单静默丢失。
         if summary and conversation_id and self._summary_store:
             try:
-                summary_token_count = token_budget.count_text_tokens(summary)
+                summary_token_count = token_budget.count_text_tokens(summary_content)
                 await self._summary_store.save_summary(
                     conversation_id=conversation_id,
-                    summary_text=summary,
+                    summary_text=summary_content,
                     compressed_count=len(turns_to_compress),
                     compression_ratio=ratio,
                     token_count=summary_token_count,

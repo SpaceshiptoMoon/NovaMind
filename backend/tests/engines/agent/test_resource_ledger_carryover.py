@@ -209,3 +209,38 @@ async def test_static_fallback_carries_no_resources_section() -> None:
     )
     assert did is True
     assert "<compacted-resources>" not in compressed[0].content
+
+
+@pytest.mark.asyncio
+async def test_db_persists_section_for_cross_request_carryover() -> None:
+    """DB 持久化存带清单段的最终形态（跨请求传承的唯一载体）。
+
+    compressor 每请求新建实例，_previous_summary 内存缓存帮不上下一次请求——
+    若 DB 只存裸 summary，新实例从 DB 加载旧摘要时清单段已丢，跨代传承断裂。
+    """
+    saved: dict = {}
+
+    async def _gen(prompt, **kwargs):
+        return "## Active Task\n任务"
+
+    async def factory():
+        return SimpleNamespace(generate_text=_gen)
+
+    async def save_summary(**kwargs):
+        saved.update(kwargs)
+
+    store = SimpleNamespace(
+        get_latest_summary=AsyncMock(return_value=None),
+        save_summary=AsyncMock(side_effect=save_summary),
+    )
+    comp = ContextCompressor(llm_client_factory=factory, summary_store=store)
+    msgs = _oversized_conversation()
+
+    await comp.compress(
+        msgs, available_tokens=1500, token_budget=_BUDGET, conversation_id=1,
+    )
+    assert saved.get("summary_text") is not None
+    assert "<compacted-resources>" in saved["summary_text"]
+    assert 'read_attachment("规范.docx")' in saved["summary_text"]
+    # token_count 口径与存储文本一致（按带段最终形态计）
+    assert saved["token_count"] == _BUDGET.count_text_tokens(saved["summary_text"])
