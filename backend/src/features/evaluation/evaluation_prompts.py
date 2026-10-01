@@ -185,6 +185,14 @@ TEMPLATES = {
     # ==================== Synthetic Test Set Generation（kb-ops C） ====================
     # 注册供检索/审计；运行时经 testset_generation.build_generation_prompt 拼变量
     # （批式模板带循环结构，注册表存结构说明即可——两处文本须保持同义）
+    # kb-ops D 矛盾判定（运行时 contradiction_detector._llm_check_contradiction
+    # 内联拼接，此处登记结构供检索/审计，两处文本保持同义）
+    "kb_ops_contradiction_check": (
+        "判断两段知识库内容是否语义矛盾（同一事实不一致表述），仅基于文本判断；"
+        '输出 JSON {{"contradiction": true/false, "reason": "简短说明"}}。'
+        "内容 A：{text_a}\n内容 B：{text_b}"
+    ),
+
     "eval_testset_generation": (
         "根据知识库片段生成「问题 + 期望答案」测试用例：问题只基于片段原文、"
         "期望答案是片段内容 50 字内提炼；输出 JSON "

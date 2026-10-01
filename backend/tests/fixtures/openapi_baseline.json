@@ -16030,6 +16030,202 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/citation-stats": {
+      "get": {
+        "description": "kb-ops D3：citation_click 按文档聚合（哪些文档被点击核验最多——贡献者视图的数据面 + 「哪些文档最常支撑回答」）。空间成员可读。",
+        "operationId": "get_citation_stats_api_v1_kb_ops_spaces__space_id__citation_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "文档核验点击统计",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/contradiction-scan": {
+      "post": {
+        "description": "kb-ops D2：对指定 KB 做一轮内容矛盾检测（同 KB 高相似 chunk 对 → LLM 判定 → 建议队列）。建议上限每轮 5 条；检测失败返回已建数量。空间管理员权限（LLM 成本操作）。",
+        "operationId": "run_contradiction_scan_api_v1_kb_ops_spaces__space_id__contradiction_scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "触发矛盾检测",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/duplicates": {
+      "get": {
+        "description": "kb-ops D：精确重复（同 KB 同 file_hash）+ 同归一化文件名分组。仅展示（「退货政策有几份」的数据面），处置走复审建议流，平台不自动合并。空间成员可读。",
+        "operationId": "list_duplicate_groups_api_v1_kb_ops_spaces__space_id__duplicates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库过滤",
+            "in": "query",
+            "name": "kb_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "知识库过滤",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "重复文档视图",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/kb-ops/spaces/{space_id}/events": {
       "get": {
         "description": "查询空间内知识运营事件账本（改写/引用点击/后续归因），created_at 倒序分页。空间成员可读（与知识缺口看板同级）；权限域强制过滤，跨空间不可见。",

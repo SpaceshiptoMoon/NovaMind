@@ -151,6 +151,7 @@ async def resolve_review_suggestion(
     """处置建议（accept 联动 supersede）"""
     from novamind.features.knowledge_ops.repository.suggestion_repository import (
         STATUS_ACCEPTED,
+        SUGGESTION_CONTRADICTION,
         SUGGESTION_NEW_VERSION,
     )
     from novamind.features.knowledge_ops.exceptions import KbOpsNotFoundError
@@ -168,12 +169,42 @@ async def resolve_review_suggestion(
         if suggestion.old_doc_id and suggestion.new_doc_id:
             await LifecycleService(db).supersede(suggestion.old_doc_id, suggestion.new_doc_id)
             superseded_doc_id = suggestion.old_doc_id
+    elif request.action == STATUS_ACCEPTED and suggestion.suggestion_type == SUGGESTION_CONTRADICTION:
+        # 矛盾建议 accept = 通知两位文档 owner 人工对齐；平台永不自动改写/删除
+        await _notify_contradiction_owners(db, suggestion)
     await db.commit()
     return SuggestionResolveResponse(
         suggestion_id=suggestion_id,
         status=resolved.status,
         superseded_doc_id=superseded_doc_id,
     )
+
+
+async def _notify_contradiction_owners(db, suggestion) -> None:
+    """矛盾建议 accept：通知双方文档 owner 人工对齐内容（通知失败仅告警）。"""
+    from sqlalchemy import select
+
+    from novamind.features.knowledge_space.models.document import Document
+    from novamind.features.notification.services.notification_service import NotificationService
+
+    doc_ids = [d for d in (suggestion.old_doc_id, suggestion.new_doc_id) if d]
+    owners = (await db.execute(
+        select(Document.id, Document.owner_id, Document.filename)
+        .where(Document.id.in_(doc_ids))
+    )).all()
+    for row in owners:
+        if row.owner_id is None:
+            continue
+        try:
+            await NotificationService(db).send_notification(
+                user_id=row.owner_id,
+                type="kb_contradiction_confirmed",
+                title=f"文档「{row.filename}」被确认与其他内容存在矛盾",
+                content=f"管理员确认了内容矛盾：{suggestion.reason or ''}（建议 #{suggestion.id}），请与相关文档 owner 对齐修正。",
+                link=f"/home/spaces/documents/{row.id}",
+            )
+        except Exception as e:
+            logger.warning("矛盾通知发送失败（跳过）", document_id=row.id, error=str(e))
 
 # ========== gap → 测试集 flywheel（kb-ops C：生产失败变回归用例） ==========
 
@@ -246,3 +277,89 @@ async def convert_gap_to_testset(
         "added_cases": len(cases),
         "message": f"gap 条目转测试用例{action}",
     }
+
+# ========== 治理视图（kb-ops D：重复/矛盾/贡献） ==========
+
+
+@router.get(
+    "/spaces/{space_id}/duplicates",
+    summary="重复文档视图",
+    description=(
+        "kb-ops D：精确重复（同 KB 同 file_hash）+ 同归一化文件名分组。"
+        "仅展示（「退货政策有几份」的数据面），处置走复审建议流，平台不自动合并。"
+        "空间成员可读。"
+    ),
+)
+async def list_duplicate_groups(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int | None, Query(gt=0, description="知识库过滤")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """重复文档分组列表（kb-ops D1）"""
+    from novamind.features.knowledge_ops.repository.governance_repository import (
+        GovernanceRepository,
+    )
+
+    repo = GovernanceRepository(db)
+    groups = await repo.find_duplicate_groups(space_id, kb_id=kb_id, limit=limit)
+    return {"items": groups, "total": len(groups)}
+
+
+@router.post(
+    "/spaces/{space_id}/contradiction-scan",
+    summary="触发矛盾检测",
+    description=(
+        "kb-ops D2：对指定 KB 做一轮内容矛盾检测（同 KB 高相似 chunk 对 → "
+        "LLM 判定 → 建议队列）。建议上限每轮 5 条；检测失败返回已建数量。"
+        "空间管理员权限（LLM 成本操作）。"
+    ),
+)
+async def run_contradiction_scan(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Query(gt=0, description="知识库ID")],
+    member: SpaceMember = Depends(validate_space_admin),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动触发一轮矛盾检测（kb-ops D2；cron 低频版本不在 v1——显式触发成本可控）"""
+    from novamind.features.knowledge_ops.services.contradiction_detector import (
+        detect_contradictions,
+    )
+
+    suggestions = await detect_contradictions(
+        db, space_id=space_id, kb_id=kb_id, user_id=current_user["id"],
+    )
+    return {
+        "kb_id": kb_id,
+        "suggestions_created": len(suggestions),
+        "suggestions": suggestions,
+    }
+
+
+@router.get(
+    "/spaces/{space_id}/citation-stats",
+    summary="文档核验点击统计",
+    description=(
+        "kb-ops D3：citation_click 按文档聚合（哪些文档被点击核验最多——"
+        "贡献者视图的数据面 + 「哪些文档最常支撑回答」）。空间成员可读。"
+    ),
+)
+async def get_citation_stats(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """文档被点击核验统计（kb-ops D3）"""
+    from novamind.features.knowledge_ops.repository.governance_repository import (
+        GovernanceRepository,
+    )
+
+    repo = GovernanceRepository(db)
+    stats = await repo.citation_stats_by_document(space_id, limit=limit)
+    support = await repo.support_stats_by_document(space_id, limit=limit)
+    return {"items": stats, "support_stats": support, "total": len(stats)}
