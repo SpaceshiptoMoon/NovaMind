@@ -422,6 +422,8 @@ class SearchService:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
+        *,
+        bypass_document_permission: bool = False,
     ) -> dict[str, Any]:
         """
         执行检索
@@ -441,7 +443,10 @@ class SearchService:
             SpaceAccessDeniedError: 无权限检索
             InvalidSearchModeError: 检索模式不可用
         """
-        return await self._search_via_engine(space_id, kb_id, user_id, request)
+        return await self._search_via_engine(
+            space_id, kb_id, user_id, request,
+            bypass_document_permission=bypass_document_permission,
+        )
 
     async def _search_via_engine(
         self,
@@ -449,6 +454,8 @@ class SearchService:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
+        *,
+        bypass_document_permission: bool = False,
     ) -> dict[str, Any]:
         """新路径：宿主做权限/配置/改写/生成，纯检索委托 RetrievalEngine.retrieve_raw。"""
         # 从 schema 中提取参数
@@ -631,6 +638,19 @@ class SearchService:
             raise EmbeddingError(str(e))
         except RagSearchError as e:
             raise SearchError(str(e))
+
+        # 7.5 文档级权限过滤（kb-ops backlog：检索时权限生效——hidden_doc_ids
+        # 剔除在宿主做，引擎不感知权限；缓存键已按 user_id 分段，跨用户不串。
+        # bypass_document_permission=True 供归因 worker 的「无权限限制重放」——
+        # 区分 content_gap 与 permission_boundary）
+        if not bypass_document_permission:
+            from novamind.features.knowledge_space.services.document_permission_filter import (
+                apply_document_permission_filter,
+            )
+
+            result.results = await apply_document_permission_filter(
+                self.session, space_id=space_id, user_id=user_id, results=result.results,
+            )
 
         # 8. LLM 回答生成 + elapsed_ms 保真
         # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）

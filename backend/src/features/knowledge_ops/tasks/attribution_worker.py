@@ -186,6 +186,20 @@ async def attribute_single_event(db, message_id: int) -> str:
             score_threshold=replay_low_threshold,
         )
 
+    # ---- 权限边界探测：用户视角零命中时，以「无文档级限制」语义重放 ----
+    # _replay_search 走 SearchService（检索层权限过滤生效——用户视角结果已被
+    # hidden_doc_ids 剔除）；此路传 bypass_document_permission=True 跳过过滤，
+    # 命中即说明「内容存在但该用户无权」→ permission_boundary（不进 gap 统计，
+    # 是安全策略非运营问题——归因四分法的第四类）。
+    sources_priv: list[dict] = []
+    if not sources_orig and not sources_low:
+        sources_priv = await _replay_search(
+            db, space_id=space_id, kb_ids=kb_ids, user_id=row.user_id,
+            query=query, search_mode=search_mode, top_k=top_k,
+            score_threshold=low_threshold,
+            bypass_document_permission=True,
+        )
+
     # ---- 四分判定 ----
     if sources_orig and _dead_doc_ratio(sources_orig) >= DEAD_DOC_RATIO:
         attribution = ATTR_QUALITY_DECAY
@@ -196,10 +210,11 @@ async def attribute_single_event(db, message_id: int) -> str:
     elif sources_low:
         # 原始阈值零命中、降阈值命中：相关内容存在但分数不达阈值（切分/ embedding 覆盖不足）
         attribution = ATTR_RETRIEVAL_FAILURE
+    elif sources_priv:
+        # 用户视角（含降阈值）零命中、无权限限制重放命中：内容存在但该用户无权
+        attribution = ATTR_PERMISSION_BOUNDARY
     else:
         attribution = ATTR_CONTENT_GAP
-    # permission_boundary stub：检索层权限过滤（B1 批次）接线后，在此追加
-    # 「以更高权限重放命中而用户视角零命中 → ATTR_PERMISSION_BOUNDARY」分支。
 
     await _write_back_attribution(db, message_id, attribution, sources_orig, sources_low)
     return attribution
@@ -260,11 +275,14 @@ async def _replay_search(
     search_mode: str,
     top_k: int,
     score_threshold: float,
+    bypass_document_permission: bool = False,
 ) -> list[dict[str, Any]]:
     """重放检索：装配 SearchService（与请求链路同构）执行知识库检索。
 
     KB 列表为空时回退空间前 3 个 KB（与主链路 _retrieve_knowledge 一致）。
     检索服务不可用/异常抛给上层（宁缺归因不乱归因）。
+    bypass_document_permission：跳过文档级权限过滤（permission_boundary
+    探测重放用——「无权限限制视角」命中而用户视角零命中 = 权限边界）。
 
     Returns:
         合并去重排序后的来源列表（含 document_id/lifecycle 元数据）。
@@ -309,7 +327,8 @@ async def _replay_search(
     for kb_id in kb_ids:
         try:
             r = await search_service.search(
-                space_id=space_id, kb_id=kb_id, user_id=user_id, request=search_request
+                space_id=space_id, kb_id=kb_id, user_id=user_id, request=search_request,
+                bypass_document_permission=bypass_document_permission,
             )
             all_results.extend(r.get("results", []))
         except Exception as e:

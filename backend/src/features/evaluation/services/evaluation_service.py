@@ -891,17 +891,9 @@ class EvaluationService:
                 if llm_client is None or embedding_client is None:
                     logger.warning("部分模型客户端获取失败", has_llm=llm_client is not None, has_embedding=embedding_client is not None)
 
-                # 后台任务用独立 session 经工厂构造 SearchService，避免共享请求级 session
-                # （工厂内部封装 SearchService + ES client + ModelConfigService 的装配，
-                #   evaluation 不再直接 import knowledge_space.services.search_service /
-                #   shared.clients.get_elasticsearch_client / user.services.model_config_service）
-                bg_retrieval_port = self._retrieval_factory(session)
-                # 检索端口串行闸：SearchService 绑定单个 DB session（embedding 凭证
-                # 查询走 aiomysql），aiomysql 连接非并发安全——5 并发协程同时检索
-                # 会撞 "readexactly() called while another coroutine is already
-                # waiting"（真实跑批抓到的存量 bug，任务恒 FAILED）。LLM/embedding
-                # 客户端是 HTTP 层各自独立连接，不受此闸影响，仍并发。
-                retrieval_lock = asyncio.Lock()
+                # kb-ops backlog：共享级 bg_retrieval_port 与串行锁已删——每协程
+                # 在 evaluate_case 内用自己的 session_factory/retrieval_factory
+                # 装配独立会话与检索端口（见下方注释），跨协程零 DB 共享。
 
                 # 回写实际使用的模型名
                 config_changed = False
@@ -938,30 +930,27 @@ class EvaluationService:
                     prompt_provider=_HOST_PROMPT_PROVIDER, logger=_HOST_LOGGER,
                 )
 
-                # 并发评估
+                # 并发评估（kb-ops backlog：每协程独立 session + 独立检索端口，
+                # 恢复 EVALUATION_CONCURRENCY 真并发——此前共享单 session 任何
+                # 并发路径都撞 aiomysql 连接，被迫全局串行锁。每协程用自己的
+                # 短会话后互不干扰；进度写仍走主 session 的 as_completed 消费
+                # 循环（单点消费天然无并发）。
                 start_time = time.time()
                 semaphore = asyncio.Semaphore(EVALUATION_CONCURRENCY)
                 cancel_event = asyncio.Event()
 
                 async def evaluate_case(i: int, case: dict) -> tuple[int, dict]:
                     async with semaphore:
-                        # 取消判定只用内存 cancel_event：并发协程共享单个 DB session
-                        # 做取消检查会并发撞 aiomysql 连接（同上 readexactly 根因）。
-                        # DB 级取消由外层周期 commit 时顺带检查 + cancel API 直接
-                        # 置 CANCELLED 后任务在下一检查点自然停（延迟可接受）。
                         if cancel_event.is_set():
                             return i, {"index": i, "question": case["question"],
                                        "expected_answer": case["expected_answer"], "cancelled": True}
+                        # 每协程独立会话与检索端口：session_factory 造短会话、
+                        # retrieval_factory 在其上装配 SearchService——协程内
+                        # 所有 DB 访问（embedding 凭证查询/权限过滤）都绑这个
+                        # 会话，跨协程零共享，aiomysql 连接竞争消失。
                         try:
-                            # 单闸锁整个单题评估：_evaluate_single_case 内部
-                            # （检索的 embedding 凭证查询、评估器、进度写）全部
-                            # 绑定同一个后台 session——aiomysql 连接非并发安全，
-                            # 任何并发路径都会撞 readexactly/prepared state
-                            # （两次真实跑批抓到的同根因）。EVALUATION_CONCURRENCY
-                            # 实际退化为串行——正确性优先；LLM HTTP 调用仍占大头，
-                            # 损失的是理论并发收益。彻底修复需每协程独立 session，
-                            # 属 evaluation 存量架构债，不在本批次范围。
-                            async with retrieval_lock:
+                            async with self._session_factory() as case_session:
+                                case_retrieval = self._retrieval_factory(case_session)
                                 detail = await self._evaluate_single_case(
                                     index=i, question=case["question"],
                                     expected_answer=case["expected_answer"],
@@ -970,7 +959,7 @@ class EvaluationService:
                                     generation_evaluator=generation_evaluator,
                                     embedding_evaluator=embedding_eval,
                                     llm_client=llm_client, user_id=user_id,
-                                    retrieval_port=bg_retrieval_port,
+                                    retrieval_port=case_retrieval,
                                 )
                             return i, detail
                         except Exception as e:
@@ -988,13 +977,10 @@ class EvaluationService:
                     details.append(detail)
                     completed += 1
                     if completed % commit_interval == 0:
-                        # 进度写必须拿同一把锁：as_completed 消费结果时下一个
-                        # evaluate_case 已持锁运行，此处无锁 commit 会与锁内
-                        # 检索的 DB 读并发撞 aiomysql 连接（第三次真实跑批抓到
-                        # 的最后漏网点——锁内看似全覆盖，锁外 commit 漏网）。
-                        async with retrieval_lock:
-                            await task_repo.update_progress(task_id, {"current": completed, "total": len(cases)})
-                            await session.commit()
+                        # 进度写在主 session 的消费循环里：协程已各自持独立会话，
+                        # 主会话此刻无其他使用者，无需加锁。
+                        await task_repo.update_progress(task_id, {"current": completed, "total": len(cases)})
+                        await session.commit()
 
                 # as_completed 返回顺序不确定，按 index 排序
                 details.sort(key=lambda d: d.get("index", 0))

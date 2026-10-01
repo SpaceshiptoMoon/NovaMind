@@ -120,7 +120,9 @@ async def test_content_gap_when_replay_always_empty(attr_db):
         async with factory() as db:
             attr = await attribute_single_event(db, 2)
     assert attr == ATTR_CONTENT_GAP
-    assert len(calls) == 2  # 降阈值重放确实执行了
+    # 三次重放：原始阈值 / 降阈值 / 绕权限探测（BL-2 第四分引入——
+    # 绕权限也零命中才最终落 content_gap）
+    assert len(calls) == 3
 
 
 @pytest.mark.asyncio

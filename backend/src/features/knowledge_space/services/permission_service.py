@@ -1,7 +1,11 @@
 """权限检查服务：基于 SpaceRole 的权限判定，custom_permissions 字段可覆盖角色默认权限。"""
 
+from typing import Any
 
 from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
+from novamind.features.knowledge_space.services.document_permission_filter import (
+    HIDDEN_DOC_IDS_KEY,
+)
 
 
 class SpaceAccessChecker:
@@ -39,14 +43,24 @@ class SpaceAccessChecker:
         if not isinstance(perms, dict):
             raise ValueError("custom_permissions 必须是对象")
 
-        normalized: dict[str, dict[str, bool]] = {}
+        normalized: dict[str, dict[str, Any]] = {}
         for resource, actions in perms.items():
             if resource not in cls.CAPABILITY_KEYS:
                 raise ValueError(f"未知的权限资源: {resource}")
             if not isinstance(actions, dict):
                 raise ValueError(f"权限资源 {resource} 的动作必须是对象")
-            clean: dict[str, bool] = {}
+            clean: dict[str, Any] = {}
             for action, value in actions.items():
+                # hidden_doc_ids 是文档 ID 清单（检索级权限），非能力布尔——
+                # 单独校验并原样保留（bool-only 归一会把清单丢掉）
+                if resource == "documents" and action == HIDDEN_DOC_IDS_KEY:
+                    if not isinstance(value, list) or not all(
+                        isinstance(x, (int, float)) and not isinstance(x, bool) and x > 0
+                        for x in value
+                    ):
+                        raise ValueError("documents.hidden_doc_ids 必须是正整数文档 ID 数组")
+                    clean[action] = [int(x) for x in value]
+                    continue
                 if action not in cls.CAPABILITY_KEYS[resource]:
                     raise ValueError(f"权限资源 {resource} 不支持动作: {action}")
                 if not isinstance(value, bool):
