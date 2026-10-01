@@ -128,6 +128,100 @@ async def test_get_messages_skips_compaction_outside_window() -> None:
     assert all(m.role != "compaction" for m in resp.items)
 
 
+# ==================== 1b. 同页 compaction 去重（实时行 vs 派生行） ====================
+
+@pytest.mark.asyncio
+async def test_get_messages_dedupes_realtime_vs_derived_compaction() -> None:
+    """页内已有实时推送的 compaction 行（±5s 内）→ 跳过时间贴近的派生行。
+
+    同一次压缩事件经 WS onCompaction 前端 push（id 为本地大数的实时行）+
+    agent_context_summaries 派生行会重复出现两条标记；以页内已有行为准去重。
+    """
+    svc = AgentService.__new__(AgentService)
+    conv = SimpleNamespace(id=7)
+
+    async def fake_get_session(user_id, session_id):
+        return conv
+
+    t_start = datetime(2026, 1, 1, 12, 0, 0)
+    # 实时行与派生行差 3 秒（< 5s 容差 → 同一事件）
+    t_realtime = datetime(2026, 1, 1, 12, 2, 0)
+    t_derived = datetime(2026, 1, 1, 12, 2, 3)
+    t_end = datetime(2026, 1, 1, 12, 5, 0)
+    page_messages = [
+        _msg(1, "user", content="q1", created_at=t_start),
+        # 实时流已落库的 compaction 行（历史回放页从 DB 读到）
+        _msg(2, "compaction", content=None, created_at=t_realtime),
+        _msg(3, "assistant", content="a1", created_at=t_end),
+    ]
+
+    svc.get_session = fake_get_session  # type: ignore[assignment]
+    svc.msg_repo = SimpleNamespace(  # type: ignore[assignment]
+        list_by_conversation=AsyncMock(return_value=(page_messages, 3))
+    )
+    svc.tc_repo = SimpleNamespace(list_by_conversation=AsyncMock(return_value=[]))  # type: ignore[assignment]
+    svc.context_summary_repo = SimpleNamespace(  # type: ignore[assignment]
+        list_by_conversation=AsyncMock(return_value=[
+            AgentContextSummary(
+                id=100, conversation_id=7, summary_text="同一压缩事件的派生行",
+                compressed_count=5, compression_ratio=0.5, created_at=t_derived,
+            ),
+        ])
+    )
+
+    resp = await svc.get_messages(user_id=1, session_id="sess-1")
+
+    compaction_items = [m for m in resp.items if m.role == "compaction"]
+    # 去重生效：只剩实时行一条，派生行被跳过
+    assert len(compaction_items) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_messages_keeps_distinct_compaction_events() -> None:
+    """相邻正常场景：两次独立压缩事件（时间差 > 5s）不误伤，两条都保留。"""
+    svc = AgentService.__new__(AgentService)
+    conv = SimpleNamespace(id=7)
+
+    async def fake_get_session(user_id, session_id):
+        return conv
+
+    t_start = datetime(2026, 1, 1, 12, 0, 0)
+    t_evt1 = datetime(2026, 1, 1, 12, 1, 0)   # 第一次压缩（页内实时行）
+    t_evt2 = datetime(2026, 1, 1, 12, 3, 30)  # 第二次压缩（页内只有派生行）
+    t_end = datetime(2026, 1, 1, 12, 5, 0)
+    page_messages = [
+        _msg(1, "user", content="q1", created_at=t_start),
+        _msg(2, "compaction", content=None, created_at=t_evt1),
+        _msg(3, "assistant", content="a1", created_at=t_end),
+    ]
+
+    svc.get_session = fake_get_session  # type: ignore[assignment]
+    svc.msg_repo = SimpleNamespace(  # type: ignore[assignment]
+        list_by_conversation=AsyncMock(return_value=(page_messages, 3))
+    )
+    svc.tc_repo = SimpleNamespace(list_by_conversation=AsyncMock(return_value=[]))  # type: ignore[assignment]
+    svc.context_summary_repo = SimpleNamespace(  # type: ignore[assignment]
+        list_by_conversation=AsyncMock(return_value=[
+            AgentContextSummary(
+                id=101, conversation_id=7, summary_text="第一次压缩摘要",
+                compressed_count=3, compression_ratio=0.5, created_at=t_evt1,
+            ),
+            AgentContextSummary(
+                id=102, conversation_id=7, summary_text="第二次压缩摘要",
+                compressed_count=4, compression_ratio=0.4, created_at=t_evt2,
+            ),
+        ])
+    )
+
+    resp = await svc.get_messages(user_id=1, session_id="sess-1")
+
+    compaction_items = [m for m in resp.items if m.role == "compaction"]
+    # 事件 1 去重（实时行在页内）；事件 2 无实时行 → 派生行保留
+    assert len(compaction_items) == 2
+    summaries_in_items = {m.extra["compaction"]["summary"] for m in compaction_items if m.extra}
+    assert "第二次压缩摘要" in summaries_in_items
+
+
 # ==================== 2. _derive_compaction_response ====================
 
 def test_derive_compaction_response_shape() -> None:

@@ -492,6 +492,22 @@ class AgentService:
             if summaries:
                 page_start = messages[0].created_at
                 page_end = messages[-1].created_at
+                # 去重：当前页已含实时流推送过的 compaction 消息（SSE/WS onCompaction
+                # 前端 push，id 为本地生成大数）时，同一压缩事件会出现两条标记行
+                # （实时行 + 本表派生行）。以页内已存在的 compaction 行为准，跳过
+                # 时间上贴近的派生行——同页 ±5s 内视为同一事件。
+                existing_compaction_times = [
+                    m.created_at
+                    for m in messages
+                    if m.role == "compaction" and m.created_at is not None
+                ]
+
+                def _is_duplicate(summary_created: datetime) -> bool:
+                    for t in existing_compaction_times:
+                        if abs((t - summary_created).total_seconds()) <= 5:
+                            return True
+                    return False
+
                 compaction_items = [
                     self._derive_compaction_response(s)
                     for s in summaries
@@ -499,6 +515,7 @@ class AgentService:
                     and page_start is not None
                     and page_end is not None
                     and page_start <= s.created_at <= page_end
+                    and not _is_duplicate(s.created_at)
                 ]
                 if compaction_items:
                     items = sorted(
