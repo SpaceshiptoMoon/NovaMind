@@ -199,7 +199,7 @@ async def test_reformulate_positive(ops_db):
     previous = _FakePrevious(99, "退货政策是什么？", now_china())
     detector = QueryReformulateDetector()
 
-    async def _fake_prev(session_id, exclude_message_id):
+    async def _fake_prev(session_id, user_id, exclude_message_id):
         return previous
 
     detector._get_previous_user_query = _fake_prev
@@ -243,7 +243,7 @@ async def test_reformulate_skipped_outside_window(ops_db):
     previous = _FakePrevious(99, "退货政策是什么？", old_time)
     detector = QueryReformulateDetector()
 
-    async def _fake_prev(session_id, exclude_message_id):
+    async def _fake_prev(session_id, user_id, exclude_message_id):
         return previous
 
     detector._get_previous_user_query = _fake_prev
@@ -278,7 +278,7 @@ async def test_reformulate_skipped_low_similarity(ops_db):
     previous = _FakePrevious(99, "公司年假有几天", now_china())
     detector = QueryReformulateDetector()
 
-    async def _fake_prev(session_id, exclude_message_id):
+    async def _fake_prev(session_id, user_id, exclude_message_id):
         return previous
 
     detector._get_previous_user_query = _fake_prev
