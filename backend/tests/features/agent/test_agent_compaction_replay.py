@@ -43,6 +43,7 @@ async def test_get_messages_merges_compaction_into_items() -> None:
     conv = SimpleNamespace(id=7)
 
     async def fake_get_session(user_id, session_id):
+        """惯例桩：绕过 DB 直接返回预构造的会话对象。"""
         return conv
 
     t_start = datetime(2026, 1, 1, 12, 0, 0)
@@ -99,6 +100,7 @@ async def test_get_messages_skips_compaction_outside_window() -> None:
     conv = SimpleNamespace(id=7)
 
     async def fake_get_session(user_id, session_id):
+        """惯例桩：绕过 DB 直接返回预构造的会话对象。"""
         return conv
 
     t_start = datetime(2026, 1, 1, 12, 0, 0)
@@ -141,6 +143,7 @@ async def test_get_messages_dedupes_realtime_vs_derived_compaction() -> None:
     conv = SimpleNamespace(id=7)
 
     async def fake_get_session(user_id, session_id):
+        """惯例桩：绕过 DB 直接返回预构造的会话对象。"""
         return conv
 
     t_start = datetime(2026, 1, 1, 12, 0, 0)
@@ -183,6 +186,7 @@ async def test_get_messages_keeps_distinct_compaction_events() -> None:
     conv = SimpleNamespace(id=7)
 
     async def fake_get_session(user_id, session_id):
+        """惯例桩：绕过 DB 直接返回预构造的会话对象。"""
         return conv
 
     t_start = datetime(2026, 1, 1, 12, 0, 0)

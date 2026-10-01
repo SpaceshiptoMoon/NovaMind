@@ -20,10 +20,12 @@ pytestmark = pytest.mark.unit
 
 
 def _att(attachment_id, filename, file_type="pdf", file_size=2048):
+    """惯例桩：构造消息 extra.attachments 元素（dict 形态）。"""
     return {"id": attachment_id, "filename": filename, "file_type": file_type, "file_size": file_size}
 
 
 def _att_record(attachment_id, filename, extracted_text):
+    """惯例桩：构造附件 DB 行 stub（repository.get_by_ids 返回形态）。"""
     return SimpleNamespace(
         id=attachment_id, filename=filename, file_type="pdf",
         file_size=2048, extracted_text=extracted_text,
@@ -31,6 +33,7 @@ def _att_record(attachment_id, filename, extracted_text):
 
 
 def _svc(db_msgs, att_records):
+    """惯例桩：构造注入了 stub 依赖的 AIChatService 空壳实例。"""
     from novamind.features.qa.services.ai_chat_service import AIChatService
     svc = AIChatService.__new__(AIChatService)
     from novamind.core.middleware.structured_logging import get_logger
@@ -49,6 +52,7 @@ def _svc(db_msgs, att_records):
 
 
 def _qa_item(msg_id, content):
+    """惯例桩：构造上下文消息 dict（role 固定 user）。"""
     return {"id": msg_id, "role": "user", "content": content}
 
 
@@ -159,8 +163,10 @@ async def test_frozen_memory_cached_across_instances():
     calls = []
 
     def _mm(snapshot_value):
+        """惯例桩：构造记忆管理器 stub（记录 build 调用次数、返回固定快照）。"""
         mm = SimpleNamespace()
         async def build(agent_id, user_id):
+            """stub 实现：命中计数并返回构造时注入的快照值。"""
             calls.append(1)
             return snapshot_value
         mm.build_frozen_snapshot = build
@@ -190,8 +196,10 @@ async def test_frozen_memory_error_not_cached():
     AgentChatService._FROZEN_MEMORY_CACHE.clear()
 
     def _mm_err():
+        """惯例桩：构造 build 必然抛错的记忆管理器 stub。"""
         mm = SimpleNamespace()
         async def build(agent_id, user_id):
+            """stub 实现：模拟 DB 故障。"""
             raise RuntimeError("db down")
         mm.build_frozen_snapshot = build
         return mm

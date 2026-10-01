@@ -503,6 +503,7 @@ class AgentService:
                 ]
 
                 def _is_duplicate(summary_created: datetime) -> bool:
+                    """判断派生行是否为页内已有 compaction 行的同事件重复（±5s 容差）。"""
                     for t in existing_compaction_times:
                         if abs((t - summary_created).total_seconds()) <= 5:
                             return True

@@ -9,6 +9,7 @@ pytestmark = pytest.mark.unit
 
 
 def _svc():
+    """惯例桩：绕过 __init__ 依赖构造 AgentChatService 空壳实例。"""
     from novamind.features.agent.services.chat_service import AgentChatService
     return AgentChatService.__new__(AgentChatService)
 

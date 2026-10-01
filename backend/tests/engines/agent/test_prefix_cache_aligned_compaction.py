@@ -31,6 +31,7 @@ _TOOL_BUDGET = TokenBudget("gpt-4")
 def _fake_llm(capture: dict):
     """惯例桩：generate_text 捕获 prompt 形态并返回摘要文本。"""
     async def _gen(prompt, **kwargs):
+        """惯例桩：捕获摘要 prompt/kwargs 并返回固定摘要文本。"""
         capture["prompt"] = prompt
         capture["kwargs"] = kwargs
         return "## Active Task\n测试任务"
@@ -38,7 +39,9 @@ def _fake_llm(capture: dict):
 
 
 def _make_compressor(capture: dict) -> ContextCompressor:
+    """惯例桩：构造带 stub 摘要 LLM 的压缩器。"""
     async def factory():
+        """惯例桩：返回 stub 摘要 LLM 客户端。"""
         return _fake_llm(capture)
     return ContextCompressor(llm_client_factory=factory)
 
@@ -174,6 +177,7 @@ def test_short_term_build_context_passes_header() -> None:
     captured = {}
 
     async def fake_compress(messages, available_tokens, token_budget, conversation_id=None, system_prompt=None, tools=None):
+        """惯例桩：捕获 compress 透传参数，原样返回（不触发真实压缩）。"""
         captured["system_prompt"] = system_prompt
         captured["tools"] = tools
         return messages, False, 1.0
@@ -183,6 +187,7 @@ def test_short_term_build_context_passes_header() -> None:
     import asyncio
 
     async def run():
+        """驱动协程：绕开 pytest-asyncio 的 sync 测试约定直接跑 build_context。"""
         await stm.build_context(
             system_prompt=_SYSTEM, conversation_id=1, max_tokens=2000,
             tools=_TOOLS,

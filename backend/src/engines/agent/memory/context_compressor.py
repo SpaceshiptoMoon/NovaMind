@@ -980,6 +980,7 @@ class ContextCompressor(ICompressionStrategy):
         seen: set[str] = set()
 
         def _add(line: str) -> None:
+            """保序去重追加清单行。"""
             if line not in seen:
                 seen.add(line)
                 lines.append(line)

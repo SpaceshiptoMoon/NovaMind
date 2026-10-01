@@ -259,6 +259,7 @@ class AgentChatService:
 
             # 上下文溢出时的自动压缩回调（tools 透传：前缀对齐压缩 + 预算扣减）
             async def _compress_on_overflow(msgs):
+                """溢出兜底压缩回调：透传 tools（前缀对齐压缩重放 + 预算扣减）。"""
                 return await self._compress_messages(
                     msgs, memory_manager, model, agent.context_window or 32768, conv.id,
                     tools=tools,

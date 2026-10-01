@@ -28,6 +28,7 @@ _BUDGET = TokenBudget("gpt-4")
 
 
 def _tc(name: str, args: dict) -> dict:
+    """惯例桩：构造 OpenAI tool_calls 元素（function call 形态）。"""
     return {
         "id": f"call_{name}",
         "type": "function",
@@ -36,6 +37,7 @@ def _tc(name: str, args: dict) -> dict:
 
 
 def _assistant_with(*tool_calls: dict) -> MemoryMessage:
+    """惯例桩：构造带 tool_calls 的 assistant 消息。"""
     return MemoryMessage(role="assistant", content=None, tool_calls=list(tool_calls))
 
 
@@ -43,6 +45,7 @@ def _assistant_with(*tool_calls: dict) -> MemoryMessage:
 
 
 def test_extract_resource_usages_dedup_and_order() -> None:
+    """三类 tracking 工具调用提取为清单行：重复调用去重、保首次出现顺序。"""
     turns = [
         MemoryMessage(role="user", content="q1"),
         _assistant_with(
@@ -63,6 +66,7 @@ def test_extract_resource_usages_dedup_and_order() -> None:
 
 
 def test_extract_skips_non_tracking_and_malformed() -> None:
+    """非 tracking 工具、缺关键字段、坏 JSON 参数不产生清单行也不抛错。"""
     turns = [
         _assistant_with(
             _tc("code_execution", {"code": "print(1)"}),       # 非 tracking
@@ -80,6 +84,7 @@ def test_extract_skips_non_tracking_and_malformed() -> None:
 
 
 def test_resources_section_roundtrip() -> None:
+    """渲染→解析往返完整还原；空清单不渲染、无段解析为空。"""
     lines = ['read_attachment("a.pdf")', 'web_search("q")']
     section = ContextCompressor._resources_section(lines)
     assert "<compacted-resources>" in section
@@ -96,9 +101,11 @@ def test_resources_section_roundtrip() -> None:
 def _make_compressor_with_summary(capture: dict, old_summary: str | None = None):
     """stub 摘要 LLM + 可选旧摘要 store。"""
     async def _gen(prompt, **kwargs):
+        """惯例桩：捕获摘要 prompt 并返回固定摘要文本。"""
         capture["prompt"] = prompt
         return "## Active Task\n任务"
     async def factory():
+        """惯例桩：返回 stub 摘要 LLM 客户端。"""
         return SimpleNamespace(generate_text=_gen)
     store = None
     if old_summary is not None:
@@ -198,8 +205,10 @@ async def test_compress_merges_carried_from_old_summary() -> None:
 async def test_static_fallback_carries_no_resources_section() -> None:
     """摘要 LLM 失败（静态降级）→ 不追加清单段（防止破坏解析）。"""
     async def _fail_gen(prompt, **kwargs):
+        """惯例桩：模拟摘要 LLM 不可用。"""
         raise RuntimeError("LLM 不可用")
     async def factory():
+        """惯例桩：返回总是失败的 stub LLM 客户端。"""
         return SimpleNamespace(generate_text=_fail_gen)
     comp = ContextCompressor(llm_client_factory=factory)
     msgs = _oversized_conversation()
@@ -221,12 +230,15 @@ async def test_db_persists_section_for_cross_request_carryover() -> None:
     saved: dict = {}
 
     async def _gen(prompt, **kwargs):
+        """惯例桩：返回固定摘要文本。"""
         return "## Active Task\n任务"
 
     async def factory():
+        """惯例桩：返回 stub 摘要 LLM 客户端。"""
         return SimpleNamespace(generate_text=_gen)
 
     async def save_summary(**kwargs):
+        """惯例桩：捕获 save_summary 入参供断言。"""
         saved.update(kwargs)
 
     store = SimpleNamespace(

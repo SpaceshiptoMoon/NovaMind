@@ -21,10 +21,12 @@ pytestmark = pytest.mark.unit
 
 
 def _tool() -> ToolDefinition:
+    """惯例桩：构造最小 ToolDefinition（消毒钩子不读其余字段）。"""
     return ToolDefinition(name="web_search", description="")
 
 
 async def _run_hook(content: str) -> ToolResult:
+    """惯例桩：对给定内容跑一遍消毒钩子并返回结果。"""
     hook = ToolResultSanitizeHook()
     result = ToolResult(status=ToolResultStatus.SUCCESS, content=content)
     return await hook.after_execute(_tool(), {}, result, {})
@@ -68,6 +70,7 @@ async def test_hook_empty_content_noop() -> None:
 
 
 def _make_short_term():
+    """惯例桩：绕过 __init__ 依赖构造 ShortTermMemory 空壳实例。"""
     from novamind.engines.agent.memory.short_term import ShortTermMemory
     return ShortTermMemory.__new__(ShortTermMemory)
 
