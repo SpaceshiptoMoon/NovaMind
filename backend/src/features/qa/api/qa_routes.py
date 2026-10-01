@@ -14,6 +14,7 @@ from novamind.features.qa.api.dependencies import get_minio_client_for_presign, 
 from novamind.features.qa.exceptions import MessageNotFoundError
 from novamind.features.qa.schemas.qa import (
     ChatSessionListResponse,
+    CitationClickRequest,
     ConversationContextResponse,
     MessageFeedbackRequest,
     MessageFeedbackResponse,
@@ -155,6 +156,26 @@ async def set_message_feedback(
 ):
     """设置/撤销消息反馈（批次 2a；看板聚合数据源）"""
     return await qa_service.set_message_feedback(message_id, request, current_user["id"])
+
+
+@router.post(
+    "/message/{message_id}/citation-click",
+    status_code=204,
+    summary="上报引用点击",
+    description=(
+        "kb-ops 运营信号：用户点击正文 [N] 角标或展开来源卡时上报被点击的来源。"
+        "仅 assistant 消息且消息归属人可上报；落运营事件账本（旁路），失败不影响主流程。"
+    ),
+)
+async def record_citation_click(
+    message_id: Annotated[int, Path(gt=0, description="消息ID")],
+    request: CitationClickRequest,
+    qa_service: QAService = Depends(get_qa_service),
+    current_user: dict = Depends(get_current_user),
+):
+    """上报引用点击（kb-ops O2：被动信号采集，看板与 gap 归因数据源）"""
+    await qa_service.record_citation_click(message_id, request, current_user["id"])
+    return Response(status_code=204)
 
 
 @router.delete(

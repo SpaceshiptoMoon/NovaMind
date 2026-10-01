@@ -46,6 +46,22 @@ export const sessionApi = {
     )
   },
 
+  /** 上报引用点击（kb-ops 运营信号，fire-and-forget，失败静默） */
+  reportCitationClick(
+    messageId: number,
+    data: {
+      source_index?: number
+      chunk_id?: string | null
+      document_id?: number | null
+      kb_id?: number | null
+    },
+  ) {
+    return request.post<void>(
+      `${BASE_URL}/message/${messageId}/citation-click`,
+      data,
+    )
+  },
+
   /** 会话上下文窗口（最近 N 条拼成 role/content 数组，供前端预览） */
   getContext(sessionId: string, limit?: number) {
     return request.get<QAContextResponse>(

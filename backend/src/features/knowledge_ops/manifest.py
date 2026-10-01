@@ -1,11 +1,7 @@
-"""knowledge_ops feature manifest。
-
-O1 批次无 HTTP 路由（事件写入是服务层旁路），manifest 仅承载 models_loader
-把 KbEvent 注册进建表元数据；路由在 O2（事件查询 API）批次引入。
-"""
+"""knowledge_ops feature manifest：事件账本 + 运营事件查询 API。"""
 from __future__ import annotations
 
-from novamind.core.middleware.manifest import FeatureManifest
+from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, RouterSpec
 
 
 def _import_models() -> None:
@@ -13,11 +9,21 @@ def _import_models() -> None:
 
 
 def manifest() -> FeatureManifest:
+    from novamind.features.knowledge_ops.api.routes import router as kb_ops_router
+
     return FeatureManifest(
         name="knowledge_ops",
-        routers=[],
+        routers=[
+            RouterSpec(
+                "kb_ops",
+                kb_ops_router,
+                f"{API_V1_PREFIX}/kb-ops",
+                "知识运营",
+            ),
+        ],
         depends_on=["qa", "knowledge_space"],
         order=45,
+        route_order=11,
         models_loader=_import_models,
     )
 

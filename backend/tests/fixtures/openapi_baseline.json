@@ -1562,6 +1562,65 @@
         "title": "ChunkResponse",
         "type": "object"
       },
+      "CitationClickRequest": {
+        "description": "引用点击上报请求（kb-ops O2：用户核验行为的被动信号）。\n\n点击正文 [N] 角标或展开来源卡时上报被点击的来源；全字段可选——\n上报是行为信号而非数据写入，前端拿不到的字段（如联网来源无 doc_id）不强求。",
+        "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "命中的分块 ID（KB 来源）",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "命中的文档 ID（KB 来源）",
+            "title": "Document Id"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "命中的知识库 ID（KB 来源）",
+            "title": "Kb Id"
+          },
+          "source_index": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被点击来源的序号（与正文角标对齐，1-based）",
+            "title": "Source Index"
+          }
+        },
+        "title": "CitationClickRequest",
+        "type": "object"
+      },
       "CompressionConfig": {
         "description": "压缩配置",
         "properties": {
@@ -3515,6 +3574,123 @@
           "invite_token"
         ],
         "title": "InviteResponse",
+        "type": "object"
+      },
+      "KbEventListResponse": {
+        "description": "事件分页列表",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KbEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "KbEventListResponse",
+        "type": "object"
+      },
+      "KbEventResponse": {
+        "description": "单条运营事件",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kb Id"
+          },
+          "query_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Text"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space Id"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "user_id",
+          "created_at"
+        ],
+        "title": "KbEventResponse",
         "type": "object"
       },
       "KbGapStatItem": {
@@ -15573,6 +15749,135 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/events": {
+      "get": {
+        "description": "查询空间内知识运营事件账本（改写/引用点击/后续归因），created_at 倒序分页。空间成员可读（与知识缺口看板同级）；权限域强制过滤，跨空间不可见。",
+        "operationId": "list_space_events_api_v1_kb_ops_spaces__space_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "事件类型过滤",
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "事件类型过滤",
+              "title": "Event Type"
+            }
+          },
+          {
+            "description": "开始时间（ISO8601，含）",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO8601，含）",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "结束时间（ISO8601，非含）",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO8601，非含）",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KbEventListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "空间运营事件列表",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "description": "获取当前用户的通知列表（分页）",
@@ -16031,6 +16336,60 @@
           }
         ],
         "summary": "更新消息",
+        "tags": [
+          "智能问答"
+        ]
+      }
+    },
+    "/api/v1/qa/message/{message_id}/citation-click": {
+      "post": {
+        "description": "kb-ops 运营信号：用户点击正文 [N] 角标或展开来源卡时上报被点击的来源。仅 assistant 消息且消息归属人可上报；落运营事件账本（旁路），失败不影响主流程。",
+        "operationId": "record_citation_click_api_v1_qa_message__message_id__citation_click_post",
+        "parameters": [
+          {
+            "description": "消息ID",
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "description": "消息ID",
+              "exclusiveMinimum": 0,
+              "title": "Message Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CitationClickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "上报引用点击",
         "tags": [
           "智能问答"
         ]

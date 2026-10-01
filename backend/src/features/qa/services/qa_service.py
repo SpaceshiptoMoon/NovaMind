@@ -23,6 +23,7 @@ from novamind.features.qa.repository.question_answer_repository import QuestionA
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from novamind.features.qa.schemas.qa import (
+    CitationClickRequest,
     MessageFeedbackRequest,
     MessageFeedbackResponse,
     QARequest,
@@ -323,6 +324,56 @@ class QAService:
         except Exception as e:
             self.logger.error("保存消息反馈失败", message_id=message_id, user_id=user_id, error=str(e))
             raise QAError(f"保存消息反馈失败: {str(e)}") from e
+
+    async def record_citation_click(
+        self,
+        message_id: int,
+        request: CitationClickRequest,
+        user_id: int,
+    ) -> None:
+        """记录引用点击（kb-ops O2：用户核验行为的被动信号）。
+
+        仅 assistant 消息且消息归属人可上报；落账本走 EventRecorder 旁路
+        （独立短事务、全异常吞掉），上报失败不影响任何主流程。幂等性不做——
+        同一来源多次点击是真实的重复核验行为，每次都记。
+        """
+        try:
+            message = await self.repository.get_by_id(message_id)
+            if not message or message.user_id != user_id:
+                raise MessageNotFoundError(message_id)
+            if message.role != "assistant":
+                raise UnauthorizedAccessException("只能上报 AI 回答的引用点击")
+
+            # 权限域锚点：消息行的 space_id 常为空（RAG 绑定在 session_config，
+            # 落消息时不回填 message.space_id），空则从会话 RAG 配置兜底——
+            # 缺锚点的事件按空间查询永远查不到（真实接口验证抓到过）。
+            space_id = message.space_id
+            if space_id is None:
+                config = await self._get_session_config_with_cache(message.session_id, user_id)
+                space_id = config.rag_space_id if config else None
+
+            from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+            await EventRecorder().record(
+                event_type="citation_click",
+                user_id=user_id,
+                session_id=message.session_id,
+                space_id=space_id,
+                kb_id=request.kb_id,
+                extra={
+                    "message_id": message_id,
+                    "source_index": request.source_index,
+                    "chunk_id": request.chunk_id,
+                    "document_id": request.document_id,
+                },
+            )
+        except SQLAlchemyError as e:
+            raise DatabaseOperationError("记录引用点击失败", str(e)) from e
+        except QAError:
+            raise
+        except Exception as e:
+            self.logger.error("记录引用点击失败", message_id=message_id, user_id=user_id, error=str(e))
+            raise QAError(f"记录引用点击失败: {str(e)}") from e
 
     async def update_message(
         self,

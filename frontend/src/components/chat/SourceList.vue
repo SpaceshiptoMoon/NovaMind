@@ -109,11 +109,13 @@ import type { ChatSource } from '@/api/types'
 const props = defineProps<{
   sources: ChatSource[]
   activeIndex?: number | null
+  /** 所属 assistant 消息 ID（来源卡点击上报 kb-ops 引用信号用；流式临时消息无 id 时不传） */
+  messageId?: number | null
 }>()
 
 const emit = defineEmits<{
   (e: 'hover', index: number | null): void
-  (e: 'select', source: ChatSource): void
+  (e: 'select', source: ChatSource, messageId?: number | null): void
   (e: 'locate', source: ChatSource): void
 }>()
 
@@ -133,10 +135,10 @@ function isExpanded(index: number): boolean {
   return expandedSet.value.has(index)
 }
 
-/** 点击来源卡：上抛 select 事件并切换 snippet 全文/3 行截断 */
+/** 点击来源卡：上抛 select 事件（附带消息 ID 供引用点击上报）并切换 snippet 全文/3 行截断 */
 function toggleExpand(index: number) {
   const s = props.sources.find((x) => x.index === index)
-  if (s) emit('select', s)
+  if (s) emit('select', s, props.messageId)
   const next = new Set(expandedSet.value)
   if (next.has(index)) next.delete(index)
   else next.add(index)

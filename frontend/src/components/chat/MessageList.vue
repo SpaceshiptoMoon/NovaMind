@@ -57,6 +57,7 @@
           v-if="getSources(msg).length"
           :sources="getSources(msg)"
           :active-index="hoverCiteIndex"
+          :message-id="msg.id"
           @hover="onSourceHover"
           @select="onSourceSelect"
           @locate="onSourceLocate"
@@ -304,7 +305,7 @@ function handleCiteOver(e: MouseEvent) {
   if (activeCiteSource.value) citePopoverVisible.value = true
 }
 
-/** 点击引用角标：高亮对应来源卡并平滑滚动至居中 */
+/** 点击引用角标：高亮对应来源卡并平滑滚动至居中；同时上报 kb-ops 引用点击信号 */
 function handleCiteClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const cite = target.closest('[data-cite]') as HTMLElement | null
@@ -318,6 +319,24 @@ function handleCiteClick(e: MouseEvent) {
   // 滚动到来源卡居中
   const card = msgEl.querySelector(`[data-source-index="${index}"]`) as HTMLElement | null
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  reportCitationSignal(msgEl, index)
+}
+
+/** 上报引用点击（kb-ops O2）：fire-and-forget，失败静默（行为信号不阻塞交互） */
+function reportCitationSignal(msgEl: HTMLElement, index: number) {
+  const msgId = parseInt(msgEl.dataset.msgId || '0', 10)
+  const msg = props.messages.find((m) => m.id === msgId)
+  if (!msg || !msgId) return
+  const source = getSources(msg)[index - 1]
+  if (!source) return
+  sessionApi
+    .reportCitationClick(msgId, {
+      source_index: source.index,
+      chunk_id: source.chunk_id ?? null,
+      document_id: source.document_id ?? null,
+      kb_id: source.kb_id ?? null,
+    })
+    .catch(() => {})
 }
 
 function handleCiteLeave() {
@@ -337,8 +356,17 @@ function onSourceHover(index: number | null) {
   hoverCiteIndex.value = index
 }
 
-function onSourceSelect() {
-  // 来源选择处理
+function onSourceSelect(source: ChatSource, messageId?: number | null) {
+  // 来源卡点击：上报 kb-ops 引用点击信号（fire-and-forget，失败静默）
+  if (!messageId) return
+  sessionApi
+    .reportCitationClick(messageId, {
+      source_index: source.index,
+      chunk_id: source.chunk_id ?? null,
+      document_id: source.document_id ?? null,
+      kb_id: source.kb_id ?? null,
+    })
+    .catch(() => {})
 }
 
 // ===== 消息反馈（批次 2a：点赞/点踩，乐观更新失败回滚） =====
