@@ -3263,6 +3263,90 @@
         "title": "ForgotPasswordResponse",
         "type": "object"
       },
+      "GapItem": {
+        "description": "gap 清单条目：同一（归一化）问题聚成一簇",
+        "properties": {
+          "hit_count": {
+            "description": "时间窗内提问次数",
+            "minimum": 1.0,
+            "title": "Hit Count",
+            "type": "integer"
+          },
+          "last_seen": {
+            "description": "最近一次提问时间",
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "message_ids": {
+            "description": "关联 assistant 消息 ID",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Message Ids",
+            "type": "array"
+          },
+          "normalized": {
+            "description": "归一化键（调试/去重口径展示）",
+            "title": "Normalized",
+            "type": "string"
+          },
+          "query": {
+            "description": "该簇首见用户原话",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "normalized",
+          "hit_count",
+          "last_seen"
+        ],
+        "title": "GapItem",
+        "type": "object"
+      },
+      "GapReportResponse": {
+        "description": "gap 周报/清单响应（管理员五分钟三问：答不上多少/-top 是什么/什么原因）",
+        "properties": {
+          "attribution_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "归因分布：content_gap/retrieval_failure/quality_decay/pending",
+            "title": "Attribution Distribution",
+            "type": "object"
+          },
+          "gap_items": {
+            "description": "内容缺口清单（content_gap 聚类，频次降序）",
+            "items": {
+              "$ref": "#/components/schemas/GapItem"
+            },
+            "title": "Gap Items",
+            "type": "array"
+          },
+          "kpi": {
+            "additionalProperties": true,
+            "description": "失败问答总量/待归因数/gap 条目数等汇总",
+            "title": "Kpi",
+            "type": "object"
+          },
+          "window": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "统计窗口（start/end ISO 串）",
+            "title": "Window",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kpi",
+          "window"
+        ],
+        "title": "GapReportResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -15872,6 +15956,117 @@
           }
         ],
         "summary": "空间运营事件列表",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/gap-report": {
+      "get": {
+        "description": "kb-ops A2：聚合时间窗内失败问答的归因分布 + 内容缺口清单（content_gap 按归一化查询聚类、频次降序）+ 待归因计数。与批次 2b 看板、A1 归因同源（question_answers.extra.attribution）。空间成员可读。",
+        "operationId": "get_space_gap_report_api_v1_kb_ops_spaces__space_id__gap_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "开始时间（ISO8601，默认近7天）",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO8601，默认近7天）",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "结束时间（ISO8601，非含）",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO8601，非含）",
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "low_score_threshold",
+            "required": false,
+            "schema": {
+              "default": 0.35,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Low Score Threshold",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "gap_limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Gap Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "知识缺口报告",
         "tags": [
           "知识运营",
           "知识运营"

@@ -303,13 +303,21 @@ class QAService:
                     await self.cache_service.invalidate_session_messages(message.session_id, user_id)
                 return MessageFeedbackResponse(message_id=message_id, rating=None, comment=None)
 
+            # space 锚点兜底：消息行不回填 space_id（RAG 绑定在 session_config），
+            # 反馈表的 space 冗余维度直接取消息行会恒 NULL，看板/gap 报告按空间
+            # 聚合就查不到点踩候选——从会话 RAG 配置兜底（与 O2/A1 同根因第三处）。
+            feedback_space_id = message.space_id
+            if feedback_space_id is None:
+                config = await self._get_session_config_with_cache(message.session_id, user_id)
+                feedback_space_id = config.rag_space_id if config else None
+
             await feedback_repo.upsert(
                 message_id=message_id,
                 user_id=user_id,
                 session_id=message.session_id,
                 rating=request.rating,
                 comment=request.comment,
-                space_id=message.space_id,
+                space_id=feedback_space_id,
                 kb_id=message.kb_id,
             )
             if self.cache_service:

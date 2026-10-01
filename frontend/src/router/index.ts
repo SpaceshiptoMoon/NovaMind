@@ -187,6 +187,12 @@ const router = createRouter({
               component: () => import('@/views/space/SpaceInsightView.vue'),
               meta: { title: '空间洞察' },
             },
+            {
+              path: ':id/gap-report',
+              name: 'SpaceGapReport',
+              component: () => import('@/views/space/SpaceGapReportView.vue'),
+              meta: { title: '知识缺口报告' },
+            },
           ],
         },
         {

@@ -995,6 +995,28 @@ export interface ActionStatsResponse {
   total: number
 }
 
+/** kb-ops gap 清单条目（同一归一化问题聚成一簇，A2） */
+export interface KbOpsGapItem {
+  query: string
+  normalized: string
+  hit_count: number
+  last_seen: string
+  message_ids: number[]
+}
+
+/** kb-ops 知识缺口报告（归因分布 + 内容缺口清单） */
+export interface KbOpsGapReport {
+  kpi: {
+    failure_total: number
+    pending_attribution: number
+    gap_cluster_count: number
+    gap_query_count: number
+  }
+  attribution_distribution: Record<string, number>
+  gap_items: KbOpsGapItem[]
+  window: { start: string; end: string }
+}
+
 /** 两次测评报告对比（批次 3b） */
 export interface EvaluationComparisonResponse {
   task_id: number

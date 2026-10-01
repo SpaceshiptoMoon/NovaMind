@@ -18,6 +18,7 @@ class NotificationType(str, Enum):
     SKILL_REVIEW = "skill_review"
     PASSWORD_RESET = "password_reset"
     WIKI_READY = "wiki_ready"
+    KB_OPS_WEEKLY_DIGEST = "kb_ops_weekly_digest"
 
 
 class Notification(BaseModel):

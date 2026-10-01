@@ -133,6 +133,9 @@ class AppLifespanManager:
             from novamind.features.knowledge_ops.tasks.attribution_worker import (
                 attribute_pending_events,
             )
+            from novamind.features.knowledge_ops.tasks.weekly_digest import (
+                send_weekly_kb_ops_digest,
+            )
             from novamind.features.qa.tasks import cleanup_orphan_attachments
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
@@ -143,6 +146,8 @@ class AppLifespanManager:
                     process_wiki_retract_task,
                     # kb-ops A1：失败问答归因（cron 驱动，见下）
                     attribute_pending_events,
+                    # kb-ops A2：知识运营周报（cron 驱动，见下）
+                    send_weekly_kb_ops_digest,
                 ],
                 task_queue=config.task_queue,
                 cron_jobs=[
@@ -150,6 +155,8 @@ class AppLifespanManager:
                     cron(cleanup_orphan_attachments, hour=3, minute=17),
                     # kb-ops A1 失败问答归因：每 30 分钟（回溯 7 天、批上限 50 条）
                     cron(attribute_pending_events, minute=0, second=30),
+                    # kb-ops A2 知识运营周报：每周一 09:23（错开整点防任务风暴）
+                    cron(send_weekly_kb_ops_digest, weekday=0, hour=9, minute=23),
                 ],
             )
             self.logger.info("嵌入式 arq Worker 已启动")
