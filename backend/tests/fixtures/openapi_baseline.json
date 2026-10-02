@@ -837,6 +837,182 @@
         "title": "AgentUpdate",
         "type": "object"
       },
+      "ApiKeyCreateRequest": {
+        "additionalProperties": false,
+        "description": "创建 key 请求",
+        "properties": {
+          "name": {
+            "description": "key 显示名",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ApiKeyCreateRequest",
+        "type": "object"
+      },
+      "ApiKeyCreatedResponse": {
+        "description": "创建响应：明文 key 仅此一次返回，后续不可查询",
+        "properties": {
+          "api_key": {
+            "description": "明文 key——仅此一次，请妥善保存",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key_prefix": {
+            "description": "明文前缀（nvm_xxxxxxxx），展示用",
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "api_key",
+          "status",
+          "created_at"
+        ],
+        "title": "ApiKeyCreatedResponse",
+        "type": "object"
+      },
+      "ApiKeyItem": {
+        "description": "列表项（无明文字段）",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key_prefix": {
+            "title": "Key Prefix",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "status",
+          "created_at"
+        ],
+        "title": "ApiKeyItem",
+        "type": "object"
+      },
+      "ApiKeyListResponse": {
+        "description": "key 列表",
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyItem"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keys",
+          "total"
+        ],
+        "title": "ApiKeyListResponse",
+        "type": "object"
+      },
+      "ApiKeyRevokeResponse": {
+        "description": "吊销响应",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "ApiKeyRevokeResponse",
+        "type": "object"
+      },
       "AudioParsingConfig": {
         "description": "Audio parsing config.",
         "properties": {
@@ -14107,6 +14283,132 @@
         "tags": [
           "健康检查",
           "健康检查"
+        ]
+      }
+    },
+    "/api/v1/agent-api/keys": {
+      "get": {
+        "description": "返回当前用户的全部 key（含已吊销历史）；无明文字段。",
+        "operationId": "list_api_keys_api_v1_agent_api_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "列出我的 API key",
+        "tags": [
+          "Agent API 密钥",
+          "Agent API 密钥"
+        ]
+      },
+      "post": {
+        "description": "创建外部 agent 访问凭证。明文 key（nvm_ 前缀）仅此一次返回，请妥善保存；key 继承创建者的完整权限链，吊销即时失效。每用户最多 20 个有效 key。",
+        "operationId": "create_api_key_api_v1_agent_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "创建 API key",
+        "tags": [
+          "Agent API 密钥",
+          "Agent API 密钥"
+        ]
+      }
+    },
+    "/api/v1/agent-api/keys/{key_id}": {
+      "delete": {
+        "description": "吊销后 key 即时失效（鉴权路径实时查库，无缓存）。幂等：已吊销再次吊销返回原状态。",
+        "operationId": "revoke_api_key_api_v1_agent_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "description": "keyID",
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "description": "keyID",
+              "exclusiveMinimum": 0,
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyRevokeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "吊销 API key",
+        "tags": [
+          "Agent API 密钥",
+          "Agent API 密钥"
         ]
       }
     },

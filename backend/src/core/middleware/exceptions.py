@@ -12,6 +12,9 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.api.exception_handlers import (
     setup_agent_exception_handlers,
 )
+from novamind.features.agent_api.api.exception_handlers import (
+    setup_agent_api_exception_handlers,
+)
 from novamind.features.app.api.exception_handlers import (
     setup_app_exception_handlers,
 )
@@ -66,6 +69,9 @@ def setup_exception_handlers(app: FastAPI):
 
     # Agent 模块异常处理器
     setup_agent_exception_handlers(app)
+
+    # Agent API（key 管理）异常处理器
+    setup_agent_api_exception_handlers(app)
 
     # 通知模块异常处理器
     setup_notification_exception_handlers(app)
