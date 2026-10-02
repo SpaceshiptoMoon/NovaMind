@@ -61,7 +61,15 @@ backend/src/setting/yaml_config/yaml/testing.yaml
 # ========================================
 # Claude Code
 # ========================================
-.claude/
+.claude/*
+# 例外：只随仓库分发 novamind-kb skill 与集成文档；其余 .claude 内容
+# （settings.local.json / 其他本地 skills / worktrees）仍忽略。
+# 注意：父目录被忽略时需先解禁目录本身，子项例外才生效。
+!.claude/
+!.claude/skills/
+!.claude/skills/novamind-kb/
+!.claude/skills/novamind-kb/**
+!.claude/NOVAMIND-MCP.md
 backend/skills-lock.json
 
 # ========================================

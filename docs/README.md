@@ -40,6 +40,7 @@
 
 ### 平台级架构
 
+- [`claude-code-mcp-setup.md`](./claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
 - [`notification-architecture.md`](./notification-architecture.md)：通知系统架构（NotificationService.notify、WS 推送、轮询兜底）
 - [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）
 - [`transaction-boundary-conventions.md`](./transaction-boundary-conventions.md)：仓储写操作 `begin_nested()` 事务边界约定
