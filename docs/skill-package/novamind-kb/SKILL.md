@@ -41,21 +41,11 @@ kb_ask(query, space_id?, kb_id?, top_k=5)
 
 ## 连接与凭证
 
-- server 注册：`claude mcp add --transport http novamind-kb http://127.0.0.1:8100/mcp --header "X-API-Key: <key>"`
-- key 创建/吊销：见仓库 `docs/claude-code-mcp-setup.md`
-- 工具报「API key 无效或已吊销」：请用户重新生成 key 并更新 mcpServers 配置
-
-## 安装（本 skill 的分发）
-
-- **项目级（本仓库协作者）**：skill 随仓库分发——本文件位于 `<repo>/.claude/skills/novamind-kb/SKILL.md`，
-  在仓库目录下启动 Claude Code 自动生效，无需安装。
-- **全局（任意目录可用）**：复制到用户级 skills 目录：
-  ```bash
-  mkdir -p ~/.claude/skills/novamind-kb
-  cp <repo>/.claude/skills/novamind-kb/SKILL.md ~/.claude/skills/novamind-kb/
-  ```
-- **前置条件**：NovaMind 后端运行中且已按 `docs/claude-code-mcp-setup.md` 注册 novamind-kb
-  MCP server（含有效 X-API-Key）；完整配置指南见该文档。
+- server 注册（在你自己的机器上执行一次）：
+  `claude mcp add --transport http novamind-kb http://<nova主机>:8100/mcp --header "X-API-Key: <key>"`
+- key 由 NovaMind 管理员或你自己经 NovaMind API 创建（明文 `nvm_` 开头，仅创建时返回一次）；
+- 工具报「API key 无效或已吊销」：key 已被吊销或过期——联系管理员重新生成，
+  并更新 `claude mcp` 配置中的 X-API-Key。
 
 ## 推荐问法示例
 

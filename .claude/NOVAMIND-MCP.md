@@ -2,12 +2,17 @@
 
 本目录存放 Claude Code 与 NovaMind 知识库集成的资产。
 
-## MCP server 直连
+## 给部署方终端用户
 
-- **配置指南**：[`docs/claude-code-mcp-setup.md`](../docs/claude-code-mcp-setup.md)
-  （API key 创建 → `claude mcp add` 注册 → 使用与管理）
-- **skill**：[`skills/novamind-kb/SKILL.md`](./skills/novamind-kb/SKILL.md)
-  （kb_search/kb_ask 工具选择、参数约定、结果解读；项目级自动生效，全局安装方法见文件内「安装」节）
+- **skill 安装包**：[`docs/skill-package/novamind-kb/`](../docs/skill-package/novamind-kb/)
+  （`SKILL.md` + `INSTALL.md` 三步安装：装 skill → 建 key → 注册 MCP server）
+- **完整配置指南**：[`docs/claude-code-mcp-setup.md`](../docs/claude-code-mcp-setup.md)
+
+## 给本仓库协作者
+
+- skill 已随仓库分发在 `.claude/skills/novamind-kb/`（项目级自动生效——
+  实际文件在 `docs/skill-package/`，gitignore 例外指到这里，单一事实源）；
+- key 管理接口：`/api/v1/agent-api/keys`（实现见 `backend/src/features/agent_api/`）。
 
 ## 快速开始
 
