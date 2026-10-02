@@ -563,11 +563,19 @@
                         v-if="reportData.summary.retrieval.gold_cases"
                         class="score-section-note"
                       >
-                        （{{
-                          reportData.summary.retrieval.gold_cases
-                        }}
+                        （{{ reportData.summary.retrieval.gold_cases }}
                         条自带参考资料用例未参与检索指标， 实际检索
                         {{ reportData.summary.retrieval.retrieved_cases }} 条）
+                      </span>
+                      <span
+                        v-if="Object.keys(failureBreakdown).length"
+                        class="score-section-note diagnosis-note"
+                      >
+                        检索失败
+                        {{ Object.values(failureBreakdown).reduce((a, b) => a + b, 0) }}
+                        条：<template v-for="(count, cat) in failureBreakdown" :key="cat">
+                          {{ diagnosisLabel(String(cat)) }} {{ count }} ·
+                        </template>
                       </span>
                     </h4>
                     <div class="score-items">
@@ -751,6 +759,22 @@
                     </template>
 
                     <div class="detail-body">
+                      <!-- 检索失败归因（批次 2 多级重放） -->
+                      <el-alert
+                        v-if="detail.failure_diagnosis"
+                        class="diagnosis-alert"
+                        type="error"
+                        :closable="false"
+                        show-icon
+                      >
+                        <template #title>
+                          检索失败归因：{{ diagnosisLabel(detail.failure_diagnosis.category) }}
+                        </template>
+                        {{ detail.failure_diagnosis.evidence }}。{{
+                          detail.failure_diagnosis.suggestion
+                        }}
+                      </el-alert>
+
                       <!-- 召回结果 / 自带参考资料 -->
                       <div v-if="detail.retrieved_chunks?.length" class="recall-block">
                         <span v-if="detail.gold_mode" class="recall-label recall-label-gold">
@@ -1510,6 +1534,30 @@ function getScoreTagType(score: number): string {
   return 'danger'
 }
 
+// ===================== 检索失败归因（批次 2） =====================
+
+const DIAGNOSIS_LABELS: Record<string, string> = {
+  permission_boundary: '权限边界',
+  ranking_issue: '排序问题',
+  mode_mismatch: '检索模式问题',
+  embedding_gap: '语义缺口',
+  index_missing: '索引缺失',
+}
+
+function diagnosisLabel(category: string): string {
+  return DIAGNOSIS_LABELS[category] ?? category
+}
+
+/** 逐条失败归因小计：{ ranking_issue: 2, index_missing: 1 } */
+const failureBreakdown = computed<Record<string, number>>(() => {
+  const breakdown: Record<string, number> = {}
+  for (const d of reportData.value?.details ?? []) {
+    const cat = d.failure_diagnosis?.category
+    if (cat) breakdown[cat] = (breakdown[cat] ?? 0) + 1
+  }
+  return breakdown
+})
+
 // ===================== 初始化 =====================
 
 watch(activeTab, (tab) => {
@@ -1775,6 +1823,16 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: var(--weight-normal);
   color: var(--color-text-muted);
+}
+
+.diagnosis-note {
+  display: inline-block;
+  margin-left: 10px;
+  color: var(--color-danger);
+}
+
+.diagnosis-alert {
+  margin-bottom: var(--space-3);
 }
 
 /* 每个 section 的指标卡一行均分（单卡超宽时 cap 220px 居中），窄屏降 2 列。

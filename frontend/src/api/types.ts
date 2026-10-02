@@ -1542,6 +1542,17 @@ export interface EvaluationDetail {
   human_comment: string | null
   /** 自带参考资料（gold contexts）用例：跳过检索，直接评生成 */
   gold_mode?: boolean
+  /** 检索失败多级重放归因结论（expected_sources 未命中时生成） */
+  failure_diagnosis?: {
+    category:
+      | 'permission_boundary'
+      | 'ranking_issue'
+      | 'mode_mismatch'
+      | 'embedding_gap'
+      | 'index_missing'
+    evidence: string
+    suggestion: string
+  }
 }
 
 export interface EvaluationReport {

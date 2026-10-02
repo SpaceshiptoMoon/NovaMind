@@ -71,6 +71,20 @@ EVALUATION_CONCURRENCY = 5
 _running_tasks: dict[int, asyncio.Task] = {}
 
 
+def _chunk_matches_expected(chunk: dict[str, Any], expected: set[str]) -> bool:
+    """判断单条检索结果是否命中期望来源（chunk_id 或 document_id 相等即命中）。
+
+    document_id 比对统一转字符串，兼容测试集里的整数/字符串写法；
+    检索结果若透传 source 层（ES _source），document_id 藏在 source 内。
+    """
+    if str(chunk.get("chunk_id", "")) in expected:
+        return True
+    doc_id = chunk.get("document_id")
+    if doc_id is None and isinstance(chunk.get("source"), dict):
+        doc_id = chunk["source"].get("document_id")
+    return doc_id is not None and str(doc_id) in expected
+
+
 def _apply_expected_sources_benchmark(
     retrieval_result: dict[str, Any],
     chunk_list: list[dict[str, Any]],
@@ -84,17 +98,7 @@ def _apply_expected_sources_benchmark(
     兼容测试集里的整数/字符串写法。
     """
     expected = {str(s) for s in expected_sources}
-
-    def _is_expected(chunk: dict[str, Any]) -> bool:
-        if str(chunk.get("chunk_id", "")) in expected:
-            return True
-        doc_id = chunk.get("document_id")
-        # 检索结果若透传 source 层（ES _source），document_id 藏在 source 内
-        if doc_id is None and isinstance(chunk.get("source"), dict):
-            doc_id = chunk["source"].get("document_id")
-        return doc_id is not None and str(doc_id) in expected
-
-    hit_positions = [i + 1 for i, chunk in enumerate(chunk_list) if _is_expected(chunk)]
+    hit_positions = [i + 1 for i, chunk in enumerate(chunk_list) if _chunk_matches_expected(chunk, expected)]
     retrieval_result["hit"] = bool(hit_positions)
     retrieval_result["precision_at_k"] = (
         round(len(hit_positions) / len(chunk_list), 4) if chunk_list else 0.0
@@ -102,6 +106,20 @@ def _apply_expected_sources_benchmark(
     retrieval_result["first_relevant_rank"] = hit_positions[0] if hit_positions else None
     retrieval_result["expected_sources"] = list(expected_sources)
     retrieval_result["benchmark"] = "expected_sources"
+
+
+# 检索失败归因（批次 2 多级重放）：类别 → 逐条详情展示的处置建议。
+# 判定链：权限旁路重放 → 扩窗重放 → 换模式重放 → ES 索引存在性直查。
+RETRIEVAL_FAILURE_SUGGESTIONS = {
+    "permission_boundary": "目标内容被知识库权限过滤（hidden_doc_ids）挡在检索之外——检查当前用户对该文档的可见性配置",
+    "ranking_issue": "内容已召回但未进入返回窗口——建议开启 Rerank、调整检索权重或增大 top_k",
+    "mode_mismatch": "内容可召回但当前检索模式不适合该类问题——建议切换 search_mode（见诊断明细中的可用模式）",
+    "embedding_gap": "建议检查 embedding 模型对这类表述的适配性，或在文档中补充与问题相近的措辞",
+    "index_missing": "文档可能未解析完成或未入索引，建议重新解析 / 重建索引",
+}
+
+# 换模式重放的候选顺序（hybrid 系优先，当前模式自动跳过）
+_REPLAY_FALLBACK_MODES = ["content_hybrid", "question_hybrid", "all_hybrid", "content_bm25", "question_bm25"]
 
 
 class EvaluationService:
@@ -1152,6 +1170,142 @@ class EvaluationService:
                 except Exception as e2:
                     logger.error("更新错误状态失败", task_id=task_id, error=str(e2))
 
+    async def _replay_search(
+        self,
+        svc: SearchService,
+        test_set_obj: Any,
+        user_id: int,
+        question: str,
+        config: EvaluationConfig,
+        *,
+        mode: str | None = None,
+        top_k: int | None = None,
+        threshold: float | None = None,
+        bypass: bool = False,
+    ) -> list[dict[str, Any]]:
+        """归因重放：按给定变体参数重放一次检索，返回结果列表。
+
+        变量隔离——未指定的参数沿用任务配置原值；threshold 改 0 表示
+        「探测能否召回」而不受分数阈值干扰。
+        """
+        from novamind.features.knowledge_space.schemas.search_schema import (
+            SearchMode,
+            SearchRequest,
+        )
+
+        request = SearchRequest(
+            query=question,
+            search_mode=SearchMode(mode or config.search_mode),
+            top_k=top_k or config.top_k,
+            score_threshold=config.score_threshold if threshold is None else threshold,
+        )
+        result = await svc.search(
+            space_id=test_set_obj.space_id,
+            kb_id=test_set_obj.kb_id,
+            user_id=user_id,
+            request=request,
+            bypass_document_permission=bypass,
+        )
+        return result.get("results", []) or []
+
+    async def _diagnose_retrieval_failure(
+        self,
+        *,
+        question: str,
+        expected_sources: list[str],
+        test_set_obj: Any,
+        config: EvaluationConfig,
+        user_id: int,
+        svc: SearchService,
+        es_client: Any = None,
+    ) -> dict[str, Any] | None:
+        """多级重放归因：定位「该召回的没召回」败在哪一环。
+
+        判定链（逐级排除，命中即返回）：
+        L0 权限旁路重放命中 → permission_boundary；
+        L1 扩窗（top_k×3、阈值 0）命中 → ranking_issue；
+        L2 换候选检索模式命中 → mode_mismatch；
+        L3 期望来源在 ES 索引中存在 → embedding_gap（在索引但语义检索不到），
+        否则 → index_missing（索引缺失）。
+
+        Args:
+            es_client: 测试注入用；缺省经 shared 工厂懒加载真实 ES 客户端。
+
+        Returns:
+            {category, evidence, suggestion}；诊断全程异常安全——
+            归因是锦上添花，任何一步失败只记 warning 并返回 None，绝不影响用例评估本身。
+        """
+        expected = {str(s) for s in expected_sources}
+        try:
+            # L0 权限边界：同参数 + 权限旁路
+            chunks = await self._replay_search(
+                svc, test_set_obj, user_id, question, config, bypass=True,
+            )
+            if any(_chunk_matches_expected(c, expected) for c in chunks):
+                return {
+                    "category": "permission_boundary",
+                    "evidence": "权限旁路重放命中目标来源",
+                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["permission_boundary"],
+                }
+
+            # L1 排序问题：扩窗 + 去阈值
+            wide_k = max(config.top_k * 3, 15)
+            chunks = await self._replay_search(
+                svc, test_set_obj, user_id, question, config, top_k=wide_k, threshold=0.0,
+            )
+            if any(_chunk_matches_expected(c, expected) for c in chunks):
+                return {
+                    "category": "ranking_issue",
+                    "evidence": f"扩窗重放（top_k={wide_k}，阈值 0）命中目标来源",
+                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["ranking_issue"],
+                }
+
+            # L2 检索模式：逐个候选模式重放（阈值 0，排除阈值干扰）
+            for mode in _REPLAY_FALLBACK_MODES:
+                if mode == config.search_mode:
+                    continue
+                chunks = await self._replay_search(
+                    svc, test_set_obj, user_id, question, config,
+                    mode=mode, threshold=0.0,
+                )
+                if any(_chunk_matches_expected(c, expected) for c in chunks):
+                    return {
+                        "category": "mode_mismatch",
+                        "evidence": f"切换检索模式 {mode} 后命中目标来源",
+                        "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["mode_mismatch"],
+                    }
+
+            # L3 索引存在性：期望源在索引里 = 语义缺口；不在 = 索引缺失
+            if es_client is None:
+                from novamind.shared.storage.client_factory import get_elasticsearch_client
+
+                es_client = await get_elasticsearch_client()
+            source_in_index = False
+            for source in expected:
+                if source.isdigit():
+                    if (await es_client.get_document_chunks(test_set_obj.space_id, int(source))).get("total", 0) > 0:
+                        source_in_index = True
+                        break
+                elif await es_client.chunk_exists(test_set_obj.space_id, source):
+                    source_in_index = True
+                    break
+            if source_in_index:
+                return {
+                    "category": "embedding_gap",
+                    "evidence": "目标来源已在索引中，但各级重放均未召回",
+                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["embedding_gap"],
+                }
+            return {
+                "category": "index_missing",
+                "evidence": "目标来源不在检索索引中",
+                "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["index_missing"],
+            }
+        except Exception as e:
+            logger.warning(
+                "检索失败归因诊断异常（跳过）", question=question[:50], error=str(e)
+            )
+            return None
+
     async def _evaluate_single_case(
         self,
         index: int,
@@ -1228,6 +1382,19 @@ class EvaluationService:
             if expected_sources:
                 _apply_expected_sources_benchmark(retrieval_result, chunk_list, expected_sources)
             detail["retrieval"] = retrieval_result
+
+            # 硬基准 miss 时多级重放归因（批次 2）：定位排序/模式/权限/索引环节
+            if expected_sources and not retrieval_result.get("hit"):
+                diagnosis = await self._diagnose_retrieval_failure(
+                    question=question,
+                    expected_sources=expected_sources,
+                    test_set_obj=test_set_obj,
+                    config=config,
+                    user_id=user_id,
+                    svc=svc,
+                )
+                if diagnosis:
+                    detail["failure_diagnosis"] = diagnosis
 
         generated_answer = None
         if config.enable_generation:

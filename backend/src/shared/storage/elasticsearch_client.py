@@ -382,6 +382,27 @@ class ElasticsearchClient:
             logger.error("删除文档分块失败", document_id=document_id, error=str(e))
             return 0
 
+    async def chunk_exists(self, space_id: int, chunk_id: str) -> bool:
+        """检查指定 chunk 是否存在于空间索引中（测评归因的索引存在性探测）。
+
+        Args:
+            space_id: 空间 ID（决定目标索引 space_{space_id}）。
+            chunk_id: 分块 ID（索引 _id，同时也是 keyword 字段）。
+
+        Returns:
+            存在返回 True；不存在或查询异常（降级）返回 False。
+        """
+        index_name = self.generate_index_name(space_id)
+        try:
+            result = await self.es_client.count(
+                index=index_name,
+                query={"term": {self._schema.field_names.chunk_id: chunk_id}},
+            )
+            return int(result.get("count", 0)) > 0
+        except Exception as e:
+            logger.error("检查 chunk 存在性失败", chunk_id=chunk_id, error=str(e))
+            return False
+
     async def get_document_chunks(
         self, space_id: int, document_id: int, skip: int = 0, limit: int = 100
     ) -> dict[str, Any]:
