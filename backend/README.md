@@ -112,15 +112,14 @@ src/features/{module}/
 
 ```bash
 cd backend
-python -m venv .venv
 
-# Linux / macOS
-source .venv/bin/activate
+# 项目统一用 uv（不用 pip/poetry）；uv.lock 已入库，安装可复现。
+# core 依赖即覆盖全部运行时（含 DeepDoc full 模式）；test/dev 为开发测试 extras。
+uv sync --extra test --extra dev
 
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-pip install .
+# 后续命令
+uv run python main.py --config development --reload
+uv run pytest
 ```
 
 ### 准备配置

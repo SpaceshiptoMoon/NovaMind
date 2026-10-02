@@ -14,13 +14,10 @@ Thanks for contributing to NovaMind.
 
 ```bash
 cd backend
-python -m venv .venv
-# Linux / macOS
-source .venv/bin/activate
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-pip install .
-pytest
+# 项目统一用 uv 管理依赖（uv.lock 已入库）；需先安装 uv：
+#   pip install uv 或 curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --extra test --extra dev
+uv run pytest
 ```
 
 ### Frontend

@@ -348,7 +348,7 @@ cd -                                      # 回到仓库根目录
 
 ```bash
 cd backend
-uv sync           # 安装依赖（需先安装 uv：pip install uv 或 curl -LsSf https://astral.sh/uv/install.sh | sh）
+uv sync --extra test --extra dev  # 安装依赖（需先安装 uv：pip install uv 或 curl -LsSf https://astral.sh/uv/install.sh | sh；core 即全部运行时依赖，test/dev 为开发测试 extras）
 uv run python main.py --config development --reload
 ```
 

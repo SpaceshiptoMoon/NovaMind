@@ -344,7 +344,7 @@ If you already run these services locally, just make sure their connection info 
 
 ```bash
 cd backend
-uv sync           # install dependencies (install uv first: pip install uv, or curl -LsSf https://astral.sh/uv/install.sh | sh)
+uv sync --extra test --extra dev  # install dependencies (install uv first: pip install uv, or curl -LsSf https://astral.sh/uv/install.sh | sh; core covers all runtime deps, test/dev are dev/testing extras)
 uv run python main.py --config development --reload
 ```
 

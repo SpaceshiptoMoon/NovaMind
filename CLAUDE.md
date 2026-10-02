@@ -187,7 +187,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 
 ### 后端
 
-- 安装依赖：`cd backend && uv pip install .`（项目统一用 uv，不用 pip/poetry）
+- 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 运行时依赖齐全，test/dev 为开发测试 extras。公式模型 INT8 量化等部署增强见 pyproject `deepdoc-vision` extra）
 - 开发服务器：`python main.py --config development --reload`
 - 跑测试：`pytest`
 - 触碰解析、文档任务、检索或共享基础设施时，优先跑针对性测试

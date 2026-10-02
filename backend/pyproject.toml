@@ -18,7 +18,7 @@ dependencies = [
     # pydantic-settings 的传递依赖，dotenv 是直接消费点，显式声明防漂移）
     "python-dotenv>=1.0.0",
     "pyjwt>=2.10.1",
-    "redis[asyncio]>=5.2.0",
+    "redis>=5.2.0",
     # DeepDoc 模型直链下载（model_manager）运行时必需；此前仅经 test
     # extra / 传递依赖间接可用，显式声明防漂移
     "requests>=2.31.0",
@@ -68,12 +68,20 @@ dependencies = [
     # 传递依赖，公式识别直接 import 它们，显式声明防漂移。
     "onnxruntime>=1.19.0",
     "tokenizers>=0.20.0",
+    # crypto.py 顶层消费（API key AES-256-GCM + HKDF 硬规则的实现）；此前仅经
+    # authlib（mcp 依赖链）传递带入，上游一变即断供，显式声明防漂移。
+    "cryptography>=42.0.0",
+    # DeepDoc 解析与向量化代码直接 import（18 处）；此前仅经 pandas/xgboost/
+    # opencv 传递带入，显式声明防漂移。避开 2.4.0（上游因向后兼容 bug 已 yank）。
+    "numpy>=1.26.0,!=2.4.0",
+    # 异常处理器/中间件直接消费 Starlette 类型与异常（fastapi 传递依赖防漂移）。
+    "starlette>=0.40.0",
+    # 通知邮件通道（email_service 懒 import）：SMTP 配置后运行时才加载，
+    # 缺失则配置了也发不出，core 声明保证开箱可用。
+    "aiosmtplib>=3.0.0",
 ]
 
 [project.optional-dependencies]
-anthropic = [
-    "anthropic>=0.40.0",
-]
 transformers = [
     "transformers>=4.40.0",
     "torch>=2.0.0",
@@ -90,14 +98,11 @@ test = [
     "httpx>=0.28.0",
     "aiosqlite>=0.20.0",
 ]
-# DeepDoc vision 运行时：OCR / 版面识别 / 表格结构识别所需的额外重型依赖。
-# core 部署无需安装；需要 PDF vision 模式（扫描件 OCR 等）时执行
-# `uv pip install '.[deepdoc-vision]'`，并运行 `scripts/download_deepdoc_models.py` 拉取模型。
+# DeepDoc vision 部署增强：核心运行时依赖（xgboost/opencv/onnxruntime 等）已
+# 升入 core（full 是默认 PDF 模式）。本 extra 现增量只有 `onnx`——公式模型
+# 下载时动态 INT8 量化用（112MB→30MB），缺它回退 fp32 不阻断下载。
+# Docker 镜像经 `pip install ".[deepdoc-vision]"` 安装；本地可选。
 deepdoc-vision = [
-    "xgboost>=2.0.0,<3.1",
-    "opencv-python-headless>=4.8.0",
-    # 公式模型 INT8 量化（download_formula_model 内动态量化，112MB→30MB）；
-    # 缺此包时跳过量化回退 fp32，不阻断下载。
     "onnx>=1.16.0",
 ]
 
