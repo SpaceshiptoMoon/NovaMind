@@ -1,11 +1,37 @@
 <template>
   <div class="model-config-view">
     <div class="page-header">
-      <h2>模型配置</h2>
-      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、ASR 语音识别模型配置</p>
+      <div>
+        <p class="eyebrow">Model Settings</p>
+        <h2>模型配置</h2>
+        <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、ASR 语音识别与搜索引擎配置</p>
+      </div>
+      <div class="header-actions">
+        <el-button v-if="activeTab !== 'search'" type="primary" @click="showCreateDialog">
+          新增配置
+        </el-button>
+        <el-button v-else type="primary" @click="showCreateSearchDialog">新增搜索引擎</el-button>
+        <el-button v-if="activeTab !== 'search'" @click="fetchConfigs">刷新</el-button>
+        <el-button v-else @click="fetchSearchConfigs">刷新</el-button>
+      </div>
     </div>
 
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+    <!-- 配置数量统计：点击切换类型 -->
+    <div class="stat-grid">
+      <button
+        v-for="card in typeCards"
+        :key="card.type"
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': activeTab === card.type }"
+        @click="switchTab(card.type)"
+      >
+        <span class="stat-value">{{ card.count ?? '—' }}</span>
+        <span class="stat-label">{{ card.label }}</span>
+      </button>
+    </div>
+
+    <el-tabs v-model="activeTab" class="config-tabs" @tab-change="handleTabChange">
       <el-tab-pane label="LLM 模型" name="llm" />
       <el-tab-pane label="Embedding 模型" name="embedding" />
       <el-tab-pane label="Rerank 模型" name="rerank" />
@@ -16,11 +42,6 @@
 
     <!-- 模型配置区（非搜索引擎 Tab） -->
     <template v-if="activeTab !== 'search'">
-      <div class="toolbar">
-        <el-button type="primary" @click="showCreateDialog">新增配置</el-button>
-        <el-button @click="fetchConfigs">刷新</el-button>
-      </div>
-
       <!-- 用户配置 -->
       <div class="config-section">
         <div class="section-card">
@@ -132,11 +153,6 @@
 
     <!-- 搜索引擎配置区 -->
     <template v-else>
-      <div class="toolbar">
-        <el-button type="primary" @click="showCreateSearchDialog">新增搜索引擎</el-button>
-        <el-button @click="fetchSearchConfigs">刷新</el-button>
-      </div>
-
       <div class="config-section">
         <div class="section-card">
           <h3>我的搜索引擎配置</h3>
@@ -325,6 +341,46 @@ const formRules = computed<FormRules>(() => ({
 const userConfigs = computed(() =>
   userConfigList.value.filter((c) => c.model_type === activeTab.value),
 )
+
+/** 六类配置数量统计卡（search 懒加载，未加载前显示 —） */
+const typeCards = computed(() => [
+  {
+    type: 'llm' as const,
+    label: 'LLM 模型',
+    count: userConfigList.value.filter((c) => c.model_type === 'llm').length,
+  },
+  {
+    type: 'embedding' as const,
+    label: 'Embedding',
+    count: userConfigList.value.filter((c) => c.model_type === 'embedding').length,
+  },
+  {
+    type: 'rerank' as const,
+    label: 'Rerank',
+    count: userConfigList.value.filter((c) => c.model_type === 'rerank').length,
+  },
+  {
+    type: 'vlm' as const,
+    label: 'VLM 视觉',
+    count: userConfigList.value.filter((c) => c.model_type === 'vlm').length,
+  },
+  {
+    type: 'asr' as const,
+    label: 'ASR 语音',
+    count: userConfigList.value.filter((c) => c.model_type === 'asr').length,
+  },
+  {
+    type: 'search' as const,
+    label: '搜索引擎',
+    count: searchLoaded.value ? searchConfigs.value.length : null,
+  },
+])
+
+/** 统计卡点击切换类型（等价于切 Tab，并触发同样的懒加载逻辑） */
+function switchTab(type: TabName) {
+  activeTab.value = type
+  handleTabChange()
+}
 
 // 各模型类型支持的协议（与后端 factory 一致）
 const PROTOCOL_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -671,19 +727,43 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* width:100% 必须显式声明：本页处于 flex column 容器，cross-axis 的
+   margin:auto 会让子项退化为 fit-content 宽（页面随表格内容伸缩，
+   切 Tab 时整页宽度跳动、前后不对齐） */
 .model-config-view {
-  max-width: 1080px;
-  padding: var(--space-5);
+  width: 100%;
+  max-width: 1200px;
+  padding: var(--space-6) var(--space-6) var(--space-8);
   margin: 0 auto;
 }
 
+/* ===== 页头 panel：左文右操作，对齐任务列表页的 dashboard 风格 ===== */
 .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
   margin-bottom: var(--space-5);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
 .page-header h2 {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-xl);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
 }
 
 .page-header .desc {
@@ -692,7 +772,59 @@ onMounted(() => {
   margin: 0;
 }
 
-.toolbar {
+.header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ===== 六类配置数量统计卡 ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-xs);
+}
+
+.stat-card.is-active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.config-tabs {
   margin-bottom: var(--space-4);
 }
 
@@ -705,7 +837,7 @@ onMounted(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-5) var(--space-6);
 }
 
 .config-section h3 {
@@ -738,5 +870,22 @@ onMounted(() => {
   font-size: var(--text-sm);
   line-height: 1.4;
   margin-top: var(--space-1);
+}
+
+/* 窄屏：统计卡 6 → 3 → 2 列降级 */
+@media (max-width: 960px) {
+  .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-header {
+    padding: var(--space-4);
+  }
 }
 </style>
