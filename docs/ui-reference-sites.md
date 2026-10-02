@@ -175,4 +175,4 @@
 
 1. 后台页面改版：去 SaaSFrame 按 Dashboard/Settings/Billing 分类找参照 → 截图丢给 Claude Code 复刻 + 抽 tokens 到 `base.css`（唯一权威 token 源，light/dark 成对改）
 2. 装两个免费 Skill：`taste-skill`（design-taste-frontend + minimalist-ui 两个子技能最贴合本项目）+ `emilkowalski/skills`（animate）
-3. 把去 AI 味硬约束写进项目 CLAUDE.md 前端规则（可另起任务）
+3. 去 AI 味硬约束已沉淀为正式规范：见 [ui-design-guidelines.md](./ui-design-guidelines.md)（黑名单 / Neutral Minimal token 规则 / 工作流 / 交付自查清单）
