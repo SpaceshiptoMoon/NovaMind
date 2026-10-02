@@ -92,13 +92,6 @@ function Ensure-EnvFile {
 }
 
 function Ensure-ConfigFiles {
-    if (-not (Test-Path "docker/configs/docker.yaml")) {
-        Write-Step "Creating docker/configs/docker.yaml"
-        Copy-Item "docker/configs/docker.example" "docker/configs/docker.yaml"
-    } else {
-        Write-Info "docker/configs/docker.yaml already exists"
-    }
-
     if (-not (Test-Path "backend/src/setting/yaml_config/yaml/default.yaml")) {
         Write-Step "Creating backend default.yaml"
         Copy-Item "backend/src/setting/yaml_config/yaml/default.example" "backend/src/setting/yaml_config/yaml/default.yaml"

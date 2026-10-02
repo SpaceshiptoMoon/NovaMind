@@ -50,26 +50,23 @@ class ConfigLoader:
         self._config: dict[str, Any] = {}
 
     def load(self, environment: str | None = None) -> dict[str, Any]:
-        """按环境加载并合并 YAML，解析占位符后返回配置 dict；环境取参数或 ENVIRONMENT 环境变量，缺省 development。
+        """加载 default.yaml 并解析 ${VAR} 占位符；环境名仅作行为开关，不再选择文件。
 
         Args:
-            environment: 目标环境名（development/production 等）；None 时回落 ENVIRONMENT 环境变量，再缺省 development。
+            environment: 环境名（development/docker/production 等），只写入
+                config.environment 供生产门控消费（禁 docs、CORS 校验等）；
+                None 时回落 ENVIRONMENT 环境变量，再缺省 development。
 
         Returns:
-            default 到 env 到 local 三层深度合并、${VAR} 占位符已替换的完整配置 dict，并附 environment 键。
+            占位符已替换（取值自进程环境/仓库根 .env）的完整配置 dict，附 environment 键。
         """
         env = environment or os.getenv("ENVIRONMENT", "development")
-        # 加载仓库根 .env 作为占位符取值源（幂等：已存在的进程环境变量优先）。
-        # 本地开发时密钥只写 .env 一份，YAML 侧用 ${VAR} 占位符引用；
-        # Docker 部署时 .env 由 compose 注入容器环境，此处加载为空操作。
+        # 两层配置模型：default.yaml 定义结构与默认值，环境差异（host/endpoint/
+        # 桶名/凭据）全部经 ${VAR} / ${VAR:默认值} 占位符从环境取值。本地开发
+        # 用占位符内默认值（仓库根 .env 提供密钥）；Docker 由 compose environment
+        # 注入容器名等覆盖值（优先级高于 env_file 的 .env 全量注入）。
         self._load_dotenv()
-        default_config = self._load_yaml("default.yaml")
-        env_config = self._load_yaml(f"{env}.yaml")
-        local_config = self._load_yaml("local.yaml")
-
-        self._config = self._deep_merge(default_config, env_config)
-        if local_config:
-            self._config = self._deep_merge(self._config, local_config)
+        self._config = self._load_yaml("default.yaml")
 
         self._config = self._replace_env_vars(self._config)
         self._config["environment"] = env
@@ -101,22 +98,32 @@ class ConfigLoader:
                 return data if data else {}
         return {}
 
-    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-        """递归深度合并：override 中的 dict 逐键覆盖 base，非 dict 值整体替换。"""
-        result = base.copy()
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                result[key] = value
-        return result
-
     def _replace_env_vars(self, config: Any) -> Any:
-        """递归替换 ${VAR} / ${VAR:默认值} 占位符为环境变量取值；反斜杠转义的占位符保留为字面量。"""
+        """递归替换 ${VAR} / ${VAR:默认值} 占位符；整串占位符做 true/false/null 类型归一。
+
+        整串恰为单个占位符时，"true"/"false" 归一为 bool、"null" 归一为 None——
+        布尔类配置（redis.enabled 等）才能经环境变量正确表达（"false" 字符串在
+        if 判断中恒为真）。占位符嵌入更长字符串时（如 URL 拼接）只做纯文本替换，
+        不做类型归一。反斜杠转义的占位符保留为字面量。
+        """
         if isinstance(config, str):
             placeholder = "\x00ESCAPED_DOLLAR_BRACE\x00"
             escaped = re.sub(r"\\\$\{", placeholder, config)
             pattern = r"\$\{([^}:]+)(?::([^}]*))?\}"
+
+            whole = re.fullmatch(pattern, escaped)
+            if whole:
+                value = os.getenv(
+                    whole.group(1),
+                    whole.group(2) if whole.group(2) is not None else "",
+                )
+                if value == "true":
+                    return True
+                if value == "false":
+                    return False
+                if value == "null":
+                    return None
+                return value
 
             def _replace_match(match: re.Match[str]) -> str:
                 var_name = match.group(1)

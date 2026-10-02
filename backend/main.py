@@ -20,7 +20,7 @@ def parse_args():
         "--config", "-c",
         type=str,
         default="development",
-        help="配置环境名称，对应 yaml/{name}.yaml 文件（默认: development）"
+        help="环境名称，写入 config.environment 供生产门控消费（如 production 禁用 docs）；不再对应 yaml 文件，配置一律读 yaml/default.yaml（默认: development）"
     )
     parser.add_argument(
         "--host",

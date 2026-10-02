@@ -32,7 +32,6 @@ npm run dev
 
 ```bash
 cp .env.example .env
-cp docker/configs/docker.example docker/configs/docker.yaml
 cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml_config/yaml/default.yaml
 docker compose up -d --build
 ```

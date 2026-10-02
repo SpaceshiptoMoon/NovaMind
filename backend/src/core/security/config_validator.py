@@ -262,11 +262,11 @@ class SecurityConfigValidator:
                 ))
 
     def _check_environment(self) -> None:
-        """校验敏感环境变量已设置且非弱值（SECRET_KEY/DB_PASSWORD 等）。"""
-        # 检查敏感环境变量是否设置
+        """校验敏感环境变量已设置且非弱值（SECRET_KEY/MYSQL_ROOT_PASSWORD 等）。"""
+        # 检查敏感环境变量是否设置（变量名与根 .env/.env.example 对齐）
         sensitive_vars = [
             ("SECRET_KEY", "JWT 密钥"),
-            ("DB_PASSWORD", "数据库密码"),
+            ("MYSQL_ROOT_PASSWORD", "数据库密码"),
             ("ADMIN_PASSWORD", "管理员密码"),
         ]
 

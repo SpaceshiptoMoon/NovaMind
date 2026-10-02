@@ -108,13 +108,6 @@ PY
 }
 
 ensure_configs() {
-  if [[ ! -f docker/configs/docker.yaml ]]; then
-    step "Creating docker/configs/docker.yaml"
-    cp docker/configs/docker.example docker/configs/docker.yaml
-  else
-    info "docker/configs/docker.yaml already exists"
-  fi
-
   if [[ ! -f backend/src/setting/yaml_config/yaml/default.yaml ]]; then
     step "Creating backend default.yaml"
     cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml_config/yaml/default.yaml
