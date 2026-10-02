@@ -12,6 +12,8 @@ chunk 会占掉名额（边缘情况：全被隐藏时可能空结果）——�
 """
 from __future__ import annotations
 
+from typing import Any
+
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

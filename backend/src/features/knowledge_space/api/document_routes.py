@@ -936,7 +936,6 @@ async def confirm_document_review(
 
     from sqlalchemy import select
 
-    from novamind.features.knowledge_ops.repository.suggestion_repository import STATUS_OPEN
     from novamind.features.knowledge_ops.tasks.review_reminder import (
         compute_next_review_at,
         load_review_config,
@@ -987,8 +986,6 @@ async def update_document_review_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """设置复审策略字段（owner 或空间管理员；owner 改派仅管理员）"""
-    from datetime import datetime
-
     from sqlalchemy import select
 
     from novamind.features.knowledge_space.models.document import Document
