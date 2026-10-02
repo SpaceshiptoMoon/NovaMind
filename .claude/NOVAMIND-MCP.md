@@ -6,7 +6,7 @@
 
 - **skill 安装包**：[`docs/skill-package/novamind-kb/`](../docs/skill-package/novamind-kb/)
   （`SKILL.md` + `INSTALL.md` 三步安装：装 skill → 建 key → 注册 MCP server）
-- **完整配置指南**：[`docs/claude-code-mcp-setup.md`](../docs/claude-code-mcp-setup.md)
+- **完整配置指南**：[`docs/agent/claude-code-mcp-setup.md`](../docs/agent/claude-code-mcp-setup.md)
 
 ## 给本仓库协作者
 

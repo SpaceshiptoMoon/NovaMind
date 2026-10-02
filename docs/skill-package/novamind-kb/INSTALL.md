@@ -60,4 +60,4 @@ claude mcp add --transport http novamind-kb http://<nova主机>:8100/mcp \
 - **吊销 key**（泄露/换岗时）：`DELETE /api/v1/agent-api/keys/<key_id>`，
   吊销后本机 Claude Code 的工具立即失效；换新 key 后更新 `claude mcp` 配置重注册；
 - **key 列表**：`GET /api/v1/agent-api/keys`（脱敏显示）；
-- 完整接口文档见 NovaMind 仓库 `docs/claude-code-mcp-setup.md`。
+- 完整接口文档见 NovaMind 仓库 `docs/agent/claude-code-mcp-setup.md`。
