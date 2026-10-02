@@ -23,27 +23,49 @@
 
       <!-- 用户配置 -->
       <div class="config-section">
-        <h3>我的配置</h3>
-        <el-table :data="userConfigs" v-loading="loading" stripe>
-          <el-table-column prop="model" label="模型名称" />
-          <el-table-column prop="protocol" label="通信协议" width="120" />
-          <el-table-column prop="base_url" label="Base URL" show-overflow-tooltip />
-          <el-table-column prop="api_key" label="API Key" show-overflow-tooltip />
-          <el-table-column label="扩展配置" width="120">
-            <template #default="{ row }">
-              <span v-if="row.extra_config">{{ JSON.stringify(row.extra_config) }}</span>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="showEditDialog(row)"
-                >编辑</el-button
-              >
-              <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="section-card">
+          <h3>我的配置</h3>
+          <el-table :data="userConfigs" v-loading="loading" stripe>
+            <el-table-column prop="model" label="模型名称" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="mono-text">{{ row.model }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="protocol" label="协议" width="100">
+              <template #default="{ row }">
+                <el-tag size="small" effect="plain">{{ row.protocol }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="base_url" label="Base URL" min-width="240" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="mono-text text-muted">{{ row.base_url || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="api_key" label="API Key" width="90" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="mono-text">{{ row.api_key || '未设置' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="扩展配置" width="150" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.extra_config" class="mono-text">{{
+                  JSON.stringify(row.extra_config)
+                }}</span>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="130" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="showEditDialog(row)"
+                  >编辑</el-button
+                >
+                <el-button link type="danger" size="small" @click="handleDelete(row)"
+                  >删除</el-button
+                >
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
 
       <!-- 创建/编辑对话框 -->
@@ -116,51 +138,53 @@
       </div>
 
       <div class="config-section">
-        <h3>我的搜索引擎配置</h3>
-        <p class="desc search-hint">
-          配置联网搜索服务商凭证，工作台 AI 聊天「联网搜索」将按首选 provider
-          检索；未配置或失败时回退全局默认。
-        </p>
-        <el-table :data="searchConfigs" v-loading="searchLoading" stripe>
-          <el-table-column label="服务商" width="160">
-            <template #default="{ row }: { row: SearchEngineConfig }">
-              <el-tag v-if="row.is_primary" type="success" size="small" class="primary-tag"
-                >首选</el-tag
-              >
-              <span>{{ SEARCH_PROVIDER_LABELS[row.provider] || row.provider }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="API Key" show-overflow-tooltip>
-            <template #default="{ row }: { row: SearchEngineConfig }">
-              <span v-if="row.api_key">{{ row.api_key }}</span>
-              <span v-else class="text-muted">未设置（免费）</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="扩展配置" width="200" show-overflow-tooltip>
-            <template #default="{ row }: { row: SearchEngineConfig }">
-              <span v-if="row.extra_config">{{ JSON.stringify(row.extra_config) }}</span>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="260" fixed="right">
-            <template #default="{ row }: { row: SearchEngineConfig }">
-              <el-button
-                link
-                type="primary"
-                size="small"
-                :disabled="row.is_primary"
-                @click="handleSetSearchPrimary(row)"
-                >设为默认</el-button
-              >
-              <el-button link type="primary" size="small" @click="showEditSearchDialog(row)"
-                >编辑</el-button
-              >
-              <el-button link type="danger" size="small" @click="handleDeleteSearch(row)"
-                >删除</el-button
-              >
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="section-card">
+          <h3>我的搜索引擎配置</h3>
+          <p class="desc search-hint">
+            配置联网搜索服务商凭证，工作台 AI 聊天「联网搜索」将按首选 provider
+            检索；未配置或失败时回退全局默认。
+          </p>
+          <el-table :data="searchConfigs" v-loading="searchLoading" stripe>
+            <el-table-column label="服务商" width="160">
+              <template #default="{ row }: { row: SearchEngineConfig }">
+                <el-tag v-if="row.is_primary" type="success" size="small" class="primary-tag"
+                  >首选</el-tag
+                >
+                <span>{{ SEARCH_PROVIDER_LABELS[row.provider] || row.provider }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="API Key" show-overflow-tooltip>
+              <template #default="{ row }: { row: SearchEngineConfig }">
+                <span v-if="row.api_key">{{ row.api_key }}</span>
+                <span v-else class="text-muted">未设置（免费）</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="扩展配置" width="200" show-overflow-tooltip>
+              <template #default="{ row }: { row: SearchEngineConfig }">
+                <span v-if="row.extra_config">{{ JSON.stringify(row.extra_config) }}</span>
+                <span v-else class="text-muted">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="260" fixed="right">
+              <template #default="{ row }: { row: SearchEngineConfig }">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  :disabled="row.is_primary"
+                  @click="handleSetSearchPrimary(row)"
+                  >设为默认</el-button
+                >
+                <el-button link type="primary" size="small" @click="showEditSearchDialog(row)"
+                  >编辑</el-button
+                >
+                <el-button link type="danger" size="small" @click="handleDeleteSearch(row)"
+                  >删除</el-button
+                >
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
 
       <!-- 搜索引擎 创建/编辑对话框 -->
@@ -648,7 +672,7 @@ onMounted(() => {
 
 <style scoped>
 .model-config-view {
-  max-width: 1000px;
+  max-width: 1080px;
   padding: var(--space-5);
   margin: 0 auto;
 }
@@ -676,6 +700,14 @@ onMounted(() => {
   margin-bottom: var(--space-6);
 }
 
+/* 配置列表卡片：白底 + 边框 + 圆角，与全站卡片语言一致 */
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+}
+
 .config-section h3 {
   font-size: var(--text-md);
   margin: 0 0 var(--space-3);
@@ -684,6 +716,12 @@ onMounted(() => {
 
 .text-muted {
   color: var(--color-text-faint);
+}
+
+/* 模型名 / Base URL / Key 等技术标识用等宽字体，避免视觉挤压 */
+.mono-text {
+  font-family: var(--font-mono, Menlo, Consolas, monospace);
+  font-size: 12.5px;
 }
 
 .search-hint {
