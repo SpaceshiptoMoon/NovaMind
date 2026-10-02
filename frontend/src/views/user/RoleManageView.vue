@@ -1,69 +1,102 @@
 <template>
   <div class="role-manage-view">
-    <el-card class="manage-card">
-      <template #header>
-        <div class="card-header">
-          <span>角色管理</span>
-          <el-button type="primary" @click="showCreateDialog">
-            <el-icon><Plus /></el-icon>
-            新建角色
-          </el-button>
-        </div>
-      </template>
+    <!-- 页头：eyebrow + 大标题 + 描述，右上主操作 -->
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Role Management</p>
+        <h2>角色管理</h2>
+        <p class="desc">定义系统角色与其权限集合；系统内置角色只可调整权限，不可编辑或删除</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="showCreateDialog">
+          <el-icon><Plus /></el-icon>
+          新建角色
+        </el-button>
+        <el-button @click="fetchRoles">刷新</el-button>
+      </div>
+    </div>
 
-      <!-- 搜索栏 -->
-      <div class="search-bar">
+    <!-- 统计卡条：点击切换类型筛选 -->
+    <div class="stat-grid stat-grid-4">
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': systemFilter === '' }"
+        @click="setTypeFilter('')"
+      >
+        <span class="stat-value">{{ roles.length }}</span>
+        <span class="stat-label">全部角色</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': systemFilter === true }"
+        @click="setTypeFilter(true)"
+      >
+        <span class="stat-value">{{ systemCount }}</span>
+        <span class="stat-label">系统角色</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': systemFilter === false }"
+        @click="setTypeFilter(false)"
+      >
+        <span class="stat-value">{{ roles.length - systemCount }}</span>
+        <span class="stat-label">自定义角色</span>
+      </button>
+      <button type="button" class="stat-card is-static" @click="gotoUsers">
+        <span class="stat-value">{{ userCount }}</span>
+        <span class="stat-label">用户数 · 去分配</span>
+      </button>
+    </div>
+
+    <div class="section-card">
+      <!-- 工具行 -->
+      <div class="toolbar">
         <el-input
           v-model="searchKeyword"
           placeholder="搜索角色代码、名称"
           clearable
-          style="width: 240px"
+          :prefix-icon="Search"
+          class="toolbar-search"
         />
-        <el-select v-model="systemFilter" placeholder="全部类型" clearable style="width: 140px">
-          <el-option label="系统角色" :value="true" />
-          <el-option label="自定义角色" :value="false" />
-        </el-select>
+        <span class="toolbar-meta">共 {{ filteredRoles.length }} 个角色</span>
       </div>
 
       <!-- 角色表格 -->
-      <el-table :data="filteredRoles" v-loading="loading" stripe>
-        <el-table-column prop="code" label="角色代码" min-width="120" />
-        <el-table-column prop="name" label="角色名称" min-width="150" />
-        <el-table-column prop="description" label="描述" min-width="200">
+      <el-table :data="filteredRoles" v-loading="loading">
+        <el-table-column label="角色" min-width="240">
           <template #default="{ row }">
-            {{ row.description || '-' }}
+            <div class="role-cell">
+              <span class="role-cell-name">
+                {{ row.name }}
+                <span v-if="row.is_system" class="system-chip">系统</span>
+              </span>
+              <span class="role-cell-code">{{ row.code }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="100">
+        <el-table-column label="描述" min-width="200">
           <template #default="{ row }">
-            <el-tag :type="row.is_system ? 'warning' : 'info'" size="small">
-              {{ row.is_system ? '系统角色' : '自定义' }}
-            </el-tag>
+            <span class="muted-cell">{{ row.description || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="权限数量" width="100">
+        <el-table-column label="权限" width="90" align="center">
           <template #default="{ row }">
-            {{ row.permissions?.length || 0 }}
+            <span class="perm-count">{{ row.permissions?.length || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="showPermissionDialog(row)">
-              权限配置
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="showEditDialog(row)"
-              v-if="!row.is_system"
-            >
+            <el-button link size="small" @click="showPermissionDialog(row)">权限配置</el-button>
+            <el-button link size="small" @click="showEditDialog(row)" v-if="!row.is_system">
               编辑
             </el-button>
             <el-button
-              type="danger"
               link
               size="small"
+              class="danger-link"
               @click="handleDelete(row)"
               v-if="!row.is_system"
             >
@@ -72,7 +105,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
     <!-- 创建/编辑角色弹窗 -->
     <el-dialog
@@ -120,6 +153,9 @@
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
       </div>
       <div v-else class="perm-content">
+        <p v-if="currentRole?.is_system" class="dialog-note">
+          系统角色权限为出厂定义，仅可查看；如需调整请复制为自定义角色。
+        </p>
         <el-checkbox-group v-model="selectedPermCodes" class="perm-group">
           <el-row :gutter="10">
             <el-col :span="12" v-for="cat in permissionCategories" :key="cat">
@@ -127,7 +163,7 @@
                 <div class="perm-category">
                   <h4 class="category-title">{{ cat }}</h4>
                   <template v-for="perm in getCategoryPermissions(cat)" :key="perm.code">
-                    <el-checkbox :label="perm.code" :disabled="currentRole?.is_system">
+                    <el-checkbox :value="perm.code" :disabled="currentRole?.is_system">
                       {{ perm.name }} <span class="perm-code">({{ perm.code }})</span>
                     </el-checkbox>
                   </template>
@@ -158,21 +194,37 @@
  *
  * 对应路由 /home/admin/roles，支持角色的增删改查、关键词/类型筛选与按权限分类分组的
  * 权限勾选配置；系统内置角色（is_system）只允许调整权限，不可编辑或删除。
+ * 页面模式与用户管理一致：统计卡条点击筛选，表格主列双行展示（名称+代码）。
  */
 
 import { ref, computed, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading } from '@element-plus/icons-vue'
+import { Plus, Loading, Search } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import type { Role, Permission, CreateRoleRequest } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
+const router = useRouter()
+
 const loading = ref(false)
 const submitLoading = ref(false)
 const roles = ref<Role[]>([])
-const permissions = ref<Permission[]>([])
 const searchKeyword = ref('')
 const systemFilter = ref<boolean | ''>('')
+
+const systemCount = computed(() => roles.value.filter((r) => r.is_system).length)
+
+function setTypeFilter(next: boolean | '') {
+  systemFilter.value = systemFilter.value === next ? '' : next
+}
+
+// 用户总数（统计卡展示，供跳转用户管理分配角色）
+const userCount = ref(0)
+
+function gotoUsers() {
+  router.push('/home/admin/users')
+}
 
 // 权限配置相关
 const permDialogVisible = ref(false)
@@ -261,10 +313,27 @@ async function fetchPermissions() {
   try {
     const res = await userApi.getPermissions()
     allPermissions.value = res
-    permissions.value = res
   } catch (error: unknown) {
     const err = error as { response?: { data?: { message?: string } } }
     ElMessage.error(err.response?.data?.message || '获取权限列表失败')
+  }
+}
+
+// 获取用户总数（统计卡）
+async function fetchUserCount() {
+  try {
+    let count = 0
+    let skip = 0
+    const limit = 100
+    while (true) {
+      const batch = await userApi.getUsers({ skip, limit })
+      count += batch.length
+      if (batch.length < limit) break
+      skip += limit
+    }
+    userCount.value = count
+  } catch {
+    // 静默：统计卡数字缺失不阻塞角色列表
   }
 }
 
@@ -380,31 +449,185 @@ async function handleDelete(role: Role) {
 }
 
 onMounted(() => {
-  Promise.all([fetchRoles(), fetchPermissions()])
+  Promise.all([fetchRoles(), fetchPermissions(), fetchUserCount()])
 })
 </script>
 
 <style scoped>
 .role-manage-view {
-  padding: var(--space-5);
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
 }
 
-.manage-card {
+/* ===== 页头（与用户管理/模型配置同款） ===== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
-.card-header {
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ===== 统计卡条 ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-border-focus);
+}
+
+.stat-card.is-active {
+  border-color: var(--color-border-focus);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 纯展示/跳转卡不做选中描边 */
+.stat-card.is-static {
+  cursor: pointer;
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ===== 列表区 ===== */
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+}
+
+.toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.search-bar {
-  display: flex;
   gap: var(--space-3);
+  flex-wrap: wrap;
   margin-bottom: var(--space-4);
 }
 
+.toolbar-search {
+  width: 260px;
+  max-width: 100%;
+}
+
+.toolbar-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 角色单元格：名称 + 系统徽标 / 代码 mono */
+.role-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.role-cell-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.system-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-subtle);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-normal);
+}
+
+.role-cell-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.muted-cell {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.perm-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.danger-link {
+  color: var(--color-danger);
+}
+
+/* ===== 权限配置弹窗 ===== */
 .perm-content {
   max-height: 500px;
   overflow-y: auto;
@@ -433,38 +656,32 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border-light);
 }
 
-.category-title::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  margin-right: var(--space-2);
-  vertical-align: middle;
-}
-
-:deep(.el-checkbox__label) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  margin-bottom: var(--space-2);
-}
-
-:deep(.el-checkbox__label.el-checkbox__label--disabled) {
-  color: var(--color-text-placeholder);
-}
-
 .perm-code {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
-:deep(.el-dialog__footer) {
-  padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--color-border-light);
+.dialog-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* 窄屏降级 */
+@media (max-width: 960px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .role-manage-view {
+    padding: var(--space-4);
+  }
+
+  .section-card {
+    padding: var(--space-4);
+  }
 }
 </style>

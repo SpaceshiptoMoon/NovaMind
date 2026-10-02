@@ -1,139 +1,213 @@
 <template>
   <div class="user-manage-view">
-    <el-card class="manage-card">
-      <template #header>
-        <div class="card-header">
-          <span>用户管理</span>
-          <el-button
-            type="primary"
-            @click="showCreateDialog"
-            v-if="permStore.hasPermission('user.manage')"
-          >
-            <el-icon><Plus /></el-icon>
-            新建用户
-          </el-button>
-        </div>
-      </template>
+    <!-- 页头：eyebrow + 大标题 + 描述，右上主操作（ModelConfigView 同款模式） -->
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">User Management</p>
+        <h2>用户管理</h2>
+        <p class="desc">
+          管理平台用户的账号、状态、应用权限与系统角色；超级管理员账号对所有操作免疫
+        </p>
+      </div>
+      <div class="header-actions">
+        <el-button
+          v-if="permStore.hasPermission('user.manage')"
+          type="primary"
+          @click="showCreateDialog"
+        >
+          <el-icon><Plus /></el-icon>
+          新建用户
+        </el-button>
+        <el-button @click="fetchUsers">刷新</el-button>
+      </div>
+    </div>
 
-      <!-- 搜索栏 -->
-      <div class="search-bar">
+    <!-- 统计卡条：点击切换状态筛选 -->
+    <div class="stat-grid">
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === '' }"
+        @click="setStatusFilter('')"
+      >
+        <span class="stat-value">{{ users.length }}</span>
+        <span class="stat-label">全部用户</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === 1 }"
+        @click="setStatusFilter(1)"
+      >
+        <span class="stat-value">{{ countByStatus(1) }}</span>
+        <span class="stat-label">已启用</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === 0 }"
+        @click="setStatusFilter(0)"
+      >
+        <span class="stat-value">{{ countByStatus(0) }}</span>
+        <span class="stat-label">已禁用</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === 2 }"
+        @click="setStatusFilter(2)"
+      >
+        <span class="stat-value">{{ countByStatus(2) }}</span>
+        <span class="stat-label">已封禁</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === 'admin' }"
+        @click="setStatusFilter('admin')"
+      >
+        <span class="stat-value">{{ adminCount }}</span>
+        <span class="stat-label">管理员</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': statusFilter === 'super' }"
+        @click="setStatusFilter('super')"
+      >
+        <span class="stat-value">{{ superCount }}</span>
+        <span class="stat-label">超级管理员</span>
+      </button>
+    </div>
+
+    <div class="section-card">
+      <!-- 工具行：左搜索右统计 -->
+      <div class="toolbar">
         <el-input
           v-model="searchKeyword"
           placeholder="搜索用户名、邮箱"
           clearable
-          style="width: 240px"
+          :prefix-icon="Search"
+          class="toolbar-search"
         />
-        <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width: 140px">
-          <el-option label="已启用" :value="1" />
-          <el-option label="已禁用" :value="0" />
-          <el-option label="已封禁" :value="2" />
-        </el-select>
+        <span class="toolbar-meta">共 {{ filteredUsers.length }} 人</span>
       </div>
 
       <!-- 用户表格 -->
-      <el-table :data="pagedUsers" v-loading="loading" stripe>
-        <el-table-column prop="username" label="用户名" min-width="120" />
-        <el-table-column prop="email" label="邮箱" min-width="180" />
-        <el-table-column prop="phone" label="手机号" min-width="120">
+      <el-table :data="pagedUsers" v-loading="loading">
+        <el-table-column label="用户" min-width="220">
           <template #default="{ row }">
-            {{ row.phone || '-' }}
+            <div class="user-cell">
+              <span
+                class="user-avatar"
+                :class="{ super: row.is_super_admin, admin: row.is_admin && !row.is_super_admin }"
+              >
+                {{ row.username.slice(0, 1).toUpperCase() }}
+              </span>
+              <div class="user-cell-text">
+                <span class="user-name">
+                  {{ row.username }}
+                  <span v-if="row.id === userStore.user?.id" class="self-chip">我</span>
+                </span>
+                <span class="user-email">{{ row.email }}</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="角色" width="120">
+        <el-table-column prop="phone" label="手机号" min-width="130">
           <template #default="{ row }">
-            <el-tag v-if="row.is_super_admin" type="danger" size="small" effect="dark">
-              超级管理员
-            </el-tag>
-            <el-tag v-else :type="row.is_admin ? 'warning' : 'info'" size="small">
-              {{ row.is_admin ? '管理员' : '用户' }}
-            </el-tag>
+            <span class="muted-cell">{{ row.phone || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="角色" width="110">
+          <template #default="{ row }">
+            <span class="role-chip" :class="roleClass(row)">{{ roleText(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
+            <span class="status-dot-row">
+              <span class="status-dot" :class="statusDotClass(row.status)" />
               {{ getStatusText(row.status) }}
-            </el-tag>
+            </span>
           </template>
         </el-table-column>
-        <el-table-column label="注册时间" width="160">
+        <el-table-column label="注册时间" width="110">
           <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
+            <span class="muted-cell">{{ formatDateShort(row.created_at) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column width="60" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleViewDetail(row)">
-              查看
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="showEditDialog(row)"
-              v-if="permStore.hasPermission('user.manage')"
+            <el-dropdown
+              trigger="click"
+              @command="
+                (cmd: string | number | object) => handleCommand(String(cmd) as UserCommand, row)
+              "
             >
-              编辑
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="showAppAccessDialog(row)"
-              v-if="permStore.hasPermission('user.manage')"
-            >
-              应用权限
-            </el-button>
-            <el-button
-              type="primary"
-              link
-              size="small"
-              @click="showRoleDialog(row)"
-              v-if="permStore.hasPermission('role.manage')"
-              :disabled="row.is_super_admin"
-            >
-              设为角色
-            </el-button>
-            <el-button
-              :type="row.status === 1 ? 'warning' : 'success'"
-              link
-              size="small"
-              @click="handleToggleStatus(row)"
-              v-if="permStore.hasPermission('user.manage')"
-              :disabled="row.is_super_admin"
-            >
-              {{ row.status === 1 ? '停用' : '启用' }}
-            </el-button>
-            <el-button
-              type="info"
-              link
-              size="small"
-              @click="handleForceLogout(row)"
-              v-if="permStore.hasPermission('user.manage')"
-              :disabled="row.is_super_admin"
-            >
-              下线
-            </el-button>
-            <el-button
-              type="danger"
-              link
-              size="small"
-              @click="showResetPasswordDialog(row)"
-              v-if="permStore.hasPermission('user.manage')"
-              :disabled="row.is_super_admin"
-            >
-              重置密码
-            </el-button>
-            <el-button
-              v-if="(!row.is_admin || canDeleteAdmin) && permStore.hasPermission('user.manage')"
-              type="danger"
-              link
-              size="small"
-              @click="handleDelete(row)"
-              :disabled="row.is_super_admin"
-            >
-              删除
-            </el-button>
+              <button
+                type="button"
+                class="row-more"
+                :aria-label="`用户 ${row.username} 的更多操作`"
+              >
+                <el-icon><MoreFilled /></el-icon>
+                <!-- el-dropdown 需要内部元素承载 focus -->
+                <span class="row-more-hit" />
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="detail">查看详情</el-dropdown-item>
+                  <el-dropdown-item command="edit" v-if="permStore.hasPermission('user.manage')">
+                    编辑
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="appAccess"
+                    v-if="permStore.hasPermission('user.manage')"
+                  >
+                    应用权限
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="role"
+                    v-if="permStore.hasPermission('role.manage')"
+                    :disabled="row.is_super_admin"
+                  >
+                    设为角色
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="toggleStatus"
+                    v-if="permStore.hasPermission('user.manage')"
+                    :disabled="row.is_super_admin"
+                    divided
+                  >
+                    {{ row.status === 1 ? '停用账号' : '启用账号' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="forceLogout"
+                    v-if="permStore.hasPermission('user.manage')"
+                    :disabled="row.is_super_admin"
+                  >
+                    强制下线
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="resetPassword"
+                    v-if="permStore.hasPermission('user.manage')"
+                    :disabled="row.is_super_admin"
+                  >
+                    重置密码
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    command="delete"
+                    v-if="
+                      (!row.is_admin || canDeleteAdmin) && permStore.hasPermission('user.manage')
+                    "
+                    :disabled="row.is_super_admin"
+                    class="danger-item"
+                  >
+                    删除用户
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -148,7 +222,7 @@
           background
         />
       </div>
-    </el-card>
+    </div>
 
     <!-- 创建/编辑用户弹窗 -->
     <el-dialog
@@ -190,23 +264,24 @@
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
       </div>
       <div v-else-if="detailUser" class="detail-content">
+        <div class="detail-hero">
+          <span class="user-avatar large" :class="avatarClass(detailUser)">
+            {{ detailUser.username.slice(0, 1).toUpperCase() }}
+          </span>
+          <div>
+            <div class="detail-name">{{ detailUser.username }}</div>
+            <span class="role-chip" :class="roleClass(detailUser)">{{ roleText(detailUser) }}</span>
+          </div>
+        </div>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="用户ID">{{ detailUser.id }}</el-descriptions-item>
-          <el-descriptions-item label="用户名">{{ detailUser.username }}</el-descriptions-item>
           <el-descriptions-item label="邮箱">{{ detailUser.email }}</el-descriptions-item>
-          <el-descriptions-item label="手机号">{{ detailUser.phone || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="角色">
-            <el-tag v-if="detailUser.is_super_admin" type="danger" size="small" effect="dark">
-              超级管理员
-            </el-tag>
-            <el-tag v-else :type="detailUser.is_admin ? 'warning' : 'info'" size="small">
-              {{ detailUser.is_admin ? '管理员' : '普通用户' }}
-            </el-tag>
-          </el-descriptions-item>
+          <el-descriptions-item label="手机号">{{ detailUser.phone || '—' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="getStatusType(detailUser.status)" size="small">
+            <span class="status-dot-row">
+              <span class="status-dot" :class="statusDotClass(detailUser.status)" />
               {{ getStatusText(detailUser.status) }}
-            </el-tag>
+            </span>
           </el-descriptions-item>
           <el-descriptions-item label="注册时间">{{
             formatDate(detailUser.created_at)
@@ -215,7 +290,7 @@
             {{ detailUser.last_login_at ? formatDate(detailUser.last_login_at) : '从未登录' }}
           </el-descriptions-item>
           <el-descriptions-item label="更新时间">
-            {{ detailUser.updated_at ? formatDate(detailUser.updated_at) : '-' }}
+            {{ detailUser.updated_at ? formatDate(detailUser.updated_at) : '—' }}
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -230,7 +305,7 @@
       destroy-on-close
       @closed="resetPwdForm"
     >
-      <p class="reset-tip">
+      <p class="dialog-tip">
         为用户 <strong>{{ resetPwdUser?.username }}</strong> 设置新密码
       </p>
       <el-form
@@ -272,7 +347,7 @@
       append-to-body
       destroy-on-close
     >
-      <p class="reset-tip">
+      <p class="dialog-tip">
         为用户 <strong>{{ appAccessUser?.username }}</strong> 配置可用应用（取消勾选即禁用该应用）
       </p>
       <div v-if="appAccessLoading" style="text-align: center; padding: 40px">
@@ -284,7 +359,7 @@
             {{ APP_CODE_LABELS[code] }}
           </el-checkbox>
         </el-checkbox-group>
-        <p class="app-access-tip">知识空间不在此列——其内容由空间成员角色控制。</p>
+        <p class="dialog-note">知识空间不在此列——其内容由空间成员角色控制。</p>
       </template>
       <template #footer>
         <el-button @click="appAccessVisible = false">取消</el-button>
@@ -302,7 +377,7 @@
       append-to-body
       destroy-on-close
     >
-      <p class="reset-tip">
+      <p class="dialog-tip">
         为用户 <strong>{{ roleDialogUser?.username }}</strong> 分配系统角色
       </p>
       <div v-if="roleDialogLoading" style="text-align: center; padding: 40px">
@@ -333,12 +408,13 @@
  * 对应路由 /home/admin/users（需 user.manage 权限），循环拉取全量用户后前端筛选分页，
  * 承载创建/编辑、停用启用、强制下线、重置密码、删除、应用权限（deny-list）与角色分配
  * 七类管理操作；超级管理员账号对所有操作免疫。
+ * 页面模式：统计卡条点击即状态筛选；行操作低频项收敛进「更多」下拉，表格只留一列操作入口。
  * 关键交互：应用权限弹窗以「勾选=可用」展示，提交时换算为后端 disabled_apps 被禁集合。
  */
 
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading } from '@element-plus/icons-vue'
+import { Plus, Loading, Search, MoreFilled } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
@@ -353,16 +429,28 @@ const loading = ref(false)
 const submitLoading = ref(false)
 const users = ref<User[]>([])
 const searchKeyword = ref('')
-const statusFilter = ref<number | ''>('')
+// ''=全部；1/0/2=状态；'admin'/'super'=角色维度（统计卡点击联动）
+const statusFilter = ref<'' | 0 | 1 | 2 | 'admin' | 'super'>('')
 
 // 分页
 const currentPage = ref(1)
 const pageSize = 10
 
-// 当前用户是管理员 - 改用权限判断
 const canDeleteAdmin = computed(() => permStore.hasPermission('user.manage'))
 
-// 搜索 + 状态筛选后的用户列表
+function countByStatus(status: number): number {
+  return users.value.filter((u) => u.status === status).length
+}
+
+const adminCount = computed(() => users.value.filter((u) => u.is_admin).length)
+const superCount = computed(() => users.value.filter((u) => u.is_super_admin).length)
+
+function setStatusFilter(next: '' | 0 | 1 | 2 | 'admin' | 'super') {
+  statusFilter.value = statusFilter.value === next ? '' : next
+  currentPage.value = 1
+}
+
+// 筛选 + 分页
 const filteredUsers = computed(() => {
   let list = users.value
   if (searchKeyword.value) {
@@ -371,31 +459,48 @@ const filteredUsers = computed(() => {
       (u) => u.username.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword),
     )
   }
-  if (statusFilter.value !== '') {
-    list = list.filter((u) => u.status === statusFilter.value)
+  switch (statusFilter.value) {
+    case '':
+      break
+    case 'admin':
+      list = list.filter((u) => u.is_admin)
+      break
+    case 'super':
+      list = list.filter((u) => u.is_super_admin)
+      break
+    default:
+      list = list.filter((u) => u.status === statusFilter.value)
   }
   return list
 })
 
-// 当前页数据
 const pagedUsers = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   return filteredUsers.value.slice(start, start + pageSize)
 })
 
 // 状态映射
-const statusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '已禁用', type: 'danger' },
-  1: { text: '已启用', type: 'success' },
-  2: { text: '已封禁', type: 'warning' },
+const statusTextMap: Record<number, string> = {
+  0: '已禁用',
+  1: '已启用',
+  2: '已封禁',
 }
 
 function getStatusText(status: number): string {
-  return statusMap[status]?.text || '未知'
+  return statusTextMap[status] || '未知'
 }
 
-function getStatusType(status: number): string {
-  return statusMap[status]?.type || 'info'
+function statusDotClass(status: number): string {
+  switch (status) {
+    case 1:
+      return 'ok'
+    case 2:
+      return 'warn'
+    case 0:
+      return 'off'
+    default:
+      return 'off'
+  }
 }
 
 function formatDate(date: string | null): string {
@@ -409,6 +514,73 @@ function formatDate(date: string | null): string {
     )
   } catch {
     return '-'
+  }
+}
+
+function formatDateShort(date: string | null): string {
+  if (!date) return '—'
+  try {
+    return new Date(date).toLocaleDateString('zh-CN')
+  } catch {
+    return '—'
+  }
+}
+
+// 角色展示统一走 neutral chip：super 深底反白、admin 描边、普通灰
+function roleText(u: User): string {
+  if (u.is_super_admin) return '超级管理员'
+  return u.is_admin ? '管理员' : '用户'
+}
+
+function roleClass(u: User): string {
+  if (u.is_super_admin) return 'super'
+  return u.is_admin ? 'admin' : 'member'
+}
+
+function avatarClass(u: User): string {
+  if (u.is_super_admin) return 'super'
+  return u.is_admin && !u.is_super_admin ? 'admin' : ''
+}
+
+// 行操作收敛进下拉
+type UserCommand =
+  | 'detail'
+  | 'edit'
+  | 'appAccess'
+  | 'role'
+  | 'toggleStatus'
+  | 'forceLogout'
+  | 'resetPassword'
+  | 'delete'
+
+/** el-dropdown command 直连处理：command 值与行对象由 emit 依次给出（any[] 重载，运行时校验兜底）。 */
+function handleCommand(...args: unknown[]) {
+  const [cmd, user] = args as [UserCommand, User]
+  switch (cmd) {
+    case 'detail':
+      handleViewDetail(user)
+      break
+    case 'edit':
+      showEditDialog(user)
+      break
+    case 'appAccess':
+      showAppAccessDialog(user)
+      break
+    case 'role':
+      showRoleDialog(user)
+      break
+    case 'toggleStatus':
+      handleToggleStatus(user)
+      break
+    case 'forceLogout':
+      handleForceLogout(user)
+      break
+    case 'resetPassword':
+      showResetPasswordDialog(user)
+      break
+    case 'delete':
+      handleDelete(user)
+      break
   }
 }
 
@@ -780,23 +952,284 @@ onMounted(() => {
 
 <style scoped>
 .user-manage-view {
-  padding: var(--space-5);
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
 }
 
-.manage-card {
+/* ===== 页头（ModelConfigView 同款） ===== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
-.card-header {
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ===== 统计卡条（点击筛选，active 描边） ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-border-focus);
+}
+
+.stat-card.is-active {
+  border-color: var(--color-border-focus);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ===== 列表区 ===== */
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+}
+
+.toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
 }
 
-.search-bar {
+.toolbar-search {
+  width: 260px;
+  max-width: 100%;
+}
+
+.toolbar-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 用户单元格：头像字块 + 名字/邮箱两行 */
+.user-cell {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  min-width: 0;
+}
+
+.user-avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.user-avatar.super {
+  background: var(--color-btn-primary);
+  color: #fff;
+}
+
+.user-avatar.admin {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.user-cell-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.self-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-subtle);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-normal);
+}
+
+.user-email {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted-cell {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* 角色 chip：全 neutral 分档，不用彩色 tag */
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.role-chip.admin {
+  background: var(--color-primary-subtle);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.role-chip.super {
+  background: var(--color-btn-primary);
+  color: #fff;
+}
+
+/* 状态：色点 + 文本（语义色只点在 8px 色点上） */
+.status-dot-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.status-dot.ok {
+  background: var(--color-success);
+}
+
+.status-dot.warn {
+  background: var(--color-warning);
+}
+
+.status-dot.off {
+  background: var(--color-text-faint);
+}
+
+/* 行操作：更多按钮 */
+.row-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.row-more:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.row-more:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.row-more-hit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .pagination-wrapper {
@@ -805,13 +1238,35 @@ onMounted(() => {
   margin-top: var(--space-4);
 }
 
+/* ===== 弹窗/抽屉 ===== */
 .detail-content {
   padding: 0 var(--space-4);
 }
 
-.reset-tip {
+.detail-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.user-avatar.large {
+  width: 48px;
+  height: 48px;
+  font-size: var(--text-lg);
+  border-radius: var(--radius-lg);
+}
+
+.detail-name {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.dialog-tip {
   margin: 0 0 var(--space-4);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -822,13 +1277,39 @@ onMounted(() => {
   padding: var(--space-3) 0;
 }
 
-.app-access-tip {
+.dialog-note {
   margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
-:deep(.el-table) {
-  margin-top: 0;
+/* 下拉内危险项红色（el-dropdown 渲染在 body，需 :global） */
+:global(.danger-item) {
+  color: var(--color-danger) !important;
+}
+
+:global(.danger-item:hover) {
+  background: var(--color-danger-subtle) !important;
+}
+
+/* 窄屏：统计卡降列 + 容器收窄 */
+@media (max-width: 960px) {
+  .stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .user-manage-view {
+    padding: var(--space-4);
+  }
+
+  .section-card {
+    padding: var(--space-4);
+  }
 }
 </style>
