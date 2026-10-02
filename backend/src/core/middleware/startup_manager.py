@@ -400,6 +400,14 @@ class AppLifespanManager:
         except Exception as e:
             self.logger.warning("关闭 MCP 连接时出错", error=str(e))
 
+        # 关闭 agent_api MCP server（session_manager 生命周期）
+        try:
+            if hasattr(self, '_app'):
+                from novamind.features.agent_api.api.startup import close_agent_api_components
+                await close_agent_api_components(self._app)
+        except Exception as e:
+            self.logger.warning("关闭 agent_api MCP server 时出错", error=str(e))
+
         # 关闭数据库引擎连接池
         try:
             await dispose_engine()
