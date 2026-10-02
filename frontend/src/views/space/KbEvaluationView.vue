@@ -10,6 +10,9 @@
           <!-- ============ 测试集管理 ============ -->
           <el-tab-pane label="测试集" name="test-sets">
             <div class="tab-toolbar">
+              <span v-if="testSets.length" class="toolbar-meta">
+                共 {{ testSets.length }} 个测试集
+              </span>
               <el-button type="primary" @click="showUploadDialog">
                 <el-icon><Upload /></el-icon>
                 上传测试集
@@ -28,7 +31,7 @@
               <el-table-column prop="created_at" label="创建时间" width="160">
                 <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="200" fixed="right">
+              <el-table-column label="操作" width="280" fixed="right">
                 <template #default="{ row }">
                   <el-button type="primary" link size="small" @click="showCreateTaskDialog(row)">
                     开始测评
@@ -387,33 +390,42 @@
               <!-- 对比结果 -->
               <div v-if="comparisonData" class="compare-section">
                 <div class="compare-summary">
-                  <el-tag type="success" effect="plain">提升 {{ comparisonData.summary.improved }}</el-tag>
-                  <el-tag type="danger" effect="plain">退化 {{ comparisonData.summary.degraded }}</el-tag>
-                  <el-tag type="info" effect="plain">持平 {{ comparisonData.summary.unchanged }}</el-tag>
+                  <el-tag type="success" effect="plain"
+                    >提升 {{ comparisonData.summary.improved }}</el-tag
+                  >
+                  <el-tag type="danger" effect="plain"
+                    >退化 {{ comparisonData.summary.degraded }}</el-tag
+                  >
+                  <el-tag type="info" effect="plain"
+                    >持平 {{ comparisonData.summary.unchanged }}</el-tag
+                  >
                   <el-tag v-if="comparisonData.summary.baseline_only" type="warning" effect="plain">
                     仅基线 {{ comparisonData.summary.baseline_only }}
                   </el-tag>
                 </div>
 
                 <div class="compare-metrics">
-                  <div
-                    v-for="m in comparisonData.metrics"
-                    :key="m.key"
-                    class="compare-metric"
-                  >
+                  <div v-for="m in comparisonData.metrics" :key="m.key" class="compare-metric">
                     <span class="metric-key">{{ metricLabel(m.key) }}</span>
                     <span class="metric-vals">
                       <span class="metric-baseline">{{ fmtMetric(m.baseline) }}</span>
                       <span :class="deltaClass(m.delta)" class="metric-current">
                         {{ fmtMetric(m.current) }}
-                        <template v-if="m.delta !== null"> ({{ m.delta > 0 ? '+' : '' }}{{ m.delta.toFixed(4) }})</template>
+                        <template v-if="m.delta !== null">
+                          ({{ m.delta > 0 ? '+' : '' }}{{ m.delta.toFixed(4) }})</template
+                        >
                       </span>
                     </span>
                   </div>
                 </div>
 
                 <el-table :data="comparisonData.cases" size="small" max-height="320">
-                  <el-table-column prop="question" label="问题" min-width="220" show-overflow-tooltip />
+                  <el-table-column
+                    prop="question"
+                    label="问题"
+                    min-width="220"
+                    show-overflow-tooltip
+                  />
                   <el-table-column label="基线" width="90" align="right">
                     <template #default="{ row }">{{ fmtCase(row.baseline_score) }}</template>
                   </el-table-column>
@@ -428,7 +440,9 @@
                   <el-table-column label="状态" width="80" align="center">
                     <template #default="{ row }">
                       <el-tag v-if="row.status === 'error'" type="danger" size="small">出错</el-tag>
-                      <el-tag v-else-if="row.status === 'removed'" type="warning" size="small">仅基线</el-tag>
+                      <el-tag v-else-if="row.status === 'removed'" type="warning" size="small"
+                        >仅基线</el-tag
+                      >
                     </template>
                   </el-table-column>
                 </el-table>
@@ -772,11 +786,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Upload,
-  Download,
-  Loading,
-} from '@element-plus/icons-vue'
+import { Upload, Download, Loading } from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -1190,7 +1200,10 @@ async function loadComparison() {
   comparisonData.value = null
   try {
     const data = await evaluationApi.getReportComparison(
-      spaceId.value, kbId.value, reportData.value.task_id, baselineTaskId.value,
+      spaceId.value,
+      kbId.value,
+      reportData.value.task_id,
+      baselineTaskId.value,
     )
     comparisonData.value = data
   } catch (e: unknown) {
@@ -1206,10 +1219,7 @@ async function loadComparisonCandidates(testSetId: number, currentTaskId: number
   try {
     const data = await evaluationApi.getTasks(spaceId.value, kbId.value, { limit: 100 })
     comparisonCandidates.value = (data.items || []).filter(
-      (t) =>
-        t.id !== currentTaskId &&
-        t.test_set_id === testSetId &&
-        t.status === 'completed',
+      (t) => t.id !== currentTaskId && t.test_set_id === testSetId && t.status === 'completed',
     )
   } catch {
     comparisonCandidates.value = []
@@ -1366,7 +1376,18 @@ onUnmounted(() => {
 }
 
 .tab-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+.toolbar-meta {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 /* ===== 回归对比（批次 3b） ===== */
@@ -1478,8 +1499,8 @@ onUnmounted(() => {
 }
 
 .score-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
@@ -1490,10 +1511,17 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
+/* 每个 section 的指标卡一行均分，禁止随机换行；窄屏降 2 列 */
 .score-items {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .score-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .score-item {
@@ -1702,10 +1730,9 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border);
 }
 
-/* 进度条 */
+/* 进度条：撑满状态列，与状态标签同宽对齐 */
 .progress-mini {
   margin-top: var(--space-1);
-  width: 80px;
 }
 
 /* 预览弹窗 */
