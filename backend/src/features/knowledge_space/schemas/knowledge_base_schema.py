@@ -456,6 +456,13 @@ class WikiGenerationConfig(BaseModel):
     max_pages_per_ingest: int = Field(default=50, ge=1, le=500, description="单文档生成/更新的页面上限")
     content_instructions: str | None = Field(default=None, max_length=2000)
     extraction_instructions: str | None = Field(default=None, max_length=2000)
+    boost_factor: float | None = Field(
+        default=None,
+        ge=0.1,
+        le=10.0,
+        description="检索时 wiki 页命中加权系数；None=默认 1.3（对齐 WeKnora wiki_boost）。"
+        "消费端见 search_service 的 wiki_boost_factor 解析，factor 参与 RetrievalQuery 缓存键",
+    )
 
 
 # ========== Full KB config ==========

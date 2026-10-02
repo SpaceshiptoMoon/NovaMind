@@ -164,7 +164,7 @@ class AppLifespanManager:
                     # 孤儿聊天附件清理：每天 03:17（上传超 7 天且无消息引用）
                     cron(cleanup_orphan_attachments, hour=3, minute=17),
                     # kb-ops A1 失败问答归因：每 30 分钟（回溯 7 天、批上限 50 条）
-                    cron(attribute_pending_events, minute=0, second=30),
+                    cron(attribute_pending_events, minute={0, 30}, second=30),
                     # kb-ops A2 知识运营周报：每周一 09:23（错开整点防任务风暴）
                     cron(send_weekly_kb_ops_digest, weekday=0, hour=9, minute=23),
                     # kb-ops B2 复审到期提醒：每天 10:07（提前量 YAML 可配）

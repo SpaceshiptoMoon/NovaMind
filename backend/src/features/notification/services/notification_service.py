@@ -42,8 +42,11 @@ class NotificationService:
         link: str | None = None,
         extra_data: dict | None = None,
     ) -> Notification:
-        """
-        发送站内通知 + 可选邮件
+        """发送站内通知 + 可选邮件（落库 + WS 推送 + 偏好过滤的组合单元）。
+
+        入口约定：跨 feature 单发一律走静态 ``notify``（会话策略 + 吞错）；
+        仅在批量扇出需要逐条观察失败（如 kb_ops 周报/复审按成员计数）时，
+        才直接使用本实例方法并自行管理会话与异常。
 
         Args:
             user_id: 接收通知的用户 ID
@@ -210,7 +213,7 @@ class NotificationService:
         link: str | None = None,
         extra_data: dict | None = None,
     ) -> None:
-        """跨 feature 通知公共入口（原 NotificationPort 适配器语义上移）。
+        """跨 feature 通知公共入口（原 NotificationPort 适配器语义上移；批量扇出例外见 send_notification 入口约定）。
 
         会话策略：
         - ``db`` 传入：HTTP 请求上下文，复用调用方会话（通知与主业务同事务）。
