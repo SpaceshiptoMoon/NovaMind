@@ -1521,12 +1521,21 @@ export interface EvaluationSummary {
   generation: EvaluationGenerationScores | null
   end_to_end: EvaluationEndToEndScores | null
   human_scores: number | null
+  /** 切分健康统计（命中样本去重）：碎片/边界信号，null = 无检索样本 */
+  chunk_health?: {
+    total_chunks: number
+    short_chunks: number
+    unterminated_chunks: number
+  } | null
 }
 
 export interface RetrievedChunk {
   chunk_id: string
   content: string
   score: number
+  document_id?: number
+  /** chunk 溯源：来源文档名（映射缺失时为空） */
+  document_name?: string | null
 }
 
 export interface EvaluationDetail {

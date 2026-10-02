@@ -11560,11 +11560,27 @@
       "TestCase": {
         "description": "单条测试用例",
         "properties": {
+          "contexts": {
+            "description": "自带参考资料（gold contexts）；非空时该用例跳过检索，直接评生成质量",
+            "items": {
+              "type": "string"
+            },
+            "title": "Contexts",
+            "type": "array"
+          },
           "expected_answer": {
             "description": "期望答案",
             "minLength": 1,
             "title": "Expected Answer",
             "type": "string"
+          },
+          "expected_sources": {
+            "description": "期望命中的来源（document_id 或 chunk_id）；提供时检索指标按硬基准计算",
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Sources",
+            "type": "array"
           },
           "question": {
             "description": "测试问题",

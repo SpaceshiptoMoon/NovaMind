@@ -48,6 +48,7 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.storage.minio_client import MinioClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -120,6 +121,41 @@ RETRIEVAL_FAILURE_SUGGESTIONS = {
 
 # 换模式重放的候选顺序（hybrid 系优先，当前模式自动跳过）
 _REPLAY_FALLBACK_MODES = ["content_hybrid", "question_hybrid", "all_hybrid", "content_bm25", "question_bm25"]
+
+# 切分健康统计（批次 3，纯字符串统计零 LLM 成本）：
+# 碎片阈值 50 字符——中文 50 字约 1-2 句，明显低于常规切分目标（200-500 字），
+# 低于该量级的 chunk 几乎无法独立承载完整语义；只作命中样本的统计信号，不做硬判。
+CHUNK_SHORT_LENGTH = 50
+# 中英句末标点（切分边界信号：命中 chunk 以句中内容收尾提示边界切割）
+_SENTENCE_END_CHARS = set("。！？；…!?;.")
+
+
+def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
+    """统计命中 chunk 的切分健康度（按 chunk_id 去重）。
+
+    Returns:
+        {total_chunks, short_chunks, unterminated_chunks}：
+        short = 长度低于 CHUNK_SHORT_LENGTH 的碎片信号；
+        unterminated = 尾部无句末标点的切分边界信号（弱信号，仅统计不判定）。
+    """
+    unique: dict[str, dict[str, Any]] = {}
+    for chunk in chunk_list:
+        cid = str(chunk.get("chunk_id", ""))
+        if cid and cid not in unique:
+            unique[cid] = chunk
+    short = sum(
+        1 for c in unique.values() if len(str(c.get("content", ""))) < CHUNK_SHORT_LENGTH
+    )
+    unterminated = 0
+    for c in unique.values():
+        tail = str(c.get("content", "")).rstrip()
+        if tail and tail[-1] not in _SENTENCE_END_CHARS:
+            unterminated += 1
+    return {
+        "total_chunks": len(unique),
+        "short_chunks": short,
+        "unterminated_chunks": unterminated,
+    }
 
 
 class EvaluationService:
@@ -929,6 +965,22 @@ class EvaluationService:
                 await task_repo.update_progress(task_id, {"current": 0, "total": len(cases)})
                 await session.commit()
 
+                # chunk 溯源映射（批次 3）：doc_id → 文件名，报告召回结果标注来源文档。
+                # R2 防环细则：读对方数据走对方 models 直查，不 import repository 内部。
+                doc_names: dict[int, str] = {}
+                try:
+                    from novamind.features.knowledge_space.models.document import Document
+
+                    rows = await session.execute(
+                        select(Document.id, Document.filename).where(
+                            Document.kb_id == test_set_obj.kb_id,
+                            Document.deleted_at.is_(None),
+                        )
+                    )
+                    doc_names = {row_id: name for row_id, name in rows.all()}
+                except Exception as e:
+                    logger.warning("加载文档名映射失败（溯源降级为仅 chunk_id）", kb_id=test_set_obj.kb_id, error=str(e))
+
                 # 创建评估器
                 # 模型客户端解析必须用后台独立会话的 ModelConfigService：
                 # 本协程在 HTTP 请求结束后运行，self.model_config_service 绑定的
@@ -1015,6 +1067,7 @@ class EvaluationService:
                                     expected_answer=case["expected_answer"],
                                     contexts=case.get("contexts") or [],
                                     expected_sources=case.get("expected_sources") or [],
+                                    doc_names=doc_names,
                                     test_set_obj=test_set_obj, config=config,
                                     retrieval_evaluator=retrieval_evaluator,
                                     generation_evaluator=generation_evaluator,
@@ -1080,6 +1133,15 @@ class EvaluationService:
                     retrieval_summary["gold_cases"] = gold_case_count
                     retrieval_summary["retrieved_cases"] = len(retrieval_results)
 
+                # 切分健康统计（批次 3）：跨用例按 chunk_id 去重的命中样本
+                hit_chunks = [
+                    c
+                    for d in details
+                    if "cancelled" not in d and "error" not in d and not d.get("gold_mode")
+                    for c in d.get("retrieved_chunks", [])
+                ]
+                chunk_health = _compute_chunk_health(hit_chunks) if hit_chunks else None
+
                 gen_scores = {"faithfulness": [], "answer_relevance": [], "correctness": [], "quality": []}
                 for d in details:
                     gs = d.get("generation_scores", {})
@@ -1118,6 +1180,8 @@ class EvaluationService:
                         "end_to_end": end_to_end,
                         "human_scores": None,
                         "elapsed_seconds": elapsed,
+                        # 切分健康（批次 3）：命中样本的碎片/边界信号，None = 无检索样本
+                        "chunk_health": chunk_health,
                     },
                     "details": details,
                 }
@@ -1321,6 +1385,7 @@ class EvaluationService:
         retrieval_port: SearchService | None = None,
         contexts: list[str] | None = None,
         expected_sources: list[str] | None = None,
+        doc_names: dict[int, str] | None = None,
     ) -> dict[str, Any]:
         """评估单条用例：检索 → 检索指标 → 按配置生成回答 → 生成质量评分 → 端到端指标，返回逐条详情。
 
@@ -1331,6 +1396,7 @@ class EvaluationService:
         """
         contexts = contexts or []
         expected_sources = expected_sources or []
+        doc_names = doc_names or {}
         detail: dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,
         }
@@ -1370,6 +1436,8 @@ class EvaluationService:
                     "score": c.get("score", 0),
                     # 硬基准（expected_sources）按 document_id 比对需要此字段
                     "document_id": c.get("document_id"),
+                    # chunk 溯源（批次 3）：命中结果标注来源文档名
+                    "document_name": doc_names.get(c.get("document_id")),
                 }
                 for c in chunks
             ]

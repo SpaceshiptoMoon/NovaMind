@@ -577,6 +577,27 @@
                           {{ diagnosisLabel(String(cat)) }} {{ count }} ·
                         </template>
                       </span>
+                      <span
+                        v-if="reportData.summary.retrieval && reportData.summary.chunk_health"
+                        class="score-section-note"
+                      >
+                        命中 {{ reportData.summary.chunk_health.total_chunks }} 个 chunk：碎片
+                        {{ reportData.summary.chunk_health.short_chunks }} · 无句末标点收尾
+                        {{ reportData.summary.chunk_health.unterminated_chunks }}
+                        （<template v-if="reportData.summary.chunk_health.short_chunks > 0"
+                          >碎片多提示切分过碎；</template
+                        >
+                        <template v-if="reportData.summary.chunk_health.unterminated_chunks > 0"
+                          >边界收尾多提示句中切割</template
+                        >
+                        <template
+                          v-if="
+                            reportData.summary.chunk_health.short_chunks === 0 &&
+                            reportData.summary.chunk_health.unterminated_chunks === 0
+                          "
+                          >切分形态健康</template
+                        >）
+                      </span>
                     </h4>
                     <div class="score-items">
                       <div
@@ -790,6 +811,13 @@
                         >
                           <div class="recall-chunk-header">
                             <span class="recall-chunk-id">{{ chunk.chunk_id }}</span>
+                            <span
+                              v-if="chunk.document_name"
+                              class="recall-chunk-source"
+                              :title="`来源文档 #${chunk.document_id ?? '?'}`"
+                            >
+                              {{ chunk.document_name }}
+                            </span>
                             <el-tag v-if="chunk.score != null" size="small" type="info">
                               Score: {{ chunk.score.toFixed(4) }}
                             </el-tag>
@@ -1982,6 +2010,18 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--color-text-muted);
   font-family: monospace;
+}
+
+.recall-chunk-source {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recall-chunk-content {
