@@ -223,12 +223,40 @@ async def test_permission_boundary_stub_not_reachable(attr_db):
 
 
 @pytest.mark.asyncio
-async def test_space_fallback_from_session_config(attr_db):
-    """space 兜底（O2 教训）：消息行 space_id 为 None 时从会话 RAG 绑定解析。
+async def test_space_anchored_to_message_row_not_session_config(attr_db):
+    """空间锚点只认消息行（写侧收口）：space_id 为 NULL 的存量消息拒绝归因。
 
-    真实接口验证抓到的场景：点踩消息 space 为空 → 候选可进（谓词已放宽）→
-    归因用会话配置的 space_id 重放检索。
+    收口前此处验证「从会话 RAG 配置兜底」；收口后兜底删除——消息行 NULL 即
+    ValueError，即便会话有 RAG 绑定也不从那里取空间（多配置源互相猜测已删）。
+    重放检索参数（kb_ids 等）仍从会话配置读，与此无关。
     """
+    from novamind.features.knowledge_ops.tasks.attribution_worker import (
+        attribute_single_event,
+    )
+    from novamind.features.qa.models.session_config import SessionConfig
+
+    factory, _ = attr_db
+    # 消息 space_id=None（收口前存量），但会话绑定了 space 10
+    await _insert_pair(factory, answer_id=2, session_id="s-fallback", space_id=None)
+    async with factory() as session:
+        session.add(SessionConfig(session_id="s-fallback", user_id=1,
+                                  kb_bindings={"space_id": 10, "kb_ids": [6], "auto_rag": True}))
+        await session.commit()
+
+    async def _fail_replay(db, **kwargs):  # pragma: no cover - 走到即失败
+        raise AssertionError("空间锚点缺失应提前拒绝，不应发起重放检索")
+
+    with patch(
+        "novamind.features.knowledge_ops.tasks.attribution_worker._replay_search", _fail_replay
+    ):
+        async with factory() as db:
+            with pytest.raises(ValueError, match="space_id"):
+                await attribute_single_event(db, 2)
+
+
+@pytest.mark.asyncio
+async def test_space_from_message_row_with_session_config_for_replay_params(attr_db):
+    """正例：消息行有空间锚点，kb_ids 等重放参数照常从会话配置读。"""
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         ATTR_RETRIEVAL_FAILURE,
         attribute_single_event,
@@ -236,11 +264,9 @@ async def test_space_fallback_from_session_config(attr_db):
     from novamind.features.qa.models.session_config import SessionConfig
 
     factory, _ = attr_db
-    # 消息 space_id=None
-    await _insert_pair(factory, answer_id=2, session_id="s-fallback", space_id=None)
-    # 会话绑定了 space 10
+    await _insert_pair(factory, answer_id=2, session_id="s-row", space_id=10)
     async with factory() as session:
-        session.add(SessionConfig(session_id="s-fallback", user_id=1,
+        session.add(SessionConfig(session_id="s-row", user_id=1,
                                   kb_bindings={"space_id": 10, "kb_ids": [6], "auto_rag": True}))
         await session.commit()
 
@@ -256,8 +282,8 @@ async def test_space_fallback_from_session_config(attr_db):
         async with factory() as db:
             attr = await attribute_single_event(db, 2)
     assert attr == ATTR_RETRIEVAL_FAILURE
-    assert captured["space_id"] == 10  # 兜底解析生效
-    assert captured["kb_ids"] == [6]
+    assert captured["space_id"] == 10  # 锚点来自消息行
+    assert captured["kb_ids"] == [6]   # 重放参数来自会话配置
 
 
 @pytest.mark.asyncio

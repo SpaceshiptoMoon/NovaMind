@@ -303,21 +303,15 @@ class QAService:
                     await self.cache_service.invalidate_session_messages(message.session_id, user_id)
                 return MessageFeedbackResponse(message_id=message_id, rating=None, comment=None)
 
-            # space 锚点兜底：消息行不回填 space_id（RAG 绑定在 session_config），
-            # 反馈表的 space 冗余维度直接取消息行会恒 NULL，看板/gap 报告按空间
-            # 聚合就查不到点踩候选——从会话 RAG 配置兜底（与 O2/A1 同根因第三处）。
-            feedback_space_id = message.space_id
-            if feedback_space_id is None:
-                config = await self._get_session_config_with_cache(message.session_id, user_id)
-                feedback_space_id = config.rag_space_id if config else None
-
+            # space 锚点：消息落库时已回填（ai_chat_service._prepare_chat 写侧收口），
+            # 此处直接读消息行——不再从会话 RAG 配置兜底。
             await feedback_repo.upsert(
                 message_id=message_id,
                 user_id=user_id,
                 session_id=message.session_id,
                 rating=request.rating,
                 comment=request.comment,
-                space_id=feedback_space_id,
+                space_id=message.space_id,
                 kb_id=message.kb_id,
             )
             if self.cache_service:
@@ -352,21 +346,15 @@ class QAService:
             if message.role != "assistant":
                 raise UnauthorizedAccessException("只能上报 AI 回答的引用点击")
 
-            # 权限域锚点：消息行的 space_id 常为空（RAG 绑定在 session_config，
-            # 落消息时不回填 message.space_id），空则从会话 RAG 配置兜底——
-            # 缺锚点的事件按空间查询永远查不到（真实接口验证抓到过）。
-            space_id = message.space_id
-            if space_id is None:
-                config = await self._get_session_config_with_cache(message.session_id, user_id)
-                space_id = config.rag_space_id if config else None
-
+            # 权限域锚点：消息落库时已回填（ai_chat_service._prepare_chat 写侧收口），
+            # 直接读消息行——不再从会话 RAG 配置兜底。
             from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
 
             await EventRecorder().record(
                 event_type="citation_click",
                 user_id=user_id,
                 session_id=message.session_id,
-                space_id=space_id,
+                space_id=message.space_id,
                 kb_id=request.kb_id,
                 extra={
                     "message_id": message_id,

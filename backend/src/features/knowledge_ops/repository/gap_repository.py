@@ -120,13 +120,11 @@ class GapRepository:
                 MessageFeedback.created_at < end,
             )
         )
-        # 空间过滤与失败判定共用 down_subq 反馈通道：点踩候选的空间锚点在反馈表
-        # （反馈落行已从会话配置兜底 space）；零命中/低分候选的消息行同样常为空——
-        # 这两类候选的空间归属走「反馈表 OR 消息行」双通道外的第三通道：
-        # extra.retrieval.kb_ids 无法直接映射空间，故对无 space 行再加会话级回查
-        # 不可行（SQL 内无会话配置 join），保守口径 = 只统计可定位空间的候选。
-        # 消息行 space 为空且无点踩的零命中候选暂不进空间报告（已知口径缺口，
-        # 待 A1 写回时冗余 space_id 后收口——见 attribution_meta 后续增强）。
+        # 空间过滤走「消息行 OR 反馈表冗余」双通道：新消息落库已回填 space_id
+        # （写侧收口），直接由消息行通道命中；反馈表通道服务收口前的存量点踩
+        # （反馈落行时曾从会话配置兜底 space）。历史口径缺口——「消息行 space
+        # 为空且无点踩的零命中候选」——随写侧收口自然消失，存量仅剩不可恢复的
+        # NULL 行，不进空间报告（与归因谓词同口径）。
         conditions = [
             QuestionAnswer.role == "assistant",
             or_(

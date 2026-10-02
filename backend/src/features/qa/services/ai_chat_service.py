@@ -69,6 +69,10 @@ class ChatPreparation:
     # 检索埋点（批次 2b 知识缺口看板口径）：RAG 启用时恒写。
     # raw_count=过滤前数量（区分"真无结果"与"被阈值过滤"）、result_count/max_score=过滤后。
     retrieval_meta: dict | None = None
+    # 会话 RAG 绑定的空间锚点（_prepare_chat 从 session_config 解析一次）。
+    # 写侧收口：user/assistant 消息落库均回填 message.space_id，运营链路
+    # （反馈/citation_click/归因）直接读消息行，无需各自读会话配置兜底。
+    rag_space: int | None = None
     # 生效的生成参数（请求 > 会话表 llm_config > 默认，由 _prepare_chat 合并）
     max_tokens: int = 2048
     temperature: float = 0.7
@@ -191,6 +195,11 @@ class AIChatService:
         # system_prompt：会话表 llm_config > QA 模板
         system_prompt = (session_config.llm_system_prompt if session_config else None) or PromptManager.get_template("qa_ai_chat_system")
 
+        # 空间锚点（写侧收口）：RAG 绑定在会话表而非请求里，落消息时在这里
+        # 解析一次并回填 message.space_id——之后反馈/citation_click/归因等
+        # 运营消费方直接读消息行，不再各自查会话配置兜底。
+        rag_space = session_config.rag_space_id if session_config else None
+
         # 解析附件，构造 extra（不修改 content）
         attachments_data = None
         attachments_info = None
@@ -204,9 +213,12 @@ class AIChatService:
                 ]
                 extra = {"attachments": attachments_info}
 
-        # 添加用户消息到会话（content 保持原始输入）
+        # 添加用户消息到会话（content 保持原始输入；space_id 回填见上方写侧收口）
         user_message = await self.qa_service.add_message(
-            QARequest(content=content, role="user", session_id=session_id, extra=extra),
+            QARequest(
+                content=content, role="user", session_id=session_id,
+                space_id=rag_space, extra=extra,
+            ),
             user_id,
         )
 
@@ -226,9 +238,9 @@ class AIChatService:
         do_web = enable_web_search
         do_rag = bool(session_config and getattr(session_config, "auto_rag", False))
 
-        # RAG 细节（空间/库/拒答/阈值/模式/top_k）统一从会话表读；
-        # 前端不再传 space_id/kb_id/kb_ids/enable_refusal，避免请求与会话表两套配置源冲突
-        rag_space = session_config.rag_space_id if session_config else None
+        # RAG 细节（库/拒答/阈值/模式/top_k）统一从会话表读；
+        # 前端不再传 space_id/kb_id/kb_ids/enable_refusal，避免请求与会话表两套配置源冲突。
+        # rag_space 已在落消息前解析（写侧收口），此处复用不再重复读。
         rag_kb_ids = session_config.rag_kb_ids if session_config else []
         refusal_on = session_config.rag_refusal_enabled if session_config else False
         score_threshold = session_config.rag_score_threshold if session_config else 0.3
@@ -494,6 +506,7 @@ class AIChatService:
             confidence=prep_confidence,
             refused=prep_refused,
             retrieval_meta=retrieval_meta,
+            rag_space=rag_space,
             max_tokens=eff_max_tokens,
             temperature=eff_temperature,
             top_p=eff_top_p,
@@ -955,6 +968,7 @@ class AIChatService:
                             content=ai_response_content,
                             role="assistant",
                             session_id=prep.session_id,
+                            space_id=prep.rag_space,
                             extra=self._build_ai_extra(prep),
                         ),
                         user_id,
@@ -987,6 +1001,7 @@ class AIChatService:
                             content=ai_response_content,
                             role="assistant",
                             session_id=prep.session_id,
+                            space_id=prep.rag_space,
                             extra=_ai_extra,
                         ),
                         user_id,
@@ -1171,6 +1186,7 @@ class AIChatService:
                         content=full_response,
                         role="assistant",
                         session_id=session_id,
+                        space_id=prep.rag_space,
                         extra=self._build_ai_extra(prep),
                     ),
                     user_id,
@@ -1243,6 +1259,7 @@ class AIChatService:
                         content=full_response,
                         role="assistant",
                         session_id=session_id,
+                        space_id=prep.rag_space,
                         extra=_ai_extra,
                     ),
                     user_id,

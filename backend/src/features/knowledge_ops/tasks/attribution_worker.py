@@ -95,9 +95,9 @@ async def attribute_pending_events(ctx: dict | None = None) -> dict[str, int]:
         )
         conditions = [
             QuestionAnswer.role == "assistant",
-            # space 门槛不能硬卡：消息行不回填 space_id（O2 教训），点踩/低分候选
-            # 的空间锚点在反馈表/会话配置里，由 attribute_single_event 兜底解析。
-            # 这里只排除「连会话都没有的脏数据」交给单条归因的 ValueError 路径。
+            # space 锚点在谓词层硬卡：消息落库已回填 space_id（写侧收口），NULL 行
+            # 只存在于收口前的存量——它们无法归因，放进批只会逐条 ValueError 空转。
+            QuestionAnswer.space_id.isnot(None),
             QuestionAnswer.created_at >= window_start,
             func.coalesce(extra["attribution"].as_string(), "") == "",
             or_(zero_hit_cond, low_cond, QuestionAnswer.id.in_(down_subq)),
@@ -152,11 +152,16 @@ async def attribute_single_event(db, message_id: int) -> str:
     if existing:
         return existing
 
-    # 空间锚点：消息行不回填 space_id（O2 教训），从会话 RAG 配置兜底
+    # 空间锚点：消息落库时已回填（ai_chat_service._prepare_chat 写侧收口），
+    # 权威来源是消息行本身——不再从会话 RAG 配置兜底（多配置源互相猜测的
+    # 复杂度已删除）。存量消息（收口前落的，space 为 NULL）无锚点即拒绝归因，
+    # 宁缺归因不给错归因。
+    if row.space_id is None:
+        raise ValueError(f"消息 {message_id} 无 space_id（写侧收口前的存量消息），无法归因")
+    space_id = row.space_id
+    # 重放检索参数（kb_ids/search_mode/top_k）仍从会话 RAG 配置读——这是
+    # 「当时检索怎么配的」的原始记录，与空间锚点是两回事。
     rag_cfg = await _load_session_rag_config(db, row.session_id)
-    space_id = row.space_id or rag_cfg.get("space_id")
-    if space_id is None:
-        raise ValueError(f"消息 {message_id} 无 space_id 且会话无 RAG 绑定，无法归因")
     kb_ids = rag_cfg.get("kb_ids") or []
     search_mode = rag_cfg.get("search_mode") or "content_hybrid"
     top_k = int(rag_cfg.get("top_k") or 5)
