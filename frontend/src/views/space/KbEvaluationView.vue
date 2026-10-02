@@ -13,10 +13,16 @@
               <span v-if="testSets.length" class="toolbar-meta">
                 共 {{ testSets.length }} 个测试集
               </span>
-              <el-button type="primary" @click="showUploadDialog">
-                <el-icon><Upload /></el-icon>
-                上传测试集
-              </el-button>
+              <div class="toolbar-actions">
+                <el-button @click="formatDialogVisible = true">
+                  <el-icon><Document /></el-icon>
+                  格式说明
+                </el-button>
+                <el-button type="primary" @click="showUploadDialog">
+                  <el-icon><Upload /></el-icon>
+                  上传测试集
+                </el-button>
+              </div>
             </div>
 
             <el-table :data="testSets" v-loading="tsLoading" stripe>
@@ -135,6 +141,71 @@
               >上传</el-button
             >
           </template>
+        </el-dialog>
+
+        <!-- ============ 测试集格式规范弹窗 ============ -->
+        <el-dialog
+          v-model="formatDialogVisible"
+          title="测试集格式规范"
+          width="720px"
+          top="6vh"
+          class="kb-eval-format-dialog"
+          destroy-on-close
+        >
+          <div class="format-doc">
+            <h4>基本要求</h4>
+            <ul class="format-rules">
+              <li>支持 <b>JSON</b> 或 <b>CSV</b> 文件，大小不超过 <b>10MB</b>；</li>
+              <li>文件编码为 <b>UTF-8</b>（CSV 带 / 不带 BOM 均可）；</li>
+              <li>每条用例包含「问题 + 期望答案」两要素，任一缺失会导致整体上传失败；</li>
+              <li>测试集名称以上传表单填写为准。</li>
+            </ul>
+
+            <h4>字段说明</h4>
+            <el-table :data="formatFields" size="small" border>
+              <el-table-column prop="field" label="字段" width="170" />
+              <el-table-column prop="required" label="必填" width="70" align="center" />
+              <el-table-column prop="desc" label="说明" min-width="200" />
+            </el-table>
+
+            <div class="format-block-head">
+              <h4>JSON 示例</h4>
+              <div class="format-block-actions">
+                <el-button size="small" text @click="copyExample('json')">
+                  <el-icon><CopyDocument /></el-icon>
+                  复制
+                </el-button>
+                <el-button size="small" text @click="downloadTemplate('json')">
+                  <el-icon><Download /></el-icon>
+                  下载模板
+                </el-button>
+              </div>
+            </div>
+            <pre class="format-pre"><code>{{ FORMAT_EXAMPLES.json }}</code></pre>
+
+            <div class="format-block-head">
+              <h4>CSV 示例</h4>
+              <div class="format-block-actions">
+                <el-button size="small" text @click="copyExample('csv')">
+                  <el-icon><CopyDocument /></el-icon>
+                  复制
+                </el-button>
+                <el-button size="small" text @click="downloadTemplate('csv')">
+                  <el-icon><Download /></el-icon>
+                  下载模板
+                </el-button>
+              </div>
+            </div>
+            <pre class="format-pre"><code>{{ FORMAT_EXAMPLES.csv }}</code></pre>
+
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              title="解析规则要点"
+              description="JSON 根元素必须是对象且含非空数组 test_cases；CSV 首行表头必须包含 question 和 expected_answer 两列；两者中多余的字段 / 列会被忽略，可自行保留备注信息；答案为空或文件没有数据行时上传报错，错误信息会指出具体行号。"
+            />
+          </div>
         </el-dialog>
 
         <!-- ============ 测试集预览弹窗 ============ -->
@@ -791,7 +862,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, Loading } from '@element-plus/icons-vue'
+import { Upload, Download, Loading, Document, CopyDocument } from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -852,6 +923,60 @@ async function fetchTestSets() {
   } finally {
     tsLoading.value = false
   }
+}
+
+// 格式规范弹窗：示例与字段说明须与后端 test_set_parser.py 的解析规则保持一致
+const formatDialogVisible = ref(false)
+
+const FORMAT_EXAMPLES = {
+  json: `{
+  "test_cases": [
+    {
+      "question": "什么是 RAG？",
+      "expected_answer": "RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。"
+    },
+    {
+      "question": "文档切分的常见策略有哪些？",
+      "expected_answer": "常见策略包括固定长度切分、递归切分和语义切分。"
+    }
+  ]
+}`,
+  csv: `question,expected_answer
+什么是 RAG？,RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。
+文档切分的常见策略有哪些？,常见策略包括固定长度切分、递归切分和语义切分。`,
+} as const
+
+const formatFields = [
+  { field: 'question', required: '是', desc: '用户问题，评测时用它在知识库中检索并生成答案' },
+  {
+    field: 'expected_answer',
+    required: '是',
+    desc: '期望答案（标准答案），作为正确性 / 忠实度评分的参照',
+  },
+  { field: '其他字段 / 列', required: '否', desc: '解析时忽略，可自行保留备注信息' },
+]
+
+/** 复制格式示例到剪贴板 */
+async function copyExample(fmt: 'json' | 'csv') {
+  try {
+    await navigator.clipboard.writeText(FORMAT_EXAMPLES[fmt])
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动选择文本复制')
+  }
+}
+
+/** 把格式示例下载为模板文件 */
+function downloadTemplate(fmt: 'json' | 'csv') {
+  const blob = new Blob([FORMAT_EXAMPLES[fmt]], {
+    type: fmt === 'json' ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fmt === 'json' ? 'testset-template.json' : 'testset-template.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 // 上传测试集
@@ -1395,10 +1520,18 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 /* ===== 长内容弹窗：固定视口高度，标题/footer 常驻、body 内嵌滚动 =====
    dialog 经 teleport 渲染，scoped 属性选择器命不中根元素，须用 :global；
    类名带 kb-eval- 前缀避免全局污染 */
 :global(.kb-eval-preview-dialog),
+:global(.kb-eval-format-dialog),
 :global(.kb-eval-create-dialog),
 :global(.kb-eval-report-dialog) {
   display: flex;
@@ -1411,17 +1544,61 @@ onUnmounted(() => {
   height: 76vh;
 }
 
+:global(.kb-eval-format-dialog) {
+  height: 80vh;
+}
+
 :global(.kb-eval-create-dialog),
 :global(.kb-eval-report-dialog) {
   height: 86vh;
 }
 
 :global(.kb-eval-preview-dialog .el-dialog__body),
+:global(.kb-eval-format-dialog .el-dialog__body),
 :global(.kb-eval-create-dialog .el-dialog__body),
 :global(.kb-eval-report-dialog .el-dialog__body) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+.format-doc h4 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.format-doc h4:first-child {
+  margin-top: 0;
+}
+
+.format-rules {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--color-text-secondary);
+}
+
+.format-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.format-pre {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.7;
+  font-family: var(--font-mono, Menlo, Consolas, monospace);
+  color: var(--color-text);
+  white-space: pre;
 }
 
 /* ===== 回归对比（批次 3b） ===== */
