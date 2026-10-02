@@ -20,6 +20,12 @@
 - [`repository-structure-cleanup-execution-plan.md`](./repository-structure-cleanup-execution-plan.md)：按批次展开的清理执行计划
 - [`repository-structure-cleanup-thorough-implementation.md`](./repository-structure-cleanup-thorough-implementation.md)：更彻底的清理版本
 - [`fix-upload-chunk-media-issues-2026-07.md`](./fix-upload-chunk-media-issues-2026-07.md)：上传 500 / 分块分页 / ASR 路径 / VLM 降级 / 坐标泄漏修复记录（2026-07，已全部修复）
+- [`frontend-development-plan-2026-07.md`](./frontend-development-plan-2026-07.md)：前端开发计划（2026-07）
+- [`REFACTOR-ragflow-style-migration.md`](./REFACTOR-ragflow-style-migration.md)：ragflow 务实单体风格迁移方案（✅ 2026-09-21 批次 0-6 全部合并 main，R1-R6 生效；详版规则见 backend/CLAUDE.md §import 依赖规则）
+- [`REFACTOR-ragflow-style-alignment-round2.md`](./REFACTOR-ragflow-style-alignment-round2.md)：第二轮 ragflow 对齐（✅ 2026-09-21 全部批次完成；第三轮仪式清除未单独成文）
+- [`engine-restructure-6x-revert-and-reorganize.md`](./engine-restructure-6x-revert-and-reorganize.md)：引擎抽库方案变更与 6x 批次执行记录（engines/ 目录分层已落地）
+- [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
+- [`knowledge-operations-loop-plan.md`](./knowledge-operations-loop-plan.md)：知识运营闭环开发计划（✅ 2026-10-02 八批次全部完成——O1/O2/A1/A2/B1/B2/C/D + 前端批次；当前事实见 [`../../knowledge-space/current/kb-ops-loop-summary.md`](../../knowledge-space/current/kb-ops-loop-summary.md)）
 
 ## 使用约定
 

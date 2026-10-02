@@ -107,7 +107,7 @@
 
 ## import 依赖规则（硬规则，ragflow 务实单体风格）
 
-R1–R6（详版见 `docs/plans/active/REFACTOR-ragflow-style-migration.md` §1）：
+R1–R6（详版见 `docs/plans/historical/REFACTOR-ragflow-style-migration.md` §1）：
 
 - **R1 import 无环**：`features`/`engines`/`shared`/`setting`/`core` 之间允许任意方向 import（含 engines→features、core→features），但整个 `src/` 模块级 import 图（含函数内懒 import）必须无环。机器门禁：`tests/architecture/test_import_acyclic_gate.py`（AST 全图收集 + Tarjan SCC）。
 - **R2 跨 feature 走公共面**：允许 import 对方 `services/` 公共类、`schemas/`、`models/` 中显式导出的枚举与行级只读访问；不 import 对方 `repository/` 内部、不下划线私有成员（机器门禁：`tests/architecture/test_no_cross_module_private_imports.py`）。**防环细则**：需要对方数据但对方 service 已依赖自己时，import 对方 `models/` 直查，不 import 对方 `services/`（典型：user ↔ knowledge_space）。

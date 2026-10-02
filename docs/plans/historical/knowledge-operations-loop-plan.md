@@ -3,6 +3,7 @@
 > **设计依据**：[`docs/knowledge-space/process/knowledge-operations-loop-design.md`](../../knowledge-space/process/knowledge-operations-loop-design.md)（痛点 → 归因模型 → 回路 → 路线图）。
 > **计划性质**：执行计划，按批次拆解到文件级改动点与验收标准，可直接入 worktree 开发。
 > **基线日期**：2026-10-01，现状结论基于当日源码核实。
+> **状态**：✅ 2026-10-02 八批次（O1/O2/A1/A2/B1/B2/C/D + 前端）全部完成并入 main，本文转为历史归档；当前事实见 `docs/knowledge-space/current/kb-ops-loop-summary.md`。
 
 ---
 

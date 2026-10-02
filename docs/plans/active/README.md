@@ -10,15 +10,10 @@
 
 ## 当前文档
 
-- [`REFACTOR-ragflow-style-migration.md`](./REFACTOR-ragflow-style-migration.md)：ragflow 务实单体风格迁移详细方案（✅ 2026-09-21 已全部完成，R1-R6 生效，作历史工作底稿保留）
-- [`REFACTOR-ragflow-style-alignment-round2.md`](./REFACTOR-ragflow-style-alignment-round2.md)：第二轮 ragflow 对齐（✅ 2026-09-21 全部批次完成；第三轮仪式清除 f49558c..145f1b2 未单独成文）
-- [`engine-restructure-6x-revert-and-reorganize.md`](./engine-restructure-6x-revert-and-reorganize.md)：引擎抽库方案变更与 6x 批次执行记录（engines/ 目录分层已落地；agent/rag/eval/resume/deep_research 已迁入）
-- [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（loop detection / 审批 / 观测 / planning flow）
-- [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
-- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（MCP / 搜索 / 工具；G2/G3 已被 2026-08 用户决策推翻，仅保留参考价值）
-- [`knowledge-operations-loop-plan.md`](./knowledge-operations-loop-plan.md)：知识运营闭环开发计划（✅ 2026-10-02 八批次全部完成——O1/O2/A1/A2/B1/B2/C/D + 前端批次；当前事实见 [`../../knowledge-space/current/kb-ops-loop-summary.md`](../../knowledge-space/current/kb-ops-loop-summary.md)；遗留 backlog 记于该文 §4.3）
+- [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（E1-E4/E6/E7 已落地；E5 完整审批 UI、E8 OTel 观测、PlanningTool 二期待做；§9 checkbox 未回填）
+- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（G4-G7 待办有效：前端 MCP 管理 UI 缺失；G2/G3 已被 2026-08 用户决策推翻，仅保留参考价值）
 
-已完成的仓库结构清理四部曲与媒体问题修复记录（2026-07）已移入 [`../historical/`](../historical/)。
+已归档至 [`../historical/`](../historical/)：ragflow 风格迁移两轮（2026-09-21 完成）、引擎抽库 6x 重组、QA RAG 管道重构（架构记录）、知识运营闭环计划（2026-10-02 八批次完成），以及 2026-07 的仓库结构清理四部曲与媒体问题修复记录。
 
 ## 使用约定
 

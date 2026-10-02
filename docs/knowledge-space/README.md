@@ -16,7 +16,8 @@
 3. [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)：知识库配置结构与设计边界
 4. [`current/wiki-architecture.md`](./current/wiki-architecture.md)：Wiki 自动生成与浏览架构
 5. [`current/evaluation-guide.md`](./current/evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读
-6. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
+6. [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)：知识运营闭环总结（事件账本/归因/生命周期/建议队列/质量基线/治理视图，2026-10 收官）
+7. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
 
 ## 当前正式文档
 
@@ -26,6 +27,7 @@
 - [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)
 - [`current/wiki-architecture.md`](./current/wiki-architecture.md)
 - [`current/evaluation-guide.md`](./current/evaluation-guide.md)
+- [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)
 
 ## 过程与历史文档
 
@@ -34,6 +36,7 @@
 - [`process/knowledge-reorg-plan.md`](./process/knowledge-reorg-plan.md)
 - [`process/knowledge-reorg-migration-summary.md`](./process/knowledge-reorg-migration-summary.md)
 - [`process/IMPROVEMENT-enterprise-kb.md`](./process/IMPROVEMENT-enterprise-kb.md)
+- [`process/knowledge-operations-loop-design.md`](./process/knowledge-operations-loop-design.md)：知识运营闭环设计推演（已全量落地，当前事实见 [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)）
 
 ## 维护约定
 

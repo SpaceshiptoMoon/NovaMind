@@ -1,6 +1,7 @@
 # RAGFlow DeepDoc 深度解析 & 与 NovaMind 对比
 
 > 调研日期：2026-07-08
+> **历史文档**：本篇是对上游 RAGFlow 的时点调研，不代表本仓库现状；当前集成事实见 [deepdoc-integration.md](./deepdoc-integration.md)。
 >
 > 来源：[RAGFlow GitHub](https://github.com/infiniflow/ragflow)、[DeepDoc README](https://huggingface.co/datasets/pandaall/ragflow/blob/main/ragflow-main/deepdoc/README.md)、源码分析
 
