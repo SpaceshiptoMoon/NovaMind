@@ -222,8 +222,7 @@ The deploy script will automatically:
 - Check the Docker and Docker Compose environment
 - Generate `.env` from `.env.example`
 - Generate random passwords, secrets, and the initial admin password
-- Create `docker/configs/docker.yaml`
-- Create `backend/src/setting/yaml_config/yaml/default.yaml`
+- Create `backend/src/setting/yaml_config/yaml/default.yaml` (the single backend config file)
 - Build and start the full stack
 - Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr, several hundred MB total) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable). **A failure here does not abort the deploy** — parsing degrades gracefully (formula recognition skipped, DeepDoc full mode unavailable) and you can retry later per the script's warning
 - Download the local speech model (faster-whisper-tiny, ~75MB) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
@@ -266,7 +265,6 @@ git clone https://github.com/SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
 cp .env.example .env
-cp docker/configs/docker.example docker/configs/docker.yaml
 cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml_config/yaml/default.yaml
 
 docker compose up -d --build
@@ -282,9 +280,8 @@ docker compose up -d --build
 
 Notes:
 
-- `.env` holds infrastructure passwords and backend secrets
-- `docker/configs/docker.yaml` is the Docker runtime mount config
-- `default.yaml` holds base backend config, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers — sensitive values are usually overridden by environment variables
+- `.env` holds infrastructure passwords and backend secrets (the single secret source)
+- `default.yaml` is the single backend config file, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers. Deploy-time differences (`DB_HOST=mysql` etc.) are injected by the compose `app.environment` block — no need to touch `.env` or YAML
 - Option 2 skips the deploy script's model download step, so two model groups are missing after first boot:
   - **DeepDoc models missing**: parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). Download manually:
     ```bash
@@ -316,8 +313,7 @@ For frontend/backend co-development or secondary development.
 cp .env.example .env                      # required: compose and the backend both read it; infra won't start without it
 
 cd backend/src/setting/yaml_config/yaml
-cp default.example default.yaml
-cp development.example development.yaml
+cp default.example default.yaml           # the single backend config file (host fields default to 127.0.0.1)
 cd -                                      # back to the repo root
 ```
 
@@ -474,21 +470,17 @@ NovaMind/
 
 The config system has two layers: **YAML files** (structure and environment differences) and the **`.env` file** (the single source of secrets).
 
-### YAML config (what actually applies)
+### YAML config (the single config file)
 
-The backend reads YAML files from `backend/src/setting/yaml_config/yaml/` at startup:
+At startup the backend reads exactly one config file: `backend/src/setting/yaml_config/yaml/default.yaml` (mounted into the container in Docker deploy).
 
-| File | Purpose |
-| --- | --- |
-| `default.yaml` | base config shared by all environments (mounted into the container in Docker deploy) |
-| `development.yaml` | dev overrides (`--config development`) |
-| `production.yaml` | prod overrides (`--config production`) |
-| `docker.yaml` | Docker runtime additions (mounted from `docker/configs/docker.yaml`) |
+- Environment differences (hosts / endpoints / bucket / credentials) are expressed as `${VAR:default}` placeholders — when the variable is unset, the value after the colon applies; local development works with zero extra config
+- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:false}"`), so boolean switches can also come from env vars
+- No real secrets live in YAML; the historical `<environment>.yaml` / `local.yaml` override layers were removed in 2026-10
+- The `--config` flag is only an **environment name** (stored in `config.environment`, consumed by production gates such as disabling API docs); it no longer selects any file
 
 Loading logic:
 
-- `default.yaml` is the baseline; the selected environment YAML is deep-merged on top
-- An optional third layer **`local.yaml`** (same directory as `default.yaml`) is merged last — useful for overriding individual settings locally without touching any template files; skipped when absent
 - `${VAR_NAME}` placeholders in YAML are resolved from **OS environment variables** (`os.getenv`)
 - The backend **auto-loads the repo-root `.env`** at startup (process environment variables take precedence; `.env` does not override already-exported variables), so in local development placeholders resolve straight from `.env`
 
@@ -502,7 +494,7 @@ The root `.env` has two consumers:
 | Variable | Description | Consumed by |
 | --- | --- | --- |
 | `MYSQL_ROOT_PASSWORD` | MySQL root password | `mysql` container + YAML `database.password` |
-| `MYSQL_DATABASE` | Default database name | `mysql` container + `docker.yaml` `database.database`. Note: local-dev `default.yaml` hard-codes `novamind_db` and does not read this variable — keep the default name in local development |
+| `MYSQL_DATABASE` | Database name (defaults to `novamind_db`) | `mysql` container + YAML `database.database` |
 | `MINIO_ROOT_USER` | MinIO access account | `minio` container + YAML `minio.access_key` |
 | `MINIO_ROOT_PASSWORD` | MinIO access password | `minio` container + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM args | `elasticsearch` container |
@@ -523,7 +515,6 @@ Without Docker, the config flow is:
    cp .env.example .env                      # repo root, fill in real secrets
    cd backend/src/setting/yaml_config/yaml
    cp default.example default.yaml
-   cp development.example development.yaml
    ```
 
 2. Edit `.env` and fill in real database / MinIO / Elasticsearch passwords (at minimum, replace every `your-*` placeholder). Sensitive fields in the YAML templates are already `${VAR_NAME}` placeholders resolved from `.env` at startup — no YAML edits needed. You can still write values directly into YAML (overriding placeholders) or `export VAR_NAME=value` before starting (highest precedence: process env > `.env` file).

@@ -30,7 +30,7 @@
 
 - `backend/main.py`：后端入口
 - `backend/src/core/`：应用工厂、生命周期、中间件、数据库、安全
-- `backend/src/setting/`：YAML 配置加载和环境覆盖
+- `backend/src/setting/`：YAML 配置加载（两层模型：单 default.yaml 占位符 + 根 .env 取值）
 - `backend/src/features/`：按领域拆分的业务模块
 - `backend/src/engines/`：引擎层可复用组件（ragflow 风格：import 无环门禁 + 跨模块走公共面，无单向分层限制）
 - `backend/src/shared/`：共享基础设施

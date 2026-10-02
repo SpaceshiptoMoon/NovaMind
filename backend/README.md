@@ -124,23 +124,21 @@ uv run pytest
 
 ### 准备配置
 
-配置文件位于 `src/setting/yaml_config/yaml/`。
+配置文件只有一个：`src/setting/yaml_config/yaml/default.yaml`。
 
 本地开发常用准备方式：
 
 ```bash
 cd backend/src/setting/yaml_config/yaml
 cp default.example default.yaml
-cp development.example development.yaml
 ```
 
-主要配置层：
+两层配置模型：
 
-- `default.yaml`：共享基线配置
-- `development.yaml`：开发环境覆盖
-- `production.yaml`：生产环境覆盖
+- `default.yaml`：唯一后端配置文件——结构与非敏感默认值；环境差异（host/端点/桶名/凭据）全部是 `${VAR:默认值}` 占位符，未设变量时用默认值（本地 127.0.0.1 系）
+- 仓库根 `.env`：密钥与环境值唯一来源（loader 启动自动加载，进程环境变量优先）；本机启用 Redis 加 `REDIS_ENABLED=true`
 
-加载器支持深度合并和 `${VAR_NAME}` 环境变量展开；同名 `local.yaml`（可选，无模板）优先级最高，适合本地临时覆盖。
+历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层已移除（2026-10）；`--config` 参数只是环境名（production 门控用），不再对应文件。
 
 ### 启动
 
