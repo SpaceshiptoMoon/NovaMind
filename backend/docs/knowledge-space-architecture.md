@@ -279,7 +279,7 @@ arq Worker → process_document_task()（tasks/document_tasks.py）
 
 文档解析成功终态后自动触发（`tasks/document_tasks.py` → `tasks/wiki_tasks.py` 入队，
 REPROCESS 复用同一路径），由 `wiki_ingest_service.py` 四阶段 Map-Reduce 生成互相链接、
-带 chunk 引文溯源的 Markdown 页面。**Wiki 页面不入 ES 检索**，是独立浏览层。
+带 chunk 引文溯源的 Markdown 页面。**Wiki 页面已入 ES 检索**：published 页经 `services/wiki_es_sync.py` 以 `chunk_type=wiki_page` 写入（chunk_id 约定 `wp-{page_id}`），检索时 wiki_boost 加权（默认 ×1.3，`WikiGenerationConfig.boost_factor` 可配）；同时保留独立浏览层。
 
 - 数据：`models/wiki.py` 四表（WikiPage / WikiPageRevision / WikiPageIssue / WikiIngestRecord）；
   软删唯一约束 `(kb_id, slug, deleted_flag)`；版本两级保留（软 50 只清 pipeline 来源 / 硬 200 全清）

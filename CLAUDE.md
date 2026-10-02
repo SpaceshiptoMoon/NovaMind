@@ -53,8 +53,8 @@ docker-compose.yml
 - **worktree 放在仓库外**（不要放 `src/`、`backend/` 或其他被扫描的源码目录内）。从干净基线（`main` 或当前主干）拉分支——另一工作目录的未提交修改不会带过来，这正是隔离的意义。
 - **按 feature 边界**（`backend/src/features/<domain>/`）划分任务。单点共享文件同一时间只能由一个 agent 编辑；其余排队：
   - `backend/src/shared/prompts/`（prompt 注册表）
-  - `backend/src/core/middleware/router_manager.py`（路由注册）
-  - `backend/src/core/middleware/startup_manager.py`（模块 init 注册）
+  - `backend/src/features/*/manifest.py`（feature 路由/init/依赖声明，见硬规则）
+  - `backend/src/core/middleware/router_manager.py` 与 `startup_manager.py`（manifest 聚合与启动编排）
   - `*.example` 配置模板、`CLAUDE.md`、`docs/` 架构文档、DB 模型
 - **频繁且原子地提交。** 不要把未提交修改留过夜；停工前 commit 或 stash。
 - **从干净主干合并回来：** `git checkout main` → `git merge feat/<scope>-<desc>`。每次合并后、开始下一项前跑相关测试。
@@ -79,7 +79,7 @@ docker-compose.yml
 
 feature 模块按以下结构组织：
 
-- `api/`：FastAPI 路由层。也承载 feature 本地的接线类（非业务逻辑）辅助文件：`startup.py`（经 `register_feature_initializer` 注册 feature）、`exceptions.py`（feature 专属的 `BaseAPIError` 子类）、`dependencies.py`（FastAPI 依赖）。业务逻辑不进这些文件。
+- `api/`：FastAPI 路由层。也承载 feature 本地的接线类（非业务逻辑）辅助文件：`../manifest.py`（feature 的路由/init/依赖声明，`RouterSpec` + `init_hook` + `models_loader`）、`exception_handlers.py`（经 `register_module_exceptions` 注册 feature 专属异常处理器）、`dependencies.py`（FastAPI 依赖）；部分 feature 另有 `startup.py`（由 manifest 的 `init_hook` 调用的组件装配函数）。feature 专属 `BaseAPIError` 子类放 feature 顶层 `exceptions.py`。业务逻辑不进这些文件。
 - `services/`：业务工作流与编排
 - `repository/`：数据库访问
 - `models/`：ORM 模型
@@ -222,13 +222,13 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 
 ### 后端编码规则
 
-- **异常：** 所有业务异常继承 `BaseAPIError` 并在模块 `startup.py` 注册。绝不直接 `raise HTTPException`。HTTP 状态码解析只认异常类**自身** `__dict__` 里显式声明的 `http_status_code`（`__dict__.get` 不沿 MRO 查找），未声明时按 `status_map` 注册值或 error_code 后缀映射兜底——不要依赖 getattr 继承链（会命中基类 500 遮蔽 status_map，历史三次同根因 bug：6a0bd00、fa794b8、cbba9f9；门禁 `tests/core/test_error_handler_status_map.py`）。
+- **异常：** 所有业务异常继承 `BaseAPIError` 并在 feature 的 `api/exception_handlers.py` 经 `register_module_exceptions` 注册（异常类本体放 feature 顶层 `exceptions.py`）。绝不直接 `raise HTTPException`。HTTP 状态码解析只认异常类**自身** `__dict__` 里显式声明的 `http_status_code`（`__dict__.get` 不沿 MRO 查找），未声明时按 `status_map` 注册值或 error_code 后缀映射兜底——不要依赖 getattr 继承链（会命中基类 500 遮蔽 status_map，历史三次同根因 bug：6a0bd00、fa794b8、cbba9f9；门禁 `tests/core/test_error_handler_status_map.py`）。
 - **数据库写入：** repository 写操作必须用 `begin_nested()`（SAVEPOINT）。绝不直接 commit。
 - **API key 存储：** 用 `encrypt_api_key_async` / `decrypt_api_key_async`。绝不存明文。
 - **密码哈希：** 用 `verify_password_async` / `get_password_hash_async`。绝不用同步哈希阻塞事件循环。
 - **Pydantic schema：** 新 schema 优先 `*Base → *Create/*Update → *Response` 分层，且 `*Response` 必须设 `from_attributes=True`。存量 schema 未完全对齐该模式——例如 `knowledge_space` 的 schema（`SpaceCreate`、`DocumentResponse`、`ChunkResponse`）直接继承 `BaseModel`，没有 `*Base`。触碰这些文件时可局部对齐，但不要把存量缺 `*Base` 当成必须全量重构的违规。
-- **路由注册：** 新路由必须在 `router_manager.py` 手动注册。没有自动发现。
-- **模块 init：** 新模块必须在 `startup_manager.py` 注册 `register_feature_initializer`。
+- **路由注册：** 新路由在所属 feature 的 `manifest.py` 里以 `RouterSpec` 声明（含前缀与 `route_order`）；`manifest_loader` 自动扫描 `features/*/manifest.py`，`router_manager.py` 按声明聚合挂载——不存在也不需要 router_manager 手动登记。
+- **模块 init：** 新模块建 `manifest.py` 提供 `manifest()`（`FeatureManifest`：routers/`depends_on`/`init_hook`/`models_loader`）；ORM 建表经 `models_loader` 导入模型，启动钩子经 `init_hook`，由 `startup_manager` 按 `get_sorted_manifests()` 顺序驱动。
 - **配置文件：** 所有 `*.yaml` 都被 gitignore；只提交 `*.example` 模板。
 - **import 依赖规则（ragflow 务实单体风格）：** 分层间允许任意方向 import（含 engines→features、core→features），硬约束是整个 `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/CLAUDE.md`。
 

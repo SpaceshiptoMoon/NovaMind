@@ -334,26 +334,9 @@ The vendored module is no longer tied only to the knowledge-base pipeline.
 - `python -m novamind.engines.document.integrations.deepdoc doctor`
 - `python -m novamind.engines.document.integrations.deepdoc prepare`
 - `build_doctor_payload(engine, include_smoke=False)`
-  - shared diagnostic payload builder reused by CLI and health endpoints
+  - shared diagnostic payload builder used by the CLI `doctor` subcommand
+    (the former HTTP `GET /doctor` went away with the `server/` sub-service)
 
-### Server Endpoints
-
-The standalone server layer now supports two categories of endpoints:
-
-- parser-service endpoints
-  - `GET /health`
-  - `GET /doctor`
-  - `GET /capabilities`
-  - `POST /parse-file`
-  - `POST /parse-bytes`
-- upstream-style model endpoints
-  - `POST /predict/dla`
-  - `POST /predict/ocr`
-  - `POST /predict/tsr`
-
-The model endpoints are wired through vendored `server/adapters/` wrappers over
-the local standalone vision runtime and use lazy loading so missing ONNX models
-do not break service startup by default.
 - `DeepDocEngine.parse_bytes(file_bytes, file_type="pdf")`
 - `DeepDocEngine.describe_capabilities()`
 - `DeepDocEngine.runtime_dependencies()`
@@ -382,8 +365,6 @@ Standalone CLI behavior now includes:
     (`--include-formula`)
 - `parse`
   - parses a local file and returns JSON or plain text
-- `serve`
-  - launches the standalone FastAPI service through uvicorn
 
 Current standalone deployment flow:
 
@@ -391,8 +372,9 @@ Current standalone deployment flow:
 2. install missing runtime dependencies reported in `remediation.next_steps`
 3. run `deepdoc prepare` or `python -m novamind.engines.document.integrations.deepdoc prepare`
 4. optionally run `deepdoc doctor --smoke`
-5. start `deepdoc serve --host 0.0.0.0 --port 8001`
-6. optionally query `GET /doctor` or `GET /doctor?smoke=true` from the running service
+5. parsing runs in-process in the backend app - there is no standalone service
+   to start anymore (`server/` and the `serve` subcommand were removed in the
+   2026-09-25 cleanup)
 
 Docker deployment (deploy.sh / deploy.ps1) downloads all DeepDoc models at
 deploy time; runtime download is only a fallback:
@@ -415,14 +397,14 @@ deploy time; runtime download is only a fallback:
 
 Current deployment diagnostics behavior:
 
-- shared doctor payload now powers both CLI `doctor` and HTTP `GET /doctor`
+- shared doctor payload powers the CLI `doctor` subcommand (no HTTP surface remains)
 - `doctor` now returns:
   - `runtime_dependencies`
   - `vision_model_status`
   - `vision_health`
   - `text_concat_model_status`
   - `remediation`
-- `GET /doctor?smoke=true` can include:
+- `deepdoc doctor --smoke` can include:
   - `vision_smoke_check`
 - `remediation.next_steps` now gives actionable suggestions for:
   - missing required vision dependencies such as `xgboost` and `cv2`
@@ -447,12 +429,6 @@ factory layer (`core/factory.py`).
 
 - `pdf_full`
 - `pdf_plain`
-- `pdf_docling`
-- `pdf_mineru`
-- `pdf_opendataloader`
-- `pdf_paddleocr`
-- `pdf_somark`
-- `pdf_tcadp`
 - `docx`
 - `epub`
 - `excel`
@@ -466,7 +442,11 @@ factory layer (`core/factory.py`).
 
 The historical `pdf_layout` / `pdf_vision` ids are no longer separate specs;
 old values are treated as legacy aliases of `pdf_full` at the KB config layer
-and inside the runtime parser.
+and inside the runtime parser. The legacy remote parser ids (`pdf_docling` /
+`pdf_mineru` / `pdf_opendataloader` / `pdf_paddleocr` / `pdf_somark` /
+`pdf_tcadp`) are likewise gone from the factory - they are only accepted by
+`LegacyDeepDocParserId` in the KB schema and migrated to `full` (the remote
+implementations were removed in the 2026-09 cleanup).
 
 When `parsing.strategy = "deepdoc"` in the knowledge-base config, the runtime
 will honor `deepdoc_parser_id` and route through the corresponding standalone

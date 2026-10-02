@@ -330,7 +330,7 @@ Rules:
 - `content_instructions` / `extraction_instructions` only steer tone, structure
   and extraction focus. Citation grounding, merge and dedup rules are NOT
   user-configurable.
-- Wiki pages live in MySQL only and are NOT indexed into Elasticsearch.
+- Wiki pages live in MySQL (source of truth) and, once **published**, are synced into Elasticsearch as `chunk_type=wiki_page` documents (`services/wiki_es_sync.py`, 2026-09 批5 起), participating in retrieval with wiki `boost_factor` weighting (default 1.3).
 
 ## What Already Exists in the Project
 

@@ -309,14 +309,14 @@
 
 ---
 
-## 2. 执行深度研究（流式 SSE）
+## 2. 执行深度研究（WebSocket 流式）
 
-基于知识空间执行深度研究，以 Server-Sent Events（SSE）流式返回进度和报告内容。适用于需要实时展示研究进度和报告生成过程的场景。
+基于知识空间执行深度研究，以 WebSocket 双向流式返回进度和报告内容，并支持研究计划的确认交互。适用于需要实时展示研究进度和报告生成过程的场景。
 
 **请求**
-- 方法：POST
-- URL：`/api/v1/spaces/{space_id}/deep-research/stream`
-- Content-Type：application/json
+- 协议：WebSocket
+- URL：`/api/v1/spaces/{space_id}/deep-research/ws`
+- 认证：连接时以 subprotocol `bearer.<jwt>` 携带令牌（校验失败 close 4401/4403；无该空间访问权限 close 4403）
 
 **路径参数**
 
@@ -324,31 +324,33 @@
 |--------|------|------|------|
 | space_id | integer | 是 | 知识空间 ID |
 
-**请求参数**
+**客户端 → 服务端**
 
-请求参数与 [1. 执行深度研究（非流式）](#1-执行深度研究非流式) 完全一致，参考上方请求参数表。
+连接建立后发送一条 JSON 消息（`action` 非 `research` 时服务端回 `error` 事件并关闭）：
 
-**响应格式**
-
-返回 `text/event-stream` 类型的流式响应。
-
-**响应 Header**
-
-| Header | 值 | 说明 |
-|--------|------|------|
-| Content-Type | `text/event-stream` | SSE 流式响应 |
-| Cache-Control | `no-cache` | 禁用缓存 |
-| Connection | `keep-alive` | 保持连接 |
-| X-Accel-Buffering | `no` | 禁用 Nginx 缓冲 |
-
-### SSE 事件格式
-
-每个事件以 `data: ` 开头，以两个换行符结尾：
-
+```json
+{
+  "action": "research",
+  "payload": { "...": "ResearchRequest 字段" }
+}
 ```
-data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 
+`payload` 与 [1. 执行深度研究（非流式）](#1-执行深度研究非流式) 的请求参数完全一致。
+
+当 `auto_accepted_plan=false` 时，计划生成后服务端挂起，客户端需发送计划反馈消息继续：
+
+```json
+{"action": "plan_feedback", "decision": "accepted"}
+{"action": "plan_feedback", "decision": "edit_plan", "feedback": "请侧重工程实践部分"}
 ```
+
+超时未反馈自动接受（超时时间随 `plan_generated` 事件的 `feedback_timeout_seconds` 下发）。
+
+**服务端 → 客户端**
+
+推送 `{"type": ..., "data": ...}` JSON 事件流（progress/plan_generated/content/done/error）。客户端断开连接触发服务端 `CancelledError`，研究记录标记 CANCELLED。
+
+### WS 事件格式
 
 ### 事件类型
 
@@ -358,7 +360,7 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 
 ```json
 {
-  "event_type": "progress",
+  "type": "progress",
   "data": {
     "status": "analyzing",
     "current_step": "分析查询，提取研究主题",
@@ -366,7 +368,6 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
     "completed_tasks": 0,
     "total_tasks": 0
   },
-  "timestamp": 1713158400.0
 }
 ```
 
@@ -384,11 +385,10 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 
 ```json
 {
-  "event_type": "content",
+  "type": "content",
   "data": {
     "chunk": "# RAG 检索增强生成技术研究报告\n\n## 执行摘要\n"
   },
-  "timestamp": 1713158410.0
 }
 ```
 
@@ -396,15 +396,28 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 |------|------|------|
 | data.chunk | string | 报告内容片段（需前端拼接为完整报告） |
 
-#### heartbeat（心跳保活）
+#### plan_generated（研究计划生成）
 
-间隔性发送的 SSE 注释，用于保持连接活跃。
+`auto_accepted_plan=false` 时，分析阶段完成后发送研究计划并挂起，等待客户端 `plan_feedback`（超时自动接受）。
 
+```json
+{
+  "type": "plan_generated",
+  "data": {
+    "session_id": "0123456789abcdef0123456789abcdef",
+    "plan": "…",
+    "wait_feedback": true,
+    "feedback_timeout_seconds": 300
+  }
+}
 ```
-: heartbeat
-```
 
-> 心跳为 SSE 标准注释格式（以 `: ` 开头），不会被 EventSource 的 onmessage 回调接收，前端无需处理。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| data.session_id | string | 研究会话 ID |
+| data.plan | object | 研究计划（步骤/子问题结构） |
+| data.wait_feedback | bool | 是否挂起等待客户端反馈 |
+| data.feedback_timeout_seconds | int | 反馈超时秒数，超时自动接受 |
 
 #### error（错误信息）
 
@@ -412,12 +425,11 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 
 ```json
 {
-  "event_type": "error",
+  "type": "error",
   "data": {
     "message": "研究执行失败，请稍后重试",
     "session_id": "0123456789abcdef0123456789abcdef"
   },
-  "timestamp": 1713158420.0
 }
 ```
 
@@ -432,7 +444,7 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 
 ```json
 {
-  "event_type": "done",
+  "type": "done",
   "data": {
     "session_id": "0123456789abcdef0123456789abcdef",
     "final_report": "# RAG 检索增强生成技术研究报告\n\n## 执行摘要\n...",
@@ -443,7 +455,6 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
       "total_results": 25
     }
   },
-  "timestamp": 1713158430.0
 }
 ```
 
@@ -460,55 +471,41 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 ### 前端处理示例（JavaScript）
 
 ```javascript
-// 注意：POST 请求的 SSE 需使用 fetch API 手动处理
-// EventSource 仅支持 GET 请求，不可用于本接口
+function researchWs(spaceId, token, requestBody) {
+  const ws = new WebSocket(
+    `ws://<host>/api/v1/spaces/${spaceId}/deep-research/ws`,
+    [`bearer.${token}`]
+  );
 
-async function streamResearch(spaceId, requestBody) {
-  const response = await fetch(`/api/v1/spaces/${spaceId}/deep-research/stream`, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer <token>',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ action: 'research', payload: requestBody }));
+  };
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  ws.onmessage = (evt) => {
+    const { type, data } = JSON.parse(evt.data);
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const event = JSON.parse(line.slice(6));
-
-        switch (event.event_type) {
-          case 'progress':
-            console.log(`进度: ${event.data.progress_percent}% - ${event.data.current_step}`);
-            break;
-          case 'content':
-            // 追加报告片段到页面
-            document.getElementById('report').innerHTML += event.data.chunk;
-            break;
-          case 'done':
-            console.log('研究完成', event.data.session_id);
-            break;
-          case 'error':
-            console.error('研究失败', event.data.message);
-            break;
+    switch (type) {
+      case 'progress':
+        console.log(`进度: ${data.progress_percent}% - ${data.current_step}`);
+        break;
+      case 'plan_generated':
+        if (data.wait_feedback) {
+          // auto_accepted_plan=false：确认或要求重规划
+          ws.send(JSON.stringify({ action: 'plan_feedback', decision: 'accepted' }));
         }
-      } else if (line.startsWith(': ')) {
-        // 心跳，忽略
-      }
+        break;
+      case 'content':
+        // 追加报告片段到页面
+        document.getElementById('report').innerHTML += data.chunk;
+        break;
+      case 'done':
+        console.log('研究完成', data.session_id);
+        break;
+      case 'error':
+        console.error('研究失败', data.message);
+        break;
     }
-  }
+  };
 }
 ```
 
@@ -522,7 +519,7 @@ async function streamResearch(spaceId, requestBody) {
 | SEARCH_PROVIDER_NOT_CONFIGURED | 400 | 外部搜索服务商未配置 API Key |
 | SEARCH_PROVIDER_UNAVAILABLE | 503 | 外部搜索服务商不可用 |
 
-> **注意**：流式接口的运行时错误通过 SSE `error` 事件推送，而非 HTTP 错误响应。HTTP 层面的错误（如认证失败、参数校验失败）仍以标准 JSON 错误格式返回。
+> **注意**：运行时错误通过 WS `error` 事件推送。认证失败在握手阶段以 close 4401/4403 表现；参数校验失败通过 WS `error` 事件返回后关闭连接。客户端提前断开会使研究记录标记 CANCELLED。
 
 ---
 

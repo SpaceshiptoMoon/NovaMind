@@ -1,22 +1,23 @@
 # 事务边界规范（后端）
 
-> 2026-07-17 知识库模块审计后沉淀。澄清 CLAUDE.md「Repository 中写操作必须使用 `begin_nested()` (SAVEPOINT)，不要直接 commit」的落地解读，避免误读为「每个 repo 写方法都包 SAVEPOINT」而做高风险全量改动。
+> 2026-07-17 知识库模块审计后沉淀；**2026-10-03 修订**：落地解读已按现行代码实践更新。
+> CLAUDE.md 规则「Repository 写操作必须使用 `begin_nested()` (SAVEPOINT)，不要直接 commit」的字面要求自 2026-09 起已成为全仓主流实践（notification/agent_api/qa/knowledge_ops/user/search_config/wiki 等新 repo 均为 `begin_nested + flush` 写法，多个 docstring 自证为硬规则）。本文初版「repo 单步写不必包 SAVEPOINT、flush-only」的解读描述的是 2026-07 时点的知识库存量代码，已被实践超越，仅作历史背景保留。
 
-## 规则本意
+## 规则本意（现行版）
 
-CLAUDE.md 两条相关规则合在一起的本意：
+CLAUDE.md 规则拆成两条不变式：
 
-- **Repository** 只做持久化查询/刷写（`flush` / `execute`），**不擅自提交**（不 `commit`）。
-- **Service** 是事务编排者：控制事务边界（`commit` 时机），需要多步写原子性时用 `begin_nested()`（SAVEPOINT）包裹。
+- **Repository 绝不 `commit()`**——提交权永远在 Service（事务编排者）。
+- **Repository 写操作包 `begin_nested()`（SAVEPOINT）**——单步写自带原子边界：步骤失败只回滚该 SAVEPOINT，调用方（如批量扇出的逐条 skip-and-continue）可继续后续步骤；SAVEPOINT 释放后变更仍挂在外层事务，随 Service 的 `commit()` 落库。
 
-即：**提交由 Service 控制；SAVEPOINT 归属 Service 层的多步原子写，而非每个 repo 单步写。**
+即：**提交由 Service 控制；repo 单步写以 SAVEPOINT 为原子单位，二者不冲突。**
 
 ## 落地解读
 
-### Repository 层
-- 写方法用 `flush()`（让对象进入 session、拿到主键等）或 `execute(update/delete)`，**不 `commit`**。
-- 单步写**不必**自己包 `begin_nested()`——无外层事务时 `begin_nested` 会隐式开外层事务，异常路径语义变化，徒增往返；且 Service 已在多步写处包了 SAVEPOINT 时再嵌套是无收益的嵌套。
-- 当前知识库模块所有 repo 写方法均为 flush-only、零 commit，**符合规范**。
+### Repository 层（现行约定）
+- 写方法统一 `async with session.begin_nested():` 包裹 + `flush()`（拿到主键/时间戳可再 `refresh()`），**不 `commit()`**。标准样例：`agent_api/repository/api_key_repository.py`、`notification/repository/notification_repository.py`。
+- 2026-07 存量的 flush-only 写法（knowledge_space 早期 repo）不要求全量改造——它们同样满足「零 commit」不变式，改动触及时顺手对齐即可。
+- 已知刻意例外：`knowledge_space/repository/document_task_repository.py` 的批次概览路径保留 flush-only 并有注释自证（紧急路径，勿动）。
 
 ### Service 层
 - `commit()` 是事务边界的确认点，**保留**。尤其当存在不可逆外部副作用时：
@@ -44,8 +45,8 @@ CLAUDE.md 两条相关规则合在一起的本意：
 > 抽库相关不变式已补：`RetrievalEngine` 绝不持有 session / 绝不 commit（仅 es_client + logger + cache）。
 
 ## 检查清单（新增/改动写路径时）
-- [ ] repo 写方法只 flush/execute，不 commit
+- [ ] repo 写方法包 `begin_nested` + `flush`，绝不 `commit`
 - [ ] commit 由 service 控制，不在路由层
-- [ ] 多步原子写用 `begin_nested` 包裹（service 层）
+- [ ] service 多步原子写可用 `begin_nested` 包裹（与 repo 层 SAVEPOINT 嵌套无冲突）
 - [ ] 有 ES/MinIO 等外部副作用时，commit 在副作用之前
 - [ ] 审计调用在业务成功之后（避免伪审计）

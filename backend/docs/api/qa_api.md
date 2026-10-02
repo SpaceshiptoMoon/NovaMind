@@ -467,133 +467,97 @@ Authorization: Bearer <token>
 
 ---
 
-### 9. AI 对话（流式/SSE）
+### 9. AI 对话（WebSocket 流式）
 
-> **SSE（Server-Sent Events）流式接口**
+> **WebSocket 流式接口**
 
 **请求**
-- 方法：POST
-- URL：`/api/v1/ai-chat/chat-stream`
-- Content-Type：application/json
+- 协议：WebSocket
+- URL：`/api/v1/ai-chat/ws`
+- 认证：连接时以 subprotocol `bearer.<jwt>` 携带令牌（校验失败服务端 close 4401/4403）
 
 **请求参数**
 
-与 [8. AI 对话（非流式）](#8-ai-对话非流式) 的请求参数完全一致。
-
-**请求示例**
+连接建立后发送一条 JSON 消息（`action` 非 `chat` 时服务端回 `error` 事件并关闭）：
 
 ```json
 {
-  "content": "请用简洁的语言解释什么是深度学习",
-  "session_id": "chat_abc123",
-  "llm_model": "gpt-4o",
-  "max_tokens": 1024,
-  "temperature": 0.5,
-  "top_p": 0.9,
-  "system_prompt": "你是一个专业的技术顾问。",
-  "enable_thinking": false,
-  "attachment_ids": [1]
+  "action": "chat",
+  "payload": {
+    "content": "请用简洁的语言解释什么是深度学习",
+    "session_id": "chat_abc123",
+    "llm_model": "gpt-4o",
+    "max_tokens": 1024,
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "system_prompt": "你是一个专业的技术顾问。",
+    "enable_thinking": false,
+    "attachment_ids": [1]
+  }
 }
 ```
 
+`payload` 与 [8. AI 对话（非流式）](#8-ai-对话非流式) 的请求参数（`ChatRequest` schema）完全一致。
+
 **响应说明**
 
-返回 `Content-Type: text/event-stream` 的 SSE 流式响应。
+服务端推送 `{"type": ..., "data": ...}` JSON 事件流。客户端断开连接会触发服务端 `CancelledError` 清理。
 
-响应头：
-```
-Content-Type: text/event-stream
-Cache-Control: no-cache
-Connection: keep-alive
-X-Accel-Buffering: no
-```
-
-**SSE 事件类型**
+**WS 事件类型**
 
 | 事件 | 说明 | 数据格式 |
 |------|------|---------|
 | `user_message` | 用户消息已保存 | `{"id": 50, "content": "...", "role": "user", "session_id": "..."}` |
 | `sources` | 检索来源信息（联网搜索时返回） | `{"sources": [{"title": "...", "url": "..."}]}` |
+| `trace` | 检索/推理过程追踪信息 | `{"trace": "..."}` |
 | `reasoning` | 深度思考过程的推理片段（`enable_thinking=true` 时） | `{"content": "思考过程..."}` |
 | `content` | AI 生成的文本片段（逐块推送） | `{"content": "文本片段"}` |
+| `heartbeat` | 心跳保活，前端无需处理 | — |
 | `done` | 对话完成，包含完整 AI 回复 | `{"id": 51, "content": "完整回复", "role": "assistant", "session_id": "..."}` |
 | `error` | 错误信息 | `{"code": "ERROR_CODE", "message": "错误描述"}` |
 
-**SSE 数据格式**
+**消息格式示例**
 
-每条事件以 `data: ` 开头，以双换行符 `\n\n` 分隔：
-
-```
-data: {"type": "user_message", "data": {"id": 50, "content": "...", "role": "user", "session_id": "chat_abc123"}}
-
-data: {"type": "content", "data": {"content": "深度学习"}}
-
-data: {"type": "content", "data": {"content": "是机器学习的"}}
-
-data: {"type": "content", "data": {"content": "一个子领域..."}}
-
-data: {"type": "done", "data": {"id": 51, "content": "深度学习是机器学习的一个子领域...", "role": "assistant", "session_id": "chat_abc123"}}
-
+```json
+{"type": "user_message", "data": {"id": 50, "content": "...", "role": "user", "session_id": "chat_abc123"}}
+{"type": "content", "data": {"content": "深度学习"}}
+{"type": "content", "data": {"content": "是机器学习的"}}
+{"type": "content", "data": {"content": "一个子领域..."}}
+{"type": "done", "data": {"id": 51, "content": "深度学习是机器学习的一个子领域...", "role": "assistant", "session_id": "chat_abc123"}}
 ```
 
 **前端处理示例（JavaScript）**
 
 ```javascript
-const response = await fetch('/api/v1/ai-chat/chat-stream', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer <token>'
-  },
-  body: JSON.stringify({
-    content: '请解释深度学习',
-    session_id: 'chat_abc123'
-  })
-});
+const ws = new WebSocket('ws://<host>/api/v1/ai-chat/ws', [`bearer.${token}`]);
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let buffer = '';
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    action: 'chat',
+    payload: { content: '请解释深度学习', session_id: 'chat_abc123' }
+  }));
+};
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
+ws.onmessage = (evt) => {
+  const { type, data } = JSON.parse(evt.data);
 
-  buffer += decoder.decode(value, { stream: true });
-  const lines = buffer.split('\n\n');
-  buffer = lines.pop(); // 保留不完整的部分
-
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      try {
-        const event = JSON.parse(line.slice(6));
-
-        switch (event.type) {
-          case 'user_message':
-            console.log('用户消息已保存:', event.data);
-            break;
-          case 'content':
-            // 将 AI 文本片段追加到聊天界面
-            appendToChat(event.data.content);
-            break;
-          case 'done':
-            console.log('对话完成:', event.data);
-            break;
-          case 'error':
-            console.error('流式错误:', event.data);
-            break;
-        }
-      } catch (e) {
-        console.error('解析 SSE 数据失败:', e);
-      }
-    }
+  switch (type) {
+    case 'user_message':
+      console.log('用户消息已保存:', data);
+      break;
+    case 'content':
+      // 将 AI 文本片段追加到聊天界面
+      appendToChat(data.content);
+      break;
+    case 'done':
+      console.log('对话完成:', data);
+      break;
+    case 'error':
+      console.error('流式错误:', data);
+      break;
   }
-}
+};
 ```
-
-**前端处理示例（EventSource 不可用于 POST 请求，需使用 fetch）**
-
-> 注意：标准 `EventSource` 仅支持 GET 请求，本接口为 POST，因此必须使用 `fetch` + `ReadableStream` 方式处理。
 
 **错误码**
 
@@ -715,7 +679,7 @@ while (true) {
 
 ### 13. 上传聊天附件
 
-上传文档附件，用于在后续 AI 对话中附带文件。返回附件 ID，供 `chat` / `chat-stream` 接口的 `attachment_ids` 字段引用。
+上传文档附件，用于在后续 AI 对话中附带文件。返回附件 ID，供 AI 对话（非流式 `chat` 与流式 `ws`）接口的 `attachment_ids` 字段引用。
 
 **请求**
 - 方法：POST
@@ -1137,7 +1101,7 @@ Content-Disposition: attachment; filename="download"; filename*=UTF-8''<encoded_
 | 6 | DELETE | `/api/v1/qa/session/{session_id}` | 删除会话 | 是 |
 | 7 | GET | `/api/v1/qa/context/{session_id}` | 获取对话上下文 | 是 |
 | 8 | POST | `/api/v1/ai-chat/chat` | AI 对话（非流式） | 是 |
-| 9 | POST | `/api/v1/ai-chat/chat-stream` | AI 对话（流式/SSE） | 是 |
+| 9 | WS | `/api/v1/ai-chat/ws` | AI 对话（WebSocket 流式） | 是 |
 | 10 | GET | `/api/v1/ai-chat/chat-history` | 获取聊天历史 | 是 |
 | 11 | DELETE | `/api/v1/ai-chat/clear-chat` | 清除聊天历史 | 是 |
 | 12 | GET | `/api/v1/ai-chat/health` | 健康检查 | 否 |

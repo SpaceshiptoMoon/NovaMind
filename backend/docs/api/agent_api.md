@@ -2,14 +2,14 @@
 
 ## 概述
 
-Agent 智能体模块提供可配置的智能体能力，支持自定义系统提示词、内置工具和外部 MCP 服务器工具集成。Agent 通过 ReAct 循环（Think → Act → Observe → Respond）执行多步推理和工具调用，以 SSE 流式返回对话过程。
+Agent 智能体模块提供可配置的智能体能力，支持自定义系统提示词、内置工具和外部 MCP 服务器工具集成。Agent 通过 ReAct 循环（Think → Act → Observe → Respond）执行多步推理和工具调用，以 WebSocket 流式返回对话过程。
 
 模块包含五个子模块：
 
 | 子模块 | 路由前缀 | 说明 |
 |-------|---------|------|
 | Agent 管理 | `/api/v1/agent/agents` | Agent 定义的 CRUD |
-| Agent 对话 | `/api/v1/agent/agents/{agent_id}/chat-stream` 等 | SSE 流式对话、会话管理、消息查询 |
+| Agent 对话 | `/api/v1/agent/agents/{agent_id}/ws` 等 | WebSocket 流式对话、会话管理、消息查询 |
 | MCP 服务器 | `/api/v1/agent/mcp-servers` | MCP 服务器配置管理、连接控制 |
 | 工具管理 | `/api/v1/agent/tools` | 查看内置工具及其函数定义 |
 | 记忆管理 | `/api/v1/agent/agents/{agent_id}/memories` | Agent 长期记忆的查看、删除与统计 |
@@ -356,14 +356,14 @@ Agent 智能体模块提供可配置的智能体能力，支持自定义系统�
 
 ## 二、Agent 对话
 
-### 2.1 Agent 对话（SSE 流式）
+### 2.1 Agent 对话（WebSocket 流式）
 
-向指定 Agent 发送消息，以 Server-Sent Events（SSE）流式返回对话过程。Agent 会通过 ReAct 循环自动调用工具（内置工具和 MCP 工具），逐步产出结果。
+向指定 Agent 发送消息，以 WebSocket 双向流式返回对话过程。Agent 会通过 ReAct 循环自动调用工具（内置工具和 MCP 工具），逐步产出结果。
 
 **请求**
-- 方法：`POST`
-- URL：`/api/v1/agent/agents/{agent_id}/chat-stream`
-- Content-Type：`application/json`
+- 协议：WebSocket
+- URL：`/api/v1/agent/agents/{agent_id}/ws`
+- 认证：连接时以 subprotocol `bearer.<jwt>` 携带令牌（校验失败服务端 close 4401/4403）
 
 **路径参数**
 
@@ -371,7 +371,22 @@ Agent 智能体模块提供可配置的智能体能力，支持自定义系统�
 |--------|------|------|------|
 | agent_id | int | 是 | Agent ID |
 
-**请求参数（Body）**
+**客户端 → 服务端**
+
+连接建立后发送一条 JSON 消息（`action` 非 `chat` 时服务端回 `error` 事件并关闭）：
+
+```json
+{
+  "action": "chat",
+  "payload": {
+    "content": "请帮我搜索知识库中关于 RAG 技术的内容",
+    "session_id": null,
+    "attachment_ids": null
+  }
+}
+```
+
+`payload` 字段与 `AgentChatRequest` schema 一致：
 
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 |--------|------|------|--------|------|
@@ -382,33 +397,11 @@ Agent 智能体模块提供可配置的智能体能力，支持自定义系统�
 | stream | bool | 否 | `true` | 是否流式输出 |
 | attachment_ids | int[] | 否 | `null` | 附件 ID 列表（通过 chat-attachments 上传获取） |
 
-**请求示例**
+**服务端 → 客户端**
 
-```json
-{
-  "content": "请帮我搜索知识库中关于 RAG 技术的内容",
-  "session_id": null,
-  "llm_model": null,
-  "enable_thinking": false,
-  "stream": true,
-  "attachment_ids": null
-}
-```
+推送 `{"type": ..., "data": ...}` JSON 事件流（session/tool_call/tool_result/reasoning/content/sources/done/error，见下文事件类型）。客户端断开连接会触发服务端 `CancelledError` 清理。
 
-**响应格式**
-
-返回 `text/event-stream` 类型的流式响应。
-
-**响应 Header**
-
-| Header | 值 | 说明 |
-|--------|------|------|
-| Content-Type | `text/event-stream` | SSE 流式响应 |
-| Cache-Control | `no-cache` | 禁用缓存 |
-| Connection | `keep-alive` | 保持连接 |
-| X-Accel-Buffering | `no` | 禁用 Nginx 缓冲 |
-
-### SSE 事件类型
+### WS 事件类型
 
 > 事件按时间顺序产出。当前引擎采用非流式生成，每次 LLM 调用返回完整响应，`content` 事件包含该轮的完整文本。多轮 ReAct 迭代中会产出多个 `content` 事件，前端需拼接。
 
@@ -535,59 +528,43 @@ Agent 回复完成后发送，包含统计信息。
 ### 前端处理示例（JavaScript）
 
 ```javascript
-async function chatStream(agentId, content, sessionId = null) {
-  const response = await fetch(`/api/v1/agent/agents/${agentId}/chat-stream`, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer <token>',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ content, session_id: sessionId })
-  });
+function chatWs(agentId, token, content, sessionId = null) {
+  const ws = new WebSocket(
+    `ws://<host>/api/v1/agent/agents/${agentId}/ws`,
+    [`bearer.${token}`]
+  );
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let currentEventType = '';
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      action: 'chat',
+      payload: { content, session_id: sessionId }
+    }));
+  };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  ws.onmessage = (evt) => {
+    const { type, data } = JSON.parse(evt.data);
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEventType = line.slice(7).trim();
-      } else if (line.startsWith('data: ') && currentEventType) {
-        const data = JSON.parse(line.slice(6));
-
-        switch (currentEventType) {
-          case 'session':
-            console.log('会话:', data.session_id);
-            break;
-          case 'tool_call':
-            console.log(`调用工具: ${data.tool_name}`, data.arguments);
-            break;
-          case 'tool_result':
-            console.log(`工具结果: ${data.tool_name} (${data.duration_ms}ms)`);
-            break;
-          case 'content':
-            document.getElementById('reply').textContent += data.content;
-            break;
-          case 'done':
-            console.log('完成，token:', data.total_tokens, '截断:', data.truncated);
-            break;
-          case 'error':
-            console.error('错误:', data.content);
-            break;
-        }
-        currentEventType = '';
-      }
+    switch (type) {
+      case 'session':
+        console.log('会话:', data.session_id);
+        break;
+      case 'tool_call':
+        console.log(`调用工具: ${data.tool_name}`, data.arguments);
+        break;
+      case 'tool_result':
+        console.log(`工具结果: ${data.tool_name} (${data.duration_ms}ms)`);
+        break;
+      case 'content':
+        document.getElementById('reply').textContent += data.content;
+        break;
+      case 'done':
+        console.log('完成，token:', data.total_tokens, '截断:', data.truncated);
+        break;
+      case 'error':
+        console.error('错误:', data.content);
+        break;
     }
-  }
+  };
 }
 ```
 
@@ -603,7 +580,7 @@ async function chatStream(agentId, content, sessionId = null) {
 | SANDBOX_UNSUPPORTED_LANGUAGE | 422 | 不支持的编程语言 |
 | SANDBOX_ERROR | 500 | 沙箱其他错误 |
 
-> **注意**：运行时错误通过 SSE `error` 事件推送。HTTP 层面的错误（认证失败、参数校验失败）仍以标准 JSON 错误格式返回。沙箱相关错误在 Agent 启用了代码执行工具时可能通过 SSE `error` 事件推送。
+> **注意**：运行时错误通过 WS `error` 事件推送。认证失败在握手阶段以 close 4401/4403 表现；参数校验失败通过 WS `error` 事件返回后关闭连接。沙箱相关错误在 Agent 启用了代码执行工具时可能通过 WS `error` 事件推送。
 
 ---
 
@@ -1478,7 +1455,7 @@ Agent 在对话过程中会自动将重要信息整合为长期记忆（如用�
    └─ PUT /agents/{id}                     → 调整 Agent 配置（可选）
 
 3. 开始对话
-   ├─ POST /agents/{id}/chat-stream        → 发送消息，接收 SSE 事件流
+   ├─ WS   /agents/{id}/ws                  → 发送消息，接收 WS 事件流
    │   ├─ session 事件                      → 获取 session_id
    │   ├─ tool_call 事件                    → 展示工具调用过程
    │   ├─ tool_result 事件                  → 展示工具执行结果
@@ -1543,7 +1520,7 @@ Agent 模块由三个核心子系统驱动：
   │   ├─ LLM 生成响应（含工具调用或纯文本）
   │   ├─ ToolExecutor 执行工具（路由至内置工具或 MCP 工具）
   │   └─ 循环直到无工具调用或达到最大迭代
-  ├─ SSE 输出：格式化为前端事件（session / tool_call / tool_result / content / done）
+  ├─ WS 输出：格式化为前端事件（session / tool_call / tool_result / reasoning / content / sources / done）
   └─ 完成：保存 assistant 消息 → 更新统计 → 设置会话标题
 ```
 
