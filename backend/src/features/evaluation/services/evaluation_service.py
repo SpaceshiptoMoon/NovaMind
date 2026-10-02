@@ -128,6 +128,19 @@ _REPLAY_FALLBACK_MODES = ["content_hybrid", "question_hybrid", "all_hybrid", "co
 CHUNK_SHORT_LENGTH = 50
 # 中英句末标点（切分边界信号：命中 chunk 以句中内容收尾提示边界切割）
 _SENTENCE_END_CHARS = set("。！？；…!?;.")
+# 报告级建议的保守提示线（批次 4）：信号占比超过线才进建议，宁缺勿滥——
+# 30% 碎片/50% 无句末收尾意味着命中样本里近半数形态异常，远超正常切分的波动范围；
+# 生成 5 分为 10 分制及格线（通用约定）。均为提示阈值而非硬判定。
+_RECOMMEND_FRAGMENT_RATIO = 0.3
+_RECOMMEND_UNTERMINATED_RATIO = 0.5
+_RECOMMEND_LOW_GENERATION = 5.0
+
+# 切分/生成侧建议文案（检索五类复用 RETRIEVAL_FAILURE_SUGGESTIONS）
+_CHUNK_HEALTH_SUGGESTIONS = {
+    "fragmentation": "命中结果中碎片 chunk 占比偏高——考虑增大切分块大小或改用语义切分策略",
+    "boundary_cut": "命中结果中大量 chunk 以句中内容收尾——考虑按段落/句子边界切分，保留完整语义单元",
+    "low_generation": "生成质量总体偏低——建议尝试更换 LLM 模型或核对检索上下文质量后再对比",
+}
 
 
 def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
@@ -156,6 +169,88 @@ def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
         "short_chunks": short,
         "unterminated_chunks": unterminated,
     }
+
+
+def _build_recommendations(
+    details: list[dict[str, Any]],
+    chunk_health: dict[str, int] | None,
+    generation_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """聚合报告级诊断建议（批次 4 闭环行动腿）。
+
+    三路来源，全部纯统计零 LLM：
+    1. 逐条检索失败归因（批次 2）按类别分组计数，附涉及的期望来源文档；
+    2. 切分健康信号（批次 3）超过保守提示线时给出切分策略建议；
+    3. 生成质量低于及格线时给出模型侧建议。
+
+    Returns:
+        [{category, count, suggestion, targets}]，按 count 降序；
+        空列表表示无需行动。
+    """
+    recommendations: list[dict[str, Any]] = []
+
+    # 1) 检索失败归因分组
+    grouped: dict[str, dict[str, Any]] = {}
+    for d in details:
+        diag = d.get("failure_diagnosis")
+        if not diag:
+            continue
+        category = diag.get("category", "unknown")
+        entry = grouped.setdefault(category, {"count": 0, "targets": []})
+        entry["count"] += 1
+        for source in (d.get("retrieval") or {}).get("expected_sources", []):
+            if source not in entry["targets"]:
+                entry["targets"].append(source)
+    for category, entry in grouped.items():
+        recommendations.append(
+            {
+                "category": category,
+                "count": entry["count"],
+                "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS.get(
+                    category, "结合诊断明细排查该类检索失败"
+                ),
+                "targets": entry["targets"][:10],
+            }
+        )
+
+    # 2) 切分健康信号（超过保守提示线才提示）
+    if chunk_health and chunk_health.get("total_chunks"):
+        total = chunk_health["total_chunks"]
+        frag_ratio = chunk_health["short_chunks"] / total
+        unterm_ratio = chunk_health["unterminated_chunks"] / total
+        if frag_ratio >= _RECOMMEND_FRAGMENT_RATIO:
+            recommendations.append(
+                {
+                    "category": "fragmentation",
+                    "count": chunk_health["short_chunks"],
+                    "suggestion": _CHUNK_HEALTH_SUGGESTIONS["fragmentation"],
+                    "targets": [],
+                }
+            )
+        if unterm_ratio >= _RECOMMEND_UNTERMINATED_RATIO:
+            recommendations.append(
+                {
+                    "category": "boundary_cut",
+                    "count": chunk_health["unterminated_chunks"],
+                    "suggestion": _CHUNK_HEALTH_SUGGESTIONS["boundary_cut"],
+                    "targets": [],
+                }
+            )
+
+    # 3) 生成质量（有综合分且低于及格线）
+    overall = generation_summary.get("overall")
+    if isinstance(overall, (int, float)) and overall < _RECOMMEND_LOW_GENERATION:
+        recommendations.append(
+            {
+                "category": "low_generation",
+                "count": 1,
+                "suggestion": _CHUNK_HEALTH_SUGGESTIONS["low_generation"],
+                "targets": [],
+            }
+        )
+
+    recommendations.sort(key=lambda r: r["count"], reverse=True)
+    return recommendations
 
 
 class EvaluationService:
@@ -1182,6 +1277,12 @@ class EvaluationService:
                         "elapsed_seconds": elapsed,
                         # 切分健康（批次 3）：命中样本的碎片/边界信号，None = 无检索样本
                         "chunk_health": chunk_health,
+                        # 报告级诊断建议（批次 4）：归因分组/切分信号/生成低分，空表 = 无需行动
+                        "recommendations": _build_recommendations(
+                            [d for d in details if "cancelled" not in d and "error" not in d],
+                            chunk_health,
+                            generation_summary,
+                        ),
                     },
                     "details": details,
                 }

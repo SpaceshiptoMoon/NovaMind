@@ -1527,6 +1527,13 @@ export interface EvaluationSummary {
     short_chunks: number
     unterminated_chunks: number
   } | null
+  /** 报告级诊断建议（批次 4）：归因分组/切分信号/生成低分，空表 = 无需行动 */
+  recommendations?: Array<{
+    category: string
+    count: number
+    suggestion: string
+    targets: string[]
+  }>
 }
 
 export interface RetrievedChunk {

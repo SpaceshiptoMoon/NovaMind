@@ -481,6 +481,29 @@
                 class="compare-error"
               />
 
+              <!-- 诊断建议（批次 4 闭环行动腿） -->
+              <div v-if="reportData.summary?.recommendations?.length" class="recommend-section">
+                <div class="recommend-header">
+                  <span class="recommend-title">诊断建议</span>
+                  <span class="recommend-hint">修复后可重跑同测试集并与本报告对比</span>
+                </div>
+                <div
+                  v-for="rec in reportData.summary.recommendations"
+                  :key="rec.category"
+                  class="recommend-item"
+                >
+                  <el-tag size="small" type="danger" effect="plain">
+                    {{ diagnosisLabel(rec.category) }} × {{ rec.count }}
+                  </el-tag>
+                  <span class="recommend-text">
+                    {{ rec.suggestion }}
+                    <template v-if="rec.targets.length">
+                      （涉及来源：{{ rec.targets.join('、') }}）
+                    </template>
+                  </span>
+                </div>
+              </div>
+
               <!-- 对比结果 -->
               <div v-if="comparisonData" class="compare-section">
                 <div class="compare-summary">
@@ -745,13 +768,29 @@
               <div class="report-details">
                 <div class="details-header">
                   <span class="details-title">逐条详情</span>
-                  <el-button
-                    size="small"
-                    @click="handleExport({ id: reportData.task_id } as EvaluationTask, 'csv')"
-                  >
-                    <el-icon><Download /></el-icon>
-                    导出CSV
-                  </el-button>
+                  <div class="details-actions">
+                    <el-button
+                      size="small"
+                      :loading="rerunLoading"
+                      @click="
+                        handleRerun({
+                          id: reportData.task_id,
+                          test_set_id: taskTestSetId,
+                          name: reportData.name,
+                        } as EvaluationTask)
+                      "
+                    >
+                      <el-icon><RefreshRight /></el-icon>
+                      重跑测评
+                    </el-button>
+                    <el-button
+                      size="small"
+                      @click="handleExport({ id: reportData.task_id } as EvaluationTask, 'csv')"
+                    >
+                      <el-icon><Download /></el-icon>
+                      导出CSV
+                    </el-button>
+                  </div>
                 </div>
 
                 <el-collapse>
@@ -947,7 +986,14 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, Loading, Document, CopyDocument } from '@element-plus/icons-vue'
+import {
+  Upload,
+  Download,
+  Loading,
+  Document,
+  CopyDocument,
+  RefreshRight,
+} from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -1371,6 +1417,8 @@ const reportLoading = ref(false)
 const reportData = ref<EvaluationReport | null>(null)
 const humanScores = reactive<HumanScoreItem[]>([])
 const scoreLoading = ref(false)
+/** 当前报告对应任务的测试集 id（报告响应不含，重跑要用） */
+const taskTestSetId = ref<number>(0)
 
 // ===== 回归对比（批次 3b） =====
 
@@ -1458,6 +1506,7 @@ async function viewReport(task: EvaluationTask) {
   reportDialogVisible.value = true
   reportLoading.value = true
   reportData.value = null
+  taskTestSetId.value = task.test_set_id
   // 重置对比状态
   baselineTaskId.value = undefined
   comparisonData.value = null
@@ -1468,6 +1517,21 @@ async function viewReport(task: EvaluationTask) {
     reportData.value = data
     if (data.status === 'completed' && task.test_set_id) {
       void loadComparisonCandidates(task.test_set_id, task.id)
+      // 重跑产生的任务：候选就绪后自动预选源任务为基线并触发对比（批次 4 闭环）
+      const autoBaseline = rerunBaseline[task.id]
+      if (autoBaseline) {
+        delete rerunBaseline[task.id]
+        void (async () => {
+          for (let i = 0; i < 10; i++) {
+            if (comparisonCandidates.value.some((t) => t.id === autoBaseline)) {
+              baselineTaskId.value = autoBaseline
+              void loadComparison()
+              return
+            }
+            await new Promise((resolve) => setTimeout(resolve, 300))
+          }
+        })()
+      }
     }
 
     // 初始化人工评分
@@ -1483,6 +1547,35 @@ async function viewReport(task: EvaluationTask) {
     // handled by interceptor
   } finally {
     reportLoading.value = false
+  }
+}
+
+// ===================== 一键重跑（批次 4 闭环） =====================
+
+/** 重跑来源映射：新任务 id → 作为对比基线的源任务 id */
+const rerunBaseline = reactive<Record<number, number>>({})
+const rerunLoading = ref(false)
+
+/** 用同测试集创建新任务，完成后查看报告时自动与源任务对比。 */
+async function handleRerun(task: EvaluationTask) {
+  rerunLoading.value = true
+  try {
+    // 列表项不带 config，拉详情取源任务的完整配置保证重跑同配置可比
+    const detail = await evaluationApi.getTask(spaceId.value, kbId.value, task.id)
+    const res = await evaluationApi.createTask(spaceId.value, kbId.value, {
+      test_set_id: task.test_set_id,
+      name: `${task.name || `任务 ${task.id}`} - 重跑`,
+      config: (detail.config ?? undefined) as Record<string, unknown> | undefined,
+    })
+    rerunBaseline[res.task_id] = task.id
+    ElMessage.success('重跑任务已创建，完成后查看报告将自动对比本任务')
+    reportDialogVisible.value = false
+    activeTab.value = 'tasks'
+    fetchTasks()
+  } catch {
+    // handled by interceptor
+  } finally {
+    rerunLoading.value = false
   }
 }
 
@@ -1570,6 +1663,9 @@ const DIAGNOSIS_LABELS: Record<string, string> = {
   mode_mismatch: '检索模式问题',
   embedding_gap: '语义缺口',
   index_missing: '索引缺失',
+  fragmentation: '切分碎片',
+  boundary_cut: '切分边界',
+  low_generation: '生成质量',
 }
 
 function diagnosisLabel(category: string): string {
@@ -1745,6 +1841,56 @@ onUnmounted(() => {
 
 .compare-error {
   margin-bottom: var(--space-4);
+}
+
+/* ===== 诊断建议（批次 4） ===== */
+.recommend-section {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-bg-card-elevated);
+}
+
+.recommend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-3);
+}
+
+.recommend-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.recommend-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.recommend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.recommend-item + .recommend-item {
+  border-top: 1px dashed var(--color-border);
+}
+
+.recommend-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
+.details-actions {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .compare-section {
