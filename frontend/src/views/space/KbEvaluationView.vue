@@ -142,6 +142,8 @@
           v-model="previewDialogVisible"
           title="测试集用例预览"
           width="700px"
+          top="6vh"
+          class="kb-eval-preview-dialog"
           destroy-on-close
         >
           <div v-if="previewLoading" style="text-align: center; padding: 40px">
@@ -171,6 +173,8 @@
           v-model="createTaskDialogVisible"
           title="创建测评任务"
           width="680px"
+          top="6vh"
+          class="kb-eval-create-dialog"
           destroy-on-close
         >
           <el-form ref="taskFormRef" :model="taskForm" :rules="taskRules" label-width="90px">
@@ -313,7 +317,8 @@
           v-model="reportDialogVisible"
           :title="`测评报告 - ${reportData?.name || ''}`"
           width="900px"
-          top="4vh"
+          top="5vh"
+          class="kb-eval-report-dialog"
           destroy-on-close
         >
           <div v-if="reportLoading" style="text-align: center; padding: 40px">
@@ -1390,6 +1395,35 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+/* ===== 长内容弹窗：固定视口高度，标题/footer 常驻、body 内嵌滚动 =====
+   dialog 经 teleport 渲染，scoped 属性选择器命不中根元素，须用 :global；
+   类名带 kb-eval- 前缀避免全局污染 */
+:global(.kb-eval-preview-dialog),
+:global(.kb-eval-create-dialog),
+:global(.kb-eval-report-dialog) {
+  display: flex;
+  flex-direction: column;
+  max-width: 94vw;
+  margin-bottom: 6vh;
+}
+
+:global(.kb-eval-preview-dialog) {
+  height: 76vh;
+}
+
+:global(.kb-eval-create-dialog),
+:global(.kb-eval-report-dialog) {
+  height: 86vh;
+}
+
+:global(.kb-eval-preview-dialog .el-dialog__body),
+:global(.kb-eval-create-dialog .el-dialog__body),
+:global(.kb-eval-report-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* ===== 回归对比（批次 3b） ===== */
 .compare-bar {
   display: flex;
@@ -1511,7 +1545,8 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
-/* 每个 section 的指标卡一行均分，禁止随机换行；窄屏降 2 列 */
+/* 每个 section 的指标卡一行均分（单卡超宽时 cap 220px 居中），窄屏降 2 列。
+   注意 auto-repeat 次数按 min 值计算，上限须写在卡片自身而非轨道 max 上 */
 .score-items {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -1533,6 +1568,9 @@ onUnmounted(() => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
   min-width: 90px;
+  max-width: 220px;
+  width: 100%;
+  justify-self: center;
   transition: all var(--transition-fast);
 }
 
