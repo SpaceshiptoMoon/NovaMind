@@ -1493,6 +1493,10 @@ export interface EvaluationRetrievalScores {
   hit_rate?: number
   mrr?: number
   recall_at_k?: number
+  /** gold 模式用例数（自带参考资料跳过检索，不参与检索指标平均） */
+  gold_cases?: number
+  /** 实际执行检索的用例数 */
+  retrieved_cases?: number
 }
 
 export interface EvaluationGenerationScores {
@@ -1536,6 +1540,8 @@ export interface EvaluationDetail {
   end_to_end: EvaluationEndToEndScores | null
   human_score: number | null
   human_comment: string | null
+  /** 自带参考资料（gold contexts）用例：跳过检索，直接评生成 */
+  gold_mode?: boolean
 }
 
 export interface EvaluationReport {
@@ -1573,6 +1579,8 @@ export interface TestSetCasesResponse {
   test_cases: Array<{
     question: string
     expected_answer: string
+    contexts?: string[]
+    expected_sources?: string[]
   }>
 }
 

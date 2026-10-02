@@ -50,6 +50,14 @@ class TestCase(BaseModel):
     """单条测试用例"""
     question: str = Field(..., min_length=1, description="测试问题")
     expected_answer: str = Field(..., min_length=1, description="期望答案")
+    contexts: list[str] = Field(
+        default_factory=list,
+        description="自带参考资料（gold contexts）；非空时该用例跳过检索，直接评生成质量",
+    )
+    expected_sources: list[str] = Field(
+        default_factory=list,
+        description="期望命中的来源（document_id 或 chunk_id）；提供时检索指标按硬基准计算",
+    )
 
 
 class TestSet(BaseModel):

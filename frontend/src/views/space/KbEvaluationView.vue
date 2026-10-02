@@ -167,6 +167,14 @@
               <el-table-column prop="required" label="必填" width="70" align="center" />
               <el-table-column prop="desc" label="说明" min-width="200" />
             </el-table>
+            <el-alert
+              class="format-tip"
+              type="success"
+              :closable="false"
+              show-icon
+              title="两种进阶用法（诊断闭环）"
+              description="contexts（自带参考资料）：该用例跳过检索、直接评生成质量，用于把「检索不行」和「生成不行」拆开；expected_sources（期望命中来源，填文档 ID 或 chunk ID）：检索命中率改按硬基准计算，未命中的用例可直接定位到「该召回的没召回」。两者均可选，多段值在 CSV 中用 || 分隔。"
+            />
 
             <div class="format-block-head">
               <h4>JSON 示例</h4>
@@ -231,6 +239,16 @@
                   <div class="preview-case-field">
                     <span class="preview-case-label">期望答案</span>
                     <div class="preview-case-value">{{ tc.expected_answer }}</div>
+                  </div>
+                  <div v-if="tc.contexts?.length" class="preview-case-field">
+                    <span class="preview-case-label"
+                      >自带参考资料（{{ tc.contexts.length }} 段，评测时跳过检索）</span
+                    >
+                    <div class="preview-case-value">{{ tc.contexts.join('\n') }}</div>
+                  </div>
+                  <div v-if="tc.expected_sources?.length" class="preview-case-field">
+                    <span class="preview-case-label">期望命中来源</span>
+                    <div class="preview-case-value">{{ tc.expected_sources.join('、') }}</div>
                   </div>
                 </div>
               </el-collapse-item>
@@ -539,7 +557,19 @@
                 <div class="score-grid">
                   <!-- 检索 -->
                   <div v-if="reportData.summary?.retrieval" class="score-section">
-                    <h4>检索阶段</h4>
+                    <h4>
+                      检索阶段
+                      <span
+                        v-if="reportData.summary.retrieval.gold_cases"
+                        class="score-section-note"
+                      >
+                        （{{
+                          reportData.summary.retrieval.gold_cases
+                        }}
+                        条自带参考资料用例未参与检索指标， 实际检索
+                        {{ reportData.summary.retrieval.retrieved_cases }} 条）
+                      </span>
+                    </h4>
                     <div class="score-items">
                       <div
                         v-if="reportData.summary.retrieval.precision_at_k != null"
@@ -721,11 +751,14 @@
                     </template>
 
                     <div class="detail-body">
-                      <!-- 召回结果 -->
+                      <!-- 召回结果 / 自带参考资料 -->
                       <div v-if="detail.retrieved_chunks?.length" class="recall-block">
-                        <span class="recall-label"
-                          >召回结果 ({{ detail.retrieved_chunks.length }} 条)</span
-                        >
+                        <span v-if="detail.gold_mode" class="recall-label recall-label-gold">
+                          自带参考资料 ({{ detail.retrieved_chunks.length }} 段，跳过检索直评生成)
+                        </span>
+                        <span v-else class="recall-label">
+                          召回结果 ({{ detail.retrieved_chunks.length }} 条)
+                        </span>
                         <div
                           v-for="(chunk, ci) in detail.retrieved_chunks"
                           :key="chunk.chunk_id || ci"
@@ -933,7 +966,9 @@ const FORMAT_EXAMPLES = {
   "test_cases": [
     {
       "question": "什么是 RAG？",
-      "expected_answer": "RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。"
+      "expected_answer": "RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。",
+      "contexts": ["RAG（检索增强生成）：先从知识库检索相关内容，再由大模型基于检索结果生成回答的技术架构。"],
+      "expected_sources": ["576"]
     },
     {
       "question": "文档切分的常见策略有哪些？",
@@ -941,9 +976,9 @@ const FORMAT_EXAMPLES = {
     }
   ]
 }`,
-  csv: `question,expected_answer
-什么是 RAG？,RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。
-文档切分的常见策略有哪些？,常见策略包括固定长度切分、递归切分和语义切分。`,
+  csv: `question,expected_answer,contexts,expected_sources
+什么是 RAG？,RAG（检索增强生成）是一种先从知识库检索相关内容、再交由大模型生成回答的技术。,RAG：先检索后生成的技术架构。,576
+文档切分的常见策略有哪些？,常见策略包括固定长度切分、递归切分和语义切分。,,`,
 } as const
 
 const formatFields = [
@@ -952,6 +987,16 @@ const formatFields = [
     field: 'expected_answer',
     required: '是',
     desc: '期望答案（标准答案），作为正确性 / 忠实度评分的参照',
+  },
+  {
+    field: 'contexts',
+    required: '否',
+    desc: '自带参考资料（gold contexts）：非空时该用例跳过检索，直接评生成质量',
+  },
+  {
+    field: 'expected_sources',
+    required: '否',
+    desc: '期望命中来源（文档 ID 或 chunk ID）：提供后检索命中率按硬基准计算',
   },
   { field: '其他字段 / 列', required: '否', desc: '解析时忽略，可自行保留备注信息' },
 ]
@@ -1581,6 +1626,10 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
+.format-tip {
+  margin-top: var(--space-3);
+}
+
 .format-block-head {
   display: flex;
   justify-content: space-between;
@@ -1722,6 +1771,12 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
 }
 
+.score-section-note {
+  font-size: 12px;
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
+}
+
 /* 每个 section 的指标卡一行均分（单卡超宽时 cap 220px 居中），窄屏降 2 列。
    注意 auto-repeat 次数按 min 值计算，上限须写在卡片自身而非轨道 max 上 */
 .score-items {
@@ -1844,6 +1899,10 @@ onUnmounted(() => {
   font-weight: var(--weight-medium);
   display: block;
   margin-bottom: var(--space-2);
+}
+
+.recall-label-gold {
+  color: var(--color-success);
 }
 
 .recall-chunk {

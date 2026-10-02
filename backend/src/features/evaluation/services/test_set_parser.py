@@ -10,6 +10,9 @@ import json
 from novamind.features.evaluation.exceptions import InvalidTestSetError
 from novamind.features.evaluation.schemas.evaluation_schema import TestCase, TestSet
 
+# CSV 单元格里多段 contexts / expected_sources 的分隔符
+CSV_LIST_SEPARATOR = "||"
+
 
 def parse_test_set(file_content: bytes, filename: str) -> TestSet:
     """
@@ -70,12 +73,34 @@ def _parse_json(file_content: bytes) -> TestSet:
             raise InvalidTestSetError(f"第 {i + 1} 条测试用例缺少 question")
         if not expected_answer:
             raise InvalidTestSetError(f"第 {i + 1} 条测试用例缺少 expected_answer")
-        cases.append(TestCase(question=question, expected_answer=expected_answer))
+        cases.append(
+            TestCase(
+                question=question,
+                expected_answer=expected_answer,
+                contexts=_parse_str_list(item.get("contexts"), f"第 {i + 1} 条测试用例的 contexts"),
+                expected_sources=_parse_str_list(
+                    item.get("expected_sources"), f"第 {i + 1} 条测试用例的 expected_sources"
+                ),
+            )
+        )
 
     return TestSet(
         name=data.get("name"),
         test_cases=cases,
     )
+
+
+def _parse_str_list(raw: object, label: str) -> list[str]:
+    """解析可选字符串列表字段（contexts / expected_sources）。
+
+    缺省或 null 返回空表；提供时必须是字符串数组，空白项过滤；
+    类型错误显式报错——静默忽略会让用户误以为字段已生效。
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise InvalidTestSetError(f"{label} 必须是字符串数组")
+    return [str(v).strip() for v in raw if str(v).strip()]
 
 
 def _parse_csv(file_content: bytes) -> TestSet:
@@ -98,9 +123,23 @@ def _parse_csv(file_content: bytes) -> TestSet:
             raise InvalidTestSetError(f"第 {i + 1} 行缺少 question")
         if not expected_answer:
             raise InvalidTestSetError(f"第 {i + 1} 行缺少 expected_answer")
-        cases.append(TestCase(question=question, expected_answer=expected_answer))
+        cases.append(
+            TestCase(
+                question=question,
+                expected_answer=expected_answer,
+                contexts=_split_csv_list(row.get("contexts")),
+                expected_sources=_split_csv_list(row.get("expected_sources")),
+            )
+        )
 
     if not cases:
         raise InvalidTestSetError("CSV 文件没有数据行")
 
     return TestSet(test_cases=cases)
+
+
+def _split_csv_list(raw: str | None) -> list[str]:
+    """拆分 CSV 单元格的多值字段（|| 分隔），缺省列返回空表。"""
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(CSV_LIST_SEPARATOR) if part.strip()]

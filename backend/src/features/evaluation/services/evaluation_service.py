@@ -71,6 +71,39 @@ EVALUATION_CONCURRENCY = 5
 _running_tasks: dict[int, asyncio.Task] = {}
 
 
+def _apply_expected_sources_benchmark(
+    retrieval_result: dict[str, Any],
+    chunk_list: list[dict[str, Any]],
+    expected_sources: list[str],
+) -> None:
+    """用 expected_sources 硬基准覆盖检索命中指标（原地修改）。
+
+    检索结果命中任一期望来源（chunk_id 或来源文档 document_id 相等）即计为
+    命中；precision/首命中排名按硬基准重算，LLM 相关性判断明细
+    （chunks_relevance）保留作对照。document_id 比对统一转字符串，
+    兼容测试集里的整数/字符串写法。
+    """
+    expected = {str(s) for s in expected_sources}
+
+    def _is_expected(chunk: dict[str, Any]) -> bool:
+        if str(chunk.get("chunk_id", "")) in expected:
+            return True
+        doc_id = chunk.get("document_id")
+        # 检索结果若透传 source 层（ES _source），document_id 藏在 source 内
+        if doc_id is None and isinstance(chunk.get("source"), dict):
+            doc_id = chunk["source"].get("document_id")
+        return doc_id is not None and str(doc_id) in expected
+
+    hit_positions = [i + 1 for i, chunk in enumerate(chunk_list) if _is_expected(chunk)]
+    retrieval_result["hit"] = bool(hit_positions)
+    retrieval_result["precision_at_k"] = (
+        round(len(hit_positions) / len(chunk_list), 4) if chunk_list else 0.0
+    )
+    retrieval_result["first_relevant_rank"] = hit_positions[0] if hit_positions else None
+    retrieval_result["expected_sources"] = list(expected_sources)
+    retrieval_result["benchmark"] = "expected_sources"
+
+
 class EvaluationService:
     """测评编排服务"""
 
@@ -865,7 +898,15 @@ class EvaluationService:
                     test_set_obj.get_minio_object_name(),
                 )
                 test_set = parse_test_set(file_content, test_set_obj.filename)
-                cases = [{"question": c.question, "expected_answer": c.expected_answer} for c in test_set.test_cases]
+                cases = [
+                    {
+                        "question": c.question,
+                        "expected_answer": c.expected_answer,
+                        "contexts": c.contexts,
+                        "expected_sources": c.expected_sources,
+                    }
+                    for c in test_set.test_cases
+                ]
 
                 await task_repo.update_progress(task_id, {"current": 0, "total": len(cases)})
                 await session.commit()
@@ -954,6 +995,8 @@ class EvaluationService:
                                 detail = await self._evaluate_single_case(
                                     index=i, question=case["question"],
                                     expected_answer=case["expected_answer"],
+                                    contexts=case.get("contexts") or [],
+                                    expected_sources=case.get("expected_sources") or [],
                                     test_set_obj=test_set_obj, config=config,
                                     retrieval_evaluator=retrieval_evaluator,
                                     generation_evaluator=generation_evaluator,
@@ -1002,11 +1045,22 @@ class EvaluationService:
 
                 elapsed = round(time.time() - start_time, 1)
 
-                retrieval_results = [d.get("retrieval", {}) for d in details if "cancelled" not in d and "error" not in d]
+                # gold 模式用例（自带参考资料跳过检索）不参与检索指标平均，
+                # 否则 skipped 占位的 precision=0/hit=False 会稀释汇总
+                retrieval_results = [
+                    d.get("retrieval", {})
+                    for d in details
+                    if "cancelled" not in d and "error" not in d
+                    and not d.get("retrieval", {}).get("skipped")
+                ]
+                gold_case_count = sum(1 for d in details if d.get("gold_mode") and "cancelled" not in d and "error" not in d)
 
                 retrieval_summary = RetrievalEvaluator.compute_aggregate_metrics(
                     retrieval_results, enable_mrr=config.enable_mrr,
                 )
+                if gold_case_count:
+                    retrieval_summary["gold_cases"] = gold_case_count
+                    retrieval_summary["retrieved_cases"] = len(retrieval_results)
 
                 gen_scores = {"faithfulness": [], "answer_relevance": [], "correctness": [], "quality": []}
                 for d in details:
@@ -1111,41 +1165,69 @@ class EvaluationService:
         llm_client: BaseLLM | None,
         user_id: int,
         retrieval_port: SearchService | None = None,
+        contexts: list[str] | None = None,
+        expected_sources: list[str] | None = None,
     ) -> dict[str, Any]:
-        """评估单条用例：检索 → 检索指标 → 按配置生成回答 → 生成质量评分 → 端到端指标，返回逐条详情。"""
+        """评估单条用例：检索 → 检索指标 → 按配置生成回答 → 生成质量评分 → 端到端指标，返回逐条详情。
+
+        用例自带 contexts（gold contexts）时跳过检索，直接以自带资料为上下文——
+        用于隔离生成能力与检索能力；检索类指标记 skipped 不参与汇总。
+        用例提供 expected_sources 时，hit/precision/首命中排名按硬基准计算
+        （命中任一期望来源即命中），LLM 相关性判断明细保留作对照。
+        """
+        contexts = contexts or []
+        expected_sources = expected_sources or []
         detail: dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,
         }
 
-        from novamind.features.knowledge_space.schemas.search_schema import (
-            SearchMode,
-            SearchRequest,
-        )
+        if contexts:
+            chunk_list = [
+                {"chunk_id": f"gold_{i}", "content": content, "score": 1.0}
+                for i, content in enumerate(contexts)
+            ]
+            detail["retrieved_chunks"] = chunk_list
+            detail["gold_mode"] = True
+            detail["retrieval"] = {"skipped": True, "reason": "自带参考资料，跳过检索"}
+            chunks = chunk_list
+        else:
+            from novamind.features.knowledge_space.schemas.search_schema import (
+                SearchMode,
+                SearchRequest,
+            )
 
-        search_request = SearchRequest(
-            query=question,
-            search_mode=SearchMode(config.search_mode),
-            top_k=config.top_k,
-            score_threshold=config.score_threshold,
-        )
-        svc = retrieval_port or self.retrieval_port
-        search_result = await svc.search(
-            space_id=test_set_obj.space_id, kb_id=test_set_obj.kb_id,
-            user_id=user_id, request=search_request,
-        )
+            search_request = SearchRequest(
+                query=question,
+                search_mode=SearchMode(config.search_mode),
+                top_k=config.top_k,
+                score_threshold=config.score_threshold,
+            )
+            svc = retrieval_port or self.retrieval_port
+            search_result = await svc.search(
+                space_id=test_set_obj.space_id, kb_id=test_set_obj.kb_id,
+                user_id=user_id, request=search_request,
+            )
 
-        chunks = search_result.get("results", [])
-        chunk_list = [
-            {"chunk_id": c.get("chunk_id", ""), "content": c.get("content", ""), "score": c.get("score", 0)}
-            for c in chunks
-        ]
-        detail["retrieved_chunks"] = chunk_list
+            chunks = search_result.get("results", [])
+            chunk_list = [
+                {
+                    "chunk_id": c.get("chunk_id", ""),
+                    "content": c.get("content", ""),
+                    "score": c.get("score", 0),
+                    # 硬基准（expected_sources）按 document_id 比对需要此字段
+                    "document_id": c.get("document_id"),
+                }
+                for c in chunks
+            ]
+            detail["retrieved_chunks"] = chunk_list
 
-        retrieval_result = await retrieval_evaluator.evaluate(
-            question=question, chunks=chunk_list,
-            strategy=config.retrieval_relevance_strategy,
-        )
-        detail["retrieval"] = retrieval_result
+            retrieval_result = await retrieval_evaluator.evaluate(
+                question=question, chunks=chunk_list,
+                strategy=config.retrieval_relevance_strategy,
+            )
+            if expected_sources:
+                _apply_expected_sources_benchmark(retrieval_result, chunk_list, expected_sources)
+            detail["retrieval"] = retrieval_result
 
         generated_answer = None
         if config.enable_generation:
@@ -1163,7 +1245,7 @@ class EvaluationService:
             detail["generation_scores"] = gen_scores
 
         end_to_end = {}
-        if config.enable_context_precision:
+        if config.enable_context_precision and not contexts:
             end_to_end["context_precision"] = retrieval_result.get("precision_at_k")
 
         if config.enable_context_recall:
