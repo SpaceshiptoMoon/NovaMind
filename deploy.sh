@@ -196,8 +196,8 @@ prepare_deepdoc_models() {
   else
     warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
     warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
-    warn "  HF_ENDPOINT from .env docker compose run --rm --no-deps --user 0 \\"
-    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(bash -c 'source .env 2>/dev/null; echo ${HF_ENDPOINT:-https://huggingface.co}')\" \\"
+    warn "  docker compose run --rm --no-deps --user 0 \\"
+    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(read_env_hf_endpoint)\" \\"
     warn "    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
     warn "After the app is up, verify via: curl -s http://localhost/health/detailed | grep -A3 deepdoc_models"
   fi
@@ -220,8 +220,8 @@ prepare_local_whisper_model() {
   else
     warn "faster-whisper model download failed — audio parsing without an explicit"
     warn "asr_model will fail until the model is in place. Retry manually:"
-    warn "  HF_ENDPOINT from .env docker compose run --rm --no-deps --user 0 \\"
-    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(bash -c 'source .env 2>/dev/null; echo ${HF_ENDPOINT:-https://huggingface.co}')\" \\"
+    warn "  docker compose run --rm --no-deps --user 0 \\"
+    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(read_env_hf_endpoint)\" \\"
     warn "    -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \\"
     warn "    app python scripts/download_faster_whisper_model.py"
     warn "Or set knowledge_base.parsing.local_whisper_model_dir to an existing model path."
