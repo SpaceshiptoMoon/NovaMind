@@ -48,6 +48,8 @@ function handleBack() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: var(--space-6);
   padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--color-border-light);
@@ -57,6 +59,11 @@ function handleBack() {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
+}
+
+.page-title {
+  white-space: nowrap;
 }
 
 .page-header-right {
