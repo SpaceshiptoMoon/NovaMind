@@ -317,6 +317,35 @@ class MinioClient:
             )
             raise
 
+    async def upload_document_streamed(
+        self,
+        space_id: int,
+        kb_id: int,
+        document_id: int,
+        file_stream: BinaryIO,
+        file_size: int,
+        filename: str,
+        file_hash: str = "",
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """大文件流式上传：先 seek(0) 再委托既有流式实现（文件不进内存）。
+
+        Args:
+            file_stream: 二进制流（SpooledTemporaryFile/磁盘句柄均可）。
+                调用方常先流式哈希把流读到尾部，此处统一归零。
+            file_size: 精确字节数——minio-py 流式 put_object 要求流长度与之一致，
+                否则 multipart 分块上传校验失败；调用方须先计数再传此值。
+
+        Returns:
+            上传结果（含 etag、object_name、bucket、size）。
+        """
+        file_stream.seek(0)
+        return await self.upload_document_stream(
+            space_id, kb_id, document_id, file_stream, file_size, filename,
+            file_hash, content_type, metadata,
+        )
+
     # ========== 文档下载 ==========
 
     def _download_document(self, bucket_name: str, object_name: str) -> bytes:

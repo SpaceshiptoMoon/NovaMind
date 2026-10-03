@@ -70,8 +70,6 @@ def _get_global_upload_read_limit() -> int:
     return max(1, int(get_config().knowledge_base.parsing.max_upload_size_mb)) * 1024 * 1024
 
 
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB：文本/图片上限（保守默认，用于 Content-Length 预检）
-
 # 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
 ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
 
@@ -145,7 +143,7 @@ async def upload_document(
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
 
-    # 单文件：走原有逻辑，保持向后兼容
+    # 单文件：流式路径（文件不进内存，大视频可至模态上限）
     if len(files) == 1:
         file = files[0]
 
@@ -177,18 +175,14 @@ async def upload_document(
                 limit=global_read_limit,
             )
 
-        # 读取层用全局上限兜底；逐模态权威校验在 service 层 _get_max_file_size
-        # （按 text/image 100 / audio 200 / video 2000MB 分治）
-        file_content = await DocumentUploadService.read_upload_file(
-            file, max_size=global_read_limit
-        )
-
-        # 上传文档（仅存 MinIO，不触发解析）
-        uploaded = await document_upload_service.upload_document(
+        # 上传文档（仅存 MinIO，不触发解析）：流式哈希+multipart 上传，
+        # 内存峰值与文件大小解耦；全局 read_limit 在流式计数层兜底
+        # （Content-Length 缺失/chunked encoding 时仍被拦截）
+        uploaded = await document_upload_service.upload_document_streamed(
             kb_id=kb_id,
             uploader_id=user_id,
-            file_content=file_content,
-            filename=file.filename,
+            file=file,
+            read_limit=global_read_limit,
         )
 
         # 记录审计日志

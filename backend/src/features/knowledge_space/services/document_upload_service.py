@@ -5,7 +5,9 @@ _compute_sha256 为 CPU 密集操作，须由调用方放线程池执行。
 
 import asyncio
 import hashlib
+import io
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -74,8 +76,7 @@ class DocumentUploadService:
         filename: str,
         metadata: dict[str, Any] | None = None,
     ) -> UploadedDocumentResult:
-        """
-        上传文档（仅存 MinIO，不触发解析）
+        """上传文档（仅存 MinIO，不触发解析）。
 
         Args:
             kb_id: 知识库 ID
@@ -149,8 +150,137 @@ class DocumentUploadService:
             )
             raise DocumentInvalidTypeError(f"{file_info.extension}: {file_info.validation_message}")
 
-        # 5.5 根据知识库模态校验文件类型
-        file_type = file_info.extension
+        file_type = await self._check_kb_modality(kb, file_info.extension)
+
+        # 6. 检查文件大小
+        file_size = len(file_content)
+        max_size = self._get_max_file_size(kb, file_type)
+        if file_size > max_size:
+            raise DocumentSizeExceededError(file_size, max_size)
+
+        # 7. 计算文件哈希（CPU 密集操作放入线程池）
+        file_hash = await asyncio.to_thread(_compute_sha256, file_content)
+
+        return await self._dedup_and_persist(
+            kb=kb,
+            kb_id=kb_id,
+            uploader_id=uploader_id,
+            filename=filename,
+            file_type=file_type,
+            file_size=file_size,
+            file_hash=file_hash,
+            upload_bytes=file_content,
+        )
+
+    async def upload_document_streamed(
+        self,
+        kb_id: int,
+        uploader_id: int,
+        file,
+        *,
+        read_limit: int,
+    ) -> UploadedDocumentResult:
+        """大文件流式上传（仅存 MinIO，不触发解析）——文件全程不进内存。
+
+        与 ``upload_document`` 共享校验/查重/持久化语义（模态校验、SAVEPOINT、
+        IntegrityError 兜底、孤儿补偿、hash 缓存同步），差异仅在数据形态：
+        UploadFile 的 SpooledTemporaryFile 经 ingest_upload_stream 流式哈希+计数，
+        校验魔数只读头部少量字节，MinIO 上传走 multipart 流式。
+
+        Args:
+            kb_id: 知识库 ID。
+            uploader_id: 上传者 ID。
+            file: FastAPI UploadFile（file 属性为 SpooledTemporaryFile）。
+            read_limit: 读取字节硬顶（全局流式读上限，防 Content-Length
+                撒谎/chunked encoding 绕过模态闸）。
+
+        Returns:
+            上传结果 DTO（document_id/filename/file_size）。
+
+        Raises:
+            KnowledgeBaseNotFoundError: 知识库不存在。
+            DocumentAlreadyExistsError: 同哈希文档已存在。
+            DocumentInvalidTypeError: 类型不支持/魔数不匹配/空间模态不符。
+            DocumentSizeExceededError: 流式计数超过 read_limit 或模态上限。
+            InvalidParameterError: 文件名非法。
+        """
+        # 1-3. 参数/KB/权限：与整包路径共用前置（异常语义一致）
+        if not file.filename or not file.filename.strip():
+            raise InvalidParameterError("文件名不能为空", field="filename")
+
+        kb = await self.kb_repo.get_by_id(kb_id)
+        if not kb:
+            raise KnowledgeBaseNotFoundError(kb_id)
+
+        member = await self.member_repo.get_by_space_and_user(kb.space_id, uploader_id)
+        if not member or not member.is_active():
+            raise SpaceAccessDeniedError(kb.space_id, uploader_id, "无权在此知识库上传文档")
+        if not self.permission_service.can_upload_document(member):
+            raise SpaceAccessDeniedError(
+                kb.space_id, uploader_id, "需要编辑者或更高权限才能上传文档"
+            )
+
+        # 4. 文件名校验（_get_file_type 含长度/字符/路径遍历/白名单检查）
+        filename = file.filename
+        ext = self._get_file_type(filename)
+        allowed_types = self._get_allowed_file_types(kb)
+        file_type = await self._check_kb_modality(kb, ext)
+
+        # 5. 流式哈希 + 硬计数（read_limit 兜底模态闸之前的全局上限）
+        file_hash, file_size = await self.ingest_upload_stream(file, max_size=read_limit)
+
+        # 6. 模态大小上限（权威校验，与整包路径同源）
+        max_size = self._get_max_file_size(kb, file_type)
+        if file_size > max_size:
+            raise DocumentSizeExceededError(file_size, max_size)
+
+        # 7. 魔数校验：validate_file 只消费头部（libmagic 前 2KB + zip 容器
+        #    Content_Types 读取），此处读头部回卷，避免整包进内存。
+        def _read_head(stream: io.BufferedIOBase, size: int) -> bytes:
+            stream.seek(0)
+            head = stream.read(size)
+            stream.seek(0)
+            return head
+
+        head_size = min(file_size, self._MAGIC_HEAD_BYTES)
+        head = await asyncio.to_thread(_read_head, file.file, head_size)
+        file_info = await asyncio.to_thread(
+            validate_file,
+            content=head,
+            filename=filename,
+            allowed_extensions=allowed_types,
+            max_file_size=max_size,
+        )
+        if not file_info.is_valid:
+            self.logger.warning(
+                "文件验证失败",
+                filename=filename,
+                extension=file_info.extension,
+                detected_mime=file_info.detected_mime,
+                message=file_info.validation_message,
+            )
+            raise DocumentInvalidTypeError(f"{file_info.extension}: {file_info.validation_message}")
+
+        # 8-9. 查重 + 持久化 + MinIO 流式上传（与整包路径同一尾段）
+        return await self._dedup_and_persist(
+            kb=kb,
+            kb_id=kb_id,
+            uploader_id=uploader_id,
+            filename=filename,
+            file_type=file_type,
+            file_size=file_size,
+            file_hash=file_hash,
+            upload_bytes=None,
+            upload_stream=file.file,
+        )
+
+    # 魔数校验头部读取量：libmagic 消费前 2KB，zip 容器（docx 等）的
+    # [Content_Types].xml 位于首个局部文件头之后，8KB 覆盖其在常规文件中的位置；
+    # 超出此窗口仍读不到签名表命中的类型时 validate_file 按既有两级探测判拒。
+    _MAGIC_HEAD_BYTES = 8 * 1024
+
+    async def _check_kb_modality(self, kb: KnowledgeBase, extension: str) -> str:
+        """按知识库有效模态合集校验扩展名，通过则返回该扩展名。"""
         from novamind.features.knowledge_space.services.knowledge_base_service import (
             get_effective_space_types,
         )
@@ -163,20 +293,38 @@ class DocumentUploadService:
             if m in self.MODALITY_TO_FILE_TYPES:
                 allowed_types |= self.MODALITY_TO_FILE_TYPES[m]
 
-        if file_type not in allowed_types:
+        if extension not in allowed_types:
             raise DocumentInvalidTypeError(
-                f"{file_type}: 该空间不支持此文件类型。空间模态: {modalities}"
+                f"{extension}: 该空间不支持此文件类型。空间模态: {modalities}"
             )
+        return extension
 
-        # 6. 检查文件大小
-        file_size = len(file_content)
-        max_size = self._get_max_file_size(kb, file_type)
-        if file_size > max_size:
-            raise DocumentSizeExceededError(file_size, max_size)
+    async def _dedup_and_persist(
+        self,
+        *,
+        kb: KnowledgeBase,
+        kb_id: int,
+        uploader_id: int,
+        filename: str,
+        file_type: str,
+        file_size: int,
+        file_hash: str,
+        upload_bytes: bytes | None,
+        upload_stream: io.BufferedIOBase | None = None,
+    ) -> UploadedDocumentResult:
+        """查重后持久化文档（软删复活或新建），再按入参形态上传 MinIO。
 
-        # 7. 计算文件哈希（CPU 密集操作放入线程池）
-        file_hash = await asyncio.to_thread(_compute_sha256, file_content)
-        file_type = file_info.extension
+        ``upload_bytes``（整包路径）与 ``upload_stream``（大文件流式路径）二选一：
+        前者走 upload_document（内存 buffer），后者走 upload_document_streamed
+        （SpooledTemporaryFile 流式，方法内部 seek(0) 回卷）。查重（活跃命中、
+        软删复活）与 SAVEPOINT/IntegrityError 兜底/孤儿对象补偿两条路径语义
+        与历史 upload_document 完全一致。
+
+        Raises:
+            DocumentAlreadyExistsError: 同哈希活跃文档已存在，或唯一约束兜底命中。
+        """
+        if (upload_bytes is None) == (upload_stream is None):
+            raise ValueError("upload_bytes 与 upload_stream 必须二选一")
 
         # 8. 检查重复（去重范围：同知识库 + 同上传者的活跃文档）
         existing = await self.doc_repo.get_by_hash(kb_id, uploader_id, file_hash)
@@ -197,13 +345,15 @@ class DocumentUploadService:
                 soft_deleted.undelete(uploader_id=uploader_id, filename=filename)
 
                 # 重新上传 MinIO（软删除时文件已被清理）
-                minio_result = await self.minio_client.upload_document(
-                    space_id=kb.space_id,
+                minio_result = await self._upload_to_minio(
+                    kb=kb,
                     kb_id=kb_id,
                     document_id=soft_deleted.id,
-                    file_data=file_content,
                     filename=filename,
                     file_hash=file_hash,
+                    file_size=file_size,
+                    upload_bytes=upload_bytes,
+                    upload_stream=upload_stream,
                 )
                 soft_deleted.set_minio_info(
                     bucket=minio_result["bucket"],
@@ -249,13 +399,15 @@ class DocumentUploadService:
                 )
 
                 # 使用真实 document_id 上传到 MinIO
-                minio_result = await self.minio_client.upload_document(
-                    space_id=kb.space_id,
+                minio_result = await self._upload_to_minio(
+                    kb=kb,
                     kb_id=kb_id,
                     document_id=document.id,
-                    file_data=file_content,
                     filename=filename,
                     file_hash=file_hash,
+                    file_size=file_size,
+                    upload_bytes=upload_bytes,
+                    upload_stream=upload_stream,
                 )
 
                 # 更新文档记录中的存储信息
@@ -327,14 +479,51 @@ class DocumentUploadService:
             file_size=document.file_size,
         )
 
+    async def _upload_to_minio(
+        self,
+        *,
+        kb: KnowledgeBase,
+        kb_id: int,
+        document_id: int,
+        filename: str,
+        file_hash: str,
+        file_size: int,
+        upload_bytes: bytes | None,
+        upload_stream: io.BufferedIOBase | None,
+    ) -> dict[str, Any]:
+        """按入参形态上传 MinIO：整包 bytes 走缓冲上传，流走 multipart 流式。
+
+        流式分支委托 upload_document_streamed（内部 seek(0) 回卷 + put_object
+        自动 multipart），要求 file_size 与流长度严格一致——由 ingest_upload_stream
+        的计数保证。两条路径的存储命名/返回结构完全一致。
+        """
+        if upload_bytes is not None:
+            return await self.minio_client.upload_document(
+                space_id=kb.space_id,
+                kb_id=kb_id,
+                document_id=document_id,
+                file_data=upload_bytes,
+                filename=filename,
+                file_hash=file_hash,
+            )
+        assert upload_stream is not None  # 互斥性由 _dedup_and_persist 前置校验
+        return await self.minio_client.upload_document_streamed(
+            space_id=kb.space_id,
+            kb_id=kb_id,
+            document_id=document_id,
+            file_stream=upload_stream,
+            file_size=file_size,
+            filename=filename,
+            file_hash=file_hash,
+        )
+
     async def upload_documents(
         self,
         kb_id: int,
         uploader_id: int,
         files: list[tuple],
     ) -> dict:
-        """
-        批量上传文档（仅存 MinIO，不触发解析）
+        """批量上传文档（仅存 MinIO，不触发解析）。
 
         单个文件失败不影响其他文件。
 
@@ -402,6 +591,48 @@ class DocumentUploadService:
                     limit=max_size,
                 )
         return bytes(file_content)
+
+    # 流式哈希读取块大小：1MB 在磁盘吞吐与 to_thread 切换频率间取平衡
+    # （10MB 会让 2GB 文件的多块路径在校验前积压过多内存意图）。
+    _STREAM_HASH_CHUNK = 1024 * 1024
+
+    @staticmethod
+    async def ingest_upload_stream(file, *, max_size: int) -> tuple[str, int]:
+        """流式消费单个上传文件：边读边算 sha256 并硬计数，文件不进内存。
+
+        大视频上传路径的核心读取层——UploadFile.file 是 SpooledTemporaryFile
+        （>1MB 已落盘），本方法只顺序读它并回卷，内存峰值与文件大小解耦。
+        sha256 计算是 CPU 密集操作，放线程池执行。
+
+        Args:
+            file: FastAPI UploadFile。
+            max_size: 读取字节硬顶。Content-Length 缺失/chunked encoding/
+                伪造头部时，靠这里的逐块计数兜底拒收。
+
+        Returns:
+            (file_hash, file_size)：流式 sha256 十六进制摘要与精确字节数。
+            返回后流位置在 EOF，调用方复用流前须 seek(0)（MinIO 流式上传
+            方法内部已统一回卷）。
+
+        Raises:
+            DocumentSizeExceededError: 累计读取超过 max_size（流被部分消费）。
+        """
+        import io
+
+        def _hash_stream(stream: io.BufferedIOBase, limit: int) -> tuple[str, int]:
+            hasher = hashlib.sha256()
+            total = 0
+            while True:
+                chunk = stream.read(DocumentUploadService._STREAM_HASH_CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > limit:
+                    raise DocumentSizeExceededError(size=total, limit=limit)
+                hasher.update(chunk)
+            return hasher.hexdigest(), total
+
+        return await asyncio.to_thread(_hash_stream, file.file, max_size)
 
     @classmethod
     async def read_and_validate_uploads(
