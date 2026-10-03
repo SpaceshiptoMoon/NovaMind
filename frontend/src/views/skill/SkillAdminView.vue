@@ -39,7 +39,9 @@
     >
       <div v-for="skill in skillStore.pendingReviews" :key="skill.id" class="review-card">
         <div class="review-main">
-          <div class="review-icon">{{ skill.icon || '⚡' }}</div>
+          <div class="review-icon" aria-hidden="true">
+            <el-icon><MagicStick /></el-icon>
+          </div>
           <div class="review-info">
             <h4>{{ skill.display_name }}</h4>
             <p>{{ skill.description }}</p>
@@ -83,7 +85,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, MagicStick } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
 import PageHeader from '@/components/common/PageHeader.vue'
 
@@ -237,8 +239,19 @@ function handlePageChange(page: number) {
 }
 
 .review-icon {
-  font-size: var(--text-3xl);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
+}
+
+.review-icon .el-icon {
+  font-size: 18px;
 }
 
 .review-info {

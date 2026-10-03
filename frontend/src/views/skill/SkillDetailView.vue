@@ -11,7 +11,9 @@
       <!-- 元数据区 -->
       <div class="detail-meta">
         <div class="meta-top">
-          <span class="skill-icon">{{ skill.icon || '⚡' }}</span>
+          <span class="skill-icon" aria-hidden="true"
+            ><el-icon><MagicStick /></el-icon
+          ></span>
           <div class="meta-info">
             <h1>{{ skill.display_name }}</h1>
             <div class="meta-tags">
@@ -175,7 +177,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Download, Star, Check } from '@element-plus/icons-vue'
+import { ArrowLeft, Download, Star, Check, MagicStick } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
@@ -388,7 +390,19 @@ async function handleInstall() {
 }
 
 .skill-icon {
-  font-size: var(--text-4xl);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.skill-icon .el-icon {
+  font-size: 24px;
 }
 
 .meta-info h1 {

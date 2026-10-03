@@ -8,7 +8,9 @@
         isWorkspaceRoute ? (sidebarAsDrawer ? !sidebarOverlayOpen : sidebarCollapsed) : undefined
       "
       @toggle-sidebar="
-        sidebarAsDrawer ? (sidebarOverlayOpen = !sidebarOverlayOpen) : (sidebarCollapsed = !sidebarCollapsed)
+        sidebarAsDrawer
+          ? (sidebarOverlayOpen = !sidebarOverlayOpen)
+          : (sidebarCollapsed = !sidebarCollapsed)
       "
     />
 
@@ -288,7 +290,9 @@
           <el-form-item label="计划模式">
             <div class="plan-mode-switch">
               <el-switch v-model="agentForm.plan_mode" />
-              <span class="plan-mode-tip">开启后按「计划 → 逐步执行 → 总结」的 Plan-and-Execute 流程工作</span>
+              <span class="plan-mode-tip"
+                >开启后按「计划 → 逐步执行 → 总结」的 Plan-and-Execute 流程工作</span
+              >
             </div>
           </el-form-item>
           <el-form-item label="启用工具">
@@ -1039,17 +1043,17 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
-/* 选中态：实底主色 + 白字（与 ChatInput mode-chip.active 同款选中语言，
-   未选中仅 hover 浅灰底，选中/未选中一眼可分） */
+/* 选中态：中性深灰实底（与 ChatInput mode-chip.active 同款选中语言，
+   未选中仅 hover 浅灰底，选中/未选中一眼可分；不用主 CTA 墨黑防对撞） */
 .channel-seg.active {
-  background: var(--color-btn-primary);
-  color: var(--color-btn-primary-text);
+  background: var(--color-chip-active);
+  color: var(--color-chip-active-text);
   font-weight: var(--weight-medium, 500);
   box-shadow: var(--shadow-sm);
 }
 
 .channel-seg.active :deep(svg) {
-  color: var(--color-btn-primary-text);
+  color: var(--color-chip-active-text);
 }
 
 .channel-seg-label {
@@ -1174,8 +1178,8 @@ onMounted(async () => {
 }
 
 .channel-icon-btn.active {
-  background: var(--color-btn-primary);
-  color: var(--color-btn-primary-text);
+  background: var(--color-chip-active);
+  color: var(--color-chip-active-text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1446,8 +1450,10 @@ onMounted(async () => {
 
 /* Responsive: 窄视口（开发者工具/小窗）——侧栏收窄为浮层，默认折叠态不遮挡 */
 @media (max-width: 900px) {
-  .workspace-layout {
-    /* 触发全局 sidebarCollapsed 初始值无法用 CSS——改为窄视口下侧栏变浮层 */
+  /* 侧栏改 fixed 浮层后脱离 flex 流，主区按折叠图标列宽度让位，
+     否则 48px 图标列永久盖住内容左缘（窄视口穿模根因） */
+  .workspace-main {
+    margin-left: var(--sidebar-width-collapsed);
   }
 
   .workspace-sidebar {

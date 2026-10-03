@@ -19,6 +19,14 @@
           上传技能
         </el-button>
       </el-upload>
+      <!-- 空态 CTA 复用同一条上传通道（隐藏 input + 程序化触发） -->
+      <input
+        ref="uploadInputRef"
+        type="file"
+        accept=".zip"
+        class="hidden-upload-input"
+        @change="onHiddenInputChange"
+      />
     </PageHeader>
 
     <!-- Tab 切换 -->
@@ -44,22 +52,27 @@
           clearable
           class="search-input"
           @keyup.enter="handleSearch"
+          @clear="handleSearch"
         >
           <template #prefix
             ><el-icon><Search /></el-icon
           ></template>
         </el-input>
-        <el-button :type="aiSearchMode ? 'primary' : 'default'" @click="handleSearch">
-          {{ aiSearchMode ? 'AI 搜索' : '搜索' }}
-        </el-button>
         <el-tooltip
           :content="aiSearchMode ? '切换到普通搜索' : '切换到 AI 智能搜索'"
           placement="top"
         >
-          <el-button @click="toggleAISearch" :type="aiSearchMode ? 'primary' : ''" circle>
+          <button
+            type="button"
+            class="ai-toggle"
+            :class="{ active: aiSearchMode }"
+            :aria-label="aiSearchMode ? '切换到普通搜索' : '切换到 AI 智能搜索'"
+            @click="toggleAISearch"
+          >
             <el-icon><MagicStick /></el-icon>
-          </el-button>
+          </button>
         </el-tooltip>
+        <el-button v-if="aiSearchMode" type="primary" @click="handleSearch">AI 搜索</el-button>
       </div>
       <el-select
         v-model="selectedCategory"
@@ -110,7 +123,9 @@
         @click="goToDetail(skill.id)"
       >
         <div class="card-header">
-          <span class="card-icon">{{ skill.icon || '⚡' }}</span>
+          <span class="card-icon" aria-hidden="true">
+            <el-icon><MagicStick /></el-icon>
+          </span>
           <el-tag v-if="skill.skill_source === 'builtin'" type="warning" size="small">内置</el-tag>
           <el-tag v-else type="info" size="small">{{ skill.category || '通用' }}</el-tag>
         </div>
@@ -134,10 +149,40 @@
         <div v-if="skill.author_name" class="card-author">by {{ skill.author_name }}</div>
       </div>
 
-      <el-empty
+      <EmptyState
         v-if="!currentLoading && currentSkills.length === 0"
-        :description="activeTab === 'mine' ? '你还没有上传技能' : '暂无技能'"
-      />
+        :variant="activeTab === 'mine' ? 'default' : 'search'"
+        :headline="activeTab === 'mine' ? '你还没有上传技能' : '没有找到匹配的技能'"
+        :description="
+          activeTab === 'mine'
+            ? '将技能打包为 .zip 上传，即可在广场发布分享给团队成员'
+            : searchKeyword || selectedCategory || selectedTags.length
+              ? '换个关键词或清除筛选条件再试试'
+              : '广场暂无已发布技能，上传第一个技能让大家用起来'
+        "
+      >
+        <el-button
+          v-if="permStore.hasPermission('skill.config') && activeTab === 'mine'"
+          @click="triggerUpload"
+        >
+          <el-icon><Upload /></el-icon>
+          上传技能
+        </el-button>
+        <el-button
+          v-if="
+            permStore.hasPermission('skill.config') &&
+            activeTab === 'marketplace' &&
+            !searchKeyword &&
+            !selectedCategory &&
+            !selectedTags.length
+          "
+          type="primary"
+          @click="triggerUpload"
+        >
+          <el-icon><Upload /></el-icon>
+          上传第一个技能
+        </el-button>
+      </EmptyState>
     </div>
 
     <!-- 分页 -->
@@ -168,6 +213,7 @@ import { Upload, Search, Download, Star, Setting, MagicStick } from '@element-pl
 import { useSkillStore } from '@/stores/skill'
 import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
@@ -181,6 +227,7 @@ const sortBy = ref('newest')
 const currentPage = ref(1)
 const pageSize = 20
 const aiSearchMode = ref(false)
+const uploadInputRef = ref<HTMLInputElement | null>(null)
 
 const currentSkills = computed(() => {
   if (activeTab.value === 'mine') return skillStore.mySkills
@@ -245,6 +292,10 @@ function handleSearch() {
       offset: 0,
     })
   } else {
+    // AI 模式下清空关键词应回落普通列表（parsedQuery 置空让 currentSkills 切回 marketplace）
+    if (aiSearchMode.value && !searchKeyword.value) {
+      skillStore.aiSearchParsedQuery = null
+    }
     skillStore.fetchMarketplace({
       keyword: searchKeyword.value || undefined,
       category: selectedCategory.value || undefined,
@@ -302,6 +353,19 @@ async function handleUpload(file: File) {
   }
   return false
 }
+
+/** 空态 CTA 复用页头同一上传通道：程序化触发隐藏的文件选择框 */
+function triggerUpload() {
+  uploadInputRef.value?.click()
+}
+
+/** 隐藏 input 的 change 处理：交给 handleUpload 后清空 value 以便重选同一文件 */
+async function onHiddenInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) await handleUpload(file)
+  input.value = ''
+}
 </script>
 
 <style scoped>
@@ -348,7 +412,7 @@ async function handleUpload(file: File) {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: var(--color-btn-primary);
+  background: var(--color-primary);
   border-radius: 2px 2px 0 0;
 }
 
@@ -364,13 +428,46 @@ async function handleUpload(file: File) {
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  /* 320px 视口下输入框收缩、按钮换行进首屏（评审 P3-1），不靠容器横向滚动兜底 */
+  /* 窄视口下输入框收缩、按钮换行进首屏（评审 P3-1），不靠容器横向滚动兜底 */
   flex-wrap: wrap;
+  /* flex 子项内容宽可撑破 wrap 容器（min-width:auto），显式收敛保证 320px 不溢出 */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .search-input {
   width: 320px;
   max-width: 100%;
+}
+
+/* AI 搜索模式开关：中性芯片（激活=墨水蓝淡底），与搜索按钮解耦 */
+.ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.ai-toggle:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.ai-toggle.active {
+  background: var(--color-primary-muted);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.hidden-upload-input {
+  display: none;
 }
 
 .ai-explanation-banner {
@@ -380,7 +477,7 @@ async function handleUpload(file: File) {
 /* ===== Card Grid ===== */
 .skill-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: var(--space-4);
   min-height: 200px;
 }
@@ -408,7 +505,19 @@ async function handleUpload(file: File) {
 }
 
 .card-icon {
-  font-size: var(--text-3xl);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-lg);
+}
+
+.card-icon .el-icon {
+  font-size: 18px;
 }
 
 .card-title {
@@ -455,6 +564,8 @@ async function handleUpload(file: File) {
   gap: var(--space-1);
   flex-wrap: nowrap;
   overflow: hidden;
+  /* footer 剩余宽度内收敛：卡片极窄时放不下的 tag 直接裁掉，不撑破卡片 */
+  min-width: 0;
 }
 
 .card-tags .el-tag {
