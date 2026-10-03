@@ -39,13 +39,18 @@ class ASRConnectionTester:
 
     async def _test_local(self) -> None:
         """测试本地 ASR 模型是否可用（检查模型文件完整性）"""
-        # 模型路径与 audio_utils._resolve_local_whisper_model_dir 一致
-        model_dir = Path(__file__).resolve().parents[5] / "models" / "faster-whisper" / "tiny"
+        # 模型路径与 audio_utils._resolve_local_whisper_model_dir 的最终兜底一致：
+        # backend/.cache/faster-whisper/tiny（与 deepdoc 缓存同约定）
+        # parents: connection_testers → ai_models → shared → src → backend
+        model_dir = (
+            Path(__file__).resolve().parents[4] / ".cache" / "faster-whisper" / "tiny"
+        )
 
         if not model_dir.exists():
             raise ValueError(
                 f"本地 ASR 模型目录不存在: {model_dir}，"
-                f"请先下载 faster-whisper tiny 模型到 backend/models/faster-whisper/tiny/"
+                f"请先运行 backend/scripts/download_faster_whisper_model.py 下载"
+                f"（默认落 backend/.cache/faster-whisper/tiny）"
             )
 
         required_files = ["model.bin", "config.json", "tokenizer.json", "vocabulary.txt"]

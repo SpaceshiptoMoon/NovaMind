@@ -3,11 +3,11 @@
 History: ``audio_utils._get_local_whisper_model`` used
 ``Path(__file__).resolve().parent`` only 4 times, landing at
 ``backend/src/shared/models/faster-whisper/tiny`` (model absent there), so every
-audio task failed with "本地 ASR 模型未找到". The real model lives at
-``~/.cache/faster-whisper/tiny``. The path is now resolved via an injected
+audio task failed with "本地 ASR 模型未找到". The path is now resolved via an injected
 ``AudioConfig`` (YAML ``knowledge_base.parsing.local_whisper_model_dir`` → 宿主
 构造 ``AudioConfig`` 注入) > env ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR`` > default
-``~/.cache/faster-whisper/tiny``.
+``backend/.cache/faster-whisper/tiny`` (repo-root cache, same convention as deepdoc;
+2026-10 收敛——此前默认 ``~/.cache/faster-whisper/tiny`` 与 deepdoc 缓存基准分裂).
 
 批次 4 起 ``audio_utils`` 不再 import `novamind.setting`：YAML 配置由宿主在
 ``media_processing.process_audio_document`` 构造 ``AudioConfig`` 注入，引擎侧
@@ -36,11 +36,12 @@ def _clear_env(monkeypatch):
     monkeypatch.delenv("NOVAMIND_LOCAL_WHISPER_MODEL_DIR", raising=False)
 
 
-def test_default_model_dir_points_to_user_cache(monkeypatch):
-    """无 AudioConfig、无环境变量时回退默认 ~/.cache/faster-whisper/tiny。"""
+def test_default_model_dir_points_to_repo_cache(monkeypatch):
+    """无 AudioConfig、无环境变量时回退默认 backend/.cache/faster-whisper/tiny。"""
     _clear_env(monkeypatch)
     model_dir = _resolve_local_whisper_model_dir()
-    assert model_dir == Path.home() / ".cache" / "faster-whisper" / "tiny"
+    expected = BACKEND_ROOT / ".cache" / "faster-whisper" / "tiny"
+    assert model_dir == expected
     # 模型实际存在于该默认目录
     assert (model_dir / "model.bin").exists(), f"model.bin missing at {model_dir}"
 

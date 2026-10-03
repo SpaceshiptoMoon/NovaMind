@@ -354,7 +354,7 @@ uv run python main.py --reload
 默认后端地址：`http://localhost:8100`
 
 > [!NOTE]
-> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `~/.cache/faster-whisper/tiny` 加载，首次使用前手动下载：
+> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `backend/.cache/faster-whisper/tiny` 加载（与 DeepDoc 模型同一仓库根缓存目录），首次使用前手动下载：
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py

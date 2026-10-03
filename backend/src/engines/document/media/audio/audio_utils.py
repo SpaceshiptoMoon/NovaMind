@@ -187,7 +187,7 @@ def _resolve_local_whisper_model_dir(
       1. ``AudioConfig.local_whisper_model_dir``（宿主从 YAML
          ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入）
       2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
-      3. 默认 ``~/.cache/faster-whisper/tiny``
+      3. 默认 ``backend/.cache/faster-whisper/tiny``（仓库根缓存，与 deepdoc 同约定）
 
     引擎侧不再 import `novamind.setting`；YAML 配置由宿主构造 ``AudioConfig``
     注入，从而切断 `shared/knowledge` -> `setting` 的导入边。
@@ -204,8 +204,14 @@ def _resolve_local_whisper_model_dir(
     if cfg_dir:
         return Path(cfg_dir).expanduser()
 
-    # 3. 默认：用户缓存目录 ~/.cache/faster-whisper/tiny
-    return Path.home() / ".cache" / "faster-whisper" / "tiny"
+    # 3. 默认：backend/.cache/faster-whisper/tiny（仓库根缓存，与 deepdoc 同约定；
+    #    Docker 形态该目录被 compose 挂载为 /app/.cache/faster-whisper，
+    #    本地与容器共用同一默认基准，部署期预装的模型两种形态直接复用）
+    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+        default_model_dir,
+    )
+
+    return default_model_dir().parent / "faster-whisper" / "tiny"
 
 
 def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:

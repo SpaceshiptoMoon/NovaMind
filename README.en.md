@@ -354,7 +354,7 @@ uv run python main.py --reload
 Default backend address: `http://localhost:8100`
 
 > [!NOTE]
-> **Audio / video parsing in local development**: the local speech model loads from `~/.cache/faster-whisper/tiny` by default; download it before first use:
+> **Audio / video parsing in local development**: the local speech model loads from `backend/.cache/faster-whisper/tiny` by default (same repo-root cache directory as the DeepDoc models); download it before first use:
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py

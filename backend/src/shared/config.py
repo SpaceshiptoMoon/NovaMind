@@ -18,7 +18,7 @@ class AudioConfig:
       1. ``local_whisper_model_dir``（本字段，对应 YAML
          ``knowledge_base.parsing.local_whisper_model_dir``）
       2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
-      3. 默认 ``~/.cache/faster-whisper/tiny``
+      3. 默认 ``backend/.cache/faster-whisper/tiny``（仓库根缓存，与 deepdoc 同约定）
     """
 
     local_whisper_model_dir: str | None = None

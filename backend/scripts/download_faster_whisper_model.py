@@ -6,7 +6,8 @@
 
   --model-dir 参数 > knowledge_base.parsing.local_whisper_model_dir（YAML）
   > asr.local_whisper_model_dir > 环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR
-  > 默认 ~/.cache/faster-whisper/tiny
+  > 默认 backend/.cache/faster-whisper/tiny（仓库根缓存，与 deepdoc 同约定；
+  Docker 形态该目录挂载为 /app/.cache/faster-whisper）
 
 模型文件（Systran/faster-whisper-tiny 仓库）：config.json / model.bin /
 tokenizer.json / vocabulary.txt——与 connection_testers.asr 的完整性校验一致。
@@ -40,8 +41,9 @@ if str(BACKEND_ROOT) not in sys.path:
 # Systran/faster-whisper-tiny 的必需文件（缺一不可；README/.gitattributes 非模型文件）
 REQUIRED_FILES = ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"]
 
-# 默认下载目录（与运行时 _resolve_local_whisper_model_dir 的最终兜底一致）
-DEFAULT_MODEL_DIR = Path.home() / ".cache" / "faster-whisper" / "tiny"
+# 默认下载目录（与运行时 _resolve_local_whisper_model_dir 的最终兜底一致）：
+# 仓库根 backend/.cache（与 deepdoc 模型同一基准；脚本位于 backend/scripts/，上两级即 backend）
+DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[1] / ".cache" / "faster-whisper" / "tiny"
 
 
 def resolve_model_dir(cli_value: str | None) -> Path:

@@ -89,7 +89,9 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
         lambda: SimpleNamespace(
             knowledge_base=SimpleNamespace(
                 parsing=SimpleNamespace(
-                    local_whisper_model_dir=str(Path.home() / ".cache" / "faster-whisper" / "tiny"),
+                    local_whisper_model_dir=str(
+                        Path(__file__).resolve().parents[4] / ".cache" / "faster-whisper" / "tiny"
+                    ),
                     local_whisper_cpu_threads=1,
                 )
             )

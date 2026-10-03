@@ -125,7 +125,9 @@ knowledge_base:
     # 过高可能触发 VLM 配额限流，配合 KB 级 vlm_fallback_model / vlm_skip_on_quota_error 降级。
     video_vlm_concurrency: 4
     # 本地 faster-whisper ASR 模型目录（绝对路径）；空则回退环境变量
-    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再空则用默认 ~/.cache/faster-whisper/tiny。
+    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再空则用默认 backend/.cache/faster-whisper/tiny
+    # （仓库根缓存，与 deepdoc 同约定；Docker 形态该目录挂载为 /app/.cache/faster-whisper，
+    # 部署期下载的模型本地与容器共用，无需为两种形态分别准备）。
     # Docker 部署默认无需配置：deploy 脚本部署期下载模型到 backend/.cache/faster-whisper
     # （compose 挂载为 /app/.cache/faster-whisper，恰为容器内默认路径）。
     # 音频解析未显式配置 asr_model 时默认走此本地模型（faster-whisper-tiny）。
