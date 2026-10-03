@@ -1,5 +1,6 @@
 """音视频文档处理管道：视频走关键帧提取加 VLM 逐帧描述，音频走 ASR 转写，之后统一文本切分、embedding 与 ES 入库。"""
 
+import asyncio
 from typing import Any
 
 from novamind.engines.document.media.audio import (
@@ -12,6 +13,7 @@ from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
     build_segment_timeline_map,
     format_time_anchor,
+    merge_audio_into_frame_lines,
 )
 from novamind.engines.document.media.video import (
     AllFrameDescriptionsFailedError,
@@ -180,6 +182,118 @@ async def _run_asr_transcription(
         base_url=base_url,
         language=language,
     )
+
+
+async def _transcribe_video_audio(
+    *,
+    document: Document,
+    file_path: str | None,
+    file_content: bytes | None,
+    model_config_port: ModelConfigService,
+    asr_model: str,
+    language: str | None,
+    engine_audio_config: AudioConfig,
+    logger,
+) -> list[dict[str, Any]]:
+    """视频音轨转写：ffmpeg 提取 + ASR 路由复用（c3 双轨融合的音侧）。
+
+    音轨提取必须有原始文件（归一化产物带 ``-an`` 已丢音轨）：优先
+    ``file_path``（worker 落盘路径），否则 ``file_content`` 写临时文件。
+    两者均缺时返回空列表（能力缺失方向安全——告警跳过，文档不失败）。
+
+    失败语义（与音频文档的致命语义不同：视频旁白是增强能力，帧描述
+    独立可用，旁白获取失败不应拖死文档）：
+    - 本地 ASR 忙碌（LocalASRBusyError）原样上抛：延后重入队不吞；
+    - 凭证缺失 / 提取失败 / ASR 失败：告警跳过返回空列表。
+
+    Returns:
+        ASR segments（可为空列表 = 无音轨/转写失败/无可用输入）。
+    """
+    # 音轨源文件就位：file_path 直用；bytes 落临时盘
+    audio_source: str | None = file_path
+    tmp_audio_src: str | None = None
+    if audio_source is None and file_content:
+        import tempfile
+        from pathlib import Path
+
+        suffix = Path(document.filename or "video.mp4").suffix or ".mp4"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(file_content)
+            tmp_audio_src = tmp.name
+        audio_source = tmp_audio_src
+    try:
+        if audio_source is None:
+            logger.warning(
+                "视频音轨转写跳过：无原始文件可用（file_path/file_content 均缺）",
+                document_id=document.id,
+            )
+            return []
+
+        from novamind.engines.document.media.video import (
+            AudioTrackExtractionError,
+            extract_audio_track,
+        )
+
+        try:
+            asr_protocol, asr_model, asr_api_key, asr_base_url = await _resolve_asr_route(
+                document, model_config_port, asr_model
+            )
+        except PermanentProcessingError as exc:
+            logger.warning(
+                "视频音轨 ASR 凭证缺失，跳过音轨（帧描述继续）",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+
+        # 本地 ASR：锁在音轨提取前获取——忙碌重入队时不白跑 ffmpeg 提取
+        local_lock_acquired = False
+        if asr_protocol == "local":
+            from novamind.engines.document.media.audio import (
+                acquire_asr_or_busy,
+                force_release_asr_slot,
+            )
+
+            if not await acquire_asr_or_busy():
+                logger.info("本地 ASR 忙碌，视频音轨延后重入队", document_id=document.id)
+                raise LocalASRBusyError(document_id=document.id)
+            local_lock_acquired = True
+        try:
+            audio_bytes = await asyncio.to_thread(extract_audio_track, audio_source)
+            if not audio_bytes:
+                return []
+            return await _run_asr_transcription(
+                file_content=audio_bytes,
+                file_type="mp3",
+                protocol=asr_protocol,
+                model=asr_model,
+                api_key=asr_api_key,
+                base_url=asr_base_url,
+                language=language,
+                engine_audio_config=engine_audio_config,
+                document=document,
+            )
+        except AudioTrackExtractionError as exc:
+            logger.warning(
+                "视频音轨提取失败，跳过音轨继续帧描述",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+        except Exception as exc:
+            logger.warning(
+                "视频音轨 ASR 失败，跳过音轨继续帧描述（旁白信息缺失但文档不失败）",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+        finally:
+            if local_lock_acquired:
+                from novamind.engines.document.media.audio import force_release_asr_slot
+
+                force_release_asr_slot()
+    finally:
+        if tmp_audio_src is not None:
+            from pathlib import Path as _P
+
+            _P(tmp_audio_src).unlink(missing_ok=True)
 
 
 async def _audio_resume_tail(
@@ -375,6 +489,32 @@ async def process_video_document(
                     pipeline_config=pipeline_config,
                 )
         logger.info("视频解析快照未命中/不可用，走全量抽帧+VLM", document_id=document.id)
+
+    # ===== c3 音轨 ASR 融合（旁白）：ffmpeg 提取原始视频音轨 → ASR 转写。
+    # 在 VLM 描述前执行——本地 ASR 忙碌上抛重入队时不白烧 VLM 配额；
+    # 凭证缺失/提取失败/转写失败告警跳过（能力缺失方向安全，帧描述独立可用）。
+    # transcribe_audio 开关与 asr_model/language 由视频解析配置给出（c4 加
+    # schema 字段；此处直接读 video_config dict，配置未显式开启时零行为变化）。
+    audio_segments: list[dict[str, Any]] = []
+    transcribe_enabled = bool(video_config.get("transcribe_audio", False))
+    if transcribe_enabled:
+        from novamind.setting.yaml_config import get_config
+
+        engine_audio_config = AudioConfig(
+            local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
+            local_whisper_cpu_threads=get_config().knowledge_base.parsing.local_whisper_cpu_threads,
+        )
+        audio_asr_model = video_config.get("asr_model") or "faster-whisper-tiny"
+        audio_segments = await _transcribe_video_audio(
+            document=document,
+            file_path=file_path,
+            file_content=file_content,
+            model_config_port=mcs,
+            asr_model=audio_asr_model,
+            language=video_config.get("language"),
+            engine_audio_config=engine_audio_config,
+            logger=logger,
+        )
 
     if strategy == "scene":
         scene_kwargs: dict[str, Any] = {}
@@ -576,6 +716,25 @@ async def process_video_document(
                 error_message=f"视频 {document.filename} 所有帧的VLM描述均失败{detail}{hint}",
             )
 
+    # ===== c3 双轨归并：ASR 旁白 segments 注入帧描述行（画面+旁白同锚点）。
+    # 归并计数进 task metrics（audio_segments_total/merged/dropped），旁白
+    # 有无丢失可观测；dropped>0 时告警日志（帧区间空洞外的 segment 被丢弃）。
+    audio_merge_metrics: dict[str, int] = {}
+    if audio_segments:
+        desc_lines = full_text.split("\n\n")
+        merged_lines, audio_merge_metrics = merge_audio_into_frame_lines(
+            desc_lines, audio_segments, frame_timeline_map
+        )
+        full_text = "\n\n".join(merged_lines)
+        if audio_merge_metrics.get("dropped"):
+            logger.warning(
+                "视频旁白 segments 未全部归入帧区间（帧区间空洞外被丢弃）",
+                document_id=document.id, **audio_merge_metrics,
+            )
+        logger.info(
+            "视频双轨归并完成", document_id=document.id, **audio_merge_metrics,
+        )
+
     # 帧描述全文 MD 持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, full_text, session, logger)
 
@@ -612,7 +771,10 @@ async def process_video_document(
                 logger.warning("视频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     if task:
-        await finish_step_committed(session, task, "descriptions_generated", metrics={"description_count": descriptions_count})
+        desc_metrics: dict[str, Any] = {"description_count": descriptions_count}
+        if audio_merge_metrics:
+            desc_metrics.update(audio_merge_metrics)
+        await finish_step_committed(session, task, "descriptions_generated", metrics=desc_metrics)
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
     tail_result = await run_post_parse_tail(
