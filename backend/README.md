@@ -54,7 +54,7 @@ backend/
 |  |  |- qa/
 |  |  |- skill/
 |  |  `- user/
-|  |- setting/                   # YAML 配置加载与环境覆盖
+|  |- setting/                   # YAML 配置加载（单 default.yaml：凭据走 .env、连接参数带本地基线）
 |  `- shared/                    # 共享基础设施（storage/ai_models/cache/mq/prompts/document）
 `- tests/                        # 测试按被测对象分层（见 tests/README.md）
 ```
@@ -135,8 +135,8 @@ cp default.example default.yaml
 
 两层配置模型：
 
-- `default.yaml`：唯一后端配置文件——只定义结构与 `${VAR}` 占位符引用，**不内建任何默认值**；未声明的变量解析为 `None`（缺失显性化，连接即报错）
-- 仓库根 `.env`：所有变量（密钥与 host/端点/桶名）的唯一取值处，全量显式声明；loader 启动自动加载，进程环境变量优先。`.env.example` 预置本地开发值（127.0.0.1 系），Docker 部署由 deploy 脚本生成 `.env` 时写入容器名
+- `default.yaml`：唯一后端配置文件——结构与占位符引用。凭据类（`${SECRET_KEY}` 等）无默认值，缺失解析为 `None` 显性报错；连接参数（`${DB_HOST:127.0.0.1}` 等）占位符内带本地基线，本地开发零配置
+- 仓库根 `.env`：只存账户密码/凭据；loader 启动自动加载，进程环境变量优先。Docker 的连接值（容器名/生产桶名/ES 免认证）由 docker-compose.yml 的 `app.environment` 块注入（优先级高于 env_file）
 
 历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层已移除（2026-10）；`--config` 参数只是环境名（production 门控用），不再对应文件。
 

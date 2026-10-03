@@ -98,18 +98,6 @@ replacements = {
     "your-admin-password": f"Admin@1{secrets.token_hex(8)}",
 }
 
-# Docker 部署值：host 类变量在生成 .env 时写入容器名（用户随后可自行修改）。
-# .env.example 里是本地开发值（127.0.0.1 系），deploy 面向容器网络，逐行替换。
-docker_overrides = {
-    "DB_HOST=127.0.0.1": "DB_HOST=mysql",
-    "REDIS_HOST=127.0.0.1": "REDIS_HOST=redis",
-    "MINIO_ENDPOINT=127.0.0.1:9005": "MINIO_ENDPOINT=minio:9005",
-    "MINIO_BUCKET=novamind-dev": "MINIO_BUCKET=novamind",
-    "ES_HOST=http://127.0.0.1:9200": "ES_HOST=http://elasticsearch:9200",
-    "ES_USERNAME=elastic": "ES_USERNAME=",  # 空 = ES 客户端 falsy 短路免认证
-}
-replacements.update(docker_overrides)
-
 for old, new in replacements.items():
     text = text.replace(old, new)
 

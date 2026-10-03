@@ -13,9 +13,9 @@
 # Runtime config file mounts:
 #   ./backend/src/setting/yaml_config/yaml/default.yaml -> 容器内同路径（deploy 脚本已从
 #     default.example 生成；*.yaml 不打进镜像，防止本地真实密钥泄漏进镜像层）。
-#     这是唯一后端配置文件：所有变量（密钥与 host/端点/桶名）经 ${VAR} 占位符
-#     从容器环境取值，yaml 不内建默认值。容器环境的唯一来源是下方 env_file 注入
-#     的 .env——deploy 脚本生成 .env 时已把 host 类写成容器名（单一来源全显式）。
+#     这是唯一后端配置文件：凭据经 ${VAR} 从容器环境取值（env_file 的 .env 注入，
+#     缺失即 None 显性报错）；连接参数在 yaml 占位符内带本地基线，Docker 值由
+#     下方 environment 块显式覆盖（容器名/生产桶名/ES 免认证）。
 #   ./backend/.cache/deepdoc -> /app/.cache/deepdoc（deepdoc 模型持久化卷：deploy 脚本
 #     在部署期下载模型到此卷，容器重建不丢；缺失时运行期公式识别 WARNING 降级、
 #     full 模式不可用）
@@ -36,13 +36,22 @@ services:
     env_file:
       - .env
     environment:
+      # Docker 部署的连接值（占位符注入，优先级高于 env_file 的 .env）：
+      # 基础设施容器名 + 生产桶名 + ES 免认证（空串=客户端 falsy 短路）。
+      # .env 只存账户密码/凭据；本地开发的连接基线（127.0.0.1 系）在 default.yaml 占位符内。
+      DB_HOST: mysql
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9005
+      MINIO_BUCKET: novamind
+      ES_HOST: http://elasticsearch:9200
+      ES_USERNAME: ""
+      ES_PASSWORD: ""
       # 运行期模型兜底下载源（部署期下载失败时才触达）。值透传自 .env 的
       # HF_ENDPOINT（.env.example 默认国内镜像 hf-mirror.com；海外删除该行或
       # 设为官方源）。功能代码默认官方源，国内便利只进部署配置。
       # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS（JSON 数组）注入，
       # 地址全部在部署配置里，代码只含换源机制（格式见 .env.example）。
-      # host 类变量（DB_HOST=mysql 等）不在此注入——deploy 脚本生成 .env 时
-      # 已写入容器名，单一来源全显式。
       HF_ENDPOINT: "${HF_ENDPOINT:-https://huggingface.co}"
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro

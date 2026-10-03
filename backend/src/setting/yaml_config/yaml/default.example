@@ -1,13 +1,12 @@
 # ============================================================
 # NovaMind 唯一后端配置文件（两层配置模型：本 yaml + 根目录 .env）
 #
-# - 本文件只定义结构与占位符引用，不内建任何环境差异默认值——所有变量
-#   （密钥与 host/端点/桶名）一律在仓库根 .env 显式声明，未声明的变量
-#   解析为 None（缺失显性化，不静默兜底）。
-# - 取值优先级：已 export 的进程环境变量 > .env 文件。
+# - 分工：.env 只存账户密码/凭据（无默认值，缺失解析为 None 显性报错）；
+#   连接参数（host/端点/桶名）在占位符内带本地基线默认值，本地开发零配置。
+# - Docker 部署的连接值（容器名/生产桶名/ES 免认证）由 docker-compose.yml
+#   的 app.environment 块显式注入（优先级高于 env_file 的 .env）。
+# - 取值优先级：已 export 的进程环境变量 > .env 文件 > 占位符基线默认值。
 # - 不要把真实密钥写进本文件（*.yaml 不进 git）。
-# - 本地开发：从 .env.example 复制的 .env 已带本地默认值（127.0.0.1 系）。
-# - Docker 部署：deploy 脚本生成 .env 时自动把 host 类写成容器名。
 # - 布尔值经环境变量表达时用字面量 true/false（整串占位符会归一为 bool）。
 # ============================================================
 
@@ -25,11 +24,11 @@ security:
   encryption_key: "${ENCRYPTION_KEY}"
 
 database:
-  host: "${DB_HOST}"
+  host: "${DB_HOST:127.0.0.1}"
   port: 3306
   user: root
   password: "${MYSQL_ROOT_PASSWORD}"
-  database: "${MYSQL_DATABASE}"
+  database: "${MYSQL_DATABASE:novamind_db}"
   pool_size: 10
   max_overflow: 20
   pool_timeout: 30
@@ -37,29 +36,29 @@ database:
   pool_pre_ping: true
 
 redis:
-  enabled: "${REDIS_ENABLED}"
-  host: "${REDIS_HOST}"
+  enabled: "${REDIS_ENABLED:true}"
+  host: "${REDIS_HOST:127.0.0.1}"
   port: 6379
   db: 0
   password: ""
 
 minio:
-  endpoint: "${MINIO_ENDPOINT}"
+  endpoint: "${MINIO_ENDPOINT:127.0.0.1:9005}"
   access_key: "${MINIO_ROOT_USER}"
   secret_key: "${MINIO_ROOT_PASSWORD}"
   secure: false
   region: us-east-1
-  bucket_name: "${MINIO_BUCKET}"
+  bucket_name: "${MINIO_BUCKET:novamind-dev}"
   # 外部服务（DashScope 等）下载文件时的公网地址，如 https://minio.example.com
   # 本地开发留空即可，部署时必填
   public_endpoint:
 
 elasticsearch:
   hosts:
-    - "${ES_HOST}"
-  # 用户名/密码任一为空即无认证（客户端 falsy 短路）；Docker 部署的 .env 里 ES_USERNAME 留空走免认证
-  username: "${ES_USERNAME}"
-  password: "${ES_PASSWORD}"
+    - "${ES_HOST:http://127.0.0.1:9200}"
+  # 用户名/密码任一为空即无认证（客户端 falsy 短路）；Docker 由 compose 注入空串走免认证
+  username: "${ES_USERNAME:elastic}"
+  password: "${ES_PASSWORD:}"
   index_prefix: kb
   default_embedding_dim: 1024
   analyzer: standard
