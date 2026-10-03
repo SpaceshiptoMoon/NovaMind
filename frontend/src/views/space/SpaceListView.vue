@@ -755,7 +755,7 @@ onMounted(() => {
   border: none;
   border-radius: var(--radius-md);
   background: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   font-size: var(--text-sm);
   font-family: var(--font-body);
   font-weight: var(--weight-medium, 500);

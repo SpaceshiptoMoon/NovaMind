@@ -1043,13 +1043,13 @@ onMounted(async () => {
    未选中仅 hover 浅灰底，选中/未选中一眼可分） */
 .channel-seg.active {
   background: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   font-weight: var(--weight-medium, 500);
   box-shadow: var(--shadow-sm);
 }
 
 .channel-seg.active :deep(svg) {
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
 }
 
 .channel-seg-label {
@@ -1175,7 +1175,7 @@ onMounted(async () => {
 
 .channel-icon-btn.active {
   background: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1431,7 +1431,7 @@ onMounted(async () => {
   left: var(--space-4);
   padding: var(--space-2) var(--space-4);
   background: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   z-index: var(--z-toast);

@@ -383,7 +383,7 @@ function handleSendClick() {
 .mode-chip.active {
   background: var(--color-btn-primary);
   border-color: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   font-weight: var(--weight-medium);
 }
 

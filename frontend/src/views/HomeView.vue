@@ -265,7 +265,7 @@ onMounted(() => {
   height: 36px;
   border-radius: var(--radius-full);
   background: var(--color-btn-primary);
-  color: #fff;
+  color: var(--color-btn-primary-text);
   display: flex;
   align-items: center;
   justify-content: center;

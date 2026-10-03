@@ -847,7 +847,8 @@ onMounted(() => {
 }
 
 .text-muted {
-  color: var(--color-text-faint);
+  /* 表格信息文本（Base URL/占位符）是用户要读的内容，用 muted 档而非 faint（评审 N2） */
+  color: var(--color-text-muted);
 }
 
 /* 模型名 / Base URL / Key 等技术标识用等宽字体，避免视觉挤压 */

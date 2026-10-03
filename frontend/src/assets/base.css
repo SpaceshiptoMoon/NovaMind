@@ -1,64 +1,66 @@
 /* ========================================
-   Design Tokens — Pine Ink（松烟墨绿：玉版纸白 + 松烟墨字 + 松绿锚点）
-   自有审美：知识平台的「纸墨 + 松绿」——图书馆绿罩灯/博物馆铭牌的沉稳书卷气；
-   刻意避开三类公版皮（紫蓝渐变 AI 味 / 纯黑白灰 / 奶油底+赤陶橙 Claude 系）；
-   全 UI 无纯 #000/纯 #FFF 大平面
+   Design Tokens — Ink & Bone（墨与骨白：骨白纸底 + 墨字 + 墨黑按钮 + 蓝黑墨水 accent）
+   方法论：颜色是稀缺资源（taste-skill minimalist-ui / impeccable colorize）——
+   中性面（底/卡/边/字）零色度，墨黑只给主 CTA，蓝黑墨水只给链接/选中/焦点，
+   彩色仅剩语义淡彩 tag；刻意避开三类公版皮（紫蓝渐变 AI 味 / 亮默认蓝 / Claude 奶油赤陶）
    ======================================== */
 :root {
-  /* Primary — 松绿文字档 #2f5d50（链接/图标/焦点，白底约 7.5:1）；hover 加深 */
-  --color-primary: #2f5d50;
-  --color-primary-hover: #265044;
-  --color-primary-subtle: #edf2ee;
-  --color-primary-muted: rgba(47, 93, 80, 0.1);
+  /* Accent — 蓝黑墨水 #20618F（hue 206°，钢笔墨水语义：链接/活动 tab/焦点，白底约 5.2:1） */
+  --color-primary: #20618f;
+  --color-primary-hover: #17527d;
+  --color-primary-subtle: #e8f1f8;
+  --color-primary-muted: rgba(32, 97, 143, 0.1);
 
-  /* 实心主按钮：松绿填充 #2f5d50（白字约 7.5:1）；hover 提亮防「下陷」 */
-  --color-btn-primary: #2f5d50;
-  --color-btn-primary-hover: #3a6c5d;
+  /* 实心主按钮：墨黑 #191918（编辑感主 CTA，白字 15.8:1）；hover 微提亮非纯黑 */
+  --color-btn-primary: #191918;
+  --color-btn-primary-hover: #33322f;
+  /* 主按钮上的文字/图标（暗色按钮反白为骨白底时随翻转，避免组件写死白字撞白底） */
+  --color-btn-primary-text: #ffffff;
 
-  /* Accent — 与主色统一松绿 */
-  --color-accent: #2f5d50;
-  --color-accent-hover: #265044;
-  --color-accent-subtle: #edf2ee;
+  /* Accent 与 primary 统一墨水蓝（选中态/图形锚点） */
+  --color-accent: #20618f;
+  --color-accent-hover: #17527d;
+  --color-accent-subtle: #e8f1f8;
 
-  /* Text — 松烟墨阶（墨色带松绿底调，次级为青灰族） */
-  --color-text: #262b27;
-  --color-text-secondary: #5d645e;
-  --color-text-muted: #6e766e;
-  --color-text-faint: #8a9189;
+  /* Text — 暖墨阶（Notion 墨 #37352F 族，中性零色度；muted ≥4.5:1 供信息文本） */
+  --color-text: #37352f;
+  --color-text-secondary: #66645e;
+  --color-text-muted: #6f6d67;
+  --color-text-faint: #8a8883;
 
-  /* Background — 玉版纸白托卡（底色一丝青灰纸感、卡片近白自然浮起） */
-  --color-bg: #f3f4ef;
-  --color-bg-card: #fdfdfb;
-  --color-bg-card-elevated: #f7f8f4;
+  /* Background — 骨白纸托白卡（暖骨白 #F7F6F3，taste-skill minimalist-ui 色板） */
+  --color-bg: #f7f6f3;
+  --color-bg-card: #ffffff;
+  --color-bg-card-elevated: #fbfbfa;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #eceee8;
-  --color-bg-sidebar: #f8f9f5;
-  --color-bg-input: #f4f5f0;
+  --color-bg-hover: #f1f0ec;
+  --color-bg-sidebar: #faf9f7;
+  --color-bg-input: #ffffff;
 
-  /* Border — 纸灰发丝线（青灰族） */
-  --color-border: #dfe2da;
-  --color-border-light: #e8eae3;
-  --color-border-focus: #2f5d50;
+  /* Border — 中性发丝线（零色度灰，不 tint） */
+  --color-border: #e8e8e6;
+  --color-border-light: #efede9;
+  --color-border-focus: #20618f;
 
-  /* Semantic */
-  --color-success: #16a34a;
-  --color-success-subtle: #ecfdf5;
-  --color-warning: #f59e0b;
-  --color-warning-subtle: #fffbeb;
-  --color-danger: #ef4444;
-  --color-danger-subtle: #fef2f2;
-  --color-info: #3b82f6;
-  --color-info-subtle: #eff6ff;
+  /* Semantic — Notion 四组淡彩（深字 + 淡底，仅状态表达不参与装饰） */
+  --color-success: #346538;
+  --color-success-subtle: #edf3ec;
+  --color-warning: #956400;
+  --color-warning-subtle: #fbf3db;
+  --color-danger: #9f2f2d;
+  --color-danger-subtle: #fdebec;
+  --color-info: #787672;
+  --color-info-subtle: #efeeec;
 
   /* Typography */
   --font-display:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
   --font-body:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
-    sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
 
   --text-xs: 12px;
   --text-sm: 13px;
@@ -105,25 +107,25 @@
   /* Chat */
   --color-user-bubble: var(--color-bg-card-elevated);
   --color-user-bubble-text: var(--color-text);
-  --color-chat-bg: #fdfdfb;
-  --color-bg-input-bar: rgba(253, 253, 251, 0.85);
+  --color-chat-bg: #ffffff;
+  --color-bg-input-bar: rgba(247, 246, 243, 0.9);
   --blur-input: 4px;
 
-  /* File type colors */
+  /* File type colors — 中性芯片 + 淡彩：doc=墨色芯片，md/other=墨水蓝族 */
   --color-file-pdf-bg: var(--color-danger-subtle);
   --color-file-pdf: var(--color-danger);
-  --color-file-doc-bg: var(--color-info-subtle);
-  --color-file-doc: var(--color-primary);
+  --color-file-doc-bg: #efede9;
+  --color-file-doc: #37352f;
   --color-file-txt-bg: var(--color-bg-hover);
   --color-file-txt: var(--color-text-muted);
-  --color-file-md-bg: var(--color-info-subtle);
-  --color-file-md: var(--color-info);
+  --color-file-md-bg: var(--color-primary-subtle);
+  --color-file-md: var(--color-primary);
   --color-file-xlsx-bg: var(--color-success-subtle);
   --color-file-xlsx: var(--color-success);
   --color-file-pptx-bg: var(--color-warning-subtle);
   --color-file-pptx: var(--color-warning);
-  --color-file-other-bg: var(--color-accent-subtle);
-  --color-file-other: var(--color-accent);
+  --color-file-other-bg: var(--color-primary-subtle);
+  --color-file-other: var(--color-primary);
 
   /* 媒体文件类型（document.ts 徽章用，暗色下反转） */
   --color-file-image-bg: #fef3c7;
@@ -145,13 +147,13 @@
 
   /* Glass effect */
   --blur-header: 12px;
-  --color-bg-header: rgba(253, 253, 251, 0.85);
+  --color-bg-header: rgba(255, 255, 255, 0.88);
 
-  /* Auth gradient */
-  --color-gradient-start: var(--color-primary);
-  --color-gradient-end: var(--color-primary);
+  /* Auth gradient — 平涂墨黑（start=end 非渐变，auth 侧板） */
+  --color-gradient-start: #191918;
+  --color-gradient-end: #191918;
 
-  /* Shadow — 极轻（Linear 扁平气质：卡片靠底色差+发丝线，阴影只给浮层一档） */
+  /* Shadow — 极轻（taste-skill：透明度 <0.05 的超弥散阴影；卡片靠底色差+发丝线分层） */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -249,58 +251,60 @@ a:hover {
 
 /* ========================================
    Dark Theme — [data-theme='dark'] 挂在 <html> 上
-   仅覆盖与亮色不同源的 token；经 var() 间接引用的 token 自动跟随
+   独立设计的暖墨黑（impeccable：dark 不是机械反转 light）
+   签名反差：亮色墨黑按钮 → 暗色骨白按钮（墨与骨白互为图底）
    ======================================== */
 /* html[] 升特异性 (0,1,1)：压过 main.css :root 中的 EP 亮色硬编码（同特异性时
-   源序靠后者胜，暗色块会被 main.css 覆盖——第 2 轮评审 N-1 实测抓包） */
+   源序靠后者胜，暗色块会被 main.css 覆盖——历史评审 N-1 实测教训） */
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Primary 提亮为浅松：链接/tab/tag 文字在暗卡上 ≥4.5:1（评审 P2-1 修正档） */
-  --color-primary: #8fc0ae;
-  --color-primary-hover: #a5cfbf;
-  --color-primary-subtle: #233029;
-  --color-primary-muted: rgba(143, 192, 174, 0.12);
+  /* Accent — 浅墨水蓝：链接/tab/tag 文字在暗卡上 ≥4.5:1 */
+  --color-primary: #86afd4;
+  --color-primary-hover: #a5c6e4;
+  --color-primary-subtle: #243140;
+  --color-primary-muted: rgba(134, 175, 212, 0.12);
 
-  /* 实心主按钮：暗底松绿（白字 6.9:1，与卡片分层清晰） */
-  --color-btn-primary: #35604f;
-  --color-btn-primary-hover: #40705e;
+  /* 实心主按钮：骨白填充 + 墨字（亮暗互为图底的签名反差，墨字 12:1） */
+  --color-btn-primary: #e8e6e1;
+  --color-btn-primary-hover: #ffffff;
+  --color-btn-primary-text: #1d1c1b;
 
   /* Accent 提亮 */
-  --color-accent: #8fc0ae;
-  --color-accent-hover: #a5cfbf;
-  --color-accent-subtle: #233029;
+  --color-accent: #86afd4;
+  --color-accent-hover: #a5c6e4;
+  --color-accent-subtle: #243140;
 
-  /* Text — 松烟灰阶（青绿底调，不偏蓝不偏棕） */
-  --color-text: #e3e6e0;
-  --color-text-secondary: #a8afa6;
-  --color-text-muted: #868d84;
-  --color-text-faint: #6b726a;
+  /* Text — 暖骨白阶（零色度；muted ≥4.5:1 供信息文本，faint 提亮供占位可读） */
+  --color-text: #e9e7e2;
+  --color-text-secondary: #b3b1aa;
+  --color-text-muted: #9b9993;
+  --color-text-faint: #7b7973;
 
-  /* Background — 松烟黑分层（底更深、卡抬半档；色相带松绿底调） */
-  --color-bg: #161917;
-  --color-bg-card: #1e211f;
-  --color-bg-card-elevated: #252925;
+  /* Background — 暖墨黑分层（底最深、卡抬半档，无绿调） */
+  --color-bg: #191918;
+  --color-bg-card: #212120;
+  --color-bg-card-elevated: #282827;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #2c312c;
-  --color-bg-sidebar: #1a1d1b;
-  --color-bg-input: #252925;
+  --color-bg-hover: #2f2e2c;
+  --color-bg-sidebar: #1d1c1b;
+  --color-bg-input: #26251F;
 
-  /* Border — 松烟暗线 */
-  --color-border: #31362f;
-  --color-border-light: #292d28;
-  --color-border-focus: #8fc0ae;
+  /* Border — 暖墨暗线 */
+  --color-border: #37352f;
+  --color-border-light: #2c2b29;
+  --color-border-focus: #86afd4;
 
-  /* Semantic — 文字色提亮、subtle 底改暗色透明底；success 恢复功能绿（提亮变体） */
-  --color-success: #4ade80;
-  --color-success-subtle: rgba(34, 197, 94, 0.14);
-  --color-warning: #fbbf24;
-  --color-warning-subtle: rgba(245, 158, 11, 0.12);
-  --color-danger: #f87171;
-  --color-danger-subtle: rgba(239, 68, 68, 0.12);
-  --color-info: #60a5fa;
-  --color-info-subtle: rgba(59, 130, 246, 0.12);
+  /* Semantic — 文字提亮、subtle 底改暗色透明底 */
+  --color-success: #7dbb8b;
+  --color-success-subtle: rgba(52, 101, 56, 0.25);
+  --color-warning: #d9a94a;
+  --color-warning-subtle: rgba(149, 100, 0, 0.22);
+  --color-danger: #e08a80;
+  --color-danger-subtle: rgba(159, 47, 45, 0.25);
+  --color-info: #a3a19b;
+  --color-info-subtle: rgba(120, 118, 113, 0.2);
 
   /* 媒体文件类型 — 暗色下浅底改透明底、文字提亮 */
   --color-file-image-bg: rgba(245, 158, 11, 0.15);
@@ -311,9 +315,9 @@ html[data-theme='dark'] {
   --color-file-audio: #f472b6;
 
   /* Chat / 布局浮层 */
-  --color-chat-bg: #1e211f;
-  --color-bg-input-bar: rgba(30, 33, 31, 0.85);
-  --color-bg-header: rgba(22, 25, 23, 0.85);
+  --color-chat-bg: #212120;
+  --color-bg-input-bar: rgba(33, 33, 32, 0.9);
+  --color-bg-header: rgba(25, 25, 24, 0.88);
 
   /* Shadow — 暗色下加深一档 */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
@@ -325,47 +329,80 @@ html[data-theme='dark'] {
 
   /* Element Plus — main.css :root 中硬编码的 el 色板需在此重定义；
      经 var(--color-*) 间接映射的 el 变量自动跟随 */
-  --el-color-primary: #8fc0ae;
-  --el-color-primary-light-3: #a3ccc0;
-  --el-color-primary-light-5: #b8d9d1;
-  --el-color-primary-light-7: #cde6e1;
-  --el-color-primary-light-9: #233029;
-  --el-color-primary-dark-2: #7fb2a0;
+  --el-color-primary: #86afd4;
+  --el-color-primary-light-3: #9cbedd;
+  --el-color-primary-light-5: #b3cee5;
+  --el-color-primary-light-7: #c9ddee;
+  --el-color-primary-light-9: #243140;
+  --el-color-primary-dark-2: #7a9cc4;
 
-  --el-color-success: #4ade80;
-  --el-color-success-light-3: #6ee7a0;
-  --el-color-success-light-5: #86efac;
-  --el-color-success-light-7: #a7f3d0;
-  --el-color-success-light-9: rgba(34, 197, 94, 0.12);
-  --el-color-success-dark-2: #22c55e;
+  --el-color-success: #7dbb8b;
+  --el-color-success-light-3: #91c89e;
+  --el-color-success-light-5: #a6d5b1;
+  --el-color-success-light-7: #bbe2c4;
+  --el-color-success-light-9: rgba(52, 101, 56, 0.25);
+  --el-color-success-dark-2: #6ba37a;
+
+  /* danger/warning 暗色提亮（main.css :root 是亮色深字档，暗底下 2.2:1 不可读） */
+  --el-color-danger: #e08a80;
+  --el-color-danger-light-3: #e5a19a;
+  --el-color-danger-light-5: #ecbab4;
+  --el-color-danger-light-7: #f2d3cf;
+  --el-color-danger-light-9: rgba(159, 47, 45, 0.25);
+  --el-color-danger-dark-2: #d3756c;
+
+  --el-color-warning: #d9a94a;
+  --el-color-warning-light-3: #dfb566;
+  --el-color-warning-light-5: #e7c488;
+  --el-color-warning-light-7: #eed3aa;
+  --el-color-warning-light-9: rgba(149, 100, 0, 0.22);
+  --el-color-warning-dark-2: #c79439;
+
+  /* info 暗色提亮（评审 N1：漏映射致暗色弹窗内 info tag 仍是亮色值） */
+  --el-color-info: #a3a19b;
+  --el-color-info-light-3: #b1afa9;
+  --el-color-info-light-5: #bfbdb7;
+  --el-color-info-light-7: #cdcac5;
+  --el-color-info-light-9: rgba(120, 118, 113, 0.2);
+  --el-color-info-dark-2: #918f89;
 
   --el-bg-color: var(--color-bg-card);
   --el-bg-color-page: var(--color-bg);
   --el-bg-color-overlay: var(--color-bg-card-elevated);
 
   --el-fill-color-blank: var(--color-bg-card);
-  --el-fill-color: #2c312c;
+  --el-fill-color: #2f2e2c;
   --el-fill-color-light: var(--color-bg-card-elevated);
-  --el-fill-color-lighter: #343933;
+  --el-fill-color-lighter: #373634;
   --el-fill-color-extra-light: var(--color-bg-card-elevated);
-  --el-fill-color-dark: #3b403a;
-  --el-fill-color-darker: #444a43;
+  --el-fill-color-dark: #3e3d3a;
+  --el-fill-color-darker: #464541;
 }
 
-/* Element Plus 以 primary 作「控件选中底色」的场景固定为暗松绿：
-   暗底上浅松底+浅字失去对比（switch/checkbox/radio），用松绿填充 + 白字 */
+/* 暗色下主按钮为骨白底，EP 默认白字需翻成墨字（随签名反差）；
+   :not(.is-link)——link/text 按钮背景透明，文字该走浅墨水蓝而非墨字（评审 F1b：
+   透明底墨字 1.06:1 不可见） */
+html[data-theme='dark'] .el-button--primary:not(.is-link):not(.is-text) {
+  --el-button-text-color: #1d1c1b;
+  --el-button-hover-text-color: #1d1c1b;
+  --el-button-active-text-color: #1d1c1b;
+  --el-button-disabled-text-color: #1d1c1b;
+}
+
+/* Element Plus 以 primary 作「控件选中底色」的场景固定为墨水蓝：
+   选中态=墨水蓝（与主按钮墨黑解耦），白勾 5:1 */
 html[data-theme='dark'] .el-switch.is-checked .el-switch__core {
-  background: #35604f;
-  border-color: #35604f;
+  background: #2e6da0;
+  border-color: #2e6da0;
 }
 
 html[data-theme='dark'] .el-checkbox__input.is-checked .el-checkbox__inner,
 html[data-theme='dark'] .el-checkbox__input.is-indeterminate .el-checkbox__inner {
-  background: #35604f;
-  border-color: #35604f;
+  background: #2e6da0;
+  border-color: #2e6da0;
 }
 
 html[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
-  background: #35604f;
-  border-color: #35604f;
+  background: #2e6da0;
+  border-color: #2e6da0;
 }
