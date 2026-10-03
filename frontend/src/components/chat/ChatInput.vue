@@ -380,10 +380,11 @@ function handleSendClick() {
   border-color: var(--color-border);
 }
 
+/* 模式芯片激活态：中性深灰（AI 聊天惯例——模式开关不做实心墨黑，避免与纸面强对撞） */
 .mode-chip.active {
-  background: var(--color-btn-primary);
-  border-color: var(--color-btn-primary);
-  color: var(--color-btn-primary-text);
+  background: var(--color-chip-active);
+  border-color: var(--color-chip-active);
+  color: var(--color-chip-active-text);
   font-weight: var(--weight-medium);
 }
 
@@ -417,9 +418,15 @@ function handleSendClick() {
 }
 
 .send-primary.active {
-  background: var(--color-btn-primary);
+  /* 发送激活：深灰非纯黑（降对比但仍居视觉焦点） */
+  background: var(--color-send-active);
+  color: var(--color-chip-active-text);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.send-primary.active:hover {
+  background: var(--color-send-active-hover);
 }
 
 .stop-primary {

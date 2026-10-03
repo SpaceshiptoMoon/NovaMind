@@ -1,8 +1,9 @@
 /* ========================================
-   Design Tokens — Ink & Bone（墨与骨白：骨白纸底 + 墨字 + 墨黑按钮 + 蓝黑墨水 accent）
+   Design Tokens — Ink & Bone（墨与骨白：灰白纸底 + 墨字 + 墨黑按钮 + 蓝黑墨水 accent）
    方法论：颜色是稀缺资源（taste-skill minimalist-ui / impeccable colorize）——
    中性面（底/卡/边/字）零色度，墨黑只给主 CTA，蓝黑墨水只给链接/选中/焦点，
    彩色仅剩语义淡彩 tag；刻意避开三类公版皮（紫蓝渐变 AI 味 / 亮默认蓝 / Claude 奶油赤陶）
+   灰阶取自选定参考 shadcn/ui Neutral（Tailwind neutral 纯灰，无暖调）
    ======================================== */
 :root {
   /* Accent — 蓝黑墨水 #20618F（hue 206°，钢笔墨水语义：链接/活动 tab/焦点，白底约 5.2:1） */
@@ -11,36 +12,42 @@
   --color-primary-subtle: #e8f1f8;
   --color-primary-muted: rgba(32, 97, 143, 0.1);
 
-  /* 实心主按钮：墨黑 #191918（编辑感主 CTA，白字 15.8:1）；hover 微提亮非纯黑 */
-  --color-btn-primary: #191918;
-  --color-btn-primary-hover: #33322f;
-  /* 主按钮上的文字/图标（暗色按钮反白为骨白底时随翻转，避免组件写死白字撞白底） */
+  /* 实心主按钮：中性深墨 #2e2e2e（黑度 82%——不死黑不浅灰，白字 12.7:1）；hover 微提亮 */
+  --color-btn-primary: #2e2e2e;
+  --color-btn-primary-hover: #444444;
+  /* 主按钮上的文字/图标（暗色按钮反白为浅灰底时随翻转，避免组件写死白字撞白底） */
   --color-btn-primary-text: #ffffff;
+  /* 聊天输入卡内高频小控件（模式芯片/发送钮）：比主 CTA 降一档的中性深灰，
+     避免纯黑在纸面上形成过强对撞（AI 聊天产品惯例：模式开关不做实心墨黑） */
+  --color-chip-active: #3f3f46;
+  --color-chip-active-text: #ffffff;
+  --color-send-active: #2e2e2e;
+  --color-send-active-hover: #444444;
 
   /* Accent 与 primary 统一墨水蓝（选中态/图形锚点） */
   --color-accent: #20618f;
   --color-accent-hover: #17527d;
   --color-accent-subtle: #e8f1f8;
 
-  /* Text — 暖墨阶（Notion 墨 #37352F 族，中性零色度；muted ≥4.5:1 供信息文本） */
-  --color-text: #37352f;
-  --color-text-secondary: #66645e;
-  --color-text-muted: #6f6d67;
-  --color-text-faint: #8a8883;
+  /* Text — 纯墨阶（Tailwind neutral，零色度；muted ≥4.5:1 供信息文本） */
+  --color-text: #0a0a0a;
+  --color-text-secondary: #525252;
+  --color-text-muted: #5f5f5f;
+  --color-text-faint: #8c8c8c;
 
-  /* Background — 骨白纸托白卡（暖骨白 #F7F6F3，taste-skill minimalist-ui 色板） */
-  --color-bg: #f7f6f3;
+  /* Background — 灰白纸托白卡（neutral-50 #FAFAFA，shadcn Neutral 标准底） */
+  --color-bg: #fafafa;
   --color-bg-card: #ffffff;
-  --color-bg-card-elevated: #fbfbfa;
+  --color-bg-card-elevated: #ffffff;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #f1f0ec;
-  --color-bg-sidebar: #faf9f7;
+  --color-bg-hover: #f5f5f5;
+  --color-bg-sidebar: #fafafa;
   --color-bg-input: #ffffff;
 
-  /* Border — 中性发丝线（零色度灰，不 tint） */
-  --color-border: #e8e8e6;
-  --color-border-light: #efede9;
+  /* Border — 中性发丝线（neutral 零色度灰，不 tint） */
+  --color-border: #e5e5e5;
+  --color-border-light: #ededed;
   --color-border-focus: #20618f;
 
   /* Semantic — Notion 四组淡彩（深字 + 淡底，仅状态表达不参与装饰） */
@@ -53,12 +60,12 @@
   --color-info: #787672;
   --color-info-subtle: #efeeec;
 
-  /* Typography */
+  /* Typography — Inter Variable（shadcn/Linear/Vercel 参考系标准字），系统栈兜底 */
   --font-display:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'PingFang SC',
+    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   --font-body:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'PingFang SC',
+    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', 'Monaco', monospace;
 
@@ -108,14 +115,14 @@
   --color-user-bubble: var(--color-bg-card-elevated);
   --color-user-bubble-text: var(--color-text);
   --color-chat-bg: #ffffff;
-  --color-bg-input-bar: rgba(247, 246, 243, 0.9);
+  --color-bg-input-bar: rgba(250, 250, 250, 0.9);
   --blur-input: 4px;
 
   /* File type colors — 中性芯片 + 淡彩：doc=墨色芯片，md/other=墨水蓝族 */
   --color-file-pdf-bg: var(--color-danger-subtle);
   --color-file-pdf: var(--color-danger);
-  --color-file-doc-bg: #efede9;
-  --color-file-doc: #37352f;
+  --color-file-doc-bg: #ededed;
+  --color-file-doc: #2e2e2e;
   --color-file-txt-bg: var(--color-bg-hover);
   --color-file-txt: var(--color-text-muted);
   --color-file-md-bg: var(--color-primary-subtle);
@@ -149,9 +156,9 @@
   --blur-header: 12px;
   --color-bg-header: rgba(255, 255, 255, 0.88);
 
-  /* Auth gradient — 平涂墨黑（start=end 非渐变，auth 侧板） */
-  --color-gradient-start: #191918;
-  --color-gradient-end: #191918;
+  /* Auth gradient — 平涂深墨（start=end 非渐变，auth 侧板，与全系统深色档同深度） */
+  --color-gradient-start: #2e2e2e;
+  --color-gradient-end: #2e2e2e;
 
   /* Shadow — 极轻（taste-skill：透明度 <0.05 的超弥散阴影；卡片靠底色差+发丝线分层） */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -251,7 +258,7 @@ a:hover {
 
 /* ========================================
    Dark Theme — [data-theme='dark'] 挂在 <html> 上
-   独立设计的暖墨黑（impeccable：dark 不是机械反转 light）
+   独立设计的冷墨黑（impeccable：dark 不是机械反转 light，取 shadcn zinc dark 阶）
    签名反差：亮色墨黑按钮 → 暗色骨白按钮（墨与骨白互为图底）
    ======================================== */
 /* html[] 升特异性 (0,1,1)：压过 main.css :root 中的 EP 亮色硬编码（同特异性时
@@ -265,35 +272,40 @@ html[data-theme='dark'] {
   --color-primary-subtle: #243140;
   --color-primary-muted: rgba(134, 175, 212, 0.12);
 
-  /* 实心主按钮：骨白填充 + 墨字（亮暗互为图底的签名反差，墨字 12:1） */
-  --color-btn-primary: #e8e6e1;
-  --color-btn-primary-hover: #ffffff;
-  --color-btn-primary-text: #1d1c1b;
+  /* 实心主按钮：浅灰填充 + 墨字（与全系统深黑对齐档互为图底，墨字 13.4:1） */
+  --color-btn-primary: #dcdcdf;
+  --color-btn-primary-hover: #e8e8ea;
+  --color-btn-primary-text: #141416;
+  /* 聊天小控件暗色档：芯片激活用浅灰深字、发送钮浅灰（降对撞同 light 语义） */
+  --color-chip-active: #c8c8cc;
+  --color-chip-active-text: #141416;
+  --color-send-active: #dcdcdf;
+  --color-send-active-hover: #e8e8ea;
 
   /* Accent 提亮 */
   --color-accent: #86afd4;
   --color-accent-hover: #a5c6e4;
   --color-accent-subtle: #243140;
 
-  /* Text — 暖骨白阶（零色度；muted ≥4.5:1 供信息文本，faint 提亮供占位可读） */
-  --color-text: #e9e7e2;
-  --color-text-secondary: #b3b1aa;
-  --color-text-muted: #9b9993;
-  --color-text-faint: #7b7973;
+  /* Text — 冷骨白阶（zinc dark，零色度；muted ≥4.5:1 供信息文本，faint 提亮供占位可读） */
+  --color-text: #fafafa;
+  --color-text-secondary: #b4b4b4;
+  --color-text-muted: #a1a1a1;
+  --color-text-faint: #828282;
 
-  /* Background — 暖墨黑分层（底最深、卡抬半档，无绿调） */
-  --color-bg: #191918;
-  --color-bg-card: #212120;
-  --color-bg-card-elevated: #282827;
+  /* Background — 冷墨黑分层（zinc dark：底最深、卡抬半档） */
+  --color-bg: #09090b;
+  --color-bg-card: #18181b;
+  --color-bg-card-elevated: #1e1e21;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #2f2e2c;
-  --color-bg-sidebar: #1d1c1b;
-  --color-bg-input: #26251F;
+  --color-bg-hover: #26262a;
+  --color-bg-sidebar: #101012;
+  --color-bg-input: #1e1e21;
 
-  /* Border — 暖墨暗线 */
-  --color-border: #37352f;
-  --color-border-light: #2c2b29;
+  /* Border — 冷墨暗线（zinc dark 发丝档） */
+  --color-border: #2e2e33;
+  --color-border-light: #26262a;
   --color-border-focus: #86afd4;
 
   /* Semantic — 文字提亮、subtle 底改暗色透明底 */
@@ -315,9 +327,9 @@ html[data-theme='dark'] {
   --color-file-audio: #f472b6;
 
   /* Chat / 布局浮层 */
-  --color-chat-bg: #212120;
-  --color-bg-input-bar: rgba(33, 33, 32, 0.9);
-  --color-bg-header: rgba(25, 25, 24, 0.88);
+  --color-chat-bg: #18181b;
+  --color-bg-input-bar: rgba(24, 24, 27, 0.9);
+  --color-bg-header: rgba(9, 9, 11, 0.88);
 
   /* Shadow — 暗色下加深一档 */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
@@ -371,22 +383,22 @@ html[data-theme='dark'] {
   --el-bg-color-overlay: var(--color-bg-card-elevated);
 
   --el-fill-color-blank: var(--color-bg-card);
-  --el-fill-color: #2f2e2c;
+  --el-fill-color: #26262a;
   --el-fill-color-light: var(--color-bg-card-elevated);
-  --el-fill-color-lighter: #373634;
+  --el-fill-color-lighter: #2c2c31;
   --el-fill-color-extra-light: var(--color-bg-card-elevated);
-  --el-fill-color-dark: #3e3d3a;
-  --el-fill-color-darker: #464541;
+  --el-fill-color-dark: #34343a;
+  --el-fill-color-darker: #3d3d44;
 }
 
 /* 暗色下主按钮为骨白底，EP 默认白字需翻成墨字（随签名反差）；
    :not(.is-link)——link/text 按钮背景透明，文字该走浅墨水蓝而非墨字（评审 F1b：
    透明底墨字 1.06:1 不可见） */
 html[data-theme='dark'] .el-button--primary:not(.is-link):not(.is-text) {
-  --el-button-text-color: #1d1c1b;
-  --el-button-hover-text-color: #1d1c1b;
-  --el-button-active-text-color: #1d1c1b;
-  --el-button-disabled-text-color: #1d1c1b;
+  --el-button-text-color: #0a0a0a;
+  --el-button-hover-text-color: #0a0a0a;
+  --el-button-active-text-color: #0a0a0a;
+  --el-button-disabled-text-color: #0a0a0a;
 }
 
 /* Element Plus 以 primary 作「控件选中底色」的场景固定为墨水蓝：

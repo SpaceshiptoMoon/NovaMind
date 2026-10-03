@@ -1,3 +1,4 @@
+@import '@fontsource-variable/inter';
 @import './base.css';
 
 #app {
@@ -19,14 +20,14 @@
   --el-color-primary-light-9: #e8f1f8;
   --el-color-primary-dark-2: #1a5379;
 
-  /* info 主题化为暖灰（impeccable：中性灰合法，不 tint） */
-  --el-color-info: #787672;
-  --el-color-info-light-3: #93918b;
-  --el-color-info-light-5: #aeaca6;
-  --el-color-info-light-7: #c9c7c2;
-  --el-color-info-light-8: #d7d5d0;
-  --el-color-info-light-9: #efeeec;
-  --el-color-info-dark-2: #66645e;
+  /* info 主题化为纯灰（impeccable：中性灰合法，不 tint；neutral 零色度） */
+  --el-color-info: #737373;
+  --el-color-info-light-3: #8f8f8f;
+  --el-color-info-light-5: #ababab;
+  --el-color-info-light-7: #c6c6c6;
+  --el-color-info-light-8: #d4d4d4;
+  --el-color-info-light-9: #efefef;
+  --el-color-info-dark-2: #616161;
 
   /* Element Plus success 语义绿（el-tag / el-message / 校验状态）；
      warning / danger 语义色与 base.css 同源（评审 F2：EP 原生 #f56c6c/#e6a23c
@@ -111,7 +112,7 @@
 
 .el-button--primary {
   font-weight: var(--weight-medium);
-  /* 主按钮底色统一走 --color-btn-primary（亮色墨黑 #191918、暗色骨白反白），
+  /* 主按钮底色统一走 --color-btn-primary（亮色深墨 #2e2e2e、暗色浅灰反白），
      与 --el-color-primary（选中/链接墨水蓝）解耦——颜色是稀缺资源，
      墨黑只给主 CTA，蓝黑墨水只给选中/链接/焦点 */
   --el-button-bg-color: var(--color-btn-primary);

@@ -249,8 +249,8 @@ function formatScore(score: number): string {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--color-btn-primary);
-  color: #fff;
+  background: var(--color-chip-active);
+  color: var(--color-chip-active-text);
   font-size: 11px;
   font-weight: 600;
   display: flex;
@@ -259,7 +259,7 @@ function formatScore(score: number): string {
 }
 
 .source-card.active .source-index {
-  background: var(--color-btn-primary-hover);
+  background: var(--color-send-active-hover);
 }
 
 .source-meta {

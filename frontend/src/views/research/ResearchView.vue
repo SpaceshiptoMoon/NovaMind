@@ -1299,14 +1299,15 @@ watch(spaceId, () => {
 }
 
 .send-btn.active {
-  background: var(--color-btn-primary);
-  color: #ffffff;
+  /* 发送激活：深灰非纯黑（与 chat/agent 输入卡同款） */
+  background: var(--color-send-active);
+  color: var(--color-chip-active-text);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
+  box-shadow: 0 1px 4px rgba(17, 24, 39, 0.15);
 }
 
 .send-btn.active:hover {
-  background: var(--color-btn-primary-hover);
+  background: var(--color-send-active-hover);
   transform: scale(1.05);
 }
 
