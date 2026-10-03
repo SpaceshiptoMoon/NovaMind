@@ -310,7 +310,9 @@
               :style="{ animationDelay: `${i * 40}ms` }"
               @click="handleQuickPrompt(prompt.text)"
             >
-              <span class="suggestion-icon">{{ prompt.icon }}</span>
+              <el-icon class="suggestion-icon" :size="14"
+                ><component :is="iconComponents[prompt.icon]"
+              /></el-icon>
               <span class="suggestion-text">{{ prompt.text }}</span>
             </span>
           </div>
@@ -370,7 +372,7 @@
  * 右侧历史侧栏可回放历史报告（重组 user/assistant 两条消息）。
  */
 
-import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -388,6 +390,9 @@ import {
   Fold,
   Expand,
   ArrowRight,
+  TrendCharts,
+  DataAnalysis,
+  MagicStick,
 } from '@element-plus/icons-vue'
 import { useResearchStore } from '@/stores/research'
 import { researchApi } from '@/api/research'
@@ -500,11 +505,19 @@ const advancedSettings = reactive({
   retrieval_top_k: 10,
 })
 
+// 图标名 → 组件映射（quickPrompts 用字符串声明，模板经此解析渲染）
+const iconComponents: Record<string, Component> = {
+  TrendCharts,
+  DataAnalysis,
+  Document,
+  MagicStick,
+}
+
 const quickPrompts = [
-  { icon: '📊', text: '分析市场趋势并总结关键数据' },
-  { icon: '🔬', text: '对比两种技术方案的优劣' },
-  { icon: '📋', text: '调研行业最新研究报告' },
-  { icon: '💡', text: '总结某领域的前沿研究方向' },
+  { icon: 'TrendCharts', text: '分析市场趋势并总结关键数据' },
+  { icon: 'DataAnalysis', text: '对比两种技术方案的优劣' },
+  { icon: 'Document', text: '调研行业最新研究报告' },
+  { icon: 'MagicStick', text: '总结某领域的前沿研究方向' },
 ]
 
 // 历史研究
@@ -1000,8 +1013,8 @@ watch(spaceId, () => {
 }
 
 .suggestion-icon {
-  font-size: var(--text-sm);
-  line-height: 1;
+  color: var(--color-text-faint);
+  flex-shrink: 0;
 }
 
 .suggestion-text {

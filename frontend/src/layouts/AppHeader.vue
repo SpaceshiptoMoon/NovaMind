@@ -618,5 +618,20 @@ const handleCommand = async (command: string) => {
   .user-trigger {
     padding: var(--space-1);
   }
+
+  /* 头像 32px 仍会溢出 8px（评审 P3-2），收到 24px 挤进安全区 */
+  .user-trigger :deep(.user-avatar) {
+    width: 24px;
+    height: 24px;
+  }
+
+  .user-trigger :deep(.user-avatar .unicorn-icon) {
+    margin: 0;
+  }
+
+  /* 折叠按钮的 8px 右 margin 在极窄屏是溢出零头来源，收紧到 4px */
+  .sidebar-collapse-btn {
+    margin-right: 4px;
+  }
 }
 </style>

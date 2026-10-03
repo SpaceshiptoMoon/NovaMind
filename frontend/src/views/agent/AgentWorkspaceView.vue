@@ -59,7 +59,8 @@ function openCreate() {
   width: 72px;
   height: 72px;
   border-radius: var(--radius-xl);
-  background: var(--color-primary-subtle);
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -91,7 +92,7 @@ function openCreate() {
   border: none;
   border-radius: var(--radius-full);
   background: var(--color-btn-primary);
-  color: #ffffff;
+  color: var(--color-btn-primary-text);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   cursor: pointer;

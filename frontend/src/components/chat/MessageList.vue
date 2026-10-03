@@ -50,7 +50,7 @@
         >
           <MarkdownRenderer :content="msg.content" class="message-text" />
           <div v-if="getAnswerStatus(msg) === 'low_confidence'" class="low-confidence-tip">
-            ⚠️ 依据较弱（相关度 {{ formatScore(getConfidence(msg)) }}），请审慎参考
+            依据较弱（相关度 {{ formatScore(getConfidence(msg)) }}），请审慎参考
           </div>
         </div>
         <SourceList
@@ -86,7 +86,13 @@
               </div>
             </div>
             <div v-else class="file-card" @click="handleDownloadAttachment(att)">
-              <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+              <div
+                class="file-icon-box"
+                :style="{
+                  background: getFileTypeStyle(att.filename).bg,
+                  color: getFileTypeStyle(att.filename).color,
+                }"
+              >
                 <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
               </div>
               <div class="file-info">
@@ -191,6 +197,7 @@ import type { ChatMessage, ChatSource } from '@/api/types'
 import { sessionApi } from '@/api/session'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import { copyToClipboard } from '@/utils/clipboard'
+import { getFileTypeStyle } from '@/components/knowledge/document'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -270,16 +277,7 @@ function formatScore(score: number | null | undefined): string {
   return (score * 100).toFixed(0) + '%'
 }
 
-function getFileIconClass(type?: string): string {
-  if (!type) return 'file-unknown'
-  const t = type.toLowerCase()
-  if (['pdf'].includes(t)) return 'file-pdf'
-  if (['doc', 'docx'].includes(t)) return 'file-word'
-  if (['xls', 'xlsx'].includes(t)) return 'file-excel'
-  if (['md', 'txt'].includes(t)) return 'file-text'
-  if (['json', 'csv'].includes(t)) return 'file-data'
-  return 'file-unknown'
-}
+// 图标配色按文件扩展名走 fileTypeStyles（与知识库文档徽章同源，双主题自动适配）
 
 // 引用 popover
 const citePopoverVisible = ref(false)
@@ -670,12 +668,14 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   width: 260px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-light);
   cursor: pointer;
   transition: background 0.15s;
 }
 .file-card:hover {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
 }
 .file-card .file-icon-box {
   width: 40px;
@@ -690,23 +690,8 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 .file-icon-box .file-ext-label {
   font-size: 11px;
   font-weight: 700;
-  color: #fff;
+  color: inherit;
   letter-spacing: 0.3px;
-}
-.file-icon-box.file-pdf {
-  background: #4b5563;
-}
-.file-icon-box.file-doc {
-  background: #6b7280;
-}
-.file-icon-box.file-txt {
-  background: #9ca3af;
-}
-.file-icon-box.file-md {
-  background: #4b5563;
-}
-.file-icon-box.file-default {
-  background: #6b7280;
 }
 .file-card .file-info {
   flex: 1;
@@ -798,23 +783,23 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   padding: 8px 12px;
   margin-bottom: 8px;
   border-radius: 10px;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
   font-size: 13px;
-  border: 1px solid #ef4444;
+  border: 1px solid var(--color-danger);
 }
 .message-content {
   position: relative;
 }
 .message-content.low-confidence {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--color-warning);
 }
 .low-confidence-tip {
   margin-top: 8px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
   font-size: 12px;
 }
 </style>

@@ -1,54 +1,8 @@
 <template>
   <div class="chat-view">
-    <!-- 侧边栏：会话列表 -->
-    <div v-if="!isInWorkspace" class="chat-sidebar">
-      <div class="sidebar-top">
-        <button class="new-chat-btn" @click="handleNewSession">
-          <span class="new-chat-icon">+</span>
-          <span>新对话</span>
-        </button>
-      </div>
-
-      <div class="sidebar-group-label">对话分组</div>
-      <button class="group-add-btn">+ 新分组</button>
-
-      <div class="sidebar-recent-label">最近对话</div>
-      <div class="session-list">
-        <div
-          v-for="session in chatStore.sessions"
-          :key="session.session_id"
-          class="session-item"
-          :class="{ active: chatStore.currentSessionId === session.session_id }"
-          @click="handleSelectSession(session.session_id)"
-        >
-          <span class="session-title">{{ session.preview || '新对话' }}</span>
-          <button class="session-delete" @click.stop="handleDeleteSession(session.session_id)">
-            <span class="session-more">⋯</span>
-          </button>
-        </div>
-        <div v-if="chatStore.sessions.length === 0" class="sidebar-empty">
-          <span>暂无对话记录</span>
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <button class="space-btn"><span class="space-icon">📁</span> 我的空间</button>
-      </div>
-    </div>
-
-    <!-- 主聊天区域 -->
+    <!-- 主聊天区域（工作台内：会话列表由 WorkspaceLayout 侧栏承载） -->
     <div class="chat-main">
-      <!-- 顶部栏：设置入口（模型选择已移入输入卡内，与智能体页统一用 ModelTrigger） -->
-      <div class="chat-header">
-        <div class="header-right">
-          <button class="setting-group clickable" @click="openSessionConfig">
-            <el-icon :size="14"><Setting /></el-icon>
-            <span class="setting-label">设置</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 空状态 / 消息列表 -->
+      <!-- 空状态 / 消息列表（设置入口在输入卡工具行，不设顶栏） -->
       <div v-if="chatStore.messages.length === 0 && !chatStore.loading" class="welcome-screen">
         <div class="welcome-inner">
           <h2 class="welcome-title">今天想聊点什么？</h2>
@@ -93,9 +47,8 @@
  * 关键约束：流式进行中切换/新建会话必须先 cancelStream，否则 SSE 回调会写入新会话造成消息污染。
  */
 
-import { ref, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Setting } from '@element-plus/icons-vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
@@ -104,7 +57,6 @@ import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 
 const chatStore = useChatStore()
-const isInWorkspace = inject('isInWorkspace', false)
 
 const messagesRef = ref<HTMLElement>()
 
@@ -149,12 +101,6 @@ watch(
   },
 )
 
-async function handleNewSession() {
-  // 流式中切会话：先取消正在进行的 SSE，否则回调会写入新会话的消息（污染）
-  if (chatStore.isStreaming) chatStore.cancelStream()
-  chatStore.clearMessages()
-}
-
 function openSessionConfig() {
   if (!chatStore.currentSessionId) {
     chatStore.currentSessionId = crypto.randomUUID()
@@ -169,30 +115,6 @@ function openSessionConfig() {
 async function handleConfigSaved() {
   if (configSessionId.value) {
     await chatStore.fetchSessionConfig(configSessionId.value)
-  }
-}
-
-/** 切换会话：先取消在途 SSE 再拉取消息与配置，避免流式回调污染新会话 */
-async function handleSelectSession(sessionId: string) {
-  if (chatStore.currentSessionId === sessionId) return
-  // 流式中切会话：fetchMessages 会整体替换 messages 数组，正在飞的 SSE 回调会定位到新会话消息造成污染，故先取消
-  if (chatStore.isStreaming) chatStore.cancelStream()
-  await chatStore.fetchMessages(sessionId)
-  chatStore.fetchSessionConfig(sessionId)
-  scrollToBottom()
-}
-
-async function handleDeleteSession(sessionId: string) {
-  try {
-    await ElMessageBox.confirm('确定删除此对话？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await chatStore.deleteSession(sessionId)
-    ElMessage.success('对话已删除')
-  } catch {
-    // cancelled
   }
 }
 
@@ -274,222 +196,6 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   Sidebar
-   ======================================== */
-.chat-sidebar {
-  width: 260px;
-  border-right: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  background: var(--color-bg-card);
-}
-
-.sidebar-top {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-divider);
-}
-.sidebar-group-label {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 16px 16px 6px;
-}
-.group-add-btn {
-  width: 100%;
-  text-align: left;
-  padding: 6px 16px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  background: none;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: var(--font-body);
-}
-.group-add-btn:hover {
-  background: var(--color-bg-hover);
-}
-
-.sidebar-recent-label {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 16px 16px 6px;
-}
-
-.new-chat-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: var(--font-body);
-}
-.new-chat-btn:hover {
-  background: var(--color-primary-muted);
-}
-.new-chat-icon {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.session-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-2);
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  margin-bottom: 1px;
-  position: relative;
-}
-
-.session-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.session-item.active {
-  background: var(--color-primary-muted);
-}
-
-.session-item.active .session-title {
-  color: var(--color-primary);
-  font-weight: var(--weight-medium);
-}
-
-.session-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--color-btn-primary);
-}
-
-.session-title {
-  flex: 1;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: var(--leading-normal);
-}
-
-.session-more {
-  opacity: 0;
-  font-size: 14px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-.session-item:hover .session-more {
-  opacity: 1;
-}
-.session-item:hover .session-more:hover {
-  color: var(--color-text);
-}
-
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-divider);
-  margin-top: auto;
-}
-.space-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  background: none;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: var(--font-body);
-}
-.space-btn:hover {
-  background: var(--color-bg-hover);
-}
-.space-icon {
-  font-size: 14px;
-}
-
-/* ========================================
-   Header — Model bar
-   ======================================== */
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end; /* 仅剩设置入口，保持靠右 */
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-  background: var(--color-bg-card);
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.setting-group.clickable {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-}
-.setting-group.clickable:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-.setting-label {
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.sidebar-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-8) var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-faint);
-}
-
-/* ========================================
    Main Chat Area
    ======================================== */
 .chat-main {
@@ -541,49 +247,6 @@ onBeforeUnmount(() => {
   line-height: var(--leading-relaxed);
 }
 
-.welcome-prompts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  width: 100%;
-}
-
-.prompt-card {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid transparent;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  text-align: left;
-  font-family: var(--font-body);
-}
-
-.prompt-card:hover {
-  border-color: var(--color-text-faint);
-  background: var(--color-bg-card);
-}
-
-.prompt-card:hover .prompt-text {
-  color: var(--color-text);
-}
-
-.prompt-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.prompt-text {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  line-height: var(--leading-normal);
-  transition: color var(--transition-fast);
-}
-
 /* ========================================
    Messages
    ======================================== */
@@ -592,7 +255,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
-  margin-top: 32px;
 }
 
 .messages-inner {
@@ -750,207 +412,6 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border);
   border-radius: 18px 18px 18px 4px;
 }
-
-/* ========================================
-   Message Attachments — File Card
-   ======================================== */
-.message-attachments {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.file-card {
-  display: flex;
-  align-items: center;
-  width: 260px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.file-card:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.file-card .file-icon-box {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 10px;
-  flex-shrink: 0;
-}
-
-.file-icon-box .file-ext-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.3px;
-}
-
-.file-icon-box.file-pdf {
-  background: #4b5563;
-}
-.file-icon-box.file-doc {
-  background: #6b7280;
-}
-.file-icon-box.file-txt {
-  background: #9ca3af;
-}
-.file-icon-box.file-md {
-  background: #4b5563;
-}
-.file-icon-box.file-default {
-  background: #6b7280;
-}
-
-.file-card .file-info {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.file-card .file-name {
-  font-size: 13px;
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-card .file-meta {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.file-card .file-download-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  margin-left: 4px;
-  transition: all 0.15s;
-}
-
-.file-card:hover .file-download-btn {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
-}
-
-/* ===== Image card in messages ===== */
-.image-card {
-  display: inline-flex;
-  flex-direction: column;
-  cursor: pointer;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  max-width: 200px;
-  transition: border-color 0.15s;
-}
-.image-card:hover {
-  border-color: var(--color-primary);
-}
-.image-thumb {
-  width: 100%;
-  max-height: 150px;
-  object-fit: cover;
-  display: block;
-}
-.image-thumb-loading {
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-hover);
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-}
-.image-info {
-  padding: 4px 8px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  background: var(--color-bg-card);
-}
-.image-name {
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.image-size {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-/* ===== Pending attachment image thumb ===== */
-.att-thumb-img {
-  width: 28px;
-  height: 28px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-/* ===== Image file icon（黑白化：与其余 file-* 徽章统一灰阶） ===== */
-.file-image {
-  background: var(--color-text-muted);
-  color: #fff;
-}
-
-/* ===== Refused / Low-confidence / Sources ===== */
-.refused-banner {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  border-radius: 10px;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  font-size: 13px;
-  border: 1px solid #ef4444;
-}
-
-.message-content {
-  position: relative;
-}
-
-.message-content.low-confidence {
-  border-left: 3px solid #f59e0b;
-}
-
-.low-confidence-tip {
-  margin-top: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-  font-size: 12px;
-}
-
-.form-hint {
-  margin-left: 8px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
 </style>
 
 <!-- 引用角标由 v-html 渲染、popover 内容 teleport 到 body，需全局样式 -->
@@ -964,7 +425,7 @@ onBeforeUnmount(() => {
   line-height: 1;
   vertical-align: super;
   color: var(--color-primary);
-  background: rgba(17, 24, 39, 0.1);
+  background: var(--color-bg-hover);
   border-radius: 4px;
   transition:
     background 0.15s,
@@ -974,7 +435,7 @@ onBeforeUnmount(() => {
 
 .cite-marker:hover {
   background: var(--color-btn-primary);
-  color: #fff;
+  color: var(--color-btn-primary-text);
 }
 
 .cite-popover.el-popover.el-popper {
@@ -990,7 +451,7 @@ onBeforeUnmount(() => {
 .cite-pop-name {
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text);
   word-break: break-word;
 }
 
@@ -1000,7 +461,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--color-text-muted);
 }
 
 .cite-pop-kind {
@@ -1010,18 +471,18 @@ onBeforeUnmount(() => {
 }
 
 .cite-pop-kind.kb {
-  background: rgba(17, 24, 39, 0.12);
+  background: var(--color-info-subtle);
   color: var(--color-primary);
 }
 
 .cite-pop-kind.web {
-  background: rgba(17, 24, 39, 0.12);
-  color: #4b5563;
+  background: var(--color-info-subtle);
+  color: var(--color-text-secondary);
 }
 
 .cite-pop-snippet {
   font-size: 12px;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   line-height: 1.5;
   max-height: 100px;
   overflow-y: auto;

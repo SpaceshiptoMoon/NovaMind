@@ -1288,14 +1288,15 @@ onMounted(async () => {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
-  background: var(--color-primary-subtle);
+  /* 中性首字头像（与知识库 kb-avatar 同款）：accent 不浸染中性面 */
+  background: var(--color-bg-hover);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  color: var(--color-primary);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 

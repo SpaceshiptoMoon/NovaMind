@@ -42,7 +42,7 @@
           v-model="searchKeyword"
           :placeholder="aiSearchMode ? '用自然语言描述你想要的技能...' : '搜索技能...'"
           clearable
-          style="width: 320px"
+          class="search-input"
           @keyup.enter="handleSearch"
         >
           <template #prefix
@@ -364,6 +364,13 @@ async function handleUpload(file: File) {
   display: flex;
   gap: var(--space-2);
   align-items: center;
+  /* 320px 视口下输入框收缩、按钮换行进首屏（评审 P3-1），不靠容器横向滚动兜底 */
+  flex-wrap: wrap;
+}
+
+.search-input {
+  width: 320px;
+  max-width: 100%;
 }
 
 .ai-explanation-banner {
