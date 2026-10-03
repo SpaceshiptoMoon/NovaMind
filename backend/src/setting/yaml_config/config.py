@@ -95,6 +95,15 @@ class ParsingConfig:
     # 易逼近 arq job_timeout=1800s，有界并发降时延；过高可能触发 VLM 配额限流，
     # 配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。
     video_vlm_concurrency: int = 4
+    # 上传流式读取的全局字节硬顶（MB）。流式 sha256+计数边读边检，超限即断流
+    # 拒收——Content-Length 缺失/chunked encoding/伪造头都靠它兜底。须 >= 各模态
+    # 上限（video 默认 2000MB）。这是宿主资源旋钮：生产按盘/带宽调整，
+    # 与 nginx NGINX_MAX_BODY_SIZE（请求体层）联动。
+    max_upload_size_mb: int = 2048
+    # worker 下载 MinIO 原件的落盘目录（绝对路径）。None 时用系统默认临时目录
+    # （TEMP/TMP）。大视频（2GB 级）流式写盘需要有独立分区/大盘的部署期旋钮，
+    # 避免打爆系统盘或容器可写层。
+    download_tmp_dir: str | None = None
 
 
 @dataclass

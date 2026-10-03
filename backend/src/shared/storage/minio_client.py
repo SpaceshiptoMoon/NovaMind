@@ -317,6 +317,35 @@ class MinioClient:
             )
             raise
 
+    async def upload_document_streamed(
+        self,
+        space_id: int,
+        kb_id: int,
+        document_id: int,
+        file_stream: BinaryIO,
+        file_size: int,
+        filename: str,
+        file_hash: str = "",
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """大文件流式上传：先 seek(0) 再委托既有流式实现（文件不进内存）。
+
+        Args:
+            file_stream: 二进制流（SpooledTemporaryFile/磁盘句柄均可）。
+                调用方常先流式哈希把流读到尾部，此处统一归零。
+            file_size: 精确字节数——minio-py 流式 put_object 要求流长度与之一致，
+                否则 multipart 分块上传校验失败；调用方须先计数再传此值。
+
+        Returns:
+            上传结果（含 etag、object_name、bucket、size）。
+        """
+        file_stream.seek(0)
+        return await self.upload_document_stream(
+            space_id, kb_id, document_id, file_stream, file_size, filename,
+            file_hash, content_type, metadata,
+        )
+
     # ========== 文档下载 ==========
 
     def _download_document(self, bucket_name: str, object_name: str) -> bytes:
@@ -386,6 +415,52 @@ class MinioClient:
                 "下载文档失败",
                 bucket=bucket_name,
                 object=object_name,
+                error=str(e)
+            )
+            raise
+
+    async def download_document_to_file(
+        self,
+        bucket_name: str,
+        object_name: str,
+        dest_path: str,
+    ) -> int:
+        """流式下载对象到本地文件（8MB 分块写盘，内容不进内存）。
+
+        大视频 worker 下载路径：与 download_document（整包读内存）相对，
+        内存峰值与对象大小解耦。
+
+        Args:
+            bucket_name: 桶名。
+            object_name: 对象名。
+            dest_path: 目标本地文件路径（调用方负责清理）。
+
+        Returns:
+            写入的总字节数。
+        """
+        def _download_to_file() -> int:
+            response = self.client.get_object(bucket_name, object_name)
+            try:
+                written = 0
+                with open(dest_path, "wb") as f:
+                    while True:
+                        chunk = response.read(8 * 1024 * 1024)
+                        if not chunk:
+                            break
+                        written += f.write(chunk)
+                return written
+            finally:
+                response.close()
+                response.release_conn()
+
+        try:
+            return await asyncio.to_thread(_download_to_file)
+        except S3Error as e:
+            logger.error(
+                "下载文档到文件失败",
+                bucket=bucket_name,
+                object=object_name,
+                dest_path=dest_path,
                 error=str(e)
             )
             raise

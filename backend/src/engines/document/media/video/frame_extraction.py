@@ -1,5 +1,6 @@
 """视频帧提取引擎：固定间隔抽帧 + 场景切换抽帧（灰度直方图卡方距离检测切换点）。
 extract_frames_fixed 是旧函数 extract_video_frames 的策略化别名，原函数保留不破坏存量 import。
+每个 *_from_path 变体是大文件管道入口：直接吃文件路径，省一次 bytes→临时文件落盘。
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from novamind.engines.document.media.video.video_normalizer import (
 )
 from novamind.engines.document.media.video.video_utils import (
     VideoMetadataError,
+    extract_frames_fixed_from_path,
     extract_video_frames,
     read_frame_at,
     read_video_metadata,
@@ -44,6 +46,32 @@ async def extract_frames_scene(
     min_interval: float = 2.0,
     sample_step: float | None = None,
 ) -> list[tuple[bytes, float, int]]:
+    """场景切换抽帧（bytes 版）：写临时文件后委托路径版实现。"""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".video", delete=False) as tmp:
+        tmp.write(file_content)
+        tmp_path = tmp.name
+
+    try:
+        return await extract_frames_scene_from_path(
+            tmp_path, max_frames,
+            scene_threshold=scene_threshold,
+            min_interval=min_interval,
+            sample_step=sample_step,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def extract_frames_scene_from_path(
+    filepath: str,
+    max_frames: int = 60,
+    *,
+    scene_threshold: float = 0.3,
+    min_interval: float = 2.0,
+    sample_step: float | None = None,
+) -> list[tuple[bytes, float, int]]:
     """场景切换抽帧：按相邻帧灰度直方图卡方距离检测镜头切换点。
 
     流程：
@@ -57,20 +85,17 @@ async def extract_frames_scene(
     极端情形兜底：若切换点为 0（全程无明显切换，如静态幻灯片），退化为候选帧均匀采样，
     保证至少产出 1 帧。
 
+    路径版（大文件管道入口）：直读失败时归一化兜底（产物临时文件自清理）；
+    调用方传入的 ``filepath`` 不会被删除（生命周期归调用方）。
+
     返回 ``[(jpeg_bytes, timestamp, frame_idx), ...]``，与 ``extract_frames_fixed`` 同结构。
     """
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".video", delete=False) as tmp:
-        tmp.write(file_content)
-        tmp_path = tmp.name
-
     normalized_path: str | None = None
     try:
         try:
             return await asyncio.to_thread(
                 _extract_scene_from_path,
-                tmp_path,
+                filepath,
                 max_frames,
                 scene_threshold,
                 min_interval,
@@ -80,13 +105,13 @@ async def extract_frames_scene(
             logger.warning(
                 "场景抽帧直读失败，进入转换层兜底",
                 extra={
-                    "source_path": tmp_path,
+                    "source_path": filepath,
                     "error_type": type(direct_error).__name__,
                     "error": str(direct_error),
                 },
             )
             normalized_path = await asyncio.to_thread(
-                normalize_video_for_frame_extraction, tmp_path
+                normalize_video_for_frame_extraction, filepath
             )
             return await asyncio.to_thread(
                 _extract_scene_from_path,
@@ -97,7 +122,6 @@ async def extract_frames_scene(
                 sample_step,
             )
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
         if normalized_path:
             Path(normalized_path).unlink(missing_ok=True)
 

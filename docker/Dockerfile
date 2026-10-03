@@ -57,11 +57,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Runtime packages only: no build toolchain. curl is for HEALTHCHECK.
+# gettext-base provides envsubst for nginx template rendering at startup.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     nginx \
     supervisor \
     curl \
+    gettext-base \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
@@ -92,8 +94,15 @@ COPY backend/scripts/ ./scripts/
 # Frontend static assets served by Nginx.
 COPY --from=frontend-build /build/dist /usr/share/nginx/html
 
-# Non-root Nginx: complete main config (no `user` directive, pid + temp under /tmp).
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+# Non-root Nginx: main config is a template rendered at startup by
+# render-nginx-conf.sh (TLS 块与 client_max_body_size 由环境变量注入；
+# 渲染产物在 /tmp/nginx/nginx.conf，pid + temp 也在 /tmp)。
+COPY docker/nginx.template.conf /etc/nginx/nginx.template.conf
+COPY docker/render-nginx-conf.sh /usr/local/bin/render-nginx-conf.sh
+RUN chmod +x /usr/local/bin/render-nginx-conf.sh
+
+# TLS 证书挂载点（默认为空目录；启用 TLS 时 compose 挂载证书并注入路径 env）。
+RUN mkdir -p /etc/nginx/tls
 
 # Supervisord: complete main config, non-root (no unix_http_server socket,
 # pidfile under /tmp so no write to the root-owned /run tmpfs).

@@ -102,22 +102,32 @@ async def execute_document_pipeline(
     document_id: int,
     kb_id: int,
     space_id: int,
-    file_content: bytes,
     filename: str,
     task: Optional["DocumentTask"] = None,
     model_config_port: ModelConfigService | None = None,
+    *,
+    file_content: Optional[bytes] = None,
+    file_path: Optional[str] = None,
 ) -> None:
-    """
-    执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）
+    """执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）。
 
     Args:
         session: 数据库会话
         document_id: 文档 ID
         kb_id: 知识库 ID
         space_id: 空间 ID
-        file_content: 文件内容
         filename: 文件名
+        task: 文档任务记录（None 时自动查找/创建）
+        file_content: 文件内容（整包路径，与 file_path 二选一）
+        file_path: 本地文件路径（大文件路径：worker 下载落盘后传路径，
+            管道内按需 read_bytes，避免整包驻留内存；与 file_content 二选一）
+
+    Raises:
+        ValueError: file_content 与 file_path 同时给出或都缺失。
     """
+    if (file_content is None) == (file_path is None):
+        raise ValueError("file_content 与 file_path 必须二选一")
+
     _logger = get_logger(__name__)
     doc_repo = DocumentRepository(session)
     kb_repo = KnowledgeBaseRepository(session)
@@ -157,9 +167,20 @@ async def execute_document_pipeline(
     # ===== 图片文档分支 =====
     file_ext = document.file_type.lower() if document.file_type else ""
 
+    # 大文件路径（file_path 给出）时按分支按需读取：视频分支透传路径给引擎
+    # （抽帧/归一化全程用文件句柄），图像/音频分支一次性 read_bytes（后续
+    # 管道本就要整包 bytes），文本分支直接复用路径（本就写临时文件）。
+    image_content = file_content
+    audio_content = file_content
+    if file_path is not None:
+        if file_ext in IMAGE_FILE_TYPES:
+            image_content = await asyncio.to_thread(Path(file_path).read_bytes)
+        elif file_ext in AUDIO_FILE_TYPES:
+            audio_content = await asyncio.to_thread(Path(file_path).read_bytes)
+
     if file_ext in IMAGE_FILE_TYPES:
         await _process_image_document_static(
-            document, file_content, session, _logger, task=task,
+            document, image_content, session, _logger, task=task,
             model_config_port=model_config_port,
         )
         return
@@ -173,6 +194,7 @@ async def execute_document_pipeline(
         await process_video_document(
             document, file_content, session, _logger, task=task,
             model_config_port=model_config_port,
+            file_path=file_path,
         )
         return
 
@@ -183,7 +205,7 @@ async def execute_document_pipeline(
         )
 
         await process_audio_document(
-            document, file_content, session, _logger, task=task,
+            document, audio_content, session, _logger, task=task,
             model_config_port=model_config_port,
         )
         return
@@ -201,12 +223,18 @@ async def execute_document_pipeline(
     splitting_config = kb_config.get("splitting", {})
     suffix = f".{document.file_type}"
     # 写盘入线程池：嵌入式 worker 与 API 共享事件循环，最大 100MB 的同步写
-    # 会卡住全部并发请求（评审 P2-2）。
-    def _write_tmp() -> str:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_content)
-            return tmp.name
-    tmp_path = await asyncio.to_thread(_write_tmp)
+    # 会卡住全部并发请求（评审 P2-2）。file_path 已给出时直接复用（worker
+    # 下载落盘的临时文件，消费方管线不变），不再复制一份。
+    if file_path is not None:
+        tmp_path = file_path
+        _owns_tmp_path = False
+    else:
+        def _write_tmp() -> str:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(file_content)
+                return tmp.name
+        tmp_path = await asyncio.to_thread(_write_tmp)
+        _owns_tmp_path = True
 
     # 断点续跑：解析指纹匹配即复用快照，跳过昂贵解析（VLM/OCR 可能已付费成功）。
     # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。
@@ -399,10 +427,13 @@ async def execute_document_pipeline(
         # 原始文件已解析完，立即释放临时文件。不把 unlink 挂 try/finally 到整个
         # 管道——此前快照命中分支提前 return 绕过 finally，每个续跑任务泄漏一个
         # tmp 文件；解析抛错时任务行会标 FAILED，OS tmp 目录由系统清理兜底。
-        try:
-            Path(tmp_path).unlink(missing_ok=True)
-        except OSError:
-            pass
+        # file_path 模式（worker 落盘文件）由 worker 侧 finally 统一清理，
+        # 此处不动——双处 unlink 无害但会掩盖归属。
+        if _owns_tmp_path:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except OSError:
+                pass
         full_text = parse_result.full_text
         chunks = parse_result.chunks
         _logger.info(

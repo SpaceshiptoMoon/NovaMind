@@ -59,11 +59,16 @@ from novamind.features.knowledge_space.services.document_task_service import Doc
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 文件大小限制：读取层上限取全部模态的最大值（text/image 100 / audio 200 /
-# video 500）。逐模态权威校验在 DocumentUploadService._get_max_file_size——
-# 此前读取层硬编码 100MB 先于模态闸生效，video 500MB 配置不可达（审计 P2）。
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB：文本/图片上限（保守默认，用于 Content-Length 预检）
-GLOBAL_UPLOAD_READ_LIMIT = 500 * 1024 * 1024  # 500MB：读取层硬上限（video 模态）
+# 文件大小限制：读取层上限取全部模态的最大值。逐模态权威校验在
+# DocumentUploadService._get_max_file_size——读取层硬编码值先于模态闸生效会让
+# 模态上限配置不可达（审计 P2），故读取层上限从 YAML
+# knowledge_base.parsing.max_upload_size_mb 读取（默认 2048，须 >= video 模态
+# 上限 2000MB），与 nginx NGINX_MAX_BODY_SIZE 联动。
+def _get_global_upload_read_limit() -> int:
+    from novamind.setting.yaml_config import get_config
+
+    return max(1, int(get_config().knowledge_base.parsing.max_upload_size_mb)) * 1024 * 1024
+
 
 # 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
 ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
@@ -138,7 +143,7 @@ async def upload_document(
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
 
-    # 单文件：走原有逻辑，保持向后兼容
+    # 单文件：流式路径（文件不进内存，大视频可至模态上限）
     if len(files) == 1:
         file = files[0]
 
@@ -158,29 +163,26 @@ async def upload_document(
             )
 
         # Content-Length 预检：超全局读取上限直接拒（防无谓的流式读取）
+        global_read_limit = _get_global_upload_read_limit()
         content_length = request.headers.get("content-length")
         try:
             content_length_int = int(content_length) if content_length else 0
         except (ValueError, OverflowError):
             content_length_int = 0
-        if content_length_int > GLOBAL_UPLOAD_READ_LIMIT:
+        if content_length_int > global_read_limit:
             raise DocumentSizeExceededError(
                 size=int(content_length),
-                limit=GLOBAL_UPLOAD_READ_LIMIT,
+                limit=global_read_limit,
             )
 
-        # 读取层用全局上限兜底；逐模态权威校验在 service 层 _get_max_file_size
-        # （按 text/image 100 / audio 200 / video 500MB 分治）
-        file_content = await DocumentUploadService.read_upload_file(
-            file, max_size=GLOBAL_UPLOAD_READ_LIMIT
-        )
-
-        # 上传文档（仅存 MinIO，不触发解析）
-        uploaded = await document_upload_service.upload_document(
+        # 上传文档（仅存 MinIO，不触发解析）：流式哈希+multipart 上传，
+        # 内存峰值与文件大小解耦；全局 read_limit 在流式计数层兜底
+        # （Content-Length 缺失/chunked encoding 时仍被拦截）
+        uploaded = await document_upload_service.upload_document_streamed(
             kb_id=kb_id,
             uploader_id=user_id,
-            file_content=file_content,
-            filename=file.filename,
+            file=file,
+            read_limit=global_read_limit,
         )
 
         # 记录审计日志
@@ -205,7 +207,7 @@ async def upload_document(
     file_data_list, failed_list = await DocumentUploadService.read_and_validate_uploads(
         files,
         allowed_extensions=ALLOWED_FILE_EXTENSIONS,
-        max_size=GLOBAL_UPLOAD_READ_LIMIT,
+        max_size=_get_global_upload_read_limit(),
         max_batch_count=MAX_BATCH_FILE_COUNT,
     )
 
@@ -476,6 +478,16 @@ async def download_document(
     encoded_filename = quote(document.filename)
     ascii_fallback = "download"
 
+    # 端到端完整性凭证：file_hash 即上传时计算的 sha256（DB 权威值，零额外
+    # 计算）。ETag 供 HTTP 缓存语义，X-Checksum-SHA256 供客户端显式校验
+    # 传输完整性（大视频经 nginx/代理链路后的防静默损坏手段）。
+    integrity_headers: dict[str, str] = {}
+    if document.file_hash:
+        integrity_headers = {
+            "ETag": f'"{document.file_hash}"',
+            "X-Checksum-SHA256": document.file_hash,
+        }
+
     # 返回响应：file_content 是完整 bytes，用 Response 自动设 Content-Length，
     # 浏览器按正常下载处理（StreamingResponse+BytesIO 走 chunked 不带 Content-Length，
     # 大文件浏览器不知道大小容易中途断开 → ConnectionResetError 10054）。
@@ -486,7 +498,8 @@ async def download_document(
             "Content-Disposition": (
                 f'attachment; filename="{ascii_fallback}"; '
                 f"filename*=UTF-8''{encoded_filename}"
-            )
+            ),
+            **integrity_headers,
         },
     )
 

@@ -135,6 +135,13 @@ knowledge_base:
     # 本地 ASR 转写 CPU 线程数；空则按物理核自动取保守值（留至少 1 核给事件循环）。
     # 转写时其它请求卡顿就调小（如 2）；ASR 太慢可调大，但勿超过 (物理核 - 1)
     local_whisper_cpu_threads:
+    # 上传流式读取的全局字节硬顶（MB）：流式 sha256+计数边读边检，超限即断流拒收。
+    # 须 >= 各模态上限（video 默认 2000MB）；与 nginx NGINX_MAX_BODY_SIZE 联动
+    # （nginx 值应为本值 + multipart 头部裕量）。
+    max_upload_size_mb: 2048
+    # worker 下载 MinIO 原件的落盘目录（绝对路径）；空则用系统默认临时目录。
+    # 大视频（2GB 级）流式写盘需要时，把它指到独立分区/数据盘，避免打爆系统盘。
+    download_tmp_dir:
 
 smtp:
   enabled: false
