@@ -548,11 +548,12 @@ onMounted(() => {
 /* ===== 知识库卡片网格 ===== */
 .kb-grid {
   display: grid;
-  /* 下限 320px：横卡（头像+双行文本+hover 操作）低于此宽度会挤压换行；
-     上限用卡片自身 max-width 收，不用轨道 max（auto-repeat 按 max 计数轨道，实测坑） */
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* 下限 280px：一行可容 4 卡（1512 视口内容区 ~1140px）；横卡（头像+双行文本+
+     hover 操作）低于此宽度会挤压换行；上限用卡片自身 max-width 收，不用轨道 max
+     （auto-repeat 按 max 计数轨道，实测坑） */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-3);
-  min-height: 200px;
+  min-height: 120px;
 }
 
 /* 空状态需横跨所有列，否则只占一个单元格、图标视觉偏左不居中 */
@@ -579,13 +580,14 @@ onMounted(() => {
   margin-top: var(--space-3);
 }
 
-/* 中性横卡：左头像 + 右内容列；hover 只提边框不上浮（Neutral Minimal 扁平原则） */
+/* 紧凑横卡：左头像 + 右内容列；hover 只提边框不上浮（扁平原则）；
+   高度由内容决定（标题+描述+元信息三行 ~60px），不被网格行拉伸 */
 .kb-card {
   position: relative;
   display: flex;
   gap: var(--space-3);
   max-width: 560px;
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
@@ -603,18 +605,18 @@ onMounted(() => {
   opacity: 0.55;
 }
 
-/* 首字头像：中性灰底 */
+/* 首字头像：中性灰底（紧凑卡用 36px） */
 .kb-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-lg);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: var(--weight-semibold);
   flex-shrink: 0;
   user-select: none;
@@ -625,7 +627,7 @@ onMounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .kb-title-row {
@@ -687,11 +689,12 @@ onMounted(() => {
   color: var(--color-warning);
 }
 
-/* hover 操作：右上角，不与内容挤一行 */
+/* hover 操作：右上角浮层；紧凑卡（~92px 高）无头部余量，绝对定位必压标题行，
+   改挂右下角与元信息行同排（meta 行 18px 高，28px 操作行垂直溢出由卡 padding 吸收） */
 .kb-actions {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  bottom: 4px;
+  right: var(--space-2);
   display: flex;
   align-items: center;
   opacity: 0;
