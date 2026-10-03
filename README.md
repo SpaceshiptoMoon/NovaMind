@@ -280,7 +280,7 @@ docker compose up -d --build
 > - `ADMIN_PASSWORD` 占位值不含大写字母/数字/特殊字符，首次启动能成功（初始密码弱），但**第二次重启会因后端密码强度校验失败陷入容器崩溃循环**——管理员密码要求：8-30 位，必须同时包含大写字母、小写字母、数字、特殊字符
 > - `SECRET_KEY` / `ENCRYPTION_KEY` 占位值是公开仓库里的已知值，不改则 JWT 可被伪造、已加密的模型 API Key 可被解密
 >
-> 需要替换的变量：`MYSQL_ROOT_PASSWORD`、`MINIO_ROOT_USER`、`MINIO_ROOT_PASSWORD`、`ES_PASSWORD`、`SECRET_KEY`、`ENCRYPTION_KEY`、`ADMIN_PASSWORD`。
+> 需要替换的变量：`MYSQL_ROOT_PASSWORD`、`MINIO_ROOT_USER`、`MINIO_ROOT_PASSWORD`、`SECRET_KEY`、`ENCRYPTION_KEY`、`ADMIN_PASSWORD`。
 
 说明：
 
@@ -497,7 +497,6 @@ NovaMind/
 | `MINIO_ROOT_USER` | MinIO 访问账号 | `minio` 容器 + YAML `minio.access_key` |
 | `MINIO_ROOT_PASSWORD` | MinIO 访问密码 | `minio` 容器 + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM 参数 | `elasticsearch` 容器 |
-| `ES_PASSWORD` | Elasticsearch 密码（本地开发 YAML 消费；Docker 部署关闭了 ES 安全特性，实际不做鉴权） | `default.yaml` `elasticsearch.password` |
 | `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
