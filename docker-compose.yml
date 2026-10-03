@@ -37,14 +37,20 @@ services:
       - .env
     environment:
       # Docker 部署的连接值（占位符注入，优先级高于 env_file 的 .env）：
-      # 基础设施容器名 + 生产桶名 + ES 免认证（空串=客户端 falsy 短路）。
       # .env 只存账户密码/凭据；本地开发的连接基线（127.0.0.1 系）在 default.yaml 占位符内。
       DB_HOST: mysql
       REDIS_ENABLED: "true"
       REDIS_HOST: redis
+      # MinIO API 真实端点 = <compose 服务名>:<容器内 API 端口>，即下方 minio 服务
+      # （server --address ":9005"）。app 容器经 app-network DNS 解析到它——与宿主机
+      # 端口映射 127.0.0.1:9005 是两条路径，恰好同端口纯属巧合；改 minio 服务名或
+      # --address 端口时这里必须同步（9001 是控制台端口，勿填）。
       MINIO_ENDPOINT: minio:9005
+      # 生产桶名（区别于本地基线的 novamind-dev；首次上传时自动创建）
       MINIO_BUCKET: novamind
+      # ES 端点必须带 scheme（yaml 占位符基线也是带 scheme 的完整 URL）
       ES_HOST: http://elasticsearch:9200
+      # 空串 = ES 客户端 falsy 短路免认证（compose 的 ES 已关 security）
       ES_USERNAME: ""
       ES_PASSWORD: ""
       # 运行期模型兜底下载源（部署期下载失败时才触达）。值透传自 .env 的
