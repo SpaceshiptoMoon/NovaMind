@@ -381,7 +381,7 @@ Docker deploy:
 | Service | Address | Credentials |
 | --- | --- | --- |
 | Frontend | `http://localhost` | admin account `admin`, initial password in `ADMIN_PASSWORD` in `.env` |
-| Backend API docs | direct `http://localhost:8100/docs` (local debugging) | same as above; the public port 80 deliberately does NOT expose `/docs` (nginx does not proxy it — Swagger only via direct backend access) |
+| Backend API docs | not exposed in Docker deploy (`8100` is container-internal only, not mapped to the host); in local dev mode use `http://localhost:8100/docs` | same as above; the public port 80 deliberately does NOT expose `/docs` (nginx does not proxy it) |
 | Health check | `http://localhost/health` | none (process-liveness only; dependency health is at `/health/detailed`) |
 | MinIO console | `http://localhost:9001` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env` |
 | Elasticsearch | `http://localhost:9200` | none (ES security features are disabled in Docker deploy) |

@@ -70,6 +70,9 @@ class ConfigLoader:
 
         load_dotenv 默认不覆盖已存在的进程环境变量（容器/CI 注入优先于文件）。
         .env 缺失时静默跳过——YAML 占位符此时回落到 _replace_env_vars 的默认值。
+        .env 存在但不是合法 UTF-8 时显性报错（典型根因：Windows PowerShell 5.1
+        生成 .env 时按 GBK 重编码，见 deploy.ps1 Ensure-EnvFile）——缺失显性化，
+        不静默吞掉让占位符全部回落默认值造成难排查的假配置。
         """
         try:
             from dotenv import load_dotenv
@@ -77,7 +80,17 @@ class ConfigLoader:
             # 本文件位于 <repo>/backend/src/setting/yaml_config/，
             # 仓库根 = 上四级（yaml_config → setting → src → backend → repo）
             repo_root = Path(__file__).resolve().parents[4]
-            load_dotenv(repo_root / ".env", override=False)
+            dotenv_path = repo_root / ".env"
+            if not dotenv_path.exists():
+                return
+            try:
+                load_dotenv(dotenv_path, override=False)
+            except UnicodeDecodeError as exc:
+                raise RuntimeError(
+                    f"仓库根 .env 不是合法 UTF-8 编码（{exc}）。"
+                    "常见根因：Windows PowerShell 5.1 的 Get-Content/Set-Content 按 GBK 重编码了文件；"
+                    "请删除 .env 后用修复后的 deploy.ps1 重新生成，或将文件另存为 UTF-8（无 BOM）。"
+                ) from exc
         except ImportError:
             # python-dotenv 为核心依赖，缺失仅在实际有 .env 时才有影响
             pass

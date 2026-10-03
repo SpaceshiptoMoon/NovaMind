@@ -145,7 +145,8 @@ print_summary() {
     warn "Check logs: bash deploy.sh logs   Detailed component status: curl -s http://localhost/health/detailed"
   else
     echo "Frontend: http://localhost"
-    echo "API docs: local/direct access only (http://localhost:8100/docs) — nginx does not expose /docs publicly"
+    echo "API docs: not exposed in Docker deploy (backend 8100 is container-internal only;"
+    echo "          nginx does not proxy /docs). Local dev mode: http://localhost:8100/docs"
     echo "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
   fi
 }

@@ -72,3 +72,42 @@ def test_missing_dotenv_is_silent(env_yaml: Path, tmp_path: Path, monkeypatch: p
     loader = ConfigLoader(config_dir=env_yaml)
     data = loader.load()  # 不应抛异常
     assert "security" in data
+
+
+def test_invalid_utf8_dotenv_raises_runtime_error(env_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """.env 编码损坏时显性报错而非静默回落默认值（防 PS 5.1 GBK 重编码难排查假配置）。"""
+    # 构造非法 UTF-8 字节（GBK 编码的中文，UTF-8 解码必失败），模拟 PS 5.1 产出的损坏 .env
+    broken = env_yaml.parent / ".env"
+    broken.write_bytes("SECRET_KEY=中文值\n".encode("gbk"))
+
+    # _load_dotenv 的仓库根取真实路径（parents[4]），单测经 load_dotenv 重定向到临时文件
+    import dotenv
+
+    real_load_dotenv = dotenv.load_dotenv
+
+    def _fake_load_dotenv(path, **kwargs):
+        return real_load_dotenv(broken, **kwargs)
+
+    monkeypatch.setattr("dotenv.load_dotenv", _fake_load_dotenv)
+
+    loader = ConfigLoader(config_dir=env_yaml)
+    with pytest.raises(RuntimeError, match="UTF-8"):
+        loader._load_dotenv()
+
+
+def test_valid_utf8_dotenv_not_raising(env_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """反例：合法 UTF-8（含中文注释）的 .env 加载不报错——正常文件不误伤。"""
+    valid = env_yaml.parent / ".env"
+    valid.write_text("# 中文注释：合法 UTF-8\nTEST_DOTENV_SECRET=abc\n", encoding="utf-8")
+
+    import dotenv
+
+    real_load_dotenv = dotenv.load_dotenv
+
+    def _fake_load_dotenv(path, **kwargs):
+        return real_load_dotenv(valid, **kwargs)
+
+    monkeypatch.setattr("dotenv.load_dotenv", _fake_load_dotenv)
+
+    loader = ConfigLoader(config_dir=env_yaml)
+    loader._load_dotenv()  # 不应抛异常

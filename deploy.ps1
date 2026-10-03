@@ -76,7 +76,13 @@ function Ensure-EnvFile {
     Write-Step "Creating .env from .env.example"
     Copy-Item ".env.example" ".env"
 
-    $content = Get-Content ".env" -Raw
+    # 显式 UTF-8（无 BOM）读写，禁用 Get-Content/Set-Content：Windows PowerShell 5.1
+    # 对无 BOM 文件按 ANSI（中文系统 = GBK）解码再重编码，模板里的中文注释会产出
+    # 非法 UTF-8 的 .env——docker compose 能读，但后端 python-dotenv 以 UTF-8 打开
+    # 直接 UnicodeDecodeError，启动崩溃循环。.NET API 在 PS 5.1/7 下行为一致。
+    $envPath = Join-Path $RootDir ".env"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $content = [System.IO.File]::ReadAllText($envPath, [System.Text.Encoding]::UTF8)
     $content = $content.Replace("your-mysql-password", (New-RandomHex 16))
     $content = $content.Replace("your-minio-access-key", (New-RandomPassword 8))
     $content = $content.Replace("your-minio-secret-key", (New-RandomPassword 16))
@@ -85,7 +91,7 @@ function Ensure-EnvFile {
     # Admin@ 前缀带大写+特殊字符；追加固定段保证小写与数字必现（随机 hex 可能全同字符类，
     # 例如全小写无大写、全字母无数字），彻底满足四类字符校验。
     $content = $content.Replace("your-admin-password", "Admin@1$(New-RandomPassword 8)")
-    Set-Content ".env" $content -NoNewline
+    [System.IO.File]::WriteAllText($envPath, $content, $utf8NoBom)
 
     Write-Info ".env created"
 }
@@ -128,7 +134,8 @@ function Show-Summary {
         Write-Warn "Check logs: .\deploy.ps1 logs   Detailed component status: Invoke-WebRequest http://localhost/health/detailed"
     } else {
         Write-Host "Frontend: http://localhost"
-        Write-Host "API docs: local/direct access only (http://localhost:8100/docs) — nginx does not expose /docs publicly"
+        Write-Host "API docs: not exposed in Docker deploy (backend 8100 is container-internal only;"
+        Write-Host "          nginx does not proxy /docs). Local dev mode: http://localhost:8100/docs"
         Write-Host "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
     }
     Write-Host ""
