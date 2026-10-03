@@ -52,6 +52,12 @@ services:
       # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS（JSON 数组）注入，
       # 地址全部在部署配置里，代码只含换源机制（格式见 .env.example）。
       HF_ENDPOINT: "${HF_ENDPOINT:-https://huggingface.co}"
+      # nginx 启动期渲染（docker/render-nginx-conf.sh）：
+      # 上传体积上限须 >= 后端 video 模态上限（默认 2000MB + 头部裕量）；
+      # TLS 证书路径两者都非空才启用 443 + 80→443 301（证书挂载到 /etc/nginx/tls）。
+      NGINX_MAX_BODY_SIZE: "${NGINX_MAX_BODY_SIZE:-2100m}"
+      NGINX_TLS_CERT: "${NGINX_TLS_CERT:-}"
+      NGINX_TLS_KEY: "${NGINX_TLS_KEY:-}"
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./backend/.cache/deepdoc:/app/.cache/deepdoc

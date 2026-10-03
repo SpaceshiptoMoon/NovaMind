@@ -51,8 +51,10 @@ class DocumentUploadService:
         SUPPORTED_FILE_TYPES,
     )
 
-    # 各模态默认最大文件大小（MB）
-    _MODALITY_MAX_SIZE_MB = {"text": 100, "image": 100, "video": 500, "audio": 200}
+    # 各模态默认最大文件大小（MB）。video 2000：大视频经流式管道（上传流式哈希
+    # + MinIO multipart + worker 落盘抽帧），内存峰值与文件大小解耦；KB 级
+    # limits.max_file_size_mb 可覆盖任一模态默认值。
+    _MODALITY_MAX_SIZE_MB = {"text": 100, "image": 100, "video": 2000, "audio": 200}
 
     def __init__(self, session: AsyncSession, minio_client: MinioClient):
         """构造注入会话与 MinIO 客户端，内置仓储与权限检查器。"""

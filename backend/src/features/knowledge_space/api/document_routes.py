@@ -59,11 +59,18 @@ from novamind.features.knowledge_space.services.document_task_service import Doc
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 文件大小限制：读取层上限取全部模态的最大值（text/image 100 / audio 200 /
-# video 500）。逐模态权威校验在 DocumentUploadService._get_max_file_size——
-# 此前读取层硬编码 100MB 先于模态闸生效，video 500MB 配置不可达（审计 P2）。
+# 文件大小限制：读取层上限取全部模态的最大值。逐模态权威校验在
+# DocumentUploadService._get_max_file_size——读取层硬编码值先于模态闸生效会让
+# 模态上限配置不可达（审计 P2），故读取层上限从 YAML
+# knowledge_base.parsing.max_upload_size_mb 读取（默认 2048，须 >= video 模态
+# 上限 2000MB），与 nginx NGINX_MAX_BODY_SIZE 联动。
+def _get_global_upload_read_limit() -> int:
+    from novamind.setting.yaml_config import get_config
+
+    return max(1, int(get_config().knowledge_base.parsing.max_upload_size_mb)) * 1024 * 1024
+
+
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB：文本/图片上限（保守默认，用于 Content-Length 预检）
-GLOBAL_UPLOAD_READ_LIMIT = 500 * 1024 * 1024  # 500MB：读取层硬上限（video 模态）
 
 # 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
 ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
@@ -158,21 +165,22 @@ async def upload_document(
             )
 
         # Content-Length 预检：超全局读取上限直接拒（防无谓的流式读取）
+        global_read_limit = _get_global_upload_read_limit()
         content_length = request.headers.get("content-length")
         try:
             content_length_int = int(content_length) if content_length else 0
         except (ValueError, OverflowError):
             content_length_int = 0
-        if content_length_int > GLOBAL_UPLOAD_READ_LIMIT:
+        if content_length_int > global_read_limit:
             raise DocumentSizeExceededError(
                 size=int(content_length),
-                limit=GLOBAL_UPLOAD_READ_LIMIT,
+                limit=global_read_limit,
             )
 
         # 读取层用全局上限兜底；逐模态权威校验在 service 层 _get_max_file_size
-        # （按 text/image 100 / audio 200 / video 500MB 分治）
+        # （按 text/image 100 / audio 200 / video 2000MB 分治）
         file_content = await DocumentUploadService.read_upload_file(
-            file, max_size=GLOBAL_UPLOAD_READ_LIMIT
+            file, max_size=global_read_limit
         )
 
         # 上传文档（仅存 MinIO，不触发解析）
@@ -205,7 +213,7 @@ async def upload_document(
     file_data_list, failed_list = await DocumentUploadService.read_and_validate_uploads(
         files,
         allowed_extensions=ALLOWED_FILE_EXTENSIONS,
-        max_size=GLOBAL_UPLOAD_READ_LIMIT,
+        max_size=_get_global_upload_read_limit(),
         max_batch_count=MAX_BATCH_FILE_COUNT,
     )
 

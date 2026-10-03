@@ -293,6 +293,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             local_whisper_model_dir=parsing.get("local_whisper_model_dir", None),
             local_whisper_cpu_threads=parsing.get("local_whisper_cpu_threads", None),
             video_vlm_concurrency=parsing.get("video_vlm_concurrency", 4),
+            max_upload_size_mb=parsing.get("max_upload_size_mb", 2048),
         ),
         retrieval=RetrievalConfig(
             top_k=retrieval.get("top_k", 5),
