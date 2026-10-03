@@ -33,23 +33,38 @@ async def extract_video_frames(
         tmp.write(file_content)
         tmp_path = tmp.name
 
+    try:
+        return await extract_frames_fixed_from_path(tmp_path, interval, max_frames)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def extract_frames_fixed_from_path(
+    filepath: str,
+    interval: float = 5.0,
+    max_frames: int = 60,
+) -> list[tuple[bytes, float, int]]:
+    """固定间隔抽帧（路径版，大文件管道用）：直读失败时归一化兜底，产物临时文件自清理。
+
+    与 ``extract_video_frames``（bytes 版）行为一致；调用方传入的 ``filepath``
+    不会被本函数删除（生命周期归调用方）。
+    """
     normalized_path: str | None = None
     try:
         try:
-            return await asyncio.to_thread(_extract_frames_from_path, tmp_path, interval, max_frames)
+            return await asyncio.to_thread(_extract_frames_from_path, filepath, interval, max_frames)
         except Exception as direct_error:
             logger.warning(
                 "视频直读失败，进入转换层兜底",
                 extra={
-                    "source_path": tmp_path,
+                    "source_path": filepath,
                     "error_type": type(direct_error).__name__,
                     "error": str(direct_error),
                 },
             )
-            normalized_path = await asyncio.to_thread(normalize_video_for_frame_extraction, tmp_path)
+            normalized_path = await asyncio.to_thread(normalize_video_for_frame_extraction, filepath)
             return await asyncio.to_thread(_extract_frames_from_path, normalized_path, interval, max_frames)
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
         if normalized_path:
             Path(normalized_path).unlink(missing_ok=True)
 

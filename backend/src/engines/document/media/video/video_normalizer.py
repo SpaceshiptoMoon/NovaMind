@@ -54,7 +54,7 @@ def normalize_video_for_frame_extraction(source_path: str) -> str:
         )
     except subprocess.TimeoutExpired:
         Path(output_path).unlink(missing_ok=True)
-        raise VideoNormalizationError(f"ffmpeg 归一化超时（600s）：{Path(input_path).name}")
+        raise VideoNormalizationError(f"ffmpeg 归一化超时（600s）：{Path(source_path).name}")
     if result.returncode != 0 or not Path(output_path).exists() or Path(output_path).stat().st_size == 0:
         Path(output_path).unlink(missing_ok=True)
         stderr = (result.stderr or "").strip()

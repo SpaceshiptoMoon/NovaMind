@@ -19,7 +19,9 @@ from novamind.engines.document.media.video import (
     describe_rewrite,
     describe_single,
     extract_frames_fixed,
+    extract_frames_fixed_from_path,
     extract_frames_scene,
+    extract_frames_scene_from_path,
 )
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
@@ -194,11 +196,12 @@ async def _video_resume_tail(
 
 async def process_video_document(
     document: Document,
-    file_content: bytes,
+    file_content: bytes | None,
     session: AsyncSession,
     logger,
     task: DocumentTask | None = None,
     model_config_port: ModelConfigService | None = None,
+    file_path: str | None = None,
 ) -> None:
     """
     视频文档处理管道
@@ -211,6 +214,10 @@ async def process_video_document(
 
     批次 5b：model_config_port 由调用方（execute_document_pipeline）注入，
     不再内部自建 ModelConfigService。
+
+    大文件路径：file_path 给出时抽帧直接吃文件路径（引擎 *_from_path 变体），
+    file_content 仅在 file_path 缺席时使用（二者由 execute_document_pipeline
+    互斥保证至少一个在场）。
     """
     ctx = await load_pipeline_context(session, document, task)
     pipeline_config = ctx.pipeline_config
@@ -280,9 +287,15 @@ async def process_video_document(
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
             scene_kwargs["scene_threshold"] = scene_threshold
-        frames = await extract_frames_scene(file_content, max_frames, **scene_kwargs)
+        if file_path is not None:
+            frames = await extract_frames_scene_from_path(file_path, max_frames, **scene_kwargs)
+        else:
+            frames = await extract_frames_scene(file_content, max_frames, **scene_kwargs)
     else:
-        frames = await extract_frames_fixed(file_content, frame_interval, max_frames)
+        if file_path is not None:
+            frames = await extract_frames_fixed_from_path(file_path, frame_interval, max_frames)
+        else:
+            frames = await extract_frames_fixed(file_content, frame_interval, max_frames)
     logger.info(
         "视频帧提取完成", document_id=document.id, frame_count=len(frames),
     )
