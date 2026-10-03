@@ -44,6 +44,9 @@ English | [简体中文](./README.md)
 - [Who it's for](#whos-it-for)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
+  - [Option 1: one-command deploy](#option-1-one-command-deploy)
+  - [Option 2: manual Docker deploy](#option-2-manual-docker-deploy)
+  - [Option 3: local development](#option-3-local-development)
 - [Access points](#access-points)
 - [Architecture overview](#architecture-overview)
 - [Repository layout](#repository-layout)
@@ -52,6 +55,7 @@ English | [简体中文](./README.md)
 - [Model integration](#model-integration)
 - [Security](#security)
 - [Testing & quality checks](#testing--quality-checks)
+- [FAQ](#faq)
 - [Project status](#project-status)
 - [Documentation](#documentation)
 - [Open-source collaboration](#open-source-collaboration)
@@ -406,7 +410,7 @@ The backend uses a domain-oriented directory layout — `features/` for business
 
 ```text
 src/features/{module}/           business modules (domain layer)
-|- api/                          thin route layer (registered in router_manager)
+|- api/                          thin route layer (declared via feature manifests)
 |- services/                     business orchestration
 |- repository/                   data access (writes use SAVEPOINTs)
 |- models/                       ORM models
@@ -439,7 +443,7 @@ NovaMind/
 |  |  |- router/
 |  |  |- stores/                   # Pinia
 |  |  `- views/                    # route-level pages (space/agent/research/skill/…)
-|- docker/                         # Dockerfile, Nginx, Supervisord, config templates
+|- docker/                         # Dockerfile, Nginx, Supervisord configs
 |- docs/                           # design docs and navigation docs
 |- docker-compose.yml
 |- deploy.ps1
@@ -475,14 +479,9 @@ The config system has two layers: **YAML files** (structure and environment diff
 At startup the backend reads exactly one config file: `backend/src/setting/yaml_config/yaml/default.yaml` (mounted into the container in Docker deploy).
 
 - **Division of labor**: credentials (`${SECRET_KEY}`, `${MYSQL_ROOT_PASSWORD}`, bare placeholders) live only in `.env` — an undeclared one resolves to `None` and fails visibly; connection params (hosts/endpoints/bucket, `${DB_HOST:127.0.0.1}` form) carry local baseline defaults in the placeholder, so local development needs zero extra config
-- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED}"`), so boolean switches also come from env vars
+- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:false}"`), so boolean switches also come from env vars
 - No real secrets live in YAML; the historical `<environment>.yaml` / `local.yaml` override layers were removed in 2026-10
 - The `--config` flag is only an **environment name** (stored in `config.environment`, consumed by production gates such as disabling API docs); it no longer selects any file
-
-Loading logic:
-
-- `${VAR_NAME}` placeholders in YAML are resolved from **OS environment variables** (`os.getenv`)
-- The backend **auto-loads the repo-root `.env`** at startup (process environment variables take precedence; `.env` does not override already-exported variables), so in local development placeholders resolve straight from `.env`
 
 ### `.env` (single source of secrets)
 
@@ -506,6 +505,11 @@ The root `.env` has two consumers:
 | `HF_ENDPOINT` | Primary download source for models (defaults to hf-mirror.com; switch to the official source overseas) | DeepDoc / faster-whisper model downloads |
 | `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) | model download fallback |
 | `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring | model download fallback |
+| `ENVIRONMENT` / `CORS_ORIGINS` / `MINIO_SECURE` | Deploy gating (optional): `ENVIRONMENT=production` closes `/docs` and enables startup security checks (wildcard CORS is rejected — set `CORS_ORIGINS` to real domains at the same time); `MINIO_SECURE=true` only when MinIO is TLS-fronted / publicly reachable — keep the default `false` on the compose internal network | main.py / compose injection / YAML `cors_origins`, `minio.secure` |
+
+### How Docker deploy differences are expressed
+
+Written in the `app.environment` block of `docker-compose.yml`: `DB_HOST=mysql`, `REDIS_HOST=redis`, `MINIO_ENDPOINT=minio:9005`, `MINIO_BUCKET=novamind`, `ES_HOST=http://elasticsearch:9200`, `ES_USERNAME=""`/`ES_PASSWORD=""` (empty string = falsy short-circuit, no ES auth). The compose `environment` block takes precedence over `env_file`, so keeping `.env` to credentials only still gives Docker the right connection values; same-named variables written explicitly in `.env` are overridden by the compose values.
 
 ### Local development setup
 
@@ -518,7 +522,7 @@ Without Docker, the config flow is:
    cp default.example default.yaml
    ```
 
-2. Edit `.env` and fill in real database / MinIO / Elasticsearch passwords (at minimum, replace every `your-*` placeholder). Sensitive fields in the YAML templates are already `${VAR_NAME}` placeholders resolved from `.env` at startup — no YAML edits needed. You can still write values directly into YAML (overriding placeholders) or `export VAR_NAME=value` before starting (highest precedence: process env > `.env` file).
+2. Edit `.env` and fill in real database / MinIO / Elasticsearch passwords (at minimum, replace every `your-*` placeholder). Connection params need no configuration — the yaml placeholders carry local baseline defaults (the 127.0.0.1 family, Redis on). To change one, edit the matching line in `default.yaml` or `export VAR_NAME=value` before starting (precedence: process env > `.env` file > yaml baseline default).
 
 3. If you start the infrastructure via Docker Compose (`docker compose up -d mysql redis minio elasticsearch`), container services and `.env` passwords stay consistent automatically — `.env` is the single source of secrets; change passwords only there.
 
@@ -579,6 +583,50 @@ npm run test:unit -- --run   # --run exits after the run; without it vitest ente
 npm run lint
 npm run format
 ```
+
+## FAQ
+
+<details>
+<summary><b>Elasticsearch exits immediately on boot with a vm.max_map_count-too-low error?</b></summary>
+
+See the common prerequisites at the top of [Quick start](#quick-start) — set `vm.max_map_count >= 262144` and restart the ES container.
+</details>
+
+<details>
+<summary><b>What is the admin password?</b></summary>
+
+After a one-command Docker deploy, the username is `admin` and the initial password is in `ADMIN_PASSWORD` in the root `.env`. Change it right after the first login.
+</details>
+
+<details>
+<summary><b>PDF parses to 0 characters / a hint suggests switching to full mode?</b></summary>
+
+The `plain` / `default` mode only extracts the PDF text layer, which is empty for scans and image-based PDFs. Switch the PDF parser to **full mode** in the KB parsing config (per-span text layer + OCR fusion). Full mode depends on the DeepDoc vision models — make sure the deploy-time download succeeded (check `/health/detailed`).
+</details>
+
+<details>
+<summary><b>Audio document parsing fails with a local-model-not-found error?</b></summary>
+
+The local speech model (faster-whisper-tiny) is downloaded at deploy time; if that step failed, or you chose manual deploy and skipped it, run the commands in [Option 2](#option-2-manual-docker-deploy); for local development run `uv run python scripts/download_faster_whisper_model.py`. You can also switch to a configured cloud ASR model in the KB config.
+</details>
+
+<details>
+<summary><b>Where should models be configured? How does that relate to KB config?</b></summary>
+
+Two layers: the "Model Management" page configures the models themselves (provider / API key / base_url / dimension) as user-level resources; space / KB configs only **reference** model names (e.g. the space's embedding model, VLM / ASR models in the KB parsing config). Models not present in Model Management never appear in feature dropdowns.
+</details>
+
+<details>
+<summary><b>A document is stuck at some step — what now?</b></summary>
+
+Expand the task in the task list to see per-step progress (parsed → split → embedded → indexed); failures mark the exact step and error. Cancel (stops once the running step finishes) and retry (completed steps are reused via fingerprint match — no repeated paid calls) are both supported. Stuck tasks are automatically recovered or marked failed at startup after a service restart.
+</details>
+
+<details>
+<summary><b>After switching embedding models, can old documents still be found?</b></summary>
+
+When a space already has completed documents, changing the embedding config is blocked by a gate (vectors from different models are incompatible; mixing breaks retrieval). Create a new space to switch models. Dimension changes are protected by the same gate.
+</details>
 
 ## Project status
 

@@ -410,7 +410,7 @@ Docker 部署模式：
 
 ```text
 src/features/{module}/           业务模块（领域层）
-|- api/                          路由层（薄，注册于 router_manager）
+|- api/                          路由层（薄，经 feature manifest 声明挂载）
 |- services/                     业务编排
 |- repository/                   数据访问（写操作走 SAVEPOINT）
 |- models/                       ORM 模型
@@ -443,7 +443,7 @@ NovaMind/
 |  |  |- router/
 |  |  |- stores/                   # Pinia
 |  |  `- views/                    # 路由级页面（space/agent/research/skill/…）
-|- docker/                         # Dockerfile、Nginx、Supervisord、配置模板
+|- docker/                         # Dockerfile、Nginx、Supervisord 配置
 |- docs/                           # 设计文档与导航文档
 |- docker-compose.yml
 |- deploy.ps1
@@ -505,6 +505,7 @@ NovaMind/
 | `HF_ENDPOINT` | 模型下载主源（默认 hf-mirror.com，海外可切官方源） | DeepDoc / faster-whisper 模型下载 |
 | `DEEPDOC_MIRRORS` | DeepDoc 模型降级源清单（可选，JSON 数组，主源失败后按序换源，格式见 `.env.example`） | 模型下载降级 |
 | `DEEPDOC_DISABLE_MIRRORS` | 置 `1` 禁用降级换源 | 模型下载降级 |
+| `ENVIRONMENT` / `CORS_ORIGINS` / `MINIO_SECURE` | 部署门控（可选）：`ENVIRONMENT=production` 关闭 `/docs` 并启用启动安全校验（通配 CORS 会被阻断，须同时设 `CORS_ORIGINS` 为具体域名）；`MINIO_SECURE=true` 仅 MinIO 经 TLS / 公网可达时需要，compose 内网保持默认 `false` | main.py / compose 注入 / YAML `cors_origins`、`minio.secure` |
 
 ### Docker 部署的差异如何表达
 
