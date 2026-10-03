@@ -588,4 +588,35 @@ const handleCommand = async (command: string) => {
     display: none;
   }
 }
+
+/* 极窄视口（<420px）：图标位仍溢出视口（评审 P2-2 实测 320px 溢出 32px）——
+   收紧内边距与 gap，让 header-right 完整落在视口内 */
+@media (max-width: 420px) {
+  .app-header {
+    padding: 0 var(--space-2);
+  }
+
+  .header-nav {
+    gap: var(--space-1);
+  }
+
+  .header-right {
+    gap: 0;
+    /* 右缘与视口边界相贴（亚像素余量），允许收缩消除 */
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  /* 通知铃铛与主题切换在极窄屏收小一位 */
+  .theme-toggle,
+  .notification-bell {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* 头像触发器 48px 是溢出主源（8px 内边距），收到与图标同宽 */
+  .user-trigger {
+    padding: var(--space-1);
+  }
+}
 </style>

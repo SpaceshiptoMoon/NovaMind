@@ -183,6 +183,10 @@ instance.interceptors.response.use(
         errorData?.message ||
         getDefaultMessage(response.status)
       ElMessage.error(message)
+    } else if (!response) {
+      // 网络层失败（断网/超时/DNS/连接拒绝）：无 response 对象，此前静默吞掉，
+      // 用户在 UI 上看到的是"点了保存没反应"（评审 P1：保存失败零反馈）
+      ElMessage.error('网络异常，请检查连接后重试')
     }
 
     return Promise.reject(error)

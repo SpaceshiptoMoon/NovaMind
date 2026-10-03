@@ -47,24 +47,20 @@
 
     <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 空间首页（KB 列表）：完整空间栏 -->
+      <!-- 空间首页：面包屑 + 空间设置。新建知识库的主 CTA 由子页面（KnowledgeBaseView）
+           页头承载——父层只留导航与设置，避免同屏双主按钮 -->
       <div v-if="isSpaceHome" class="content-header content-header--full">
         <div class="header-left">
           <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
-          <!-- 当前空间操作（选中空间后可用） -->
-          <el-button v-if="selectedSpaceId" type="primary" size="small" @click="showCreateKbDialog">
-            <el-icon><Plus /></el-icon>
-            新建知识库
-          </el-button>
           <el-button
             v-if="selectedSpaceId"
             size="small"
             circle
             aria-label="空间设置"
-            @click="switchTab('settings')"
             title="空间设置"
+            @click="switchTab('settings')"
           >
             <el-icon><Setting /></el-icon>
           </el-button>
@@ -243,35 +239,6 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-dialog>
-
-    <!-- 新建知识库弹窗 -->
-    <el-dialog v-model="createKbDialogVisible" title="新建知识库" width="480px" destroy-on-close>
-      <el-form
-        ref="createKbFormRef"
-        :model="createKbForm"
-        :rules="createKbRules"
-        label-width="80px"
-      >
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="createKbForm.name" placeholder="请输入知识库名称" maxlength="100" />
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="createKbForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入知识库描述（可选）"
-            maxlength="500"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createKbDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="createKbLoading" @click="handleCreateKb">
-          创建
-        </el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -658,52 +625,6 @@ async function handleBatchDeleteSpaces() {
   manageLoading.value = false
 }
 
-// === 新建知识库 ===
-
-const createKbDialogVisible = ref(false)
-const createKbLoading = ref(false)
-const createKbFormRef = ref<FormInstance>()
-const createKbForm = reactive({
-  name: '',
-  description: '',
-})
-
-const createKbRules: FormRules = {
-  name: [
-    { required: true, message: '请输入知识库名称', trigger: 'blur' },
-    { min: 1, max: 100, message: '名称长度 1-100 字符', trigger: 'blur' },
-  ],
-}
-
-function showCreateKbDialog() {
-  createKbForm.name = ''
-  createKbForm.description = ''
-  createKbDialogVisible.value = true
-}
-
-async function handleCreateKb() {
-  if (!createKbFormRef.value || !selectedSpaceId.value) return
-
-  await createKbFormRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    createKbLoading.value = true
-    try {
-      await knowledgeBaseApi.createKnowledgeBase(selectedSpaceId.value!, {
-        name: createKbForm.name,
-        config: createKbForm.description ? { description: createKbForm.description } : undefined,
-      })
-      ElMessage.success('知识库创建成功')
-      createKbDialogVisible.value = false
-      kbRefreshKey.value++
-    } catch {
-      // Error already shown by response interceptor
-    } finally {
-      createKbLoading.value = false
-    }
-  })
-}
-
 // === 路由同步 ===
 
 /** 跟随 :id 参数同步选中空间；空间不存在时区分「无 KB 直跳 KB 列表」与「回空间列表」。 */
@@ -904,7 +825,8 @@ onMounted(() => {
   border-radius: var(--radius-sm);
   /* 中性灰底（暗色主题 token 自动反转），灰字 */
   color: var(--color-text-secondary);
-  font-size: 11px;
+  /* 12px 是正文下限（评审 P3）：装饰字也保住可辨识度 */
+  font-size: 12px;
   font-weight: var(--weight-semibold, 600);
   flex-shrink: 0;
 }

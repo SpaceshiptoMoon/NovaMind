@@ -92,82 +92,65 @@
         <!-- Tab 2: 模型配置 -->
         <el-tab-pane label="模型配置" name="models">
           <div class="settings-section">
-            <h3 class="section-title">模型配置</h3>
             <p class="section-desc">
               配置空间级别的 AI 模型。所有知识库默认使用此配置，知识库可在其自身配置中选择覆盖。
             </p>
 
-            <!-- 模态展示 -->
-            <div class="model-section-label" style="display: none">
-              <span class="label-text">空间模态（已下放到知识库）</span>
-            </div>
+            <!-- 空间模态：中性 chip（语义靠文字，不上彩色） -->
             <div class="modality-badges">
-              <el-tag
-                v-for="mt in spaceTypes"
-                :key="mt"
-                :type="
-                  mt === 'image' || mt === 'video' ? 'primary' : mt === 'audio' ? 'danger' : 'info'
-                "
-                >{{
-                  mt === 'text'
-                    ? '📄 文本'
-                    : mt === 'image'
-                      ? '🖼 图片'
-                      : mt === 'video'
-                        ? '🎬 视频'
-                        : mt === 'audio'
-                          ? '🎵 音频'
-                          : mt
-                }}</el-tag
-              >
+              <span v-for="mt in spaceTypes" :key="mt" class="modality-chip">
+                <el-icon :size="12"><component :is="modalityIcon(mt)" /></el-icon>
+                {{ modalityLabel(mt) }}
+              </span>
             </div>
 
             <!-- ─── Embedding 模型 ─── -->
             <div class="model-card">
               <div class="model-card-header">
-                <span class="model-card-icon">📝</span>
+                <span class="model-card-icon">
+                  <el-icon :size="18"><Coordinate /></el-icon>
+                </span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">Embedding 模型</h4>
                   <p class="model-card-desc">
                     将文本块转换为向量，用于语义检索和相似度匹配。所有空间必需。
                   </p>
                 </div>
-                <el-tag
-                  :type="
-                    embeddingForm.model ? 'success' : effectiveEmbeddingModel ? 'warning' : 'info'
-                  "
-                  size="small"
-                  effect="plain"
-                  class="model-status-tag"
-                  :title="
+                <el-tooltip
+                  :content="
                     embeddingForm.model
                       ? '空间已固化 Embedding 配置'
                       : effectiveEmbeddingModel
-                        ? '空间未单独配置，当前使用你在「模型管理」配置的默认 Embedding 模型（文档处理/检索均 fallback 到此）'
+                        ? '空间未单独配置，当前使用「模型管理」中的默认 Embedding 模型（文档处理/检索均 fallback 到此）'
                         : '尚未配置任何 Embedding 模型'
                   "
+                  placement="top"
                 >
-                  {{
-                    embeddingForm.model
-                      ? `已配置 · ${embeddingForm.model}`
-                      : effectiveEmbeddingModel
-                        ? `默认 · ${effectiveEmbeddingModel}`
-                        : '未配置'
-                  }}
-                </el-tag>
+                  <span
+                    class="model-status-chip"
+                    :class="{
+                      'is-set': !!embeddingForm.model,
+                      'is-fallback': !embeddingForm.model && !!effectiveEmbeddingModel,
+                    }"
+                  >
+                    {{
+                      embeddingForm.model
+                        ? `已配置 · ${embeddingForm.model}`
+                        : effectiveEmbeddingModel
+                          ? `默认 · ${effectiveEmbeddingModel}`
+                          : '未配置'
+                    }}
+                  </span>
+                </el-tooltip>
               </div>
               <el-form label-width="130px" class="model-card-form">
-                <el-alert
-                  v-if="embeddingLocked"
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                  class="embedding-locked-alert"
-                >
-                  本空间已有 {{ documentCount }} 个文档，Embedding
-                  模型已锁定，无法修改（不同模型的向量不兼容，更改会导致检索失效）。如需更换
-                  Embedding 模型，请新建空间。
-                </el-alert>
+                <div v-if="embeddingLocked" class="locked-note">
+                  <el-icon :size="14"><Lock /></el-icon>
+                  <span>
+                    已有 {{ documentCount }} 个文档，Embedding
+                    模型已锁定：不同模型的向量不兼容，更改会导致检索失效。如需更换，请新建空间。
+                  </span>
+                </div>
                 <el-form-item label="文本 Embedding">
                   <el-select
                     v-if="embeddingModels.length"
@@ -212,21 +195,18 @@
             <!-- ─── LLM 模型 ─── -->
             <div class="model-card">
               <div class="model-card-header">
-                <span class="model-card-icon">🤖</span>
+                <span class="model-card-icon">
+                  <el-icon :size="18"><MagicStick /></el-icon>
+                </span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">LLM 模型</h4>
                   <p class="model-card-desc">
                     用于问题生成（HyDE）、查询改写、摘要生成等通用语言任务。
                   </p>
                 </div>
-                <el-tag
-                  :type="modelForm.llm_model ? 'success' : 'info'"
-                  size="small"
-                  effect="plain"
-                  class="model-status-tag"
-                >
+                <span class="model-status-chip" :class="{ 'is-set': !!modelForm.llm_model }">
                   {{ modelForm.llm_model ? `已配置 · ${modelForm.llm_model}` : '未配置' }}
-                </el-tag>
+                </span>
               </div>
               <el-form label-width="130px" class="model-card-form">
                 <el-form-item label="LLM 模型">
@@ -258,21 +238,18 @@
             <!-- ─── ASR 模型 ─── -->
             <div v-if="hasAudio" class="model-card">
               <div class="model-card-header">
-                <span class="model-card-icon">🎤</span>
+                <span class="model-card-icon">
+                  <el-icon :size="18"><Microphone /></el-icon>
+                </span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">ASR 模型</h4>
                   <p class="model-card-desc">
                     用于音频文件转文字（语音识别），仅含「音频」模态的空间需要。
                   </p>
                 </div>
-                <el-tag
-                  :type="modelForm.asr_model ? 'success' : 'info'"
-                  size="small"
-                  effect="plain"
-                  class="model-status-tag"
-                >
+                <span class="model-status-chip" :class="{ 'is-set': !!modelForm.asr_model }">
                   {{ modelForm.asr_model ? `已配置 · ${modelForm.asr_model}` : '未配置' }}
-                </el-tag>
+                </span>
               </div>
               <el-form label-width="130px" class="model-card-form">
                 <el-form-item label="ASR 模型">
@@ -304,14 +281,16 @@
             <!-- ─── VLM 模型 ─── -->
             <div v-if="hasImageModality || hasVideo" class="model-card">
               <div class="model-card-header">
-                <span class="model-card-icon">👁</span>
+                <span class="model-card-icon">
+                  <el-icon :size="18"><View /></el-icon>
+                </span>
                 <div>
                   <h4 class="model-card-title">VLM 模型</h4>
                   <p class="model-card-desc">
                     用于图片/视频帧转文字描述，将视觉内容转为可检索的文本。
                   </p>
                 </div>
-                <el-tag type="warning" size="small" effect="plain">开发中</el-tag>
+                <span class="model-status-chip is-dev">开发中</span>
               </div>
               <el-form label-width="130px" class="model-card-form">
                 <el-form-item label="VLM 模型">
@@ -549,7 +528,21 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Plus, UserFilled } from '@element-plus/icons-vue'
+import {
+  Loading,
+  Plus,
+  UserFilled,
+  Coordinate,
+  MagicStick,
+  Microphone,
+  View,
+  Lock,
+  Document,
+  Picture,
+  VideoCamera,
+  Headset,
+} from '@element-plus/icons-vue'
+import type { Component } from 'vue'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
@@ -591,6 +584,29 @@ const spaceTypes = ref<string[]>(['text'])
 const hasImageModality = computed(() => spaceTypes.value.includes('image'))
 const hasVideo = computed(() => spaceTypes.value.includes('video'))
 const hasAudio = computed(() => spaceTypes.value.includes('audio'))
+
+// 模态 chip 的图标与文案映射（统一中性色，仅靠形状区分——不上 emoji 不上彩色）
+const modalityIcons: Record<string, Component> = {
+  text: Document,
+  image: Picture,
+  video: VideoCamera,
+  audio: Headset,
+}
+
+const modalityLabels: Record<string, string> = {
+  text: '文本',
+  image: '图片',
+  video: '视频',
+  audio: '音频',
+}
+
+function modalityIcon(mt: string): Component {
+  return modalityIcons[mt] ?? Document
+}
+
+function modalityLabel(mt: string): string {
+  return modalityLabels[mt] ?? mt
+}
 
 // Embedding 表单
 const embeddingForm = reactive({
@@ -1046,12 +1062,11 @@ function goToModelConfig() {
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast);
 }
 
 .stat-card:hover {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-xs);
 }
 
 .stat-value {
@@ -1059,6 +1074,7 @@ function goToModelConfig() {
   font-weight: var(--weight-bold);
   color: var(--color-text);
   font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-label {
@@ -1085,26 +1101,29 @@ function goToModelConfig() {
 
 .section-desc {
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  /* secondary 非 muted：12px 说明文字对比度过 AA（评审 P2） */
+  color: var(--color-text-secondary);
   margin: 0 0 var(--space-4);
 }
 
-/* 模态标签 */
-.model-section-label {
-  margin-bottom: var(--space-2);
-}
-
-.label-text {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
+/* 模态标签：中性 chip（语义靠文字与图标形状，不上彩色） */
 .modality-badges {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-5);
+}
+
+.modality-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
 }
 
 /* 模型卡片 */
@@ -1129,9 +1148,16 @@ function goToModelConfig() {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+/* 卡片图标：中性灰底方形容器（与 KB 列表头像同语言），替代 emoji */
 .model-card-icon {
-  font-size: 24px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
 }
 
@@ -1145,7 +1171,8 @@ function goToModelConfig() {
 .model-card-desc {
   margin: 0;
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  /* secondary 非 muted：12px 小字在 elevated 卡底上 muted 仅 3.1:1（评审 P2），secondary 4.9:1 过 AA */
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
@@ -1154,11 +1181,56 @@ function goToModelConfig() {
   min-width: 0;
 }
 
-.model-status-tag {
-  margin-left: auto;
+/* 配置状态 chip：中性（已配置=深字实底、fallback/未配置=虚线弱化、开发中=警示文字色），
+   语义只靠文字传达，不用 EP 语义色底 */
+.model-status-chip {
   flex-shrink: 0;
   align-self: center;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.model-status-chip.is-set {
+  border-style: solid;
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.model-status-chip.is-dev {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+/* Embedding 锁定说明：浅灰说明行替代黄色大 alert 横幅（信息保留，色块撤掉） */
+.locked-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-light);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.locked-note .el-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-text-muted);
 }
 
 .model-empty-state {
@@ -1167,10 +1239,6 @@ function goToModelConfig() {
   gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-}
-
-.embedding-locked-alert {
-  margin-bottom: var(--space-4);
 }
 
 .model-card-form {
@@ -1220,6 +1288,24 @@ function goToModelConfig() {
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* 窄屏（评审 P2-2/P3-4）：模型卡 header 换行——文本列给足最小宽度防"一字一行"竖排，
+   状态 chip 换行独占一行不再压住描述文字 */
+@media (max-width: 640px) {
+  .model-card-header {
+    flex-wrap: wrap;
+  }
+
+  .model-card-title-wrap,
+  .model-card-header > div:last-of-type {
+    flex: 1 1 180px;
+    min-width: 180px;
+  }
+
+  .model-status-chip {
+    max-width: 100%;
   }
 }
 </style>
