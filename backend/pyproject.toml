@@ -101,7 +101,7 @@ test = [
 # DeepDoc vision 部署增强：核心运行时依赖（xgboost/opencv/onnxruntime 等）已
 # 升入 core（full 是默认 PDF 模式）。本 extra 现增量只有 `onnx`——公式模型
 # 下载时动态 INT8 量化用（112MB→30MB），缺它回退 fp32 不阻断下载。
-# Docker 镜像经 `pip install ".[deepdoc-vision]"` 安装；本地可选。
+# Docker 镜像经 uv sync --frozen --extra deepdoc-vision 安装（docker/Dockerfile）；本地可选。
 deepdoc-vision = [
     "onnx>=1.16.0",
 ]

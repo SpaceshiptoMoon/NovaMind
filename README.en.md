@@ -276,7 +276,7 @@ docker compose up -d --build
 > - The `ADMIN_PASSWORD` placeholder contains no uppercase letter / digit / special character. The first boot succeeds (with a weak password), but **the second restart enters a container crash loop** because the backend enforces password strength on the reset path. Admin password requirements: 8–30 chars with at least one uppercase letter, one lowercase letter, one digit, and one special character.
 > - `SECRET_KEY` / `ENCRYPTION_KEY` placeholders are publicly known values from this repo — leaving them unchanged lets anyone forge JWTs and decrypt stored model API keys.
 >
-> Variables to replace: `MYSQL_ROOT_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `ES_PASSWORD`, `SECRET_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD`.
+> Variables to replace: `MYSQL_ROOT_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `SECRET_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD`.
 
 Notes:
 
@@ -377,7 +377,7 @@ Docker deploy:
 | Service | Address | Credentials |
 | --- | --- | --- |
 | Frontend | `http://localhost` | admin account `admin`, initial password in `ADMIN_PASSWORD` in `.env` |
-| Backend API docs | `http://localhost/docs` | same as above |
+| Backend API docs | `http://localhost/docs` | same as above (closed when `ENVIRONMENT=production`, see the deploy-gating section in `.env.example`) |
 | Health check | `http://localhost/health` | none (process-liveness only; dependency health is at `/health/detailed`) |
 | MinIO console | `http://localhost:9001` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env` |
 | Elasticsearch | `http://localhost:9200` | none (ES security features are disabled in Docker deploy) |
@@ -498,7 +498,6 @@ The root `.env` has two consumers:
 | `MINIO_ROOT_USER` | MinIO access account | `minio` container + YAML `minio.access_key` |
 | `MINIO_ROOT_PASSWORD` | MinIO access password | `minio` container + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM args | `elasticsearch` container |
-| `ES_PASSWORD` | Elasticsearch password (consumed by local-dev YAML; Docker deploy runs ES with security features disabled, no actual auth) | `default.yaml` `elasticsearch.password` |
 | `SECRET_KEY` | JWT signing key | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | Encryption key | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | Initial admin password | YAML `admin.password` |
