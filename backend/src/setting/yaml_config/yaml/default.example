@@ -1,13 +1,13 @@
 # ============================================================
 # NovaMind 唯一后端配置文件（两层配置模型：本 yaml + 根目录 .env）
 #
-# - 本文件定义结构与非敏感默认值；环境差异（主机/端点/桶名/凭据）全部经
-#   ${VAR} / ${VAR:默认值} 占位符从环境变量取值，变量不存在时用冒号后的默认值。
-# - 密钥唯一来源是仓库根 .env（ConfigLoader 启动时自动加载；已 export 的
-#   进程环境变量优先于 .env）。不要把真实密钥写进本文件（*.yaml 不进 git）。
-# - 本地开发：.env 提供密钥即可，host 类用下方默认值（127.0.0.1）。
-# - Docker 部署：compose 的 environment 块注入容器名（DB_HOST=mysql 等，
-#   优先级高于 env_file 的 .env），无需改本文件。
+# - 本文件只定义结构与占位符引用，不内建任何环境差异默认值——所有变量
+#   （密钥与 host/端点/桶名）一律在仓库根 .env 显式声明，未声明的变量
+#   解析为 None（缺失显性化，不静默兜底）。
+# - 取值优先级：已 export 的进程环境变量 > .env 文件。
+# - 不要把真实密钥写进本文件（*.yaml 不进 git）。
+# - 本地开发：从 .env.example 复制的 .env 已带本地默认值（127.0.0.1 系）。
+# - Docker 部署：deploy 脚本生成 .env 时自动把 host 类写成容器名。
 # - 布尔值经环境变量表达时用字面量 true/false（整串占位符会归一为 bool）。
 # ============================================================
 
@@ -25,11 +25,11 @@ security:
   encryption_key: "${ENCRYPTION_KEY}"
 
 database:
-  host: "${DB_HOST:127.0.0.1}"
+  host: "${DB_HOST}"
   port: 3306
   user: root
   password: "${MYSQL_ROOT_PASSWORD}"
-  database: "${MYSQL_DATABASE:novamind_db}"
+  database: "${MYSQL_DATABASE}"
   pool_size: 10
   max_overflow: 20
   pool_timeout: 30
@@ -37,29 +37,29 @@ database:
   pool_pre_ping: true
 
 redis:
-  enabled: "${REDIS_ENABLED:false}"
-  host: "${REDIS_HOST:127.0.0.1}"
+  enabled: "${REDIS_ENABLED}"
+  host: "${REDIS_HOST}"
   port: 6379
   db: 0
   password: ""
 
 minio:
-  endpoint: "${MINIO_ENDPOINT:127.0.0.1:9005}"
+  endpoint: "${MINIO_ENDPOINT}"
   access_key: "${MINIO_ROOT_USER}"
   secret_key: "${MINIO_ROOT_PASSWORD}"
   secure: false
   region: us-east-1
-  bucket_name: "${MINIO_BUCKET:novamind-dev}"
+  bucket_name: "${MINIO_BUCKET}"
   # 外部服务（DashScope 等）下载文件时的公网地址，如 https://minio.example.com
   # 本地开发留空即可，部署时必填
   public_endpoint:
 
 elasticsearch:
   hosts:
-    - "${ES_HOST:http://127.0.0.1:9200}"
-  # 用户名/密码任一为空即无认证（客户端 falsy 短路）；Docker compose 注入空串走免认证
-  username: "${ES_USERNAME:elastic}"
-  password: "${ES_PASSWORD:}"
+    - "${ES_HOST}"
+  # 用户名/密码任一为空即无认证（客户端 falsy 短路）；Docker 部署的 .env 里 ES_USERNAME 留空走免认证
+  username: "${ES_USERNAME}"
+  password: "${ES_PASSWORD}"
   index_prefix: kb
   default_embedding_dim: 1024
   analyzer: standard

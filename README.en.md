@@ -281,7 +281,7 @@ docker compose up -d --build
 Notes:
 
 - `.env` holds infrastructure passwords and backend secrets (the single secret source)
-- `default.yaml` is the single backend config file, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers. Deploy-time differences (`DB_HOST=mysql` etc.) are injected by the compose `app.environment` block — no need to touch `.env` or YAML
+- `default.yaml` is the single backend config file, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers. Deploy-time differences (`DB_HOST=mysql` etc.) are written straight into the generated `.env` by the deploy script — a single source where every variable is explicit and editable
 - Option 2 skips the deploy script's model download step, so two model groups are missing after first boot:
   - **DeepDoc models missing**: parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). Download manually:
     ```bash
@@ -313,7 +313,7 @@ For frontend/backend co-development or secondary development.
 cp .env.example .env                      # required: compose and the backend both read it; infra won't start without it
 
 cd backend/src/setting/yaml_config/yaml
-cp default.example default.yaml           # the single backend config file (host fields default to 127.0.0.1)
+cp default.example default.yaml           # the single backend config file (references variables only, no built-in defaults)
 cd -                                      # back to the repo root
 ```
 
@@ -474,8 +474,8 @@ The config system has two layers: **YAML files** (structure and environment diff
 
 At startup the backend reads exactly one config file: `backend/src/setting/yaml_config/yaml/default.yaml` (mounted into the container in Docker deploy).
 
-- Environment differences (hosts / endpoints / bucket / credentials) are expressed as `${VAR:default}` placeholders — when the variable is unset, the value after the colon applies; local development works with zero extra config
-- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:false}"`), so boolean switches can also come from env vars
+- Environment differences (hosts / endpoints / bucket / credentials) are expressed as `${VAR}` references — **YAML carries no built-in defaults**; every variable is declared explicitly in `.env`. An undeclared variable resolves to `None` (fail visibly at connect time; no silent fallback)
+- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED}"`), so boolean switches also come from env vars
 - No real secrets live in YAML; the historical `<environment>.yaml` / `local.yaml` override layers were removed in 2026-10
 - The `--config` flag is only an **environment name** (stored in `config.environment`, consumed by production gates such as disabling API docs); it no longer selects any file
 
@@ -502,6 +502,8 @@ The root `.env` has two consumers:
 | `SECRET_KEY` | JWT signing key | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | Encryption key | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | Initial admin password | YAML `admin.password` |
+| `REDIS_ENABLED` | Enable Redis (`true`/`false`) | YAML `redis.enabled` |
+| `DB_HOST` / `REDIS_HOST` / `MINIO_ENDPOINT` / `MINIO_BUCKET` / `ES_HOST` / `ES_USERNAME` | Backend connection params; `.env.example` ships local-dev values (127.0.0.1 family) — the deploy script rewrites them to container names when generating `.env` for Docker | YAML fields |
 | `HF_ENDPOINT` | Primary download source for models (defaults to hf-mirror.com; switch to the official source overseas) | DeepDoc / faster-whisper model downloads |
 | `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) | model download fallback |
 | `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring | model download fallback |

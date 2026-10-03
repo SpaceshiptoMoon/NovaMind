@@ -285,7 +285,7 @@ docker compose up -d --build
 说明：
 
 - `.env` 管理基础设施密码和后端密钥（唯一密钥源）
-- `default.yaml` 是唯一后端配置文件，以只读方式挂载进容器；`*.yaml` 不打进镜像，防止本地真实密钥泄漏进镜像层。容器名等部署差异（`DB_HOST=mysql` 等）由 compose 的 `app.environment` 块注入，无需改 `.env` 或 YAML
+- `default.yaml` 是唯一后端配置文件，以只读方式挂载进容器；`*.yaml` 不打进镜像，防止本地真实密钥泄漏进镜像层。部署差异（`DB_HOST=mysql` 等）由 deploy 脚本在生成 `.env` 时直接写入——单一来源，全部变量都在 `.env` 里显式可见、可改
 - 方式二跳过了部署脚本的模型下载步骤，首次启动后两类模型缺失：
   - **DeepDoc 模型缺失**：解析能力降级（公式识别跳过、full 模式不可用，`/health/detailed` 显示 degraded）。手动补齐：
     ```bash
@@ -317,7 +317,7 @@ docker compose up -d --build
 cp .env.example .env                      # 必需：compose 和后端都要读它，缺了基础设施起不来
 
 cd backend/src/setting/yaml_config/yaml
-cp default.example default.yaml           # 唯一后端配置文件（host 类用内建默认值 127.0.0.1）
+cp default.example default.yaml           # 唯一后端配置文件（只引用变量，不含任何默认值）
 cd -                                      # 回到仓库根目录
 ```
 
@@ -478,7 +478,7 @@ NovaMind/
 
 后端启动时只读取一个配置文件：`backend/src/setting/yaml_config/yaml/default.yaml`（Docker 部署时挂载进容器）。
 
-- 环境差异（主机/端点/桶名/凭据）全部写成 `${VAR:默认值}` 占位符——变量未设置时用冒号后的默认值，本地开发零额外配置即可用
+- 环境差异（主机/端点/桶名/凭据）全部写成 `${VAR}` 占位符引用——**yaml 不内建任何默认值**，所有变量一律在 `.env` 显式声明；未声明的变量解析为 `None`（缺失显性化，连接即报错，不静默兜底）
 - 整串占位符的 `true` / `false` / `null` 会归一为原生 bool / None（如 `redis.enabled: "${REDIS_ENABLED:false}"`），布尔开关也能经环境变量表达
 - YAML 里不写任何真实密钥；历史上的 `<环境>.yaml` / `local.yaml` 覆盖层已于 2026-10 移除
 - `--config` 参数只是**环境名**（写入 `config.environment`，供生产门控如禁用 API 文档消费），不再对应任何 yaml 文件
@@ -501,15 +501,15 @@ NovaMind/
 | `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
-| `REDIS_ENABLED` | 本地开发是否启用 Redis（`true`/`false`，缺省 `false`） | YAML `redis.enabled` |
-| `DB_HOST` / `REDIS_HOST` / `MINIO_ENDPOINT` / `MINIO_BUCKET` / `ES_HOST` / `ES_USERNAME` | 可选覆盖，本地默认 `127.0.0.1` 系；**Docker 部署无需设置**（compose `environment` 已注入容器名与生产桶名，优先级更高） | YAML 对应字段 |
+| `REDIS_ENABLED` | 是否启用 Redis（`true`/`false`） | YAML `redis.enabled` |
+| `DB_HOST` / `REDIS_HOST` / `MINIO_ENDPOINT` / `MINIO_BUCKET` / `ES_HOST` / `ES_USERNAME` | 后端连接参数，`.env.example` 预置本地开发值（127.0.0.1 系）；Docker 部署时 deploy 脚本生成 `.env` 自动替换为容器名 | YAML 对应字段 |
 | `HF_ENDPOINT` | 模型下载主源（默认 hf-mirror.com，海外可切官方源） | DeepDoc / faster-whisper 模型下载 |
 | `DEEPDOC_MIRRORS` | DeepDoc 模型降级源清单（可选，JSON 数组，主源失败后按序换源，格式见 `.env.example`） | 模型下载降级 |
 | `DEEPDOC_DISABLE_MIRRORS` | 置 `1` 禁用降级换源 | 模型下载降级 |
 
 ### Docker 部署的差异如何表达
 
-不改 `.env`、不改 YAML——`docker-compose.yml` 的 `app.environment` 块直接注入部署值：`DB_HOST=mysql`、`REDIS_HOST=redis`、`MINIO_ENDPOINT=minio:9005`、`MINIO_BUCKET=novamind`、`ES_HOST=http://elasticsearch:9200`、ES 免认证（`ES_USERNAME=""`）。compose `environment` 优先级高于 `env_file`，因此本地与 Docker 可共用同一份 `.env`。
+同样只改 `.env`——deploy 脚本首次生成 `.env` 时会把 host 类直接写成容器值：`DB_HOST=mysql`、`REDIS_HOST=redis`、`MINIO_ENDPOINT=minio:9005`、`MINIO_BUCKET=novamind`、`ES_HOST=http://elasticsearch:9200`、`ES_USERNAME=`（空 = ES 免认证）。生成后每个值都在 `.env` 里显式可见、可改；compose 只负责把 `.env` 注入容器，不做任何二次覆盖。
 
 ### 本地开发如何配
 
@@ -523,9 +523,9 @@ NovaMind/
    ```
 
 2. 编辑 `.env`，将数据库、MinIO、Elasticsearch 等密码填入实际值（至少替换全部 `your-*` 占位符）。
-   YAML 里的 host 类字段不设置就用内建默认值（127.0.0.1 系）；本机有 Redis 服务则加
-   `REDIS_ENABLED=true`。也可直接把值写进 YAML（会覆盖占位符），或启动前
-   `export VAR_NAME=value`（优先级最高：进程环境变量 > `.env` 文件 > 占位符默认值）。
+   `.env.example` 已为全部变量预置本地开发值（127.0.0.1 系 / `REDIS_ENABLED=true`），
+   复制即可用；改哪个值就改哪行。也可启动前 `export VAR_NAME=value` 临时覆盖
+   （优先级：进程环境变量 > `.env` 文件）。
 
 3. 如果使用 Docker Compose 启动基础设施（`docker compose up -d mysql redis minio elasticsearch`），
    容器内服务与 `.env` 密码自动保持一致——`.env` 是唯一密钥源，改密码只改这一处。

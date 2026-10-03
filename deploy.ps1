@@ -86,6 +86,14 @@ function Ensure-EnvFile {
     # Admin@ 前缀带大写+特殊字符；追加固定段保证小写与数字必现（随机 hex 可能全同字符类，
     # 例如全小写无大写、全字母无数字），彻底满足四类字符校验。
     $content = $content.Replace("your-admin-password", "Admin@1$(New-RandomPassword 8)")
+    # Docker 部署值：host 类变量在生成 .env 时写入容器名（用户随后可自行修改）；
+    # .env.example 里是本地开发值（127.0.0.1 系），deploy 面向容器网络，逐行替换。
+    $content = $content.Replace("DB_HOST=127.0.0.1", "DB_HOST=mysql")
+    $content = $content.Replace("REDIS_HOST=127.0.0.1", "REDIS_HOST=redis")
+    $content = $content.Replace("MINIO_ENDPOINT=127.0.0.1:9005", "MINIO_ENDPOINT=minio:9005")
+    $content = $content.Replace("MINIO_BUCKET=novamind-dev", "MINIO_BUCKET=novamind")
+    $content = $content.Replace("ES_HOST=http://127.0.0.1:9200", "ES_HOST=http://elasticsearch:9200")
+    $content = $content.Replace("ES_USERNAME=elastic", "ES_USERNAME=")  # 空 = ES 免认证
     Set-Content ".env" $content -NoNewline
 
     Write-Info ".env created"

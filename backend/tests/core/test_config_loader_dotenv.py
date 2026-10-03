@@ -63,7 +63,7 @@ def test_process_env_overrides_dotenv(env_yaml: Path, monkeypatch: pytest.Monkey
 
 
 def test_missing_dotenv_is_silent(env_yaml: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """.env 缺失时不报错，占位符回落到 _replace_env_vars 的默认值语义（空串）。"""
+    """.env 缺失时不报错，整串占位符未定义变量解析为 None（缺失显性化语义）。"""
     monkeypatch.delenv("TEST_DOTENV_SECRET", raising=False)
     monkeypatch.setattr(
         "novamind.setting.yaml_config.loader.Path",

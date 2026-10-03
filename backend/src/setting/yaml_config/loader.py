@@ -99,12 +99,16 @@ class ConfigLoader:
         return {}
 
     def _replace_env_vars(self, config: Any) -> Any:
-        """递归替换 ${VAR} / ${VAR:默认值} 占位符；整串占位符做 true/false/null 类型归一。
+        """递归替换 ${VAR} / ${VAR:默认值} 占位符；整串占位符做类型归一。
 
-        整串恰为单个占位符时，"true"/"false" 归一为 bool、"null" 归一为 None——
-        布尔类配置（redis.enabled 等）才能经环境变量正确表达（"false" 字符串在
-        if 判断中恒为真）。占位符嵌入更长字符串时（如 URL 拼接）只做纯文本替换，
-        不做类型归一。反斜杠转义的占位符保留为字面量。
+        整串恰为单个占位符时的取值与归一（「全显式」模型：变量一律由 .env
+        或进程环境定义，yaml 不内建环境差异默认值）：
+        - 未设变量且无默认值 → None（缺失显性化，不做静默空串/兜底）
+        - 已设变量（含空串）或占位符带默认值 → 原样/默认值
+        - 结果为 "true"/"false" 归一为 bool，"null" 归一为 None
+        占位符嵌入更长字符串时（如 URL 拼接）只做纯文本替换，未设变量替换为
+        空串（字符串上下文无法表达 None），不做类型归一。反斜杠转义的占位符
+        保留为字面量。
         """
         if isinstance(config, str):
             placeholder = "\x00ESCAPED_DOLLAR_BRACE\x00"
@@ -113,17 +117,18 @@ class ConfigLoader:
 
             whole = re.fullmatch(pattern, escaped)
             if whole:
-                value = os.getenv(
-                    whole.group(1),
-                    whole.group(2) if whole.group(2) is not None else "",
-                )
-                if value == "true":
+                raw = os.getenv(whole.group(1))
+                if raw is None:
+                    if whole.group(2) is None:
+                        return None
+                    raw = whole.group(2)
+                if raw == "true":
                     return True
-                if value == "false":
+                if raw == "false":
                     return False
-                if value == "null":
+                if raw == "null":
                     return None
-                return value
+                return raw
 
             def _replace_match(match: re.Match[str]) -> str:
                 var_name = match.group(1)

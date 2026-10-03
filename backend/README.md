@@ -135,8 +135,8 @@ cp default.example default.yaml
 
 两层配置模型：
 
-- `default.yaml`：唯一后端配置文件——结构与非敏感默认值；环境差异（host/端点/桶名/凭据）全部是 `${VAR:默认值}` 占位符，未设变量时用默认值（本地 127.0.0.1 系）
-- 仓库根 `.env`：密钥与环境值唯一来源（loader 启动自动加载，进程环境变量优先）；本机启用 Redis 加 `REDIS_ENABLED=true`
+- `default.yaml`：唯一后端配置文件——只定义结构与 `${VAR}` 占位符引用，**不内建任何默认值**；未声明的变量解析为 `None`（缺失显性化，连接即报错）
+- 仓库根 `.env`：所有变量（密钥与 host/端点/桶名）的唯一取值处，全量显式声明；loader 启动自动加载，进程环境变量优先。`.env.example` 预置本地开发值（127.0.0.1 系），Docker 部署由 deploy 脚本生成 `.env` 时写入容器名
 
 历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层已移除（2026-10）；`--config` 参数只是环境名（production 门控用），不再对应文件。
 
