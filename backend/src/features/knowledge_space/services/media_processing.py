@@ -6,6 +6,7 @@ from novamind.engines.document.media.audio import (
     AudioFileInvalidError,
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
+    transcribe_audio_with_dashscope,
 )
 from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
@@ -87,6 +88,98 @@ async def _snap_minio():
     from novamind.shared.storage.client_factory import ClientFactory
 
     return await ClientFactory.get_minio_client()
+
+
+async def _resolve_asr_route(
+    document: Document,
+    model_config_port: ModelConfigService,
+    asr_model: str,
+) -> tuple[str, str, str | None, str | None]:
+    """解析 ASR 模型名到实际路由（协议/模型/API 凭证）。
+
+    本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local；云端模型
+    凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」串用
+    （审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
+
+    Args:
+        document: 文档（uploader_id 用于凭证查询）。
+        model_config_port: 模型配置端口。
+        asr_model: 显式配置的 ASR 模型名（空串/None 由调用方归一为本地默认）。
+
+    Returns:
+        (protocol, model, api_key, base_url) 四元组。
+
+    Raises:
+        PermanentProcessingError: 云端模型凭证缺失。
+    """
+    if asr_model == "faster-whisper-tiny":
+        return "local", asr_model, None, None
+
+    asr_creds = await model_config_port.get_credentials_by_model(
+        document.uploader_id, "asr", asr_model
+    )
+    if not asr_creds:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
+                f"API 配置，或将知识库音频解析配置切回本地默认"
+                f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
+            ),
+        )
+    protocol = asr_creds.protocol or "openai"
+    model = asr_creds.model or asr_model
+    return protocol, model, asr_creds.api_key, asr_creds.base_url
+
+
+async def _run_asr_transcription(
+    *,
+    file_content: bytes,
+    file_type: str,
+    protocol: str,
+    model: str,
+    api_key: str | None,
+    base_url: str | None,
+    language: str | None,
+    engine_audio_config: AudioConfig,
+    document: Document,
+) -> list:
+    """按协议分发执行一次 ASR 转写（不含本地锁/失败语义——归调用方）。
+
+    音频文档与视频音轨共用同一路由：openai → Whisper / dashscope →
+    Paraformer（MinIO 中转）/ local → faster-whisper（须持有 ASR 锁）。
+    """
+    if protocol == "local":
+        return await transcribe_audio_local(
+            file_content=file_content,
+            file_type=file_type,
+            language=language,
+            audio_config=engine_audio_config,
+        )
+    if protocol == "dashscope":
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        minio_client = await ClientFactory.get_minio_client()
+        storage_info = document.get_storage_info()
+        language_hints = [language] if language else None
+        return await transcribe_audio_with_dashscope(
+            file_content=file_content,
+            file_type=file_type,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            minio_bucket=storage_info.get("minio_bucket"),
+            language_hints=language_hints,
+            minio_client=minio_client,
+        )
+    return await transcribe_audio_with_timestamps(
+        file_content=file_content,
+        file_type=file_type,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        language=language,
+    )
 
 
 async def _audio_resume_tail(
@@ -597,39 +690,16 @@ async def process_audio_document(
     )
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
-    from novamind.engines.document.media.audio import transcribe_audio_with_dashscope
-
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await check_document_cancelled(document.id)
 
     # ===== 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
     mcs = model_config_port
 
-    # 查 ASR 凭证（按显式配置的模型名精确匹配）：
-    # - 本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local，无需 API 配置；
-    # - 云端模型凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」
-    #   串用（审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
-    asr_api_key: str | None = None
-    asr_base_url: str | None = None
-    asr_protocol = "openai"  # 默认
-
-    if asr_model == "faster-whisper-tiny":
-        asr_protocol = "local"
-    else:
-        asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
-        if not asr_creds:
-            raise PermanentProcessingError(
-                document_id=document.id,
-                error_message=(
-                    f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
-                    f"API 配置，或将知识库音频解析配置切回本地默认"
-                    f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
-                ),
-            )
-        asr_api_key = asr_creds.api_key
-        asr_base_url = asr_creds.base_url
-        asr_protocol = asr_creds.protocol or "openai"
-        asr_model = asr_creds.model or asr_model  # 以实际凭证的模型名为准
+    # 凭证解析与协议分发抽成模块级函数（视频音轨复用同一路由）
+    asr_protocol, asr_model, asr_api_key, asr_base_url = await _resolve_asr_route(
+        document, mcs, asr_model
+    )
 
     # ===== 解析快照命中检查（审计 P1#2：音频快照此前只写不读，RETRY 时 ASR
     # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名），
@@ -671,43 +741,23 @@ async def process_audio_document(
         file_type=document.file_type, model=asr_model, protocol=asr_protocol,
     )
 
-    # 路由 ASR 协议到具体转写实现。抽成内部函数，便于 local 失败时用云端凭证回退重试。
+    # 本地/云端失败语义在调用方（锁获取/永久错误归因），此处只做协议分发
     async def _run_asr(
         protocol: str,
         model: str,
         api_key: str | None,
         base_url: str | None,
     ) -> list:
-        if protocol == "local":
-            return await transcribe_audio_local(
-                file_content=file_content,
-                file_type=document.file_type,
-                language=language,
-                audio_config=engine_audio_config,
-            )
-        if protocol == "dashscope":
-            # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
-            from novamind.shared.storage.client_factory import ClientFactory
-            minio_client = await ClientFactory.get_minio_client()
-            storage_info = document.get_storage_info()
-            language_hints = [language] if language else None
-            return await transcribe_audio_with_dashscope(
-                file_content=file_content,
-                file_type=document.file_type,
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
-                minio_bucket=storage_info.get("minio_bucket"),
-                language_hints=language_hints,
-                minio_client=minio_client,
-            )
-        return await transcribe_audio_with_timestamps(
+        return await _run_asr_transcription(
             file_content=file_content,
             file_type=document.file_type,
+            protocol=protocol,
             model=model,
             api_key=api_key,
             base_url=base_url,
             language=language,
+            engine_audio_config=engine_audio_config,
+            document=document,
         )
 
     if task:
