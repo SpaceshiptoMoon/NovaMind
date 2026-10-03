@@ -43,7 +43,7 @@ from .config import (
 
 
 class ConfigLoader:
-    """YAML 配置加载器：default → <env> → local 三层深度合并后解析 ${VAR} 环境占位符。"""
+    """YAML 配置加载器：只加载 default.yaml，解析 ${VAR:默认值} 占位符（取值自进程环境/根 .env）。"""
     def __init__(self, config_dir: Path | None = None):
         """指定配置目录（默认包内 yaml/ 目录），便于测试注入临时配置。"""
         self.config_dir = config_dir or Path(__file__).parent / "yaml"
