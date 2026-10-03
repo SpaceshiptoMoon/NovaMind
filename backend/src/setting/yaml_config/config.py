@@ -99,6 +99,10 @@ class ParsingConfig:
     # 上限（video 默认 2000MB）。这是宿主资源旋钮：生产按盘/带宽调整，
     # 与 nginx NGINX_MAX_BODY_SIZE（请求体层）联动。
     max_upload_size_mb: int = 2048
+    # worker 下载 MinIO 原件的落盘目录（绝对路径）。None 时用系统默认临时目录
+    # （TEMP/TMP）。大视频（2GB 级）流式写盘需要有独立分区/大盘的部署期旋钮，
+    # 避免打爆系统盘或容器可写层。
+    download_tmp_dir: str | None = None
 
 
 @dataclass

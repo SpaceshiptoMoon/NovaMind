@@ -134,6 +134,9 @@ knowledge_base:
     # 须 >= 各模态上限（video 默认 2000MB）；与 nginx NGINX_MAX_BODY_SIZE 联动
     # （nginx 值应为本值 + multipart 头部裕量）。
     max_upload_size_mb: 2048
+    # worker 下载 MinIO 原件的落盘目录（绝对路径）；空则用系统默认临时目录。
+    # 大视频（2GB 级）流式写盘需要时，把它指到独立分区/数据盘，避免打爆系统盘。
+    download_tmp_dir:
 
 smtp:
   enabled: false

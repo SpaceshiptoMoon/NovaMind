@@ -1,6 +1,7 @@
 """文档处理 arq 任务函数与宿主编排：入队/重试观测/终态通知/自愈对账。"""
 import traceback
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from novamind.shared.logging import get_logger
@@ -322,30 +323,54 @@ async def process_document_task(
                         "重处理前清理旧视频帧/figure 图片失败", document_id=document_id, error=str(frame_cleanup_err),
                     )
 
-            # 3. 从 MinIO 下载文件
+            # 3. 从 MinIO 流式下载到本地临时文件（8MB 分块写盘，不进内存）。
+            # 大视频（2GB 级）整包 download_document 会把 worker 内存打穿；
+            # 管道按 file_path 消费（视频透传路径/图像音频按需 read_bytes/
+            # 文本直接复用），临时文件 finally 统一清理。
+            from novamind.features.knowledge_space.exceptions import (
+                DocumentProcessingError,
+            )
             from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
 
             storage_info = document.get_storage_info()
-            file_content = await minio_client.download_document(
-                bucket_name=storage_info.get("minio_bucket"),
-                object_name=storage_info.get("minio_object_name"),
-            )
+            import tempfile as _tempfile
 
-            # 4. 执行核心 pipeline
-            # worker 入口点构造具体 ModelConfigService 作为 ModelConfigPort 注入
-            # （worker 属于宿主装配层，允许构造具体类；document_pipeline 内部零具体类导入）
-            bg_model_config_port = ModelConfigService(session)
-            result = await execute_document_pipeline(
-                session=session,
-                document_id=document_id,
-                kb_id=kb_id,
-                space_id=space_id,
-                file_content=file_content,
-                filename=document.filename,
-                task=task,
-                model_config_port=bg_model_config_port,
+            from novamind.setting.yaml_config import get_config as _get_config
+            download_dir = _get_config().knowledge_base.parsing.download_tmp_dir or None
+            _dl_tmp = _tempfile.NamedTemporaryFile(
+                suffix=f".{document.file_type or 'bin'}", delete=False, dir=download_dir,
             )
+            downloaded_path = _dl_tmp.name
+            _dl_tmp.close()
+            try:
+                downloaded_bytes = await minio_client.download_document_to_file(
+                    bucket_name=storage_info.get("minio_bucket"),
+                    object_name=storage_info.get("minio_object_name"),
+                    dest_path=downloaded_path,
+                )
+                if downloaded_bytes <= 0:
+                    raise DocumentProcessingError(
+                        document_id=document_id,
+                        error_message=f"文档 {document.filename} 下载内容为空（0 字节）",
+                    )
+
+                # 4. 执行核心 pipeline
+                # worker 入口点构造具体 ModelConfigService 作为 ModelConfigPort 注入
+                # （worker 属于宿主装配层，允许构造具体类；document_pipeline 内部零具体类导入）
+                bg_model_config_port = ModelConfigService(session)
+                result = await execute_document_pipeline(
+                    session=session,
+                    document_id=document_id,
+                    kb_id=kb_id,
+                    space_id=space_id,
+                    filename=document.filename,
+                    task=task,
+                    model_config_port=bg_model_config_port,
+                    file_path=downloaded_path,
+                )
+            finally:
+                Path(downloaded_path).unlink(missing_ok=True)
 
             # 5. 成功：标记任务完成
             task.mark_completed(result)
