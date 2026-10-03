@@ -478,6 +478,16 @@ async def download_document(
     encoded_filename = quote(document.filename)
     ascii_fallback = "download"
 
+    # 端到端完整性凭证：file_hash 即上传时计算的 sha256（DB 权威值，零额外
+    # 计算）。ETag 供 HTTP 缓存语义，X-Checksum-SHA256 供客户端显式校验
+    # 传输完整性（大视频经 nginx/代理链路后的防静默损坏手段）。
+    integrity_headers: dict[str, str] = {}
+    if document.file_hash:
+        integrity_headers = {
+            "ETag": f'"{document.file_hash}"',
+            "X-Checksum-SHA256": document.file_hash,
+        }
+
     # 返回响应：file_content 是完整 bytes，用 Response 自动设 Content-Length，
     # 浏览器按正常下载处理（StreamingResponse+BytesIO 走 chunked 不带 Content-Length，
     # 大文件浏览器不知道大小容易中途断开 → ConnectionResetError 10054）。
@@ -488,7 +498,8 @@ async def download_document(
             "Content-Disposition": (
                 f'attachment; filename="{ascii_fallback}"; '
                 f"filename*=UTF-8''{encoded_filename}"
-            )
+            ),
+            **integrity_headers,
         },
     )
 

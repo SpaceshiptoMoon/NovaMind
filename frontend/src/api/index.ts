@@ -255,6 +255,9 @@ export const request = {
       }
 
       xhr.responseType = 'text'
+      // 大视频（2GB 级）上传远超 axios 默认 30s；无超时会让网络中断的请求
+      // 永久挂起在 UI「上传中」。按 2GB/1MBps 的保守带宽给 2h 硬顶。
+      xhr.timeout = 2 * 60 * 60 * 1000
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
           onProgress(Math.round((e.loaded * 100) / e.total))
@@ -283,6 +286,12 @@ export const request = {
 
       xhr.onerror = () => {
         const message = '上传请求失败'
+        ElMessage.error(message)
+        reject(new Error(message))
+      }
+
+      xhr.ontimeout = () => {
+        const message = '上传超时，请检查网络后重试'
         ElMessage.error(message)
         reject(new Error(message))
       }

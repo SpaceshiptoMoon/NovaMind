@@ -2079,11 +2079,11 @@ export const MODALITY_ACCEPT_MAP: Record<string, string> = {
   audio: '.mp3,.wav,.flac,.aac,.ogg,.m4a',
 }
 
-/** 模态 → 最大文件大小 (MB) */
+/** 模态 → 最大文件大小 (MB)。与后端 document_upload_service._get_max_file_size 模态上限对齐 */
 export const MODALITY_MAX_SIZE_MB: Record<string, number> = {
   text: 100,
   image: 100,
-  video: 500,
+  video: 2000,
   audio: 200,
 }
 
