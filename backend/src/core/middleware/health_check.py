@@ -98,17 +98,19 @@ def _check_deepdoc_models_component() -> dict:
     vision = get_model_status()
     formula = get_formula_model_status()
     text_concat = get_text_concat_model_status()
+    # groups 恒定包含全部五组（齐全时也显式返回 formula/text_concat: true），
+    # 部署后经 /health/detailed 一眼可查全量模型状态，不必另跑下载脚本 --check
     groups = {name: info["available"] for name, info in vision["groups"].items()}
+    groups["formula"] = formula["available"]
+    groups["text_concat"] = text_concat["available"]
     missing = [
         f"vision.{name}: {', '.join(info['missing'])}"
         for name, info in vision["groups"].items()
         if not info["available"]
     ]
     if not formula["available"]:
-        groups["formula"] = False
         missing.append(f"formula: {', '.join(formula['missing'])}")
     if not text_concat["available"]:
-        groups["text_concat"] = False
         missing.append(f"text_concat: {text_concat['filename']}")
     if missing:
         raise Exception("模型缺失: " + "; ".join(missing))
