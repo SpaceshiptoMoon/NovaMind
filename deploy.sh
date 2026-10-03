@@ -145,14 +145,8 @@ print_summary() {
     warn "Check logs: bash deploy.sh logs   Detailed component status: curl -s http://localhost/health/detailed"
   else
     echo "Frontend: http://localhost"
-    echo "API docs: http://localhost/docs"
+    echo "API docs: local/direct access only (http://localhost:8100/docs) — nginx does not expose /docs publicly"
     echo "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
-  fi
-  # 非生产门控提示：默认 docker 环境 Swagger /docs 公网可见，公网部署须显式切换
-  # （production 还要求 CORS_ORIGINS 为具体域名，否则启动安全校验以 CRITICAL 阻断）
-  if ! grep -Eq '^[[:space:]]*ENVIRONMENT=production' .env 2>/dev/null; then
-    warn "Running with non-production gating: Swagger /docs is publicly reachable."
-    warn "For public deployment set ENVIRONMENT=production and CORS_ORIGINS=https://your-domain in .env, then re-run: bash deploy.sh deploy"
   fi
 }
 

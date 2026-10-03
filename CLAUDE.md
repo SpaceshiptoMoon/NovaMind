@@ -188,7 +188,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 ### 后端
 
 - 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 运行时依赖齐全，test/dev 为开发测试 extras。公式模型 INT8 量化等部署增强见 pyproject `deepdoc-vision` extra）
-- 开发服务器：`python main.py --config development --reload`
+- 开发服务器：`python main.py --reload`
 - 跑测试：`pytest`
 - 触碰解析、文档任务、检索或共享基础设施时，优先跑针对性测试
 
@@ -217,7 +217,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 
 - **禁止提交密钥。** `.env`、`*.yaml` 配置文件、API key、密码不得提交进 Git。
 - **禁止用 `--no-verify` 绕过 Git hook。** hook 失败就修根因。
-- **生产配置禁止弱密码与通配 CORS。**
+- **部署密码禁止弱值。** deploy 脚本随机生成四类字符密码；启动期安全诊断（弱密钥/占位符/通配 CORS）只告警不阻断——单一模式，无环境名门控（2026-10 起）。
 - **禁止硬编码凭据。** 一切配置走 YAML + 环境变量。
 
 ### 后端编码规则

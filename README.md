@@ -345,7 +345,7 @@ cd -                                      # 回到仓库根目录
 ```bash
 cd backend
 uv sync --extra test --extra dev  # 安装依赖（需先安装 uv：pip install uv 或 curl -LsSf https://astral.sh/uv/install.sh | sh；core 即全部运行时依赖，test/dev 为开发测试 extras）
-uv run python main.py --config development --reload
+uv run python main.py --reload
 ```
 
 > **配置说明**：后端所有配置从 YAML 文件读取（`backend/src/setting/yaml_config/yaml/`），YAML 中 `${VAR_NAME}` 占位符由运行时环境变量解析。
@@ -381,7 +381,7 @@ Docker 部署模式：
 | 服务 | 地址 | 凭据 |
 | --- | --- | --- |
 | 前端首页 | `http://localhost` | 管理员账号 `admin`，初始密码见 `.env` 的 `ADMIN_PASSWORD` |
-| 后端 API 文档 | `http://localhost/docs` | 同上（`ENVIRONMENT=production` 时关闭，见 `.env.example` 部署门控段） |
+| 后端 API 文档 | 直连 `http://localhost:8100/docs`（本机调试用） | 同上；公网 80 端口刻意不暴露 `/docs`（nginx 不反代，Swagger 只在直连后端时可见） |
 | 健康检查 | `http://localhost/health` | 无（进程存活检查，不校验依赖；依赖健康看 `/health/detailed`） |
 | MinIO 控制台 | `http://localhost:9001` | `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Elasticsearch | `http://localhost:9200` | 无（Docker 部署关闭了 ES 安全特性） |
@@ -481,7 +481,7 @@ NovaMind/
 - **分工**：账户密码/凭据类（`${SECRET_KEY}`、`${MYSQL_ROOT_PASSWORD}` 等纯占位符）只存在 `.env`，缺失解析为 `None` 显性报错；连接参数（host/端点/桶名，`${DB_HOST:127.0.0.1}` 形式）在占位符内带本地基线默认值，本地开发零配置
 - 整串占位符的 `true` / `false` / `null` 会归一为原生 bool / None（如 `redis.enabled: "${REDIS_ENABLED:false}"`），布尔开关也能经环境变量表达
 - YAML 里不写任何真实密钥；历史上的 `<环境>.yaml` / `local.yaml` 覆盖层已于 2026-10 移除
-- `--config` 参数只是**环境名**（写入 `config.environment`，供生产门控如禁用 API 文档消费），不再对应任何 yaml 文件
+- 无环境名概念（单一模式）：不存在 development/production 等环境分支，部署差异全部经环境变量占位符表达；内部错误详情永远不写入 HTTP 响应（全量在日志），公网不暴露 Swagger 由 nginx 层保证
 
 ### `.env`（密钥与环境值唯一来源）
 
@@ -505,7 +505,7 @@ NovaMind/
 | `HF_ENDPOINT` | 模型下载主源（默认 hf-mirror.com，海外可切官方源） | DeepDoc / faster-whisper 模型下载 |
 | `DEEPDOC_MIRRORS` | DeepDoc 模型降级源清单（可选，JSON 数组，主源失败后按序换源，格式见 `.env.example`） | 模型下载降级 |
 | `DEEPDOC_DISABLE_MIRRORS` | 置 `1` 禁用降级换源 | 模型下载降级 |
-| `ENVIRONMENT` / `CORS_ORIGINS` / `MINIO_SECURE` | 部署门控（可选）：`ENVIRONMENT=production` 关闭 `/docs` 并启用启动安全校验（通配 CORS 会被阻断，须同时设 `CORS_ORIGINS` 为具体域名）；`MINIO_SECURE=true` 仅 MinIO 经 TLS / 公网可达时需要，compose 内网保持默认 `false` | main.py / compose 注入 / YAML `cors_origins`、`minio.secure` |
+| `CORS_ORIGINS` / `MINIO_SECURE` | 可选调优：跨源 API 消费方存在时收紧 CORS 白名单（默认 `*` 且 credentials 自动禁用）；`MINIO_SECURE=true` 仅 MinIO 经 TLS / 公网可达时需要，compose 内网保持默认 `false` | YAML `cors_origins`、`minio.secure` |
 
 ### Docker 部署的差异如何表达
 

@@ -141,7 +141,6 @@ async def detailed_health_check() -> dict[str, Any]:
     """
     config = _get_config()
     engine = _get_engine()
-    is_production = config.environment == "production"
 
     # 健康状态优先级：unhealthy(2) > degraded(1) > healthy(0)
     _priority = {"healthy": 0, "degraded": 1, "unhealthy": 2}
@@ -177,7 +176,7 @@ async def detailed_health_check() -> dict[str, Any]:
                 overall_status = new_status
             health_status["components"][name] = {
                 "status": "unhealthy",
-                "error": str(e) if not is_production else "连接失败",
+                "error": "连接失败",
             }
             log_func = logger.error if is_critical else logger.warning
             log_func(f"{name} 健康检查失败", error=str(e))

@@ -128,15 +128,8 @@ function Show-Summary {
         Write-Warn "Check logs: .\deploy.ps1 logs   Detailed component status: Invoke-WebRequest http://localhost/health/detailed"
     } else {
         Write-Host "Frontend: http://localhost"
-        Write-Host "API docs: http://localhost/docs"
+        Write-Host "API docs: local/direct access only (http://localhost:8100/docs) — nginx does not expose /docs publicly"
         Write-Host "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
-    }
-    # 非生产门控提示（对齐 deploy.sh）：默认 docker 环境 Swagger /docs 公网可见；
-    # production 还要求 CORS_ORIGINS 为具体域名，否则启动安全校验以 CRITICAL 阻断
-    $isProduction = (Test-Path ".env") -and @((Get-Content ".env") | Where-Object { $_ -match '^\s*ENVIRONMENT=production' }).Count -gt 0
-    if (-not $isProduction) {
-        Write-Warn "Running with non-production gating: Swagger /docs is publicly reachable."
-        Write-Warn "For public deployment set ENVIRONMENT=production and CORS_ORIGINS=https://your-domain in .env, then re-run: .\deploy.ps1 deploy"
     }
     Write-Host ""
 }

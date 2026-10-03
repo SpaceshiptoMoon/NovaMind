@@ -49,18 +49,12 @@ class ConfigLoader:
         self.config_dir = config_dir or Path(__file__).parent / "yaml"
         self._config: dict[str, Any] = {}
 
-    def load(self, environment: str | None = None) -> dict[str, Any]:
-        """加载 default.yaml 并解析 ${VAR} 占位符；环境名仅作行为开关，不再选择文件。
-
-        Args:
-            environment: 环境名（development/docker/production 等），只写入
-                config.environment 供生产门控消费（禁 docs、CORS 校验等）；
-                None 时回落 ENVIRONMENT 环境变量，再缺省 development。
+    def load(self) -> dict[str, Any]:
+        """加载 default.yaml 并解析 ${VAR} 占位符（单一模式，无环境名概念）。
 
         Returns:
-            占位符已替换（取值自进程环境/仓库根 .env）的完整配置 dict，附 environment 键。
+            占位符已替换（取值自进程环境/仓库根 .env）的完整配置 dict。
         """
-        env = environment or os.getenv("ENVIRONMENT", "development")
         # 两层配置模型：default.yaml 定义结构与默认值，环境差异（host/endpoint/
         # 桶名/凭据）全部经 ${VAR} / ${VAR:默认值} 占位符从环境取值。本地开发
         # 用占位符内默认值（仓库根 .env 提供密钥）；Docker 由 compose environment
@@ -69,7 +63,6 @@ class ConfigLoader:
         self._config = self._load_yaml("default.yaml")
 
         self._config = self._replace_env_vars(self._config)
-        self._config["environment"] = env
         return self._config
 
     def _load_dotenv(self) -> None:
@@ -172,7 +165,6 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         可直接全局使用的 AppConfig 实例（minio.secure 严格按配置取值，不静默改写）。
     """
     config = AppConfig()
-    config.environment = data.get("environment", "development")
     config.cors_origins = data.get("cors_origins", "*")
 
     project = data.get("project", {})
@@ -183,17 +175,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     )
 
     minio_cfg = data.get("minio", {})
-    is_production = config.environment == "production"
     minio_secure = minio_cfg.get("secure", False)
-    if is_production and not minio_secure:
-        # 只告警不强制改写：secure 是部署拓扑决策（compose bridge 内网 http 合法；
-        # 端点经公网可达才必须 TLS）。静默翻转成 https 会打到 http 端口上直接断连。
-        import logging
-
-        logging.warning(
-            "生产环境 MinIO 未启用 SSL：内网容器拓扑可接受；端点经公网可达时"
-            "须前置 TLS 并设置 MINIO_SECURE=true"
-        )
     config.minio = MinioConfig(
         endpoint=minio_cfg.get("endpoint", "localhost:9000"),
         public_endpoint=minio_cfg.get("public_endpoint"),
@@ -445,45 +427,17 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
 _loader: ConfigLoader | None = None
 _config_dict: dict[str, Any] | None = None
 _config: AppConfig | None = None
-_environment: str | None = None
 _config_lock = threading.Lock()
-
-
-def set_environment(env: str) -> None:
-    """预设环境名并清空全部已加载缓存，下次 get_config 按新环境重新加载（须在首次 get_config 前调用才生效）。
-
-    Args:
-        env: 目标环境名（development/production 等）。
-
-    Returns:
-        无；持锁重置 loader/config_dict/config 三个全局缓存。
-    """
-    global _environment, _loader, _config_dict, _config
-    with _config_lock:
-        _environment = env
-        _loader = None
-        _config_dict = None
-        _config = None
-
-
-def get_environment() -> str | None:
-    """返回 set_environment 设置的环境名；未设置返回 None（get_config 会回落 ENVIRONMENT 环境变量）。
-
-    Returns:
-        已预设的环境名；从未调用 set_environment 时为 None。
-    """
-    return _environment
 
 
 def get_config() -> AppConfig:
     """全局配置单例入口：首次调用时惰性加载并构造 AppConfig，进程内缓存复用；加载过程持锁保证并发安全，仅初始化一次。"""
-    global _loader, _config_dict, _config, _environment
+    global _loader, _config_dict, _config
     if _config is None:
         with _config_lock:
             if _config is None:
                 _loader = ConfigLoader()
-                env = _environment or os.getenv("ENVIRONMENT", "development")
-                _config_dict = _loader.load(env)
+                _config_dict = _loader.load()
                 _config = create_config_from_dict(_config_dict)
     return _config
 
@@ -510,11 +464,8 @@ def get_config_value(key: str, default: Any = None) -> Any:
     return _loader.get(key, default)
 
 
-def reload_config(environment: str | None = None) -> AppConfig:
-    """强制重新加载配置（可指定新环境）并刷新全局单例，返回新 AppConfig；持锁执行避免并发加载撕裂。
-
-    Args:
-        environment: 可选新环境名；None 时按当前环境变量语义重新解析（不沿用 set_environment 预设）。
+def reload_config() -> AppConfig:
+    """强制重新加载配置并刷新全局单例，返回新 AppConfig；持锁执行避免并发加载撕裂。
 
     Returns:
         重新构造的 AppConfig 实例（进程内后续 get_config 均命中新单例）。
@@ -522,6 +473,6 @@ def reload_config(environment: str | None = None) -> AppConfig:
     global _loader, _config_dict, _config
     with _config_lock:
         _loader = ConfigLoader()
-        _config_dict = _loader.load(environment)
+        _config_dict = _loader.load()
         _config = create_config_from_dict(_config_dict)
     return _config

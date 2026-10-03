@@ -36,11 +36,6 @@ services:
     env_file:
       - .env
     environment:
-      # 运行环境名（生产门控开关）：production 关闭 /docs、隐藏内部错误详情、
-      # 启动安全校验阻断通配 CORS。默认 docker 开箱即用（注意：Swagger /docs 公网
-      # 可见）；公网部署在 .env 设 ENVIRONMENT=production，且必须同时设
-      # CORS_ORIGINS=https://你的域名（通配 * 会被校验以 CRITICAL 阻断启动）。
-      ENVIRONMENT: "${ENVIRONMENT:-docker}"
       # Docker 部署的连接值（占位符注入，优先级高于 env_file 的 .env）：
       # .env 只存账户密码/凭据；本地开发的连接基线（127.0.0.1 系）在 default.yaml 占位符内。
       DB_HOST: mysql

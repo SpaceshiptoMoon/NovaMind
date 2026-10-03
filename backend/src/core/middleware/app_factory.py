@@ -29,13 +29,8 @@ def create_app() -> FastAPI:
     # 加载配置
     config = get_config()
 
-    # 安全配置检查（生产环境必须通过）
-    is_secure, security_issues = validate_security_config(config)
-    if not is_secure:
-        raise RuntimeError(
-            "生产环境安全配置检查失败，请修复上述安全问题后重试。\n"
-            "如需开发环境运行，请设置 ENVIRONMENT=development"
-        )
+    # 启动期安全配置诊断（只告警不阻断：弱密钥/占位符/通配 CORS 等记 WARNING 日志）
+    validate_security_config(config)
 
     # 初始化路由管理器
     router_manager = RouterManager()
@@ -43,15 +38,14 @@ def create_app() -> FastAPI:
     # 创建应用生命周期管理器
     lifespan_manager = AppLifespanManager()
 
-    # 创建FastAPI应用（生产环境禁用 API 文档端点）
-    is_production = config.environment == "production"
+    # 创建FastAPI应用实例（docs 常开；公网部署由 nginx 不反代 /docs 挡在入口层）
     app = FastAPI(
         title=config.project.name,
         version=config.project.version,
         description=config.project.description,
         lifespan=lifespan_manager.lifespan,
-        docs_url=None if is_production else "/docs",
-        redoc_url=None if is_production else "/redoc",
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
     # 设置异常处理器（包含所有模块的异常注册）

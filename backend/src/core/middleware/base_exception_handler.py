@@ -321,16 +321,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         exc_info=traceback.format_exc(),
     )
 
-    # 生产环境返回通用错误消息
-    from novamind.setting.yaml_config import get_config
-
-    config = get_config()
-    is_production = config.environment == "production"
-
+    # 响应体永远不含内部错误详情（全量 traceback 已在上方日志）；单一模式，无环境分支
     response_content = {
         "error": {
             "code": "INTERNAL_ERROR",
-            "message": "服务器内部错误" if is_production else str(exc),
+            "message": "服务器内部错误",
             "request_id": trace_id,
         },
         "timestamp": now_china().isoformat(),

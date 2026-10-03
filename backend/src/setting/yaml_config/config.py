@@ -352,7 +352,6 @@ class SmtpConfig:
 @dataclass
 class AppConfig:
     """全量配置根：聚合全部配置节，是 get_config() 返回的强类型配置对象。"""
-    environment: str = "development"
     project: ProjectConfig = field(default_factory=ProjectConfig)
     minio: MinioConfig = field(default_factory=MinioConfig)
     elasticsearch: ElasticsearchConfig = field(default_factory=ElasticsearchConfig)

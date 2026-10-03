@@ -345,7 +345,7 @@ If you already run these services locally, just make sure their connection info 
 ```bash
 cd backend
 uv sync --extra test --extra dev  # install dependencies (install uv first: pip install uv, or curl -LsSf https://astral.sh/uv/install.sh | sh; core covers all runtime deps, test/dev are dev/testing extras)
-uv run python main.py --config development --reload
+uv run python main.py --reload
 ```
 
 > **Config note**: all backend config is read from YAML files (`backend/src/setting/yaml_config/yaml/`); `${VAR_NAME}` placeholders in YAML are resolved from environment variables at runtime.
@@ -381,7 +381,7 @@ Docker deploy:
 | Service | Address | Credentials |
 | --- | --- | --- |
 | Frontend | `http://localhost` | admin account `admin`, initial password in `ADMIN_PASSWORD` in `.env` |
-| Backend API docs | `http://localhost/docs` | same as above (closed when `ENVIRONMENT=production`, see the deploy-gating section in `.env.example`) |
+| Backend API docs | direct `http://localhost:8100/docs` (local debugging) | same as above; the public port 80 deliberately does NOT expose `/docs` (nginx does not proxy it — Swagger only via direct backend access) |
 | Health check | `http://localhost/health` | none (process-liveness only; dependency health is at `/health/detailed`) |
 | MinIO console | `http://localhost:9001` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env` |
 | Elasticsearch | `http://localhost:9200` | none (ES security features are disabled in Docker deploy) |
@@ -481,7 +481,7 @@ At startup the backend reads exactly one config file: `backend/src/setting/yaml_
 - **Division of labor**: credentials (`${SECRET_KEY}`, `${MYSQL_ROOT_PASSWORD}`, bare placeholders) live only in `.env` — an undeclared one resolves to `None` and fails visibly; connection params (hosts/endpoints/bucket, `${DB_HOST:127.0.0.1}` form) carry local baseline defaults in the placeholder, so local development needs zero extra config
 - For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:false}"`), so boolean switches also come from env vars
 - No real secrets live in YAML; the historical `<environment>.yaml` / `local.yaml` override layers were removed in 2026-10
-- The `--config` flag is only an **environment name** (stored in `config.environment`, consumed by production gates such as disabling API docs); it no longer selects any file
+- No environment names (single mode): there are no development/production branches — deployment differences are expressed entirely via env-var placeholders; internal error details never go into HTTP responses (full detail in logs), and Swagger stays off the public internet at the nginx layer
 
 ### `.env` (single source of secrets)
 
@@ -505,7 +505,7 @@ The root `.env` has two consumers:
 | `HF_ENDPOINT` | Primary download source for models (defaults to hf-mirror.com; switch to the official source overseas) | DeepDoc / faster-whisper model downloads |
 | `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) | model download fallback |
 | `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring | model download fallback |
-| `ENVIRONMENT` / `CORS_ORIGINS` / `MINIO_SECURE` | Deploy gating (optional): `ENVIRONMENT=production` closes `/docs` and enables startup security checks (wildcard CORS is rejected — set `CORS_ORIGINS` to real domains at the same time); `MINIO_SECURE=true` only when MinIO is TLS-fronted / publicly reachable — keep the default `false` on the compose internal network | main.py / compose injection / YAML `cors_origins`, `minio.secure` |
+| `CORS_ORIGINS` / `MINIO_SECURE` | Optional tuning: tighten the CORS allowlist when cross-origin API consumers exist (default `*` with credentials auto-disabled); `MINIO_SECURE=true` only when MinIO is TLS-fronted / publicly reachable — keep the default `false` on the compose internal network | YAML `cors_origins`, `minio.secure` |
 
 ### How Docker deploy differences are expressed
 

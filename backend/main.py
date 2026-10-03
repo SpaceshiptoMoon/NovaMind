@@ -1,6 +1,6 @@
 """
 应用入口
-支持通过 --config 参数指定配置环境
+配置一律读取 src/setting/yaml_config/yaml/default.yaml（单一配置文件，无环境区分）
 """
 import argparse
 import os
@@ -16,12 +16,6 @@ if _BACKEND_SRC not in sys.path:
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="智能知识库系统后端")
-    parser.add_argument(
-        "--config", "-c",
-        type=str,
-        default=os.environ.get("ENVIRONMENT", "development"),
-        help="环境名称，默认取环境变量 ENVIRONMENT（未设为 development）；写入 config.environment 供生产门控消费（production 禁用 docs、启动安全校验阻断通配 CORS 等）。不再对应 yaml 文件，配置一律读 yaml/default.yaml"
-    )
     parser.add_argument(
         "--host",
         type=str,
@@ -64,14 +58,11 @@ def main():
     """主函数"""
     args = parse_args()
 
-    # 设置环境变量，供 YAML 配置加载器读取
-    os.environ["ENVIRONMENT"] = args.config
-
     # 预加载配置以验证
     from novamind.setting.yaml_config import get_config
     try:
         config = get_config()
-        print(f"已加载配置: {config.environment}")
+        print(f"已加载配置: {config.project.name} {config.project.version}")
 
         print(f"向量数据库: {config.vector_db.type}")
         print(f"数据库: {config.database.host}:{config.database.port}/{config.database.database}")

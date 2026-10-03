@@ -46,7 +46,7 @@ def test_placeholder_resolved_from_repo_dotenv(env_yaml: Path, monkeypatch: pyte
     monkeypatch.delenv(var_name, raising=False)
 
     loader = ConfigLoader(config_dir=env_yaml)
-    data = loader.load("development")
+    data = loader.load()
     # 占位符变量恰好是被测变量时才断言解析值
     if "TEST_DOTENV_SECRET" in dict(lines):
         assert data["security"]["secret_key"] == dict(lines)["TEST_DOTENV_SECRET"]
@@ -70,5 +70,5 @@ def test_missing_dotenv_is_silent(env_yaml: Path, tmp_path: Path, monkeypatch: p
         Path,  # 占位：真实路径计算不受 tmp_path 影响，仅验证不抛异常
     )
     loader = ConfigLoader(config_dir=env_yaml)
-    data = loader.load("development")  # 不应抛异常
+    data = loader.load()  # 不应抛异常
     assert "security" in data

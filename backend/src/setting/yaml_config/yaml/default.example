@@ -48,7 +48,6 @@ minio:
   secret_key: "${MINIO_ROOT_PASSWORD}"
   # app↔MinIO 是否走 https。本地直连与 compose 内网（bridge 容器互通）保持 false；
   # MinIO 经 TLS 反代或公网可达时设 MINIO_SECURE=true（整串占位符归一为 bool）。
-  # production 下未设仅告警不阻断，也不静默改写。
   secure: "${MINIO_SECURE:false}"
   region: us-east-1
   bucket_name: "${MINIO_BUCKET:novamind-dev}"
@@ -76,9 +75,8 @@ admin:
   create_on_startup: true
   reset_password_if_exists: true
 
-# 跨源白名单，逗号分隔；同源部署（nginx 反代前后端）用默认 * 即可。
-# ENVIRONMENT=production 时通配 * 会被启动安全校验以 CRITICAL 阻断——
-# 公网部署必须设 CORS_ORIGINS=https://你的域名（多个逗号分隔）
+# 跨源白名单，逗号分隔；同源部署（nginx 反代前后端）用默认 * 即可
+# （通配时 credentials 自动禁用，仅当存在跨源 API 消费方时才需要收紧）
 cors_origins: "${CORS_ORIGINS:*}"
 
 external_search:

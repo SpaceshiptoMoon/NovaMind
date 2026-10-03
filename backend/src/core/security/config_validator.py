@@ -1,8 +1,8 @@
 """
-安全配置验证器
+安全配置诊断器
 
-在应用启动时检查生产环境的安全配置是否安全
-防止使用默认密钥和密码
+应用启动时检查配置中的安全隐患（默认密钥/弱密码/通配 CORS 等），
+只记录告警日志、不阻断启动——单一部署模式，无环境名门控。
 """
 
 import os
@@ -87,9 +87,6 @@ class SecurityConfigValidator:
 
         # 检查 MinIO 配置
         self._check_minio_config(config)
-
-        # 检查 Redis 配置
-        self._check_redis_config(config)
 
         # 检查 CORS 配置
         self._check_cors_config(config)
@@ -176,24 +173,14 @@ class SecurityConfigValidator:
         """检查数据库配置安全性"""
         db = config.database
 
-        # 检查是否使用空密码
-        if not db.password and config.environment == "production":
-            self.issues.append(SecurityIssue(
-                level="CRITICAL",
-                category="DATABASE",
-                message="数据库密码为空",
-                recommendation="请设置数据库密码",
-                field_path="database.password",
-            ))
-
-        # 检查是否使用默认用户名
-        if db.user == "root" and config.environment == "production":
+        # 检查是否使用空密码（任何部署形态都不应出现；仅告警不阻断）
+        if not db.password:
             self.issues.append(SecurityIssue(
                 level="WARNING",
                 category="DATABASE",
-                message="数据库使用 root 用户",
-                recommendation="生产环境建议使用专用数据库用户",
-                field_path="database.user",
+                message="数据库密码为空",
+                recommendation="请设置数据库密码（.env 的 MYSQL_ROOT_PASSWORD）",
+                field_path="database.password",
             ))
 
     def _check_minio_config(self, config) -> None:
@@ -210,33 +197,6 @@ class SecurityConfigValidator:
                 field_path="minio.access_key/minio.secret_key",
             ))
 
-        # 检查是否禁用 SSL
-        if not minio.secure and config.environment == "production":
-            self.issues.append(SecurityIssue(
-                level="WARNING",
-                category="STORAGE",
-                message="MinIO 未启用 SSL",
-                recommendation="MinIO 端点经公网可达时须启用 SSL（环境变量 MINIO_SECURE=true）；compose 内网容器拓扑可保持 false",
-                field_path="minio.secure",
-            ))
-
-    def _check_redis_config(self, config) -> None:
-        """检查 Redis 配置安全性"""
-        redis = config.redis
-
-        if not redis.enabled:
-            return
-
-        # 检查是否未设置密码
-        if not redis.password and config.environment == "production":
-            self.issues.append(SecurityIssue(
-                level="WARNING",
-                category="CACHE",
-                message="Redis 未设置密码",
-                recommendation="生产环境建议设置 Redis 密码",
-                field_path="redis.password",
-            ))
-
     def _check_cors_config(self, config) -> None:
         """检查 CORS 配置安全性"""
         cors_origins = getattr(config, "cors_origins", "*")
@@ -244,22 +204,13 @@ class SecurityConfigValidator:
             cors_origins = [o.strip() for o in cors_origins.split(",")]
 
         if "*" in cors_origins:
-            if config.environment == "production":
-                self.issues.append(SecurityIssue(
-                    level="CRITICAL",
-                    category="CORS",
-                    message="CORS 配置允许所有来源（*），生产环境必须设置具体域名",
-                    recommendation="设置环境变量 CORS_ORIGINS 为具体域名，如: https://app.example.com,https://admin.example.com",
-                    field_path="cors_origins",
-                ))
-            else:
-                self.issues.append(SecurityIssue(
-                    level="WARNING",
-                    category="CORS",
-                    message="CORS 配置允许所有来源（*），生产环境请设置具体域名",
-                    recommendation="上线前设置环境变量 CORS_ORIGINS 为具体域名",
-                    field_path="cors_origins",
-                ))
+            self.issues.append(SecurityIssue(
+                level="WARNING",
+                category="CORS",
+                message="CORS 配置允许所有来源（*）——credentials 已被自动禁用；仅当存在跨源 API 消费方时才需要收紧",
+                recommendation="有跨源消费方时设置 CORS_ORIGINS 为具体域名，如: https://app.example.com,https://admin.example.com",
+                field_path="cors_origins",
+            ))
 
     def _check_environment(self) -> None:
         """校验敏感环境变量已设置且非弱值（SECRET_KEY/MYSQL_ROOT_PASSWORD 等）。"""
@@ -285,31 +236,21 @@ class SecurityConfigValidator:
 
 def validate_security_config(config) -> tuple[bool, list[SecurityIssue]]:
     """
-    验证安全配置
+    诊断安全配置并记录告警日志（单一模式：永不阻断启动，首个返回值恒为 True，
+    保留 bool 形态以兼容调用方签名）。
 
     Args:
         config: AppConfig 配置对象
 
     Returns:
-        Tuple[bool, List[SecurityIssue]]: (是否通过, 问题列表)
+        Tuple[bool, List[SecurityIssue]]: (True, 问题列表)
     """
     validator = SecurityConfigValidator()
     issues = validator.validate(config)
 
-    # 生产环境严格要求
-    if config.environment == "production":
-        critical_issues = [i for i in issues if i.level == "CRITICAL"]
-        if critical_issues:
-            validator.logger.error(
-                "生产环境安全配置检查失败",
-                issues_count=len(critical_issues),
-            )
-            return False, issues
-
-    # 非生产环境只警告
     if issues:
         validator.logger.warning(
-            "安全配置检查发现问题",
+            "安全配置诊断发现问题（仅告警，不阻断启动）",
             issues_count=len(issues),
         )
 

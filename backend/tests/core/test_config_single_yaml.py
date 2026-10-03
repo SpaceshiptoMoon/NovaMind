@@ -6,9 +6,9 @@
   true/false/null 归一为 bool/None；嵌入串纯文本替换、未设替换空串
 - compose environment 注入优先于 env_file（Docker 连接值路径）
 - <环境>.yaml / local.yaml 合并层已删除：同名文件存在也必须被忽略
-- environment 键始终来自 load 参数/ENVIRONMENT 变量，供生产门控消费
-- production 门控不静默改写配置：minio.secure 未设保持 False（历史强制翻转
-  已删除——它会把 https 打到 http 端口直接断连，见 create_config_from_dict）
+- 无环境名概念（单一模式）：load 不接受环境参数，配置 dict 不含 environment 键
+- minio.secure 严格按占位符取值、不静默改写（历史 production 强制翻转已删除——
+  它会把 https 打到 http 端口直接断连）
 """
 import sys
 from pathlib import Path
@@ -36,7 +36,7 @@ YAML = (
     '    - "${ES_HOST:http://127.0.0.1:9200}"\n'
     '  username: "${ES_USERNAME:elastic}"\n'
     '  password: "${ES_PASSWORD:}"\n'
-    'cors_origins: "${CORS_ORIGINS:*}"\n'   # production 门控要求具体域名（CRITICAL 硬规则）
+    'cors_origins: "${CORS_ORIGINS:*}"\n'   # 同源部署默认 *；跨源 API 消费方才收紧
     'mixed: "scheme://${ES_HOST:x}/v"\n'
 )
 
@@ -68,13 +68,13 @@ def config_dir(tmp_path, monkeypatch):
 
 def test_credential_without_definition_is_none(config_dir):
     """凭据类纯占位符未定义 → None（缺失显性化），不静默兜底。"""
-    c = ConfigLoader(config_dir=config_dir).load("development")
+    c = ConfigLoader(config_dir=config_dir).load()
     assert c["security"]["secret_key"] is None
 
 
 def test_connection_params_fall_back_to_yaml_baseline(config_dir):
     """连接类未定义 → yaml 基线默认值（本地开发零配置）；bool 基线归一为 True。"""
-    c = ConfigLoader(config_dir=config_dir).load("development")
+    c = ConfigLoader(config_dir=config_dir).load()
     assert c["redis"]["enabled"] is True
     assert c["redis"]["host"] == "127.0.0.1"
     assert c["es"]["hosts"] == ["http://127.0.0.1:9200"]
@@ -89,7 +89,7 @@ def test_compose_injection_overrides_baseline(config_dir, monkeypatch):
     monkeypatch.setenv("DB_HOST", "mysql")
     monkeypatch.setenv("ES_HOST", "http://elasticsearch:9200")
     monkeypatch.setenv("ES_USERNAME", "")  # 空串 = ES 客户端 falsy 短路免认证
-    c = ConfigLoader(config_dir=config_dir).load("docker")
+    c = ConfigLoader(config_dir=config_dir).load()
     assert c["redis"]["host"] == "redis"
     assert c["es"]["hosts"] == ["http://elasticsearch:9200"]
     assert c["es"]["username"] == ""
@@ -99,7 +99,7 @@ def test_defined_credential_used_and_null_coercion(config_dir, monkeypatch):
     """已定义凭据按值使用；"null" 归一为 None。"""
     monkeypatch.setenv("SECRET_KEY", "real-secret")
     monkeypatch.setenv("ES_PASSWORD", "null")
-    c = ConfigLoader(config_dir=config_dir).load("development")
+    c = ConfigLoader(config_dir=config_dir).load()
     assert c["security"]["secret_key"] == "real-secret"
     assert c["es"]["password"] is None
 
@@ -110,40 +110,39 @@ def test_env_yaml_and_local_yaml_are_ignored(config_dir):
     # cors_origins 在 default.yaml 里有占位符，断言其解析值（而非键缺失）锁得更死：
     # 若 local.yaml 合并层复活，这里会变成 evil 而不是 *
     (config_dir / "local.yaml").write_text("cors_origins: evil\n", encoding="utf-8")
-    c = ConfigLoader(config_dir=config_dir).load("docker")
+    c = ConfigLoader(config_dir=config_dir).load()
     assert c["redis"]["host"] == "127.0.0.1"
     assert c["cors_origins"] == "*"
 
 
-def test_environment_key_comes_from_argument(config_dir):
-    """environment 键来自 load 参数（生产门控消费方依赖），与 yaml 文件无关。"""
-    assert ConfigLoader(config_dir=config_dir).load("production")["environment"] == "production"
+def test_environment_key_is_gone(config_dir):
+    """负向锁：环境名概念已删除——配置 dict 不含 environment 键（单一模式）。"""
+    assert "environment" not in ConfigLoader(config_dir=config_dir).load()
 
 
-def test_production_does_not_force_minio_secure(config_dir):
-    """负向锁：production 下 MINIO_SECURE 未设 → secure 保持 False，不得静默翻转。
+def test_minio_secure_defaults_false_no_silent_rewrite(config_dir):
+    """负向锁：MINIO_SECURE 未设 → AppConfig.minio.secure 保持 False，不得静默翻转。
 
-    历史实现会强制 secure=true，导致 https 打到 compose MinIO 的 http 端口直接
-    断连——「docker 环境 = 文档裸奔、production = MinIO 断连」互斥的根因之一。
+    历史实现会在 production 强制 secure=true，导致 https 打到 compose MinIO 的
+    http 端口直接断连；环境名概念删除后该路径已不存在，锁死「严格按配置取值」。
     """
-    raw = ConfigLoader(config_dir=config_dir).load("production")
+    raw = ConfigLoader(config_dir=config_dir).load()
     app_cfg = create_config_from_dict(raw)
-    assert app_cfg.environment == "production"
     assert app_cfg.minio.secure is False
 
 
 def test_minio_secure_true_passthrough(config_dir, monkeypatch):
     """正用例：显式设 MINIO_SECURE=true → AppConfig.minio.secure 为 True（TLS 拓扑）。"""
     monkeypatch.setenv("MINIO_SECURE", "true")
-    raw = ConfigLoader(config_dir=config_dir).load("production")
+    raw = ConfigLoader(config_dir=config_dir).load()
     assert create_config_from_dict(raw).minio.secure is True
 
 
 def test_cors_origins_default_wildcard_and_explicit_override(config_dir, monkeypatch):
-    """CORS 白名单：未设 → 通配 *（同源部署零配置）；显式设 → 逐字透传（production 硬规则依赖）。"""
-    raw = ConfigLoader(config_dir=config_dir).load("development")
+    """CORS 白名单：未设 → 通配 *（同源部署零配置）；显式设 → 逐字透传。"""
+    raw = ConfigLoader(config_dir=config_dir).load()
     assert create_config_from_dict(raw).cors_origins == "*"
 
     monkeypatch.setenv("CORS_ORIGINS", "https://a.example.com,https://b.example.com")
-    raw = ConfigLoader(config_dir=config_dir).load("production")
+    raw = ConfigLoader(config_dir=config_dir).load()
     assert create_config_from_dict(raw).cors_origins == "https://a.example.com,https://b.example.com"

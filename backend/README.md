@@ -118,7 +118,7 @@ cd backend
 uv sync --extra test --extra dev
 
 # 后续命令
-uv run python main.py --config development --reload
+uv run python main.py --reload
 uv run pytest
 ```
 
@@ -138,29 +138,22 @@ cp default.example default.yaml
 - `default.yaml`：唯一后端配置文件——结构与占位符引用。凭据类（`${SECRET_KEY}` 等）无默认值，缺失解析为 `None` 显性报错；连接参数（`${DB_HOST:127.0.0.1}` 等）占位符内带本地基线，本地开发零配置
 - 仓库根 `.env`：只存账户密码/凭据；loader 启动自动加载，进程环境变量优先。Docker 的连接值（容器名/生产桶名/ES 免认证）由 docker-compose.yml 的 `app.environment` 块注入（优先级高于 env_file）
 
-历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层已移除（2026-10）；`--config` 参数只是环境名（production 门控用），不再对应文件。
+历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层与环境名概念（`--config` 参数 / `ENVIRONMENT` 变量 / `config.environment` 门控）已于 2026-10 全部移除——单一配置文件 + 环境变量占位符，无任何环境分支。
 
-### 生产门控（ENVIRONMENT）
-
-环境名只作行为开关，来源优先级：`--config` 参数 > `ENVIRONMENT` 环境变量（默认 `development`；compose 注入默认 `docker`）：
-
-- `development` / `docker`：`/docs` `/redoc` 可用、错误详情完整。注意 docker 下 Swagger 公网可见，仅适合内网试用
-- `production`：关闭 `/docs` `/redoc`、隐藏内部错误详情，启动安全校验会把通配 CORS 以 CRITICAL 阻断——公网部署必须同时设 `CORS_ORIGINS=https://你的域名`（多个逗号分隔），两值都写在 `.env`
-- `MINIO_SECURE` 默认 `false`（compose bridge 内网 http 拓扑合法）；MinIO 经 TLS 反代或公网可达时设 `true`。production 下未设只告警，不静默改写
+单一模式的防护分工：`/docs` 永远开放，但公网部署由 nginx 不反代 `/docs` 挡在入口层；HTTP 响应永远不含内部错误详情（全量在日志）；启动期安全诊断（弱密钥/占位符/通配 CORS）只告警不阻断。可选调优旋钮（`CORS_ORIGINS` / `MINIO_SECURE`）见 `.env.example`。
 
 ### 启动
 
 ```bash
 cd backend
-python main.py --config development --reload
+python main.py --reload
 ```
 
 常见变体：
 
 ```bash
-python main.py --reload
-python main.py --config development
-python main.py --config production --workers 4
+python main.py
+python main.py --workers 4
 ```
 
 默认本地地址：
