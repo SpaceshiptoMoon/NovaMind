@@ -13,6 +13,7 @@ import './assets/hljs-dark.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 import App from './App.vue'
 import router from './router'
@@ -26,7 +27,8 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(ElementPlus)
+// 中文 locale：EP 内置文案（分页 Total、表格空态 No Data 等）统一走中文
+app.use(ElementPlus, { locale: zhCn })
 app.directive('permission', vPermission)
 
 app.mount('#app')
