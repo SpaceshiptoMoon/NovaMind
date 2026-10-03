@@ -19,24 +19,32 @@ RUN npm run build-only
 # ---- Stage 2: build backend deps (has gcc, dropped at runtime) ----
 FROM python:3.12.13-slim AS backend-build
 
-# gcc + tzdata only for compiling C extensions during pip install;
+# gcc + tzdata only for compiling C extensions during dependency install;
 # neither leaves this stage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
+# uv 安装走 uv.lock 冻结复现，与 CI（uv sync --frozen）同源同版本策略：镜像钉在
+# 生成 lock 的 uv 版本，--frozen 才能精确复现。此前 builder 用 unlocked
+# pip install .，镜像依赖可与 CI 实测版本漂移。
+COPY --from=ghcr.io/astral-sh/uv:0.9.11 /uv /uvx /usr/local/bin/
+
 WORKDIR /app
 
-# Copy source so setuptools can resolve packages from src/ (pip install .).
-# main.py loads novamind from /app/src at runtime, so pip install . here is
-# mainly to compile/install third-party dependencies into site-packages.
-COPY backend/pyproject.toml backend/README.md ./
-COPY backend/src/ ./src/
-COPY backend/main.py ./
+# UV_PYTHON 钉住系统解释器（避免 uv 联网下载托管 Python）；编译字节码与拷贝
+# 模式分别为容器启动提速和跨层拷贝保险。
+ENV UV_PYTHON=/usr/local/bin/python3.12 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+# --no-install-project：只装 lock 中的第三方依赖——novamind 本体运行期从
+# /app/src 加载（main.py 注入 sys.path），不装进 venv，源码也不必进 builder。
 # deepdoc-vision extras：仅多装 onnx（量化用，其余与 core 重复）——deploy 期下载
 # 公式模型时容器内需具备 onnx 包做 INT8 动态量化（112MB→30MB），缺则 fp32 入库。
-RUN pip install --no-cache-dir ".[deepdoc-vision]"
+COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
+RUN uv sync --frozen --no-install-project --extra deepdoc-vision --no-cache
 
 # ---- Stage 3: runtime (no gcc, non-root) ----
 FROM python:3.12.13-slim
@@ -62,9 +70,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --system --gid 1001 appuser \
     && useradd --system --uid 1001 --gid appuser --home-dir /app --shell /usr/sbin/nologin appuser
 
-# Bring compiled third-party deps from the builder. novamind itself is loaded
-# from /app/src at runtime, so we only need the installed site-packages.
-COPY --from=backend-build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+# 依赖以独立 venv 整体带入（uv 官方多阶段模式）：两个 stage 同为
+# python:3.12.13-slim，venv 内解释器符号链接在本镜像同样有效。novamind 本体
+# 仍从 /app/src 加载，不进 venv；supervisord 与 compose run 的 `python` 均经
+# PATH 解析到 venv 解释器。
+COPY --from=backend-build /app/.venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
