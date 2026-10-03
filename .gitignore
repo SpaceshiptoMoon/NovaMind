@@ -40,9 +40,6 @@ test_data/
 .env.*
 !.env.example
 backend/src/setting/yaml_config/yaml/default.yaml
-backend/src/setting/yaml_config/yaml/development.yaml
-backend/src/setting/yaml_config/yaml/production.yaml
-backend/src/setting/yaml_config/yaml/testing.yaml
 !*.example
 
 # ========================================
@@ -68,7 +65,12 @@ backend/src/setting/yaml_config/yaml/testing.yaml
 !.claude/
 !.claude/NOVAMIND-MCP.md
 backend/skills-lock.json
-backend/skills-lock.json
+
+# ========================================
+# ZCode 工作区配置（.zcode/config.json 含 MCP 密钥，勿提交；
+# .zcode/skills/ 为本地 skill 副本，源头在 .claude/skills/ 与 docs/skill-package/）
+# ========================================
+.zcode/
 
 # ========================================
 # OS
@@ -100,7 +102,6 @@ backend/models/
 # Docker
 # ========================================
 docker-compose.override.yml
-docker/configs/docker.yaml
 
 # ========================================
 # 测试媒体文件

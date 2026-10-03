@@ -1,4 +1,4 @@
-# CLAUDE.md — 后端
+# AGENTS.md — 后端（镜像自 CLAUDE.md，改规则时两份同步）
 
 ## 概述
 
