@@ -140,6 +140,14 @@ cp default.example default.yaml
 
 历史上的 `development.yaml` / `production.yaml` / `local.yaml` 覆盖层已移除（2026-10）；`--config` 参数只是环境名（production 门控用），不再对应文件。
 
+### 生产门控（ENVIRONMENT）
+
+环境名只作行为开关，来源优先级：`--config` 参数 > `ENVIRONMENT` 环境变量（默认 `development`；compose 注入默认 `docker`）：
+
+- `development` / `docker`：`/docs` `/redoc` 可用、错误详情完整。注意 docker 下 Swagger 公网可见，仅适合内网试用
+- `production`：关闭 `/docs` `/redoc`、隐藏内部错误详情，启动安全校验会把通配 CORS 以 CRITICAL 阻断——公网部署必须同时设 `CORS_ORIGINS=https://你的域名`（多个逗号分隔），两值都写在 `.env`
+- `MINIO_SECURE` 默认 `false`（compose bridge 内网 http 拓扑合法）；MinIO 经 TLS 反代或公网可达时设 `true`。production 下未设只告警，不静默改写
+
 ### 启动
 
 ```bash

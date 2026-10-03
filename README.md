@@ -381,7 +381,7 @@ Docker 部署模式：
 | 服务 | 地址 | 凭据 |
 | --- | --- | --- |
 | 前端首页 | `http://localhost` | 管理员账号 `admin`，初始密码见 `.env` 的 `ADMIN_PASSWORD` |
-| 后端 API 文档 | `http://localhost/docs` | 同上 |
+| 后端 API 文档 | `http://localhost/docs` | 同上（`ENVIRONMENT=production` 时关闭，见 `.env.example` 部署门控段） |
 | 健康检查 | `http://localhost/health` | 无（进程存活检查，不校验依赖；依赖健康看 `/health/detailed`） |
 | MinIO 控制台 | `http://localhost:9001` | `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
 | Elasticsearch | `http://localhost:9200` | 无（Docker 部署关闭了 ES 安全特性） |

@@ -19,8 +19,8 @@ def parse_args():
     parser.add_argument(
         "--config", "-c",
         type=str,
-        default="development",
-        help="环境名称，写入 config.environment 供生产门控消费（如 production 禁用 docs）；不再对应 yaml 文件，配置一律读 yaml/default.yaml（默认: development）"
+        default=os.environ.get("ENVIRONMENT", "development"),
+        help="环境名称，默认取环境变量 ENVIRONMENT（未设为 development）；写入 config.environment 供生产门控消费（production 禁用 docs、启动安全校验阻断通配 CORS 等）。不再对应 yaml 文件，配置一律读 yaml/default.yaml"
     )
     parser.add_argument(
         "--host",

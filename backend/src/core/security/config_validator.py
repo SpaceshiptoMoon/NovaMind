@@ -216,7 +216,7 @@ class SecurityConfigValidator:
                 level="WARNING",
                 category="STORAGE",
                 message="MinIO 未启用 SSL",
-                recommendation="生产环境建议启用 SSL (minio.secure: true)",
+                recommendation="MinIO 端点经公网可达时须启用 SSL（环境变量 MINIO_SECURE=true）；compose 内网容器拓扑可保持 false",
                 field_path="minio.secure",
             ))
 

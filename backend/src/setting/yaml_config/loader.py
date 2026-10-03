@@ -163,13 +163,13 @@ class ConfigLoader:
 
 
 def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
-    """把原始配置 dict 映射为强类型 AppConfig（逐节构造 dataclass，未提供的键用默认值；生产环境 MinIO 未开 SSL 时强制纠正并告警）。
+    """把原始配置 dict 映射为强类型 AppConfig（逐节构造 dataclass，未提供的键用默认值）。
 
     Args:
         data: load 产出的原始配置 dict；缺失的节用 dataclass 默认值填充。
 
     Returns:
-        可直接全局使用的 AppConfig 实例（生产环境 MinIO secure 被强制置 True）。
+        可直接全局使用的 AppConfig 实例（minio.secure 严格按配置取值，不静默改写）。
     """
     config = AppConfig()
     config.environment = data.get("environment", "development")
@@ -186,10 +186,14 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     is_production = config.environment == "production"
     minio_secure = minio_cfg.get("secure", False)
     if is_production and not minio_secure:
+        # 只告警不强制改写：secure 是部署拓扑决策（compose bridge 内网 http 合法；
+        # 端点经公网可达才必须 TLS）。静默翻转成 https 会打到 http 端口上直接断连。
         import logging
 
-        logging.warning("Production MinIO should enable SSL; forcing secure=true")
-        minio_secure = True
+        logging.warning(
+            "生产环境 MinIO 未启用 SSL：内网容器拓扑可接受；端点经公网可达时"
+            "须前置 TLS 并设置 MINIO_SECURE=true"
+        )
     config.minio = MinioConfig(
         endpoint=minio_cfg.get("endpoint", "localhost:9000"),
         public_endpoint=minio_cfg.get("public_endpoint"),
