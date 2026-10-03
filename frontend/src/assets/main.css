@@ -9,14 +9,26 @@
    Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  /* Element Plus 主色切中性深灰：所有 el-button--primary / el-link / el-switch /
-     el-tabs / el-pagination / el-checkbox 等组件统一 #3F3F46 系灰阶 */
-  --el-color-primary: #3f3f46;
-  --el-color-primary-light-3: #6b6b73;
-  --el-color-primary-light-5: #97979d;
-  --el-color-primary-light-7: #c3c3c6;
-  --el-color-primary-light-9: #f0f0f1;
-  --el-color-primary-dark-2: #333338;
+  /* Element Plus 主色切松绿：所有 el-button--primary / el-link / el-switch /
+     el-tabs / el-pagination / el-checkbox 等组件统一 #2f5d50 系绿阶 */
+  --el-color-primary: #2f5d50;
+  --el-color-primary-light-3: #557b6f;
+  --el-color-primary-light-5: #7f9c92;
+  --el-color-primary-light-7: #aabdb6;
+  --el-color-primary-light-8: #c6d5cf;
+  --el-color-primary-light-9: #e8efeb;
+  --el-color-primary-dark-2: #264c41;
+
+  /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
+     warning 琥珀、danger 红保留为功能色。
+     info 同步主题化为松烟灰绿（评审 P2-2：EP 默认 #909399 冷灰蓝在暖纸环境违和） */
+  --el-color-info: #6a736c;
+  --el-color-info-light-3: #8b938c;
+  --el-color-info-light-5: #aab1aa;
+  --el-color-info-light-7: #c9cec9;
+  --el-color-info-light-8: #d8dcd8;
+  --el-color-info-light-9: #eef0ee;
+  --el-color-info-dark-2: #586059;
 
   /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
      warning 琥珀、danger 红保留为功能色 */
@@ -40,6 +52,16 @@
   --el-text-color-regular: var(--color-text-secondary);
   --el-text-color-secondary: var(--color-text-muted);
   --el-text-color-placeholder: var(--color-text-faint);
+
+  /* EP 其余 fill/border 档映射到项目 token——EP 默认值是冷灰（#f0f2f5/#fafcff），
+     暖纸底下不映射会显脏；暗色档在 base.css dark 块直接覆盖 */
+  --el-fill-color: var(--color-bg-hover);
+  --el-fill-color-lighter: var(--color-bg-hover);
+  --el-fill-color-extra-light: var(--color-bg);
+  --el-fill-color-dark: var(--color-border);
+  --el-fill-color-darker: var(--color-border);
+  --el-border-color-lighter: var(--color-border-light);
+  --el-border-color-extra-light: var(--color-border-light);
 }
 
 /* ========================================
@@ -76,7 +98,7 @@
 
 .el-button--primary {
   font-weight: var(--weight-medium);
-  /* 主按钮底色统一走 --color-btn-primary（亮色深灰、暗色抬高深灰），
+  /* 主按钮底色统一走 --color-btn-primary（亮色松绿、暗色暗松绿），
      与 --el-color-primary（文字/链接用）解耦 */
   --el-button-bg-color: var(--color-btn-primary);
   --el-button-border-color: var(--color-btn-primary);
@@ -101,7 +123,7 @@
 }
 
 .el-button--default:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-btn-primary);
   outline-offset: 2px;
 }
 
@@ -123,7 +145,7 @@
 }
 
 .el-input__wrapper.is-focus {
-  border-color: var(--color-primary) !important;
+  border-color: var(--color-btn-primary) !important;
   box-shadow: 0 0 0 3px var(--color-primary-muted) !important;
 }
 
@@ -137,7 +159,7 @@
 }
 
 .el-textarea__inner:focus {
-  border-color: var(--color-primary);
+  border-color: var(--color-btn-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted);
 }
 

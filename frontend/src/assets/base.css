@@ -1,44 +1,45 @@
 /* ========================================
-   Design Tokens — Neutral Minimal（shadcn 灰底白卡 + 软黑主按钮）
-   参考：shadcn/ui neutral / LobeChat / Linear——灰底托白卡分层，
-   主按钮软黑（hover 提亮），全 UI 无纯 #000/纯 #FFF 大平面
+   Design Tokens — Pine Ink（松烟墨绿：玉版纸白 + 松烟墨字 + 松绿锚点）
+   自有审美：知识平台的「纸墨 + 松绿」——图书馆绿罩灯/博物馆铭牌的沉稳书卷气；
+   刻意避开三类公版皮（紫蓝渐变 AI 味 / 纯黑白灰 / 奶油底+赤陶橙 Claude 系）；
+   全 UI 无纯 #000/纯 #FFF 大平面
    ======================================== */
 :root {
-  /* Primary — 深灰（zinc-700，介于中灰与软黑之间的「有质感的深」）；图标/焦点/链接/活动态 */
-  --color-primary: #3f3f46;
-  --color-primary-hover: #52525b;
-  --color-primary-subtle: #f5f5f5;
-  --color-primary-muted: rgba(63, 63, 70, 0.06);
+  /* Primary — 松绿文字档 #2f5d50（链接/图标/焦点，白底约 7.5:1）；hover 加深 */
+  --color-primary: #2f5d50;
+  --color-primary-hover: #265044;
+  --color-primary-subtle: #edf2ee;
+  --color-primary-muted: rgba(47, 93, 80, 0.1);
 
-  /* 实心主按钮：深灰，hover 提亮（深按钮 hover 变更深会"下陷"） */
-  --color-btn-primary: #3f3f46;
-  --color-btn-primary-hover: #52525b;
+  /* 实心主按钮：松绿填充 #2f5d50（白字约 7.5:1）；hover 提亮防「下陷」 */
+  --color-btn-primary: #2f5d50;
+  --color-btn-primary-hover: #3a6c5d;
 
-  /* Accent — 与主色统一深灰 */
-  --color-accent: #3f3f46;
-  --color-accent-hover: #52525b;
-  --color-accent-subtle: #f5f5f5;
+  /* Accent — 与主色统一松绿 */
+  --color-accent: #2f5d50;
+  --color-accent-hover: #265044;
+  --color-accent-subtle: #edf2ee;
 
-  /* Text — 中性灰阶（shadcn neutral：前景 9%、次级 45%、弱化 64%） */
-  --color-text: #171717;
-  --color-text-secondary: #616161;
-  --color-text-muted: #8f8f8f;
-  --color-text-faint: #c9c9c9;
+  /* Text — 松烟墨阶（墨色带松绿底调，次级为青灰族） */
+  --color-text: #262b27;
+  --color-text-secondary: #5d645e;
+  --color-text-muted: #6e766e;
+  --color-text-faint: #8a9189;
 
-  /* Background — 灰底托白卡（shadcn：背景 96.1% 亮度、卡片纯白自然浮起） */
-  --color-bg: #f5f5f5;
-  --color-bg-card: #ffffff;
-  --color-bg-card-elevated: #fafafa;
+  /* Background — 玉版纸白托卡（底色一丝青灰纸感、卡片近白自然浮起） */
+  --color-bg: #f3f4ef;
+  --color-bg-card: #fdfdfb;
+  --color-bg-card-elevated: #f7f8f4;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #efefef;
-  --color-bg-sidebar: #fafafa;
-  --color-bg-input: #f5f5f5;
+  --color-bg-hover: #eceee8;
+  --color-bg-sidebar: #f8f9f5;
+  --color-bg-input: #f4f5f0;
 
-  /* Border — 中性灰 */
-  --color-border: #e5e5e5;
-  --color-border-light: #efefef;
-  --color-border-focus: #3f3f46;
+  /* Border — 纸灰发丝线（青灰族） */
+  --color-border: #dfe2da;
+  --color-border-light: #e8eae3;
+  --color-border-focus: #2f5d50;
 
   /* Semantic */
   --color-success: #16a34a;
@@ -104,8 +105,8 @@
   /* Chat */
   --color-user-bubble: var(--color-bg-card-elevated);
   --color-user-bubble-text: var(--color-text);
-  --color-chat-bg: #ffffff;
-  --color-bg-input-bar: rgba(255, 255, 255, 0.85);
+  --color-chat-bg: #fdfdfb;
+  --color-bg-input-bar: rgba(253, 253, 251, 0.85);
   --blur-input: 4px;
 
   /* File type colors */
@@ -144,7 +145,7 @@
 
   /* Glass effect */
   --blur-header: 12px;
-  --color-bg-header: rgba(255, 255, 255, 0.85);
+  --color-bg-header: rgba(253, 253, 251, 0.85);
 
   /* Auth gradient */
   --color-gradient-start: var(--color-primary);
@@ -250,44 +251,46 @@ a:hover {
    Dark Theme — [data-theme='dark'] 挂在 <html> 上
    仅覆盖与亮色不同源的 token；经 var() 间接引用的 token 自动跟随
    ======================================== */
-[data-theme='dark'] {
+/* html[] 升特异性 (0,1,1)：压过 main.css :root 中的 EP 亮色硬编码（同特异性时
+   源序靠后者胜，暗色块会被 main.css 覆盖——第 2 轮评审 N-1 实测抓包） */
+html[data-theme='dark'] {
   color-scheme: dark;
 
-  /* Primary 反转为浅色：图标/焦点/链接/活动态在暗底上保持可见 */
-  --color-primary: #ededed;
-  --color-primary-hover: #ffffff;
-  --color-primary-subtle: #22252b;
-  --color-primary-muted: rgba(237, 237, 237, 0.07);
+  /* Primary 提亮为浅松：链接/tab/tag 文字在暗卡上 ≥4.5:1（评审 P2-1 修正档） */
+  --color-primary: #8fc0ae;
+  --color-primary-hover: #a5cfbf;
+  --color-primary-subtle: #233029;
+  --color-primary-muted: rgba(143, 192, 174, 0.12);
 
-  /* 实心主按钮：大量调用方硬编码白字与之配对，抬亮一档与卡片区分 */
-  --color-btn-primary: #2e323a;
-  --color-btn-primary-hover: #3a3f48;
+  /* 实心主按钮：暗底松绿（白字 6.9:1，与卡片分层清晰） */
+  --color-btn-primary: #35604f;
+  --color-btn-primary-hover: #40705e;
 
-  /* Accent 抬亮 */
-  --color-accent: #a8aeb8;
-  --color-accent-hover: #c3c8d0;
-  --color-accent-subtle: #22252b;
+  /* Accent 提亮 */
+  --color-accent: #8fc0ae;
+  --color-accent-hover: #a5cfbf;
+  --color-accent-subtle: #233029;
 
-  /* Text — 中性灰阶 */
-  --color-text: #ededed;
-  --color-text-secondary: #a6a6a6;
-  --color-text-muted: #737373;
-  --color-text-faint: #404040;
+  /* Text — 松烟灰阶（青绿底调，不偏蓝不偏棕） */
+  --color-text: #e3e6e0;
+  --color-text-secondary: #a8afa6;
+  --color-text-muted: #868d84;
+  --color-text-faint: #6b726a;
 
-  /* Background — 灰底托白卡（暗色反转：底更深、卡抬半档） */
-  --color-bg: #0f1115;
-  --color-bg-card: #16181d;
-  --color-bg-card-elevated: #1b1e24;
+  /* Background — 松烟黑分层（底更深、卡抬半档；色相带松绿底调） */
+  --color-bg: #161917;
+  --color-bg-card: #1e211f;
+  --color-bg-card-elevated: #252925;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #22252b;
-  --color-bg-sidebar: #131519;
-  --color-bg-input: #1b1e24;
+  --color-bg-hover: #2c312c;
+  --color-bg-sidebar: #1a1d1b;
+  --color-bg-input: #252925;
 
-  /* Border */
-  --color-border: #2a2e36;
-  --color-border-light: #22252b;
-  --color-border-focus: #ededed;
+  /* Border — 松烟暗线 */
+  --color-border: #31362f;
+  --color-border-light: #292d28;
+  --color-border-focus: #8fc0ae;
 
   /* Semantic — 文字色提亮、subtle 底改暗色透明底；success 恢复功能绿（提亮变体） */
   --color-success: #4ade80;
@@ -308,9 +311,9 @@ a:hover {
   --color-file-audio: #f472b6;
 
   /* Chat / 布局浮层 */
-  --color-chat-bg: #16181d;
-  --color-bg-input-bar: rgba(22, 24, 29, 0.85);
-  --color-bg-header: rgba(15, 17, 21, 0.85);
+  --color-chat-bg: #1e211f;
+  --color-bg-input-bar: rgba(30, 33, 31, 0.85);
+  --color-bg-header: rgba(22, 25, 23, 0.85);
 
   /* Shadow — 暗色下加深一档 */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
@@ -322,12 +325,12 @@ a:hover {
 
   /* Element Plus — main.css :root 中硬编码的 el 色板需在此重定义；
      经 var(--color-*) 间接映射的 el 变量自动跟随 */
-  --el-color-primary: #ededed;
-  --el-color-primary-light-3: #d4d4d4;
-  --el-color-primary-light-5: #b5b5b5;
-  --el-color-primary-light-7: #8f8f8f;
-  --el-color-primary-light-9: #22252b;
-  --el-color-primary-dark-2: #ffffff;
+  --el-color-primary: #8fc0ae;
+  --el-color-primary-light-3: #a3ccc0;
+  --el-color-primary-light-5: #b8d9d1;
+  --el-color-primary-light-7: #cde6e1;
+  --el-color-primary-light-9: #233029;
+  --el-color-primary-dark-2: #7fb2a0;
 
   --el-color-success: #4ade80;
   --el-color-success-light-3: #6ee7a0;
@@ -341,28 +344,28 @@ a:hover {
   --el-bg-color-overlay: var(--color-bg-card-elevated);
 
   --el-fill-color-blank: var(--color-bg-card);
-  --el-fill-color: #22252b;
+  --el-fill-color: #2c312c;
   --el-fill-color-light: var(--color-bg-card-elevated);
-  --el-fill-color-lighter: #262a31;
+  --el-fill-color-lighter: #343933;
   --el-fill-color-extra-light: var(--color-bg-card-elevated);
-  --el-fill-color-dark: #2a2e36;
-  --el-fill-color-darker: #31353e;
+  --el-fill-color-dark: #3b403a;
+  --el-fill-color-darker: #444a43;
 }
 
-/* Element Plus 以 primary 作「控件选中底色」的场景固定为中灰：
-   浅色 primary 底 + 白字/白点会失去对比（switch/checkbox/radio/主按钮） */
-[data-theme='dark'] .el-switch.is-checked .el-switch__core {
-  background: #6b7280;
-  border-color: #6b7280;
+/* Element Plus 以 primary 作「控件选中底色」的场景固定为暗松绿：
+   暗底上浅松底+浅字失去对比（switch/checkbox/radio），用松绿填充 + 白字 */
+html[data-theme='dark'] .el-switch.is-checked .el-switch__core {
+  background: #35604f;
+  border-color: #35604f;
 }
 
-[data-theme='dark'] .el-checkbox__input.is-checked .el-checkbox__inner,
-[data-theme='dark'] .el-checkbox__input.is-indeterminate .el-checkbox__inner {
-  background: #6b7280;
-  border-color: #6b7280;
+html[data-theme='dark'] .el-checkbox__input.is-checked .el-checkbox__inner,
+html[data-theme='dark'] .el-checkbox__input.is-indeterminate .el-checkbox__inner {
+  background: #35604f;
+  border-color: #35604f;
 }
 
-[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
-  background: #6b7280;
-  border-color: #6b7280;
+html[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
+  background: #35604f;
+  border-color: #35604f;
 }

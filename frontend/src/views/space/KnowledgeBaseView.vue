@@ -491,6 +491,7 @@ onMounted(() => {
 
 .stat-card:hover {
   border-color: var(--color-border-focus);
+  background: var(--color-bg-hover);
 }
 
 .stat-card.is-active {

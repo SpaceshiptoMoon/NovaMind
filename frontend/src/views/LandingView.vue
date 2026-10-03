@@ -151,7 +151,8 @@ function scrollToFeatures() {
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  background: rgba(245, 243, 240, 0.85);
+  /* token 化：暗色下随 --color-bg-header 翻转（评审 N-2：亮色硬编码条在暗页上品牌字 1.2:1） */
+  background: var(--color-bg-header);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--color-border-light);
 }
