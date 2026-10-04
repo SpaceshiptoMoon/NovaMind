@@ -615,6 +615,7 @@ async def process_video_document(
     vlm_concurrency = max(1, min(20, int(get_config().knowledge_base.parsing.video_vlm_concurrency)))
     # 高级参数（可选，留空用引擎层默认）
     scene_threshold = video_config.get("scene_threshold")
+    scene_min_interval = video_config.get("scene_min_interval")
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
     group_size = video_config.get("group_size") or 3
 
@@ -690,6 +691,8 @@ async def process_video_document(
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
             scene_kwargs["scene_threshold"] = scene_threshold
+        if scene_min_interval is not None:
+            scene_kwargs["min_interval"] = scene_min_interval
         if file_path is not None:
             frames = await extract_frames_scene_from_path(file_path, max_frames, **scene_kwargs)
         else:
@@ -800,6 +803,8 @@ async def process_video_document(
     frame_timeline_map: dict[int, tuple[float | None, float | None]] = {}
     frame_groups: dict[int, list[int]] | None = None
     descriptions_count = 0
+    # VLM 失败帧出参（引擎写入 failed 计数；全失败走异常路径不写）
+    vlm_stats: dict[str, int] = {}
 
     try:
         if strategy == "grouped":
@@ -811,7 +816,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             lines: list[str] = []
             frame_groups = {}
@@ -841,7 +846,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             frame_timeline_map = build_frame_timeline_map(descriptions)
             descriptions_count = len(descriptions)
@@ -853,7 +858,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             full_text_lines = [f"{format_time_anchor(ts, idx)} {desc}" for desc, ts, idx in descriptions]
             full_text = "\n\n".join(full_text_lines)
@@ -987,6 +992,13 @@ async def process_video_document(
 
     if task:
         desc_metrics: dict[str, Any] = {"description_count": descriptions_count}
+        if vlm_stats.get("failed"):
+            # 单帧 VLM 失败从静默留洞变可观测（与音轨归并 metrics 同面板）
+            desc_metrics["vlm_failed_frames"] = vlm_stats["failed"]
+            logger.warning(
+                "部分帧 VLM 描述失败（已跳过留洞）",
+                document_id=document.id, failed_frames=vlm_stats["failed"],
+            )
         if audio_merge_metrics:
             desc_metrics.update(audio_merge_metrics)
         await finish_step_committed(session, task, "descriptions_generated", metrics=desc_metrics)

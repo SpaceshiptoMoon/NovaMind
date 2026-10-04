@@ -199,7 +199,7 @@ class VideoParsingConfig(BaseModel):
         default="simple",
         description="视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
     )
-    frame_interval: float = Field(default=5.0, ge=1.0, le=60.0)
+    frame_interval: float = Field(default=5.0, ge=0.5, le=60.0)
     max_frames: int = Field(default=60, ge=1, le=1000)
     vlm_description_enabled: bool = Field(default=False)
     vlm_model: str | None = Field(default=None)
@@ -211,6 +211,9 @@ class VideoParsingConfig(BaseModel):
     # 高级参数（可选，留空用引擎层默认）：
     # 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3。
     scene_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # 场景抽帧切换点间隔保护（strategy=scene，秒），默认 2.0。动作密集视频
+    # （下锅/倒料 2-3 秒）可调小到 0.5，让相邻切换点都留帧，不再被间隔保护吞掉。
+    scene_min_interval: float | None = Field(default=None, ge=0.1, le=10.0)
     # 去重相似度阈值（strategy=dedup），0~1，默认 0.95。
     dedup_similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     # 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3。

@@ -130,6 +130,22 @@ async def test_describe_single_skips_failed_frame():
 
 
 @pytest.mark.anyio("asyncio")
+async def test_describe_single_stats_counts_failed_frames():
+    """stats 出参：部分失败帧计数（含空响应帧），全成功为 0。"""
+    vlm = FakeVlmClient(["d0", Exception("boom"), "  "])
+    stats: dict[str, int] = {}
+    out = await describe_single(_frames(3), vlm, "prompt", logger=fake_log, stats=stats)
+
+    assert stats == {"failed": 2}
+    assert len(out) == 1
+
+    ok = FakeVlmClient(["d0", "d1"])
+    stats2: dict[str, int] = {}
+    await describe_single(_frames(2), ok, "prompt", logger=fake_log, stats=stats2)
+    assert stats2 == {"failed": 0}
+
+
+@pytest.mark.anyio("asyncio")
 async def test_describe_single_all_fail_raises():
     """全部帧失败抛 AllFrameDescriptionsFailedError，携带 total_frames。"""
     vlm = FakeVlmClient([Exception("e0"), Exception("e1")])
