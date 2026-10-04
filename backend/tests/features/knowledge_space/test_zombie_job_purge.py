@@ -15,6 +15,7 @@ import asyncio
 import pickle
 import sys
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -355,6 +356,117 @@ def test_recover_orphan_requeue_branch_purges_old_jobs(monkeypatch):
     assert calls["bind"] == [(574, "recovered-job")]
     assert calls["purge"] == [(574, "recovered-job")]
     assert calls["unbind"] == []
+
+
+def test_recover_orphan_covers_stale_pending(monkeypatch):
+    """超龄 PENDING 孤儿也要收编（item 755 卡 25 天事故）。
+
+    任务行停在 PENDING、arq job 已消失（job 键 TTL 过期/Redis 清空）时，
+    原 recover 只查 PROCESSING，PENDING 无人收编 → 文档永久卡「处理中」。
+    正用例：queued_at 早于阈值 1h 的 PENDING 被重入队；
+    相邻正常场景：刚入队（阈值内）的 PENDING 不误伤。
+    """
+    from novamind.shared.utils.time_utils import now_china
+
+    engine = asyncio.run(_setup_sqlite())
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    calls = {"unbind": [], "purge": [], "bind": []}
+
+    async def _run():
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            # 超龄 PENDING（25 天前入队）——应被收编
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="lost-job",
+                    retry_count=1,
+                    queued_at=now_china() - timedelta(days=25),
+                )
+            )
+            await session.commit()
+
+            _make_recover_patches(monkeypatch=monkeypatch, session=session, max_tries=3, calls=calls)
+            recovered = await recover_orphan_documents()
+            task = (await session.execute(select(DocumentTask).where(DocumentTask.id == 1))).scalars().one()
+            return recovered, task
+
+    recovered, task = asyncio.run(_run())
+    asyncio.run(engine.dispose())
+
+    assert recovered == 1
+    assert task.status == TaskStatus.PENDING  # 重入队后仍为 PENDING，等新 job 消费
+    assert task.job_id == "recovered-job"
+    assert calls["bind"] == [(574, "recovered-job")]
+    assert calls["purge"] == [(574, "recovered-job")]
+
+
+def test_recover_orphan_skips_fresh_pending(monkeypatch):
+    """刚入队的 PENDING（阈值 1h 内）不被误收编——正常排队任务重入队会产生重复 job。"""
+    from novamind.shared.utils.time_utils import now_china
+
+    engine = asyncio.run(_setup_sqlite())
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    calls = {"unbind": [], "purge": [], "bind": []}
+
+    async def _run():
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="fresh-job",
+                    retry_count=0,
+                    queued_at=now_china() - timedelta(minutes=5),
+                )
+            )
+            await session.commit()
+
+            _make_recover_patches(monkeypatch=monkeypatch, session=session, max_tries=3, calls=calls)
+            recovered = await recover_orphan_documents()
+            task = (await session.execute(select(DocumentTask).where(DocumentTask.id == 1))).scalars().one()
+            return recovered, task
+
+    recovered, task = asyncio.run(_run())
+    asyncio.run(engine.dispose())
+
+    assert recovered == 0
+    assert task.job_id == "fresh-job"  # 未被动过
+    assert calls["bind"] == []
 
 
 # ========== _enqueue_document_processing：僵尸 job 自愈放行 ==========

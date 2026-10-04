@@ -884,6 +884,11 @@ async def recover_orphan_documents() -> int:
     async with get_db_session() as session:
         repo = DocumentTaskRepository(session)
         tasks = await repo.get_processing_tasks()
+        # PENDING 孤儿：任务行停在 PENDING 但 arq 层 job 已消失（job 键 TTL 过期
+        # 或 Redis 被清）——无人消费也无人收编，文档永久卡「处理中」（doc574/item755
+        # 卡 25 天事故）。与 PROCESSING 同口径收编。
+        pending_tasks = await repo.get_stale_pending_tasks()
+        tasks.extend(pending_tasks)
 
         if not tasks:
             logger.info("无需恢复的孤儿文档")

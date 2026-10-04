@@ -4,9 +4,11 @@
 锁读（入队防重专用）与独立连接的紧急失败兜底。
 """
 from typing import Any
+from datetime import timedelta
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -291,6 +293,29 @@ class DocumentTaskRepository:
     async def get_processing_tasks(self) -> list[DocumentTask]:
         """列出全部 PROCESSING 状态的任务项（worker 自愈对账用）。"""
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.status == TaskStatus.PROCESSING))
+        return list(result.scalars().all())
+
+    async def get_stale_pending_tasks(self) -> list[DocumentTask]:
+        """列出疑似孤儿的 PENDING 任务项。
+
+        PENDING 且 queued_at 早于阈值：正常队列在 max(重试间隔, 数分钟) 内必被消费
+        或转 PROCESSING，超龄 PENDING 意味着 arq job 已丢失（job 键 TTL 过期或
+        Redis 被清），需要与 PROCESSING 孤儿同口径收编。阈值取保守的 1 小时，
+        避免误伤启动窗口内正常排队的任务。
+
+        Args:
+            stale_after_seconds: 判定超龄的秒数阈值，默认 3600。
+
+        Returns:
+            超龄 PENDING 任务项列表。
+        """
+        threshold = now_china() - timedelta(seconds=3600)
+        result = await self.session.execute(
+            select(DocumentTask).where(
+                DocumentTask.status == TaskStatus.PENDING,
+                DocumentTask.queued_at < threshold,
+            )
+        )
         return list(result.scalars().all())
 
     async def get_by_job_id(self, job_id: str) -> DocumentTask | None:
