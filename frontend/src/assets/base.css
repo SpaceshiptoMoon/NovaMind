@@ -35,19 +35,19 @@
   --color-text-muted: #5f5f5f;
   --color-text-faint: #8c8c8c;
 
-  /* Background — 灰白纸托白卡（neutral-50 #FAFAFA，shadcn Neutral 标准底） */
-  --color-bg: #fafafa;
+  /* Background — 灰白纸托白卡（底降一档 #F5F5F3 与白卡拉开 2% 明度差，消除"白上白"灰朦感） */
+  --color-bg: #f5f5f3;
   --color-bg-card: #ffffff;
   --color-bg-card-elevated: #ffffff;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #f5f5f5;
-  --color-bg-sidebar: #fafafa;
+  --color-bg-hover: #efefed;
+  --color-bg-sidebar: #f7f7f5;
   --color-bg-input: #ffffff;
 
-  /* Border — 中性发丝线（neutral 零色度灰，不 tint） */
-  --color-border: #e5e5e5;
-  --color-border-light: #ededed;
+  /* Border — 中性发丝线（border 提一档到 #DCDCD8 保证卡缘在 2% 底差下仍可辨） */
+  --color-border: #dcdcd8;
+  --color-border-light: #e7e7e3;
   --color-border-focus: #20618f;
 
   /* Semantic — Notion 四组淡彩（深字 + 淡底，仅状态表达不参与装饰） */
@@ -293,8 +293,8 @@ html[data-theme='dark'] {
   --color-text-muted: #a1a1a1;
   --color-text-faint: #828282;
 
-  /* Background — 冷墨黑分层（zinc dark：底最深、卡抬半档） */
-  --color-bg: #09090b;
+  /* Background — 冷墨黑分层（底最深、卡抬半档；亮色侧拉开底差后暗色同步加深底档） */
+  --color-bg: #0c0c0e;
   --color-bg-card: #18181b;
   --color-bg-card-elevated: #1e1e21;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
@@ -303,9 +303,9 @@ html[data-theme='dark'] {
   --color-bg-sidebar: #101012;
   --color-bg-input: #1e1e21;
 
-  /* Border — 冷墨暗线（zinc dark 发丝档） */
-  --color-border: #2e2e33;
-  --color-border-light: #26262a;
+  /* Border — 冷墨暗线（与亮色同逻辑提一档，卡缘在深底上更可辨） */
+  --color-border: #333338;
+  --color-border-light: #2a2a2f;
   --color-border-focus: #86afd4;
 
   /* Semantic — 文字提亮、subtle 底改暗色透明底 */

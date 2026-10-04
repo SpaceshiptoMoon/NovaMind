@@ -7,62 +7,48 @@
         <!-- 非法 kbId（地址栏手改/坏链接）空态，替代打出 NaN 请求 -->
         <el-empty v-if="kbInvalid" description="知识库不存在或链接无效，请从知识库列表重新进入" />
 
-        <section v-else class="kb-overview">
-          <div class="kb-overview__copy">
-            <span class="kb-overview__eyebrow">知识库概览</span>
-            <h1 class="kb-overview__title">{{ kbName || '文档管理' }}</h1>
-            <p class="kb-overview__desc">当前知识库的文档概况和继承能力都集中展示在这里。</p>
-
-            <div class="kb-overview__stats">
-              <div class="kb-stat-card">
-                <span class="kb-stat-card__label">文档</span>
-                <strong>{{ kbStats.document_count }}</strong>
-              </div>
-              <div class="kb-stat-card">
-                <span class="kb-stat-card__label">分块</span>
-                <strong>{{ kbStats.chunk_count }}</strong>
-              </div>
-              <div class="kb-stat-card">
-                <span class="kb-stat-card__label">已完成</span>
-                <strong>{{ kbStats.completed_documents }}</strong>
-              </div>
-              <div class="kb-stat-card">
-                <span class="kb-stat-card__label">处理中</span>
-                <strong>{{ kbStats.processing_documents }}</strong>
-              </div>
-            </div>
+        <section v-else class="page-head">
+          <div class="page-head__main">
+            <p class="page-head__eyebrow">知识库</p>
+            <h1 class="page-head__title">{{ kbName || '文档管理' }}</h1>
+            <p class="page-head__desc" :title="inheritSummary">
+              <span class="inherit-dot" :class="{ 'is-off': !embeddingInfo.textModel }"></span>
+              <span class="page-head__desc-text">{{ inheritSummary }}</span>
+            </p>
           </div>
-
-          <div class="kb-overview__inherit">
-            <div class="inherit-head">
-              <h2>继承能力</h2>
-              <p>以下能力由空间统一提供。</p>
-            </div>
-
-            <div class="inherit-grid">
-              <div class="inherit-card">
-                <span class="inherit-label">文本向量模型</span>
-                <strong class="inherit-value">{{ embeddingInfo.textModel || '未配置' }}</strong>
-                <span class="inherit-meta">{{
-                  embeddingInfo.textDimension ? `维度 ${embeddingInfo.textDimension}` : '维度待检测'
-                }}</span>
-              </div>
-
-              <div class="inherit-card inherit-card--wide">
-                <span class="inherit-label">可用类型</span>
-                <strong class="inherit-value">{{ readableSpaceTypes }}</strong>
-                <span class="inherit-meta">知识库可上传的数据类型会跟随这里变化。</span>
-              </div>
-            </div>
-          </div>
+          <el-button type="primary" class="page-head__cta" @click="showUploadDialog">
+            <el-icon><Upload /></el-icon>
+            上传文档
+          </el-button>
         </section>
+
+        <!-- 单行统计条：常显三项，处理中/待处理仅在有活跃文档时出现（避免满屏无效 0） -->
+        <div class="stats-bar">
+          <div class="stats-item">
+            <span class="stats-label">文档</span>
+            <strong class="stats-value">{{ kbStats.document_count }}</strong>
+          </div>
+          <span class="stats-divider"></span>
+          <div class="stats-item">
+            <span class="stats-label">分块</span>
+            <strong class="stats-value">{{ kbStats.chunk_count }}</strong>
+          </div>
+          <span class="stats-divider"></span>
+          <div class="stats-item">
+            <span class="stats-label">已完成</span>
+            <strong class="stats-value">{{ kbStats.completed_documents }}</strong>
+          </div>
+          <template v-if="kbStats.processing_documents > 0">
+            <span class="stats-divider"></span>
+            <div class="stats-item">
+              <span class="stats-label">处理中</span>
+              <strong class="stats-value is-warning">{{ kbStats.processing_documents }}</strong>
+            </div>
+          </template>
+        </div>
 
         <div class="action-bar">
           <div class="left-actions">
-            <el-button type="primary" @click="showUploadDialog">
-              <el-icon><Upload /></el-icon>
-              上传文档
-            </el-button>
             <el-button v-if="selectedIds.length > 0" @click="showProcessDialog(selectedIds)">
               批量处理 ({{ selectedIds.length }})
             </el-button>
@@ -100,14 +86,29 @@
           </div>
         </div>
 
-        <!-- 文档卡片网格（ima 式：类型色块 + 文件名 + 元信息 + hover 操作） -->
+        <!-- 文档卡片网格（类型色块 + 文件名 + 元信息 + hover 操作） -->
         <div v-loading="loading" class="doc-grid-wrap">
           <div v-if="documents.length === 0 && !loading" class="doc-grid-empty">
-            {{
-              searchKeyword || statusFilter !== undefined
-                ? '没有符合条件的文档'
-                : '暂无文档，点击左上角上传'
-            }}
+            <EmptyState
+              :variant="searchKeyword || statusFilter !== undefined ? 'search' : 'data'"
+              :headline="
+                searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '还没有文档'
+              "
+              :description="
+                searchKeyword || statusFilter !== undefined
+                  ? '换个关键词或清除筛选条件再试'
+                  : '上传 PDF、Word、Markdown 等文件，处理后即可检索提问'
+              "
+            >
+              <el-button
+                v-if="!searchKeyword && statusFilter === undefined"
+                type="primary"
+                @click="showUploadDialog"
+              >
+                <el-icon><Upload /></el-icon>
+                上传第一个文档
+              </el-button>
+            </EmptyState>
           </div>
           <div v-for="doc in documents" :key="doc.id" class="doc-card" @click="goToDetail(doc.id)">
             <!-- 选择复选框（hover / 已选显示） -->
@@ -137,7 +138,7 @@
                 <span class="meta-dot">·</span>
                 <span>{{ doc.chunk_count ?? 0 }} 分块</span>
                 <span class="meta-dot">·</span>
-                <span>{{ formatDate(doc.created_at) }}</span>
+                <span>{{ formatShortDate(doc.created_at) }}</span>
               </div>
             </div>
 
@@ -340,7 +341,8 @@ import {
   taskStatusMap,
 } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
-import { formatDate, formatFileSize } from '@/utils/format'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { formatFileSize, formatShortDate } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -418,6 +420,14 @@ const readableSpaceTypes = computed(() => {
     audio: '音频',
   }
   return spaceTypes.value.map((item) => labels[item] || item).join(' / ')
+})
+
+/** 页头继承能力一行摘要：向量模型状态 + 可用类型（替代旧的双卡占版面） */
+const inheritSummary = computed(() => {
+  const model = embeddingInfo.value.textModel
+  const dim = embeddingInfo.value.textDimension
+  const modelPart = model ? `${model}${dim ? `（${dim} 维）` : ''}` : '向量模型未配置'
+  return `${modelPart} · 可上传 ${readableSpaceTypes.value}`
 })
 
 const uploadTipText = computed(() => {
@@ -863,6 +873,27 @@ onMounted(async () => {
   height: 100%;
 }
 
+/* 窄屏：KB 二级侧栏改横向滚动条（WikiBrowserView 960px 同款降级思路，
+   侧栏不再挤压主内容） */
+@media (max-width: 960px) {
+  .kb-layout {
+    flex-direction: column;
+  }
+
+  .kb-layout :deep(.kb-sidebar) {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-light);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .kb-layout :deep(.sidebar-item.active)::before {
+    display: none;
+  }
+}
+
 .kb-content {
   flex: 1;
   min-width: 0;
@@ -870,159 +901,109 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-.kb-overview {
-  display: grid;
-  /* 右列下限降至 300px，且 1280px 以下提前折单列，避免统计卡被挤爆 */
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 400px);
-  align-items: stretch;
-  width: 100%;
-  margin: 0 0 var(--space-5);
+/* ===== 紧凑页头：左标题+继承摘要，右主 CTA（对齐 ModelConfigView page-header 骨架） ===== */
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: var(--space-4);
-  padding: 0;
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-4);
 }
 
-.kb-overview__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 20px 22px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-3xl);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-md);
-  min-width: 0;
-}
-
-.kb-overview__eyebrow {
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 5px 10px;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+.page-head__eyebrow {
+  margin: 0 0 2px;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.1em;
+  color: var(--color-text-faint);
 }
 
-.kb-overview__title {
+.page-head__title {
   margin: 0;
-  font-size: clamp(24px, 2.6vw, 30px);
-  line-height: 1.1;
-  letter-spacing: -0.025em;
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
 }
 
-.kb-overview__desc {
-  max-width: 460px;
-  margin: 0;
-  color: var(--color-text-secondary);
-  line-height: var(--leading-relaxed);
-  font-size: 13px;
-}
-
-.kb-overview__stats {
-  display: grid;
-  /* auto-fit：视口收窄时卡片自动换行（2 列/1 列），不再强撑 4 列挤爆数字 */
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
-  max-width: 100%;
-  margin-top: 2px;
-}
-
-.kb-stat-card {
+.page-head__desc {
   display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  min-height: 88px;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-sm);
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
   min-width: 0;
-  overflow: hidden;
+  max-width: 560px;
 }
 
-.kb-stat-card__label {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+.page-head__main {
+  /* flex 链允许收缩（min-width:auto 会拒绝窄于内容），desc 才能收到省略号 */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* 摘要文本单独收敛省略（flex 子项 text-overflow 需挂在文本节点上才生效） */
+.page-head__desc-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.kb-stat-card strong {
-  color: var(--color-text);
-  font-size: clamp(20px, 2.4vw, 30px);
-  line-height: 1;
-  letter-spacing: -0.035em;
-  font-family: var(--font-display);
+/* 继承能力状态点：已配置=墨水蓝、未配置=灰（页头一行内的轻量状态锚点） */
+.inherit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  flex-shrink: 0;
 }
 
-.kb-overview__inherit {
+.inherit-dot.is-off {
+  background: var(--color-text-faint);
+}
+
+/* ===== 单行统计条（WikiBrowserView wiki-stats 同款语言） ===== */
+.stats-bar {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  margin: 0 0 var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-3xl);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-md);
-  min-width: 0;
-}
-
-.inherit-head h2 {
-  margin: 0 0 4px;
-  font-size: 16px;
-}
-
-.inherit-head p {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: var(--leading-relaxed);
-}
-
-.inherit-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.inherit-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-xl);
   background: var(--color-bg-card);
-  position: relative;
-  overflow: hidden;
 }
 
-.inherit-card--wide .inherit-value {
-  line-height: 1.4;
+.stats-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
-.inherit-label {
+.stats-label {
   color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-xs);
 }
 
-.inherit-value {
-  color: var(--color-text);
-  font-size: 13px;
-  font-family: var(--font-mono);
-  word-break: break-word;
+.stats-value {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
-.inherit-meta {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
+.stats-value.is-warning {
+  color: var(--color-warning);
+}
+
+.stats-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--color-border-light);
 }
 
 .action-bar {
@@ -1150,10 +1131,7 @@ onMounted(async () => {
 
 .doc-grid-empty {
   grid-column: 1 / -1;
-  padding: var(--space-10) var(--space-4);
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--color-text-faint);
+  padding: var(--space-6) var(--space-4) var(--space-10);
 }
 
 .doc-card {
@@ -1170,6 +1148,8 @@ onMounted(async () => {
   border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   cursor: pointer;
+  /* 文件名两行化后统一高度基准，单行名与双行名卡片不忽高忽低 */
+  min-height: 76px;
   transition:
     border-color var(--transition-fast),
     box-shadow var(--transition-fast),
@@ -1224,9 +1204,14 @@ onMounted(async () => {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
+  /* 长文件名两行收敛（学术论文标题普遍超长，单行省略丢信息），配 line-clamp */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
+  line-height: 1.45;
 }
 
 .doc-card-meta {
@@ -1237,6 +1222,7 @@ onMounted(async () => {
   color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta-dot {
@@ -1269,27 +1255,18 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-@media (max-width: 1280px) {
-  .kb-overview {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 1100px) {
   /* 中窄视口：内容区留白收紧 */
   .kb-content {
     padding: var(--space-4) var(--space-3);
   }
-
-  .kb-overview__copy,
-  .kb-overview__inherit {
-    padding: var(--space-4);
-  }
 }
 
 @media (max-width: 900px) {
+  /* 单列且允许轨道收到 0：极窄视口下卡片跟容器宽收缩（minmax 下限 0 防固定 min 300px
+     撑出容器内横向滚动——评审 320px 实测 362px 列宽溢出教训） */
   .doc-grid-wrap {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .action-bar {
@@ -1334,6 +1311,27 @@ onMounted(async () => {
 
   .search-input {
     width: 100%;
+  }
+}
+
+/* 极窄视口（≤480px）：卡片内部换结构——hover 操作列与复选框隐藏（触屏无 hover，
+   操作入口由详情页承载），卡片改纵向堆叠（cover 上、名称中、meta 下、状态标签尾），
+   名称列拿到满宽不再被固定子项挤压（R2/R3 评审 320px 实测：两行堆叠下 body 仅 56px） */
+@media (max-width: 480px) {
+  .doc-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .doc-card-actions,
+  .doc-card-check {
+    display: none;
+  }
+
+  .doc-card-side {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 }
 </style>

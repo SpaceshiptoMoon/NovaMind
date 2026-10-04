@@ -55,7 +55,7 @@ defineProps<{
 
 .sidebar-item.active {
   color: var(--color-primary);
-  background: var(--el-color-primary-light-9);
+  background: var(--color-primary-subtle);
   font-weight: var(--weight-semibold);
 }
 
@@ -67,7 +67,7 @@ defineProps<{
   transform: translateY(-50%);
   width: 3px;
   height: 20px;
-  background: var(--color-chip-active);
+  background: var(--color-primary);
   border-radius: 0 3px 3px 0;
 }
 

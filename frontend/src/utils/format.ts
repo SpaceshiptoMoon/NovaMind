@@ -25,6 +25,19 @@ export function formatDate(date?: string | null): string {
   }
 }
 
+/** 短日期（卡片元信息等窄空间用：当年省年份，如 09-24 / 2025-12-01） */
+export function formatShortDate(date?: string | null): string {
+  if (!date) return '-'
+  try {
+    const d = new Date(date)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    return d.getFullYear() === new Date().getFullYear() ? md : `${d.getFullYear()}-${md}`
+  } catch {
+    return '-'
+  }
+}
+
 /** 格式化音频/视频时长 (秒 → M:SS) */
 export function formatDuration(seconds: number | undefined | null): string {
   if (seconds == null) return '--:--'
