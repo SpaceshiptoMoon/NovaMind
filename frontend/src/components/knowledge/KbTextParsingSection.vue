@@ -26,10 +26,9 @@
           <div class="text-strategy-copy">
             <span class="text-strategy-label">{{ item.label }}</span>
           </div>
-          <!-- deepdocOnly 类型唯一合法策略即 deepdoc，渲染为固定徽标而非单选项下拉 -->
-          <span v-if="item.deepdocOnly" class="deepdoc-badge">DeepDoc</span>
-          <el-select v-else v-model="configForm[item.key]" style="width: 180px">
-            <el-option label="默认" value="default" />
+          <!-- deepdocOnly 类型仅 DeepDoc 一个合法选项（后端 Literal["deepdoc"]），不显示「默认」 -->
+          <el-select v-model="configForm[item.key]" style="width: 180px">
+            <el-option v-if="!item.deepdocOnly" label="默认" value="default" />
             <el-option label="DeepDoc" value="deepdoc" />
           </el-select>
         </div>
@@ -136,25 +135,5 @@ defineProps<{
 .text-strategy-copy small {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
-}
-
-.deepdoc-badge {
-  /* 与同行 el-select 输入框同尺寸对齐：32px 高 / 180px 宽 / 14px 字号 / base 圆角，
-     视觉上呈现为「锁定的输入框」而非游离标签 */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 180px;
-  height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
-  font-size: 14px;
-  font-weight: var(--weight-semibold);
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 </style>
