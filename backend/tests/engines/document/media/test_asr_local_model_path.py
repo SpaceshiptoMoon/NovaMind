@@ -37,13 +37,24 @@ def _clear_env(monkeypatch):
 
 
 def test_default_model_dir_points_to_repo_cache(monkeypatch):
-    """无 AudioConfig、无环境变量时回退默认 backend/.cache/faster-whisper/tiny。"""
+    """无 AudioConfig、无 YAML 配置时回退引擎默认档（生产 large-v3）缓存目录。
+
+    2026-10 识别质量批次：默认档从 tiny 升为 DEFAULT_LOCAL_WHISPER_MODEL
+    （面向生产；开发机在 YAML 显式降档），目录命名约定不变。
+    """
     _clear_env(monkeypatch)
-    model_dir = _resolve_local_whisper_model_dir()
-    expected = BACKEND_ROOT / ".cache" / "faster-whisper" / "tiny"
-    assert model_dir == expected
-    # 模型实际存在于该默认目录
-    assert (model_dir / "model.bin").exists(), f"model.bin missing at {model_dir}"
+    # 隔离全局配置单例（防其它测试污染/防读到真实 YAML 的 local_whisper_model）
+    from novamind.setting.yaml_config import get_config
+    original = get_config().knowledge_base.parsing.local_whisper_model
+    get_config().knowledge_base.parsing.local_whisper_model = None
+    try:
+        model_dir = _resolve_local_whisper_model_dir()
+        expected = (
+            BACKEND_ROOT / ".cache" / "faster-whisper" / "large-v3"
+        )
+        assert model_dir == expected
+    finally:
+        get_config().knowledge_base.parsing.local_whisper_model = original
 
 
 def test_env_var_overrides_default(monkeypatch, tmp_path):
@@ -51,9 +62,13 @@ def test_env_var_overrides_default(monkeypatch, tmp_path):
     _clear_env(monkeypatch)
     fake = tmp_path / "custom-whisper"
     from novamind.setting.yaml_config import get_config
+    original = get_config().asr.local_whisper_model_dir
     get_config().asr.local_whisper_model_dir = str(fake)
-    model_dir = _resolve_local_whisper_model_dir()
-    assert model_dir == fake
+    try:
+        model_dir = _resolve_local_whisper_model_dir()
+        assert model_dir == fake
+    finally:
+        get_config().asr.local_whisper_model_dir = original
 
 
 def test_audio_config_overrides_env(monkeypatch, tmp_path):
@@ -71,8 +86,12 @@ def test_audio_config_none_falls_back_to_env(monkeypatch, tmp_path):
     """AudioConfig.local_whisper_model_dir 为 None 时回退 asr.local_whisper_model_dir。"""
     env_dir = tmp_path / "env-whisper"
     from novamind.setting.yaml_config import get_config
+    original = get_config().asr.local_whisper_model_dir
     get_config().asr.local_whisper_model_dir = str(env_dir)
-    model_dir = _resolve_local_whisper_model_dir(
-        AudioConfig(local_whisper_model_dir=None)
-    )
-    assert model_dir == env_dir
+    try:
+        model_dir = _resolve_local_whisper_model_dir(
+            AudioConfig(local_whisper_model_dir=None)
+        )
+        assert model_dir == env_dir
+    finally:
+        get_config().asr.local_whisper_model_dir = original

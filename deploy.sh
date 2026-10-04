@@ -197,26 +197,26 @@ prepare_deepdoc_models() {
 }
 
 prepare_local_whisper_model() {
-  # 本地 ASR 默认模型（faster-whisper-tiny）部署期预装：音频文档未显式配置
-  # asr_model 时默认走本地 faster-whisper 转写，模型缺失会让音频解析直接失败。
-  # 落宿主机 ./backend/.cache/faster-whisper/tiny（compose 挂载为
-  # /app/.cache/faster-whisper，容器重建不丢；运行时默认解析路径已含此目录）。
+  # 本地 ASR 默认模型部署期预装：音频文档未显式配置 asr_model 时默认走本地
+  # faster-whisper 转写，模型缺失会让音频解析直接失败。
+  # 档位按 YAML knowledge_base.parsing.local_whisper_model 解析（下载脚本内
+  # 同一优先级：--model 参数 > YAML > 引擎默认 large-v3 生产档）；落宿主机
+  # ./backend/.cache/faster-whisper/{档位}（compose 挂载为
+  # /app/.cache/faster-whisper，容器重建不丢；运行时按同一档位名解析目录）。
   step "Preparing local faster-whisper model (deploy-time download)"
   mkdir -p backend/.cache/faster-whisper
 
   if docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
       -e HF_ENDPOINT="$(read_env_hf_endpoint)" \
-      -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
       app python scripts/download_faster_whisper_model.py; then
-    info "faster-whisper tiny model ready under ./backend/.cache/faster-whisper/tiny"
+    info "faster-whisper model ready under ./backend/.cache/faster-whisper/"
   else
     warn "faster-whisper model download failed — audio parsing without an explicit"
     warn "asr_model will fail until the model is in place. Retry manually:"
     warn "  docker compose run --rm --no-deps --user 0 \\"
     warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(read_env_hf_endpoint)\" \\"
-    warn "    -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \\"
-    warn "    app python scripts/download_faster_whisper_model.py"
+    warn "    app python scripts/download_faster_whisper_model.py [--model <tiny|base|small|medium|large-v2|large-v3>]"
     warn "Or set knowledge_base.parsing.local_whisper_model_dir to an existing model path."
   fi
 }

@@ -135,9 +135,10 @@ async def _resolve_asr_route(
 ) -> tuple[str, str, str | None, str | None]:
     """解析 ASR 模型名到实际路由（协议/模型/API 凭证）。
 
-    本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local；云端模型
-    凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」串用
-    （审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
+    本地 faster-whisper 家族（faster-whisper-tiny/base/small/medium/large-v2/
+    large-v3）不查凭证——协议恒为 local；云端模型凭证按名字精确匹配，找不到
+    即抛错，不取「该用户第一个 ASR 配置」串用（审计 P1#8：用户选了 A 模型
+    可能被静默换成 B 模型/他家凭证，不可追踪）。
 
     Args:
         document: 文档（uploader_id 用于凭证查询）。
@@ -149,9 +150,18 @@ async def _resolve_asr_route(
 
     Raises:
         PermanentProcessingError: 云端模型凭证缺失。
+        PermanentProcessingError: 本地模型档位非法（配置错误，fail fast）。
     """
-    if asr_model == "faster-whisper-tiny":
-        return "local", asr_model, None, None
+    from novamind.engines.document.media.audio import split_local_whisper_model_name
+
+    try:
+        if split_local_whisper_model_name(asr_model) is not None:
+            return "local", asr_model, None, None
+    except ValueError as exc:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=str(exc),
+        ) from exc
 
     asr_creds = await model_config_port.get_credentials_by_model(
         document.uploader_id, "asr", asr_model
@@ -161,13 +171,51 @@ async def _resolve_asr_route(
             document_id=document.id,
             error_message=(
                 f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
-                f"API 配置，或将知识库音频解析配置切回本地默认"
-                f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
+                f"API 配置，或将知识库音频解析配置切回本地"
+                f"（asr_model 填 faster-whisper-<档位>，留空 = 部署默认档）"
             ),
         )
     protocol = asr_creds.protocol or "openai"
     model = asr_creds.model or asr_model
     return protocol, model, asr_creds.api_key, asr_creds.base_url
+
+
+def _build_engine_audio_config() -> AudioConfig:
+    """从 YAML 构造引擎 AudioConfig（音频文档与视频音轨共用的唯一构造点）。
+
+    引擎侧 audio_utils 不 import setting；宿主在此注入本地 faster-whisper
+    全量推理参数（模型档位/目录/设备/量化/束宽/VAD/CPU 线程）。
+    """
+    from novamind.setting.yaml_config import get_config
+
+    parsing = get_config().knowledge_base.parsing
+    return AudioConfig(
+        local_whisper_model_dir=parsing.local_whisper_model_dir,
+        local_whisper_model=parsing.local_whisper_model,
+        local_whisper_cpu_threads=parsing.local_whisper_cpu_threads,
+        local_whisper_device=parsing.local_whisper_device,
+        local_whisper_compute_type=parsing.local_whisper_compute_type,
+        local_whisper_beam_size=parsing.local_whisper_beam_size,
+        local_whisper_vad_enabled=parsing.local_whisper_vad_enabled,
+    )
+
+
+def _resolve_default_local_asr_model() -> str:
+    """解析本地 ASR 默认档位名（faster-whisper-{slug}）。
+
+    YAML ``knowledge_base.parsing.local_whisper_model`` 显式档位优先；
+    未配置时用引擎默认（生产 large-v3）。此名字同时用于路由判定与
+    转写日志/pipeline_result 透出，保证「配置 → 路由 → 产物标注」全链
+    一致。
+    """
+    from novamind.setting.yaml_config import get_config
+
+    slug = get_config().knowledge_base.parsing.local_whisper_model
+    if slug:
+        return f"faster-whisper-{slug}"
+    from novamind.engines.document.media.audio import DEFAULT_LOCAL_WHISPER_MODEL
+
+    return f"faster-whisper-{DEFAULT_LOCAL_WHISPER_MODEL}"
 
 
 async def _run_asr_transcription(
@@ -181,11 +229,15 @@ async def _run_asr_transcription(
     language: str | None,
     engine_audio_config: AudioConfig,
     document: Document,
+    hotwords: list[str] | None = None,
 ) -> list:
     """按协议分发执行一次 ASR 转写（不含本地锁/失败语义——归调用方）。
 
     音频文档与视频音轨共用同一路由：openai → Whisper / dashscope →
     Paraformer（MinIO 中转）/ local → faster-whisper（须持有 ASR 锁）。
+
+    热词仅本地协议生效；云端协议显式告警忽略（DashScope 录音文件识别仅支持
+    控制台预注册 phrase_id，OpenAI 协议无热词参数）——不静默丢弃，行为可追踪。
     """
     if protocol == "local":
         return await transcribe_audio_local(
@@ -193,10 +245,16 @@ async def _run_asr_transcription(
             file_type=file_type,
             language=language,
             audio_config=engine_audio_config,
+            hotwords=hotwords,
         )
     if protocol == "dashscope":
         from novamind.shared.storage.client_factory import ClientFactory
 
+        if hotwords:
+            logger.warning(
+                "DashScope ASR 暂不支持自由热词（仅控制台预注册 phrase_id），忽略 %d 个热词",
+                len(hotwords), document_id=document.id,
+            )
         minio_client = await ClientFactory.get_minio_client()
         storage_info = document.get_storage_info()
         language_hints = [language] if language else None
@@ -209,6 +267,11 @@ async def _run_asr_transcription(
             minio_bucket=storage_info.get("minio_bucket"),
             language_hints=language_hints,
             minio_client=minio_client,
+        )
+    if hotwords:
+        logger.warning(
+            "OpenAI 协议 ASR 暂不支持热词，忽略 %d 个热词",
+            len(hotwords), document_id=document.id,
         )
     return await transcribe_audio_with_timestamps(
         file_content=file_content,
@@ -230,6 +293,7 @@ async def _transcribe_video_audio(
     language: str | None,
     engine_audio_config: AudioConfig,
     logger,
+    hotwords: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """视频音轨转写：ffmpeg 提取 + ASR 路由复用（c3 双轨融合的音侧）。
 
@@ -307,6 +371,7 @@ async def _transcribe_video_audio(
                 language=language,
                 engine_audio_config=engine_audio_config,
                 document=document,
+                hotwords=hotwords,
             )
         except AudioTrackExtractionError as exc:
             logger.warning(
@@ -726,13 +791,13 @@ async def process_video_document(
     audio_segments: list[dict[str, Any]] = []
     transcribe_enabled = bool(video_config.get("transcribe_audio", False))
     if transcribe_enabled:
-        from novamind.setting.yaml_config import get_config
-
-        engine_audio_config = AudioConfig(
-            local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
-            local_whisper_cpu_threads=get_config().knowledge_base.parsing.local_whisper_cpu_threads,
+        # 视频 audio 子配置结构独立（video.transcribe_audio 开关 + video.asr_model/
+        # video.language），热词沿用同一视频子配置，留空 = 不注入；引擎参数
+        # （档位/设备/束宽/VAD）与音频文档共用 YAML 全局配置（_build_engine_audio_config）。
+        engine_audio_config = _build_engine_audio_config()
+        audio_asr_model = (
+            video_config.get("asr_model") or _resolve_default_local_asr_model()
         )
-        audio_asr_model = video_config.get("asr_model") or "faster-whisper-tiny"
         audio_segments = await _transcribe_video_audio(
             document=document,
             file_path=file_path,
@@ -742,6 +807,7 @@ async def process_video_document(
             language=video_config.get("language"),
             engine_audio_config=engine_audio_config,
             logger=logger,
+            hotwords=video_config.get("hotwords") or None,
         )
 
     if strategy in ("scene", "video_native"):
@@ -1282,6 +1348,34 @@ async def process_video_document(
     )
 
 
+def _audio_asr_fingerprint_params(
+    protocol: str,
+    model: str,
+    engine_audio_config: AudioConfig,
+    hotwords: list[str] | None,
+) -> dict[str, Any]:
+    """音频 ASR 快照指纹的引擎参数块（命中检查与保存侧共用的单一事实源）。
+
+    影响转写产物的所有引擎参数必须进指纹：任一变化 → 指纹变化 → 快照失效
+    → RETRY 正确重转写（不会复用旧配置的旧转写产物）。
+
+    Returns:
+        并入解析指纹 computing dict 的 ``asr_engine`` 键值。
+    """
+    return {
+        "protocol": protocol,
+        "model": model,
+        "model_dir": str(getattr(engine_audio_config, "local_whisper_model_dir", None) or ""),
+        "model_slug": getattr(engine_audio_config, "local_whisper_model", None),
+        "device": getattr(engine_audio_config, "local_whisper_device", None),
+        "compute_type": getattr(engine_audio_config, "local_whisper_compute_type",
+                                None),
+        "beam_size": getattr(engine_audio_config, "local_whisper_beam_size", None),
+        "vad_enabled": getattr(engine_audio_config, "local_whisper_vad_enabled", True),
+        "hotwords": sorted(hotwords or []),
+    }
+
+
 async def process_audio_document(
     document: Document,
     file_content: bytes,
@@ -1307,17 +1401,20 @@ async def process_audio_document(
     # prepare_local_whisper_model）——这不是「串用别的云端配置」的静默兜底，
     # 而是有明确默认语义的降级路径；转写日志会记录实际生效的 protocol:model。
     # 显式配置了云端模型但凭证缺失时仍然抛错（不串用其它配置，审计 P1#8）。
-    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "faster-whisper-tiny"
-    language = audio_config.get("language")
-
-    # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 配置构造 AudioConfig
-    # 注入本地 faster-whisper 模型目录，切断 shared/knowledge -> setting 的导入边。
-    from novamind.setting.yaml_config import get_config
-
-    engine_audio_config = AudioConfig(
-        local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
-        local_whisper_cpu_threads=get_config().knowledge_base.parsing.local_whisper_cpu_threads,
+    # 默认档位来自 YAML local_whisper_model（生产默认 large-v3，开发机降档配置）。
+    asr_model = (
+        audio_config.get("asr_model")
+        or space_asr_cfg.get("model")
+        or _resolve_default_local_asr_model()
     )
+    language = audio_config.get("language")
+    # ASR 热词：仅本地协议生效（云端协议在 _run_asr_transcription 内告警忽略）
+    asr_hotwords: list[str] | None = audio_config.get("hotwords") or None
+
+    # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 构造 AudioConfig
+    # 注入本地 faster-whisper 全量推理参数（档位/目录/设备/量化/束宽/VAD），
+    # 切断 shared/knowledge -> setting 的导入边。
+    engine_audio_config = _build_engine_audio_config()
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
@@ -1332,12 +1429,15 @@ async def process_audio_document(
     )
 
     # ===== 解析快照命中检查（审计 P1#2：音频快照此前只写不读，RETRY 时 ASR
-    # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名），
-    # 匹配即复用转写全文与时间线，跳过 ASR。
+    # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名 +
+    # asr_engine 引擎参数块），匹配即复用转写全文与时间线，跳过 ASR。
     audio_parse_fp = ""
     if SNAPSHOTS_ENABLED:
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
+        audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
+            asr_protocol, asr_model, engine_audio_config, asr_hotwords
+        )
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
         except Exception as fp_exc:
@@ -1388,6 +1488,7 @@ async def process_audio_document(
             language=language,
             engine_audio_config=engine_audio_config,
             document=document,
+            hotwords=asr_hotwords,
         )
 
     if task:
@@ -1507,6 +1608,9 @@ async def process_audio_document(
     if SNAPSHOTS_ENABLED:
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
+        audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
+            asr_protocol, asr_model, engine_audio_config, asr_hotwords
+        )
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
         except Exception as fp_exc:

@@ -321,6 +321,17 @@
             <el-option label="韩文" value="ko" />
           </el-select>
         </el-form-item>
+        <el-form-item label="热词">
+          <el-input
+            v-model="configForm.audioHotwordsText"
+            type="textarea"
+            :rows="2"
+            placeholder="产品名、人名、术语等，用逗号/顿号分隔，如：NovaMind，RAG，知识库"
+          />
+          <div class="field-hint">
+            提升专有名词识别率；仅本地 ASR 生效（云端模型暂不支持，保存后仍会保留配置）。
+          </div>
+        </el-form-item>
       </el-form>
     </div>
   </div>
@@ -356,6 +367,7 @@ type MultimodalParsingFormModel = {
   videoStepsMaxSteps: number
   audioAsrModel: string
   audioAsrLanguage: string
+  audioHotwordsText: string
 }
 
 defineProps<{

@@ -401,10 +401,12 @@ export interface VideoParsingConfig {
   video_native_fallback_to_frame_seq?: boolean
   /** 音轨 ASR 融合：提取原始视频音轨转写，旁白按时间归入帧描述行 */
   transcribe_audio?: boolean
-  /** 音轨 ASR 模型名（留空 = faster-whisper-tiny 本地转写） */
+  /** 音轨 ASR 模型名（留空 = 部署默认本地档 faster-whisper） */
   asr_model?: string
   /** ASR 语言提示（留空 = 自动检测） */
   language?: string
+  /** 音轨 ASR 热词（领域词表，仅本地协议生效，上限 100） */
+  hotwords?: string[]
   /** 步骤综合：LLM 汇总双轨描述输出带时间区间的操作步骤（覆盖率校验防遗漏） */
   steps_enabled?: boolean
   /** 步骤综合 LLM 模型名（留空 = 用户默认 LLM） */
@@ -414,8 +416,12 @@ export interface VideoParsingConfig {
 }
 
 export interface AudioParsingConfig {
+  /** ASR 模型名（留空 = 部署默认本地档 faster-whisper；云端模型须在模型管理配置同名凭证） */
   asr_model?: string
+  /** 语言提示（留空 = 自动检测） */
   language?: string
+  /** ASR 热词（领域词表，如产品名/人名/术语；仅本地协议生效，上限 100） */
+  hotwords?: string[]
 }
 
 export type PdfParserName = 'full' | 'plain'

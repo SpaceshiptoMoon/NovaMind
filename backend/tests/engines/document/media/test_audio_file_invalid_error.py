@@ -83,7 +83,7 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", _fake_load_ctx)
 
-    # mock get_config：绕过 YAML 加载
+    # mock get_config：绕过 YAML 加载（桩字段与 ParsingConfig 新引擎参数对齐）
     monkeypatch.setattr(
         "novamind.setting.yaml_config.get_config",
         lambda: SimpleNamespace(
@@ -92,7 +92,12 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
                     local_whisper_model_dir=str(
                         Path(__file__).resolve().parents[4] / ".cache" / "faster-whisper" / "tiny"
                     ),
+                    local_whisper_model=None,
                     local_whisper_cpu_threads=1,
+                    local_whisper_device=None,
+                    local_whisper_compute_type=None,
+                    local_whisper_beam_size=None,
+                    local_whisper_vad_enabled=True,
                 )
             )
         ),

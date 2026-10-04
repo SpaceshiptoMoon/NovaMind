@@ -84,6 +84,48 @@ def _detect_audio_format(file_content: bytes) -> tuple[str, str]:
 
 # ========== 本地 faster-whisper 模型 ==========
 
+# 默认本地模型档位（面向生产 GPU/资源充足服务器）。
+# 开发机（无 GPU / 低内存）不要改这个默认，而是在 YAML
+# knowledge_base.parsing.local_whisper_model 显式降档（tiny/base/small）。
+DEFAULT_LOCAL_WHISPER_MODEL = "large-v3"
+
+# 本地模型档位白名单：faster-whisper-{slug} → HF 仓库 Systran/faster-whisper-{slug}
+LOCAL_WHISPER_SUPPORTED_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
+_LOCAL_MODEL_PREFIX = "faster-whisper-"
+
+
+def split_local_whisper_model_name(model_name: str | None) -> str | None:
+    """识别 faster-whisper-* 家族模型名并返回档位 slug；非家族名返回 None。
+
+    Args:
+        model_name: ASR 模型名，如 ``faster-whisper-small``、``paraformer-v2``。
+
+    Returns:
+        家族名对应的档位 slug（如 ``small``）；空值或非家族名返回 None
+        （由调用方按云端模型处理）。
+
+    Raises:
+        ValueError: 是家族名但档位不在支持列表（用户配置错误，须显式报错）。
+    """
+    if not model_name or not model_name.startswith(_LOCAL_MODEL_PREFIX):
+        return None
+    slug = model_name[len(_LOCAL_MODEL_PREFIX):]
+    if slug not in LOCAL_WHISPER_SUPPORTED_MODELS:
+        raise ValueError(
+            f"不支持的本地 ASR 模型档位「{slug}」。"
+            f"支持的档位: {', '.join(LOCAL_WHISPER_SUPPORTED_MODELS)}"
+        )
+    return slug
+
+
+# 本地 ASR 幻觉段过滤阈值（segment 级兜底）。
+# 判据为 OpenAI Whisper 官方同款推荐值：无语音概率高 且 平均对数概率低 → 判为幻觉丢弃。
+# faster-whisper 在解码窗口层已有同款阈值（no_speech_threshold=0.6 /
+# log_prob_threshold=-1.0），这里拦截的是跨窗口的编造与 VAD 未拦住的噪声段，
+# 阈值取上游同款依据，非本地案例拟合。
+_HALLUCINATION_NO_SPEECH_PROB = 0.6
+_HALLUCINATION_AVG_LOGPROB = -1.0
+
 # faster-whisper 通过 PyAV (FFmpeg) 解码，支持的音频格式
 # 参考: https://github.com/SYSTRAN/faster-whisper
 _LOCAL_ASR_SUPPORTED_EXTENSIONS: set[str] = {
@@ -165,7 +207,11 @@ def force_release_asr_slot() -> None:
 
 
 def _segments_to_dict(segments_result) -> list[dict]:
-    """将 faster-whisper 的 segments 迭代器转为标准字典列表。"""
+    """将 faster-whisper 的 segments 迭代器转为标准字典列表。
+
+    除 text/start/end 外同时采集 avg_logprob/no_speech_prob（转写置信度），
+    供幻觉段过滤与下游元数据使用。
+    """
     result = []
     for seg in segments_result:
         text = seg.text.strip() if seg.text else ""
@@ -174,8 +220,27 @@ def _segments_to_dict(segments_result) -> list[dict]:
                 "text": text,
                 "start": round(seg.start, 2),
                 "end": round(seg.end, 2),
+                "avg_logprob": getattr(seg, "avg_logprob", None),
+                "no_speech_prob": getattr(seg, "no_speech_prob", None),
             })
     return result
+
+
+def default_faster_whisper_cache_dir(model_slug: str = DEFAULT_LOCAL_WHISPER_MODEL) -> Path:
+    """faster-whisper 模型缓存目录命名约定（运行时解析与下载脚本共用同一事实源）。
+
+    Args:
+        model_slug: 模型档位 slug（tiny/base/small/medium/large-v2/large-v3）。
+
+    Returns:
+        ``backend/.cache/faster-whisper/{slug}``（仓库根缓存，与 deepdoc 同约定；
+        Docker 形态该目录被 compose 挂载为 /app/.cache/faster-whisper）。
+    """
+    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+        default_model_dir,
+    )
+
+    return default_model_dir().parent / "faster-whisper" / model_slug
 
 
 def _resolve_local_whisper_model_dir(
@@ -184,34 +249,38 @@ def _resolve_local_whisper_model_dir(
     """解析本地 faster-whisper 模型目录。
 
     优先级：
-      1. ``AudioConfig.local_whisper_model_dir``（宿主从 YAML
-         ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入）
-      2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
-      3. 默认 ``backend/.cache/faster-whisper/tiny``（仓库根缓存，与 deepdoc 同约定）
+      1. ``AudioConfig.local_whisper_model_dir``（显式目录，宿主从 YAML
+         ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入——存量
+         部署已配置具体路径的兼容通道，最高优先）
+      2. ``AudioConfig.local_whisper_model``（档位名，如 ``large-v3``）→
+         ``backend/.cache/faster-whisper/{档位}``（与下载脚本/部署预装同约定）
+      3. YAML ``asr.local_whisper_model_dir``（第二回退目录配置，值可来自
+         ``${VAR}`` 环境占位符——存量兼容）
+      4. 档位名缺省时用 ``DEFAULT_LOCAL_WHISPER_MODEL``（生产默认 large-v3；
+         开发机在 YAML 显式降档）
 
     引擎侧不再 import `novamind.setting`；YAML 配置由宿主构造 ``AudioConfig``
     注入，从而切断 `shared/knowledge` -> `setting` 的导入边。
     """
-    # 1. 注入的 AudioConfig（宿主从 YAML 配置构造）
+    # 1. 显式目录（存量部署兼容通道，最高优先）
     configured = getattr(audio_config, "local_whisper_model_dir", None) if audio_config else None
     if configured:
         return Path(str(configured)).expanduser()
 
-    # 2. 配置中心（asr.local_whisper_model_dir；值可来自 env var 的 ${VAR} 占位）
+    # 2. 档位名 → 缓存目录命名约定（下载脚本/部署预装默认下载到同一基准）
+    model_slug = getattr(audio_config, "local_whisper_model", None) if audio_config else None
+    if model_slug:
+        return default_faster_whisper_cache_dir(model_slug)
+
+    # 3. 配置中心第二回退（asr.local_whisper_model_dir；值可来自 ${VAR} 占位）
     from novamind.setting.yaml_config import get_config
 
     cfg_dir = get_config().asr.local_whisper_model_dir
     if cfg_dir:
         return Path(cfg_dir).expanduser()
 
-    # 3. 默认：backend/.cache/faster-whisper/tiny（仓库根缓存，与 deepdoc 同约定；
-    #    Docker 形态该目录被 compose 挂载为 /app/.cache/faster-whisper，
-    #    本地与容器共用同一默认基准，部署期预装的模型两种形态直接复用）
-    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
-        default_model_dir,
-    )
-
-    return default_model_dir().parent / "faster-whisper" / "tiny"
+    # 4. 默认档位
+    return default_faster_whisper_cache_dir(DEFAULT_LOCAL_WHISPER_MODEL)
 
 
 def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:
@@ -237,9 +306,11 @@ def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:
 
 
 # 子进程内 faster-whisper 模型缓存（仅子进程使用，worker 进程持久复用）。
+# 键为 (model_dir, device, compute_type)：配置变化（如切档位/设备）后不会
+# 复用旧模型实例，也不因键不同互相挤掉（单 worker 串行下同一键恒命中）。
 # 注意：这是子进程模块级全局，主进程不持有模型；spawn worker 首次执行任务时
 #       加载，后续复用。必须放在模块级以便子进程 import 时定义。
-_subprocess_model = None
+_subprocess_models: dict[tuple[str, str, str], Any] = {}
 
 
 def _transcribe_in_subprocess(
@@ -247,53 +318,124 @@ def _transcribe_in_subprocess(
     language: str | None,
     model_dir: str,
     cpu_threads: int,
+    *,
+    device: str = "auto",
+    compute_type: str = "auto",
+    beam_size: int = 5,
+    vad_enabled: bool = True,
+    hotwords: str | None = None,
 ) -> dict[str, Any]:
-    """子进程内执行：加载模型（子进程全局缓存）+ transcribe + 返回可 pickle 结果。
+    """子进程内执行：加载模型（子进程键控缓存）+ transcribe + 返回可 pickle 结果。
 
     必须是模块级函数（spawn worker 经 pickle 引用，需可 import）。
     返回纯 dict（segments + info 关键字段），经 IPC 回传主进程。
+
+    转写参数的幻觉抑制组合（均有上游同款依据，见各注释）：
+      - vad_filter：silero VAD 前置切掉静音/噪声，省算力且抑制静音段幻觉；
+      - condition_on_previous_text=False：切断跨窗口上下文——长音频里上一窗口
+        的错误会被复制放大成整段重复文本，是 Whisper 类幻觉的最大来源；
+      - 解码层 no_speech_threshold/log_prob_threshold 用上游默认值，
+        跨窗口残留的坏段再由 ``_filter_hallucinated_segments`` 兜底。
 
     Args:
         tmp_path: 主进程写入的临时音频文件路径（子进程读文件，避免传 bytes）
         language: 语言提示，None 表示自动检测
         model_dir: faster-whisper 模型目录（主进程解析后传入）
         cpu_threads: 子进程推理 CPU 线程数（主进程解析后传入）
+        device: 推理设备（auto/cpu/cuda），auto 由 CTranslate2 探测 CUDA
+        compute_type: 量化类型（auto/int8/float16 等），auto 随设备选择
+        beam_size: 束搜索宽度
+        vad_enabled: 是否启用 silero VAD 前置过滤
+        hotwords: 热词串（空格分隔），None 表示不注入
 
     Returns:
-        {"segments": [{"text","start","end"},...],
-         "language": str, "language_probability": float, "duration": float}
+        {"segments": [{"text","start","end","avg_logprob","no_speech_prob"},...],
+         "language": str, "language_probability": float, "duration": float,
+         "filtered_count": int}
     """
-    global _subprocess_model
+    global _subprocess_models
     from faster_whisper import WhisperModel
 
-    if _subprocess_model is None:
-        _subprocess_model = WhisperModel(
+    cache_key = (model_dir, device, compute_type)
+    model = _subprocess_models.get(cache_key)
+    if model is None:
+        model = WhisperModel(
             model_dir,
-            device="cpu",
-            compute_type="int8",
+            device=device,
+            compute_type=compute_type,
             cpu_threads=cpu_threads,
             num_workers=1,
             local_files_only=True,
         )
-        logger.info("子进程 faster-whisper 模型已加载, path=%s", model_dir)
+        _subprocess_models[cache_key] = model
+        logger.info(
+            "子进程 faster-whisper 模型已加载, path=%s, device=%s, compute_type=%s",
+            model_dir, device, compute_type,
+        )
 
-    logger.info("子进程 ASR 转写开始, file=%s", tmp_path)
-    segments_result, info = _subprocess_model.transcribe(
+    logger.info(
+        "子进程 ASR 转写开始, file=%s, vad=%s, hotwords=%d词, beam_size=%d",
+        tmp_path, vad_enabled, len((hotwords or "").split()), beam_size,
+    )
+    segments_result, info = model.transcribe(
         tmp_path,
-        beam_size=5,
+        beam_size=beam_size,
         word_timestamps=False,
         language=language,
+        vad_filter=vad_enabled,
+        condition_on_previous_text=False,
+        hotwords=hotwords,
     )
     logger.info(
         "子进程 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
         info.language, info.language_probability, info.duration,
     )
+    raw_segments = _segments_to_dict(segments_result)
+    segments, filtered_count = _filter_hallucinated_segments(raw_segments)
+    if filtered_count:
+        logger.info(
+            "子进程 ASR 幻觉段过滤: 丢弃 %d/%d 段", filtered_count, len(raw_segments),
+        )
     return {
-        "segments": _segments_to_dict(segments_result),
+        "segments": segments,
         "language": info.language,
         "language_probability": info.language_probability,
         "duration": info.duration,
+        "filtered_count": filtered_count,
     }
+
+
+def _filter_hallucinated_segments(
+    segments: list[dict],
+) -> tuple[list[dict], int]:
+    """过滤幻觉段 + 折叠相邻重复段，返回 (保留列表, 丢弃数)。
+
+    两类通用判据（非黑名单、非案例拟合）：
+      1. 无语音概率高且平均对数概率低 → 模型自己对这段没把握，多为静音/噪声
+         上编造的文本；阈值取 OpenAI Whisper 官方同款（0.6 / -1.0）。
+      2. 相邻 segment 文本完全相同 → Whisper 在静音/音乐段的典型重复幻觉；
+         折叠为一条。非相邻的重复（正常文档里合法出现）不受影响。
+
+    Args:
+        segments: 已归一的 segment 字典列表（含 avg_logprob/no_speech_prob）。
+
+    Returns:
+        (过滤后的 segments, 丢弃的段数)。
+    """
+    kept: list[dict] = []
+    dropped = 0
+    for seg in segments:
+        no_speech = float(seg.get("no_speech_prob") or 0.0)
+        avg_logprob = float(seg.get("avg_logprob") or 0.0)
+        if no_speech > _HALLUCINATION_NO_SPEECH_PROB and avg_logprob < _HALLUCINATION_AVG_LOGPROB:
+            dropped += 1
+            continue
+        # 相邻重复折叠：与前一条保留项文本完全相同才折叠
+        if kept and seg.get("text") == kept[-1].get("text"):
+            dropped += 1
+            continue
+        kept.append(seg)
+    return kept, dropped
 
 
 async def _rebuild_asr_executor() -> None:
@@ -350,6 +492,7 @@ async def transcribe_audio_local(
     file_type: str = "mp3",
     language: str | None = None,
     audio_config: AudioConfig | None = None,
+    hotwords: list[str] | None = None,
 ) -> list[dict]:
     """
     使用本地 faster-whisper 模型转写音频，返回带时间戳的段落
@@ -359,12 +502,16 @@ async def transcribe_audio_local(
     Args:
         file_content: 音频文件二进制内容
         file_type: 提示用，实际格式通过 Magic Bytes 检测
-        audio_config: 引擎音频配置，宿主从 YAML
-            ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入；
+        audio_config: 引擎音频配置，宿主从 YAML 构造注入（模型目录/档位/
+            device/compute_type/beam_size/VAD 开关）；
             仅在模型首次加载时生效。
+        hotwords: 领域热词列表（如产品名/人名/术语），空格拼接后经
+            faster-whisper 原生 ``hotwords`` 参数注入解码，提升专有名词命中率；
+            空列表/None 表示不注入。
 
     Returns:
-        [{"text": "...", "start": 0.0, "end": 5.2}, ...]
+        [{"text": "...", "start": 0.0, "end": 5.2, "avg_logprob": ...,
+          "no_speech_prob": ...}, ...]（幻觉段已过滤、相邻重复已折叠）
 
     Raises:
         AudioFileInvalidError: 音频格式不支持或文件无效（永久性，调用方不应回退云端）
@@ -394,38 +541,61 @@ async def transcribe_audio_local(
         tmp_path = tmp.name
 
     try:
-        # 3. 解析模型目录 + CPU 线程数（主进程），校验模型存在
+        # 3. 解析模型目录 + 推理参数（主进程），校验模型存在
         model_dir = _resolve_local_whisper_model_dir(audio_config)
         if not model_dir.exists():
             raise RuntimeError(
                 f"本地 ASR 模型未找到: {model_dir}，"
-                f"请确保目录存在且包含 model.bin；"
-                f"可在配置 knowledge_base.parsing.local_whisper_model_dir "
-                f"或环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR 指定路径。"
+                f"请运行 python scripts/download_faster_whisper_model.py --model "
+                f"{getattr(audio_config, 'local_whisper_model', None) or DEFAULT_LOCAL_WHISPER_MODEL} "
+                f"预装，或在配置 knowledge_base.parsing.local_whisper_model_dir 指定路径。"
             )
         cpu_threads = _resolve_cpu_threads(audio_config)
+        device = getattr(audio_config, "local_whisper_device", None) or "auto"
+        compute_type = getattr(audio_config, "local_whisper_compute_type", None) or "auto"
+        beam_size = getattr(audio_config, "local_whisper_beam_size", None) or 5
+        vad_enabled = getattr(audio_config, "local_whisper_vad_enabled", True)
+        hotwords_str = " ".join(hotwords) if hotwords else None
 
-        logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
+        logger.info(
+            "本地 ASR 转写开始, file=%s, size=%d, model_dir=%s, device=%s, "
+            "compute_type=%s, beam_size=%d, vad=%s, hotwords=%d词",
+            tmp_path, len(file_content), model_dir, device, compute_type,
+            beam_size, vad_enabled, len(hotwords or []),
+        )
         # 走专用单进程 executor：子进程内加载模型 + transcribe，OS 级 CPU/GIL 隔离，
         # 主进程事件循环不受 int8 推理饿死；单进程串行避免并发同一模型实例崩溃。
         loop = asyncio.get_running_loop()
-        try:
-            result = await loop.run_in_executor(
+
+        def _invoke_subprocess(lang: str | None):
+            return loop.run_in_executor(
                 _asr_executor,
                 _transcribe_in_subprocess,
                 tmp_path,
-                language,
+                lang,
                 str(model_dir),
                 cpu_threads,
+                {
+                    "device": device,
+                    "compute_type": compute_type,
+                    "beam_size": beam_size,
+                    "vad_enabled": vad_enabled,
+                    "hotwords": hotwords_str,
+                },
             )
+
+        try:
+            result = await _invoke_subprocess(language)
         except BrokenProcessPool:
             # 子进程崩溃（CTranslate2 segfault 等）→ 重建池，本次抛错让上游回退云端
             await _rebuild_asr_executor()
             raise
 
         logger.info(
-            "本地 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
+            "本地 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs, "
+            "hallucination_filtered=%d",
             result["language"], result["language_probability"], result["duration"],
+            result.get("filtered_count", 0),
         )
 
         # 4. 结果格式已由子进程归一为 segments dict
@@ -441,14 +611,7 @@ async def transcribe_audio_local(
                 result["language"], result["language_probability"],
             )
             try:
-                result = await loop.run_in_executor(
-                    _asr_executor,
-                    _transcribe_in_subprocess,
-                    tmp_path,
-                    "zh",
-                    str(model_dir),
-                    cpu_threads,
-                )
+                result = await _invoke_subprocess("zh")
             except BrokenProcessPool:
                 await _rebuild_asr_executor()
                 raise

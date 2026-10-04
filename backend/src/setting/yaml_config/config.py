@@ -82,14 +82,27 @@ class ParsingConfig:
     preserve_structure: bool = True
     encoding: str = "utf-8"
     vlm_description_enabled: bool = False
-    # 本地 faster-whisper ASR 模型目录（绝对路径）。为空时回退到环境变量
-    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 backend/.cache/faster-whisper/tiny
-    # （仓库根缓存，与 deepdoc 同约定；Docker 形态挂载为 /app/.cache/faster-whisper）。
+    # 本地 faster-whisper ASR 模型目录（绝对路径）。显式目录最高优先（存量部署
+    # 兼容通道）；为空时按 local_whisper_model 档位名解析缓存目录。
     local_whisper_model_dir: str | None = None
+    # 本地 faster-whisper 模型档位（tiny/base/small/medium/large-v2/large-v3）。
+    # None = 引擎默认 large-v3（生产默认档，中文 CER 最低）。
+    # 开发机（8GB 内存无 GPU）显式配置 tiny 或 small——tiny 仅 ~75MB、small
+    # ~460MB，CPU int8 可跑；large-v3 需 GPU 或 16GB+ 内存。
+    local_whisper_model: str | None = None
     # 本地 faster-whisper 转写 CPU 线程数。None 时按物理核自动取保守值（留至少 1
     # 物理核给事件循环）。转写期间其它请求仍卡顿就调小（如 2）；ASR 太慢可调大，
-    # 但勿超过 (物理核 - 1)，否则会重新饿死事件循环。
+    # 但勿超过 (物理核 - 1)，否则会重新饿死事件循环。GPU 设备下无效。
     local_whisper_cpu_threads: int | None = None
+    # 本地 ASR 推理设备：auto（有 CUDA 自动用 GPU）/ cpu / cuda。
+    # 生产 GPU 服务器无需配置（auto 即用卡）；无卡开发机显式 cpu。
+    local_whisper_device: str | None = None
+    # 量化类型：auto（CPU→int8 / GPU→float16）/ int8 / int8_float16 / float16 / float32。
+    local_whisper_compute_type: str | None = None
+    # 束搜索宽度（默认 5，Whisper 官方默认值）。
+    local_whisper_beam_size: int | None = None
+    # silero VAD 前置过滤（切静音/噪声段，省算力 + 抑制静音段幻觉），默认开。
+    local_whisper_vad_enabled: bool = True
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
     # 易逼近 arq job_timeout=1800s，有界并发降时延；过高可能触发 VLM 配额限流，
     # 配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。

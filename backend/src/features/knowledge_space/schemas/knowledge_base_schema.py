@@ -242,10 +242,12 @@ class VideoParsingConfig(BaseModel):
     # ===== 音轨 ASR 融合（批2 c3/c4）=====
     # 开启后提取原始视频音轨做 ASR 转写，旁白按时间归入帧描述行（双轨融合）。
     transcribe_audio: bool = Field(default=False)
-    # 音轨 ASR 模型名（留空 = faster-whisper-tiny 本地转写，与音频文档默认一致）。
+    # 音轨 ASR 模型名（留空 = 部署默认本地档，与音频文档默认一致）。
     asr_model: str | None = Field(default=None)
     # ASR 语言提示（留空 = 自动检测）。
     language: str | None = Field(default=None)
+    # 音轨 ASR 热词（语义与 AudioParsingConfig.hotwords 一致；仅本地协议生效）。
+    hotwords: list[str] | None = Field(default=None, max_length=100)
     # ===== 步骤综合（批2 c4）=====
     # 开启后在帧级 chunks 之外追加全局步骤综合 pass：LLM 汇总双轨描述输出
     # 带时间区间的操作步骤条目，双层覆盖率校验（帧层+旁白层）防遗漏。
@@ -257,12 +259,26 @@ class VideoParsingConfig(BaseModel):
 
 
 class AudioParsingConfig(BaseModel):
-    """Audio parsing config."""
+    """音频解析配置（KB 级）。
+
+    asr_model 语义：None/空 = 走本地 faster-whisper（引擎档位由 YAML
+    knowledge_base.parsing.local_whisper_model 决定，默认 large-v3，开发机
+    降档配置）；云端模型名（如 whisper-1 / paraformer-v2）须在模型管理中
+    配置同名凭证。
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    asr_model: str = Field(default="whisper-1")
+    # 修复历史陷阱：旧默认值 "whisper-1" 会让存了 audio 子节但未显式选模型的
+    # KB 去查不存在的云端凭证并抛 PermanentProcessingError——与运行时空值
+    # 默认（本地 faster-whisper）语义不一致。现统一为 None = 本地默认。
+    asr_model: str | None = Field(default=None)
     language: str | None = Field(default=None)
+    # ASR 热词（领域词表，如产品名/人名/术语）：本地 faster-whisper 经原生
+    # hotwords 参数注入解码；云端轨暂不支持自由热词（DashScope 录音文件识别
+    # 仅支持控制台预注册的 phrase_id），传入时告警忽略。上限 100 条防解码
+    # prompt 膨胀拖慢转写。
+    hotwords: list[str] | None = Field(default=None, max_length=100)
 
 
 class ParsingConfig(BaseModel):

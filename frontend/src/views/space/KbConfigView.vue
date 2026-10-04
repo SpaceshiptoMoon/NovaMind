@@ -218,6 +218,8 @@ const configForm = reactive({
 
   audioAsrModel: '',
   audioAsrLanguage: '',
+  // 热词文本域原始输入（逗号/顿号/换行分隔），提交时切分为 list
+  audioHotwordsText: '',
 
   splittingStrategy: 'recursive',
   splittingChunkSize: 1000,
@@ -295,6 +297,7 @@ watch(hasAudio, (value) => {
   if (!value) {
     configForm.audioAsrModel = ''
     configForm.audioAsrLanguage = ''
+    configForm.audioHotwordsText = ''
   }
 })
 
@@ -399,6 +402,7 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoStepsMaxSteps = parsing?.video?.steps_max_steps ?? 30
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
   configForm.audioAsrLanguage = parsing?.audio?.language || ''
+  configForm.audioHotwordsText = (parsing?.audio?.hotwords || []).join('、')
 
   configForm.qgEnabled = qg?.enabled ?? false
   configForm.qgLlmModel = qg?.llm?.model || ''
@@ -471,6 +475,15 @@ function buildSplittingConfig(): SplittingConfig {
   return splitting
 }
 
+/** 热词文本域 → 词表：逗号/顿号/换行分隔，去空项与首尾空白。 */
+function splitHotwords(text: string): string[] | undefined {
+  const words = text
+    .split(/[,，、\n]/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 0)
+  return words.length > 0 ? words : undefined
+}
+
 function buildParsingConfig(): ParsingConfig {
   const parsing: ParsingConfig = {}
 
@@ -540,6 +553,7 @@ function buildParsingConfig(): ParsingConfig {
     parsing.audio = {
       asr_model: configForm.audioAsrModel || undefined,
       language: configForm.audioAsrLanguage || undefined,
+      hotwords: splitHotwords(configForm.audioHotwordsText),
     }
   }
 
