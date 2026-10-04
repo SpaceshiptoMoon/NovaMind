@@ -15,6 +15,9 @@ from novamind.engines.document.media.chunk_time_alignment import (
     extract_anchor_indices,
     format_time_anchor,
 )
+from novamind.engines.document.media.video.video_normalizer import (
+    extract_ffmpeg_error,
+)
 from novamind.engines.document.media.vlm import (
     build_image_data_url,
     build_vlm_image_messages,
@@ -606,7 +609,7 @@ def _slice_video_segment(
 
     raise VideoSegmentationError(
         f"视频切片失败：[{t0:.1f}s, {t1:.1f}s) "
-        f"stderr={((result.stderr or '')[-500:])}"
+        f"{extract_ffmpeg_error(result.stderr or '', result.stdout or '')}"
     )
 
 

@@ -6,6 +6,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from novamind.engines.document.media.video.video_normalizer import (
+    extract_ffmpeg_error,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,9 +97,9 @@ def extract_audio_track(source_path: str, *, max_duration_sec: int = 7200) -> by
                 extra={"source_path": source_path},
             )
             return b""
-        detail = stderr or stdout or "ffmpeg returned a non-zero exit code"
+        detail = extract_ffmpeg_error(stderr, stdout)
         out_file.unlink(missing_ok=True)
-        raise AudioTrackExtractionError(f"音轨提取失败: {detail[:500]}")
+        raise AudioTrackExtractionError(f"音轨提取失败: {detail}")
 
     if not has_output:
         # exit 0 但产物为空——同样视为无音轨降级（部分容器ffmpeg静默成功）
