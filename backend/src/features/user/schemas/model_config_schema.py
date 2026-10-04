@@ -17,10 +17,10 @@ class ModelConfigBase(BaseModel):
     )
     protocol: str = Field(
         ...,
-        description="通信协议: openai/anthropic/ollama/transformers",
+        description="通信协议: openai/openai_video/anthropic/ollama/transformers",
         min_length=1,
         max_length=50,
-        examples=["openai", "anthropic"]
+        examples=["openai", "openai_video", "anthropic"]
     )
     model: str = Field(
         ...,

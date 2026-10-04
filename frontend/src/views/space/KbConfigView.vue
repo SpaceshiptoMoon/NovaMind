@@ -203,6 +203,11 @@ const configForm = reactive({
   videoSceneThreshold: null as number | null,
   videoDedupSimilarityThreshold: null as number | null,
   videoGroupSize: null as number | null,
+  videoFrameSeqChunkFrames: null as number | null,
+  videoNativeChunkSec: null as number | null,
+  videoNativeMinTailSec: null as number | null,
+  videoNativeConcurrency: null as number | null,
+  videoNativeFallbackToFrameSeq: true,
   videoSceneMinInterval: null as number | null,
   videoTranscribeAudio: false,
   videoAsrModel: '',
@@ -271,6 +276,11 @@ watch(hasVideo, (value) => {
     configForm.videoSceneThreshold = null
     configForm.videoDedupSimilarityThreshold = null
     configForm.videoGroupSize = null
+    configForm.videoFrameSeqChunkFrames = null
+    configForm.videoNativeChunkSec = null
+    configForm.videoNativeMinTailSec = null
+    configForm.videoNativeConcurrency = null
+    configForm.videoNativeFallbackToFrameSeq = true
     configForm.videoSceneMinInterval = null
     configForm.videoTranscribeAudio = false
     configForm.videoAsrModel = ''
@@ -361,6 +371,24 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
       : parsing.video.dedup_similarity_threshold
   configForm.videoGroupSize =
     parsing?.video?.group_size === undefined ? null : parsing.video.group_size
+  configForm.videoFrameSeqChunkFrames =
+    parsing?.video?.frame_seq_chunk_frames === undefined
+      ? null
+      : parsing.video.frame_seq_chunk_frames
+  configForm.videoNativeChunkSec =
+    parsing?.video?.video_native_chunk_sec === undefined
+      ? null
+      : parsing.video.video_native_chunk_sec
+  configForm.videoNativeMinTailSec =
+    parsing?.video?.video_native_min_tail_sec === undefined
+      ? null
+      : parsing.video.video_native_min_tail_sec
+  configForm.videoNativeConcurrency =
+    parsing?.video?.video_native_concurrency === undefined
+      ? null
+      : parsing.video.video_native_concurrency
+  configForm.videoNativeFallbackToFrameSeq =
+    parsing?.video?.video_native_fallback_to_frame_seq ?? true
   configForm.videoSceneMinInterval =
     parsing?.video?.scene_min_interval === undefined ? null : parsing.video.scene_min_interval
   configForm.videoTranscribeAudio = parsing?.video?.transcribe_audio ?? false
@@ -477,6 +505,19 @@ function buildParsingConfig(): ParsingConfig {
     if (configForm.videoGroupSize !== null) {
       video.group_size = configForm.videoGroupSize
     }
+    if (configForm.videoFrameSeqChunkFrames !== null) {
+      video.frame_seq_chunk_frames = configForm.videoFrameSeqChunkFrames
+    }
+    if (configForm.videoNativeChunkSec !== null) {
+      video.video_native_chunk_sec = configForm.videoNativeChunkSec
+    }
+    if (configForm.videoNativeMinTailSec !== null) {
+      video.video_native_min_tail_sec = configForm.videoNativeMinTailSec
+    }
+    if (configForm.videoNativeConcurrency !== null) {
+      video.video_native_concurrency = configForm.videoNativeConcurrency
+    }
+    video.video_native_fallback_to_frame_seq = configForm.videoNativeFallbackToFrameSeq
     if (configForm.videoSceneMinInterval !== null) {
       video.scene_min_interval = configForm.videoSceneMinInterval
     }

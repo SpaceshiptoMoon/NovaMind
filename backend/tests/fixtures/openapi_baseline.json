@@ -6009,9 +6009,10 @@
             "type": "string"
           },
           "protocol": {
-            "description": "通信协议: openai/anthropic/ollama/transformers",
+            "description": "通信协议: openai/openai_video/anthropic/ollama/transformers",
             "examples": [
               "openai",
+              "openai_video",
               "anthropic"
             ],
             "maxLength": 50,
@@ -12904,7 +12905,7 @@
         "type": "object"
       },
       "VideoParsingConfig": {
-        "description": "Video parsing config.\n\nstrategy（视频解析策略，5 预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）",
+        "description": "Video parsing config.\n\nstrategy（视频解析策略，预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）\n- \"frame_seq\": 固定间隔抽帧的整段帧序列以伪视频喂 VLM（模型感知时序），\n  需 VLM 协议配 openai_video；只接固定间隔抽帧（scene 帧时刻不均匀，fps 语义失效）\n- \"video_native\": 切片直输 VLM（模型直接看视频，慢切换场景最优；录屏\n  不推荐——服务商内部分辨率压缩丢 UI 小字）。需 VLM 协议配 openai_video\n  + minio.public_endpoint（外部 VLM 下载切片）；抽帧强制走 scene\n  （切换点即聚片边界）；被服务商拒视频输入时自动降级 frame_seq（可关）。",
         "properties": {
           "asr_model": {
             "anyOf": [
@@ -12936,6 +12937,19 @@
             "minimum": 0.5,
             "title": "Frame Interval",
             "type": "number"
+          },
+          "frame_seq_chunk_frames": {
+            "anyOf": [
+              {
+                "maximum": 512.0,
+                "minimum": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Seq Chunk Frames"
           },
           "group_size": {
             "anyOf": [
@@ -13019,13 +13033,15 @@
           },
           "strategy": {
             "default": "simple",
-            "description": "视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
+            "description": "视频解析策略：7 预设（抽帧/去重/描述三阶段组合）",
             "enum": [
               "simple",
               "scene",
               "dedup",
               "grouped",
-              "rewrite"
+              "rewrite",
+              "frame_seq",
+              "video_native"
             ],
             "title": "Strategy",
             "type": "string"
@@ -13034,6 +13050,50 @@
             "default": false,
             "title": "Transcribe Audio",
             "type": "boolean"
+          },
+          "video_native_chunk_sec": {
+            "anyOf": [
+              {
+                "maximum": 540.0,
+                "minimum": 30.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Native Chunk Sec"
+          },
+          "video_native_concurrency": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Native Concurrency"
+          },
+          "video_native_fallback_to_frame_seq": {
+            "default": true,
+            "title": "Video Native Fallback To Frame Seq",
+            "type": "boolean"
+          },
+          "video_native_min_tail_sec": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Native Min Tail Sec"
           },
           "vlm_description_enabled": {
             "default": false,

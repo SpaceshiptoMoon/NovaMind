@@ -254,20 +254,87 @@ Recommended structure:
 {
   "parsing": {
     "video": {
+      "strategy": "simple | scene | dedup | grouped | rewrite | frame_seq | video_native",
       "frame_interval": 5.0,
       "max_frames": 60,
-      "vlm_description_enabled": true,
-      "vlm_model": null
+      "vlm_model": null,
+      "vlm_fallback_model": null,
+      "vlm_skip_on_quota_error": false,
+      "scene_threshold": null,
+      "scene_min_interval": null,
+      "dedup_similarity_threshold": null,
+      "group_size": null,
+      "frame_seq_chunk_frames": null,
+      "video_native_chunk_sec": null,
+      "video_native_min_tail_sec": null,
+      "video_native_concurrency": null,
+      "video_native_fallback_to_frame_seq": true,
+      "transcribe_audio": false,
+      "asr_model": null,
+      "language": null,
+      "steps_enabled": false,
+      "steps_llm_model": null,
+      "steps_max_steps": 30
     }
   }
 }
 ```
 
+### 七种策略（抽帧/去重/描述三阶段组合预设）
+
+| strategy | 抽帧 | 描述 | 适用 | 备注 |
+|---|---|---|---|---|
+| `simple` | 固定间隔 | 逐帧单图 | 默认 | 采样盲区：2 秒动作 ~60% 概率漏 |
+| `scene` | 场景切换点 | 逐帧单图 | 镜头分明的视频 | 切换点阈值/间隔保护可调 |
+| `dedup` | 固定间隔+去重 | 逐帧单图 | 静态画面为主的视频 | 直方图相似度去重 |
+| `grouped` | 固定间隔 | 多帧一组多图 | 短视频连贯描述 | 无时序感知 |
+| `rewrite` | 固定间隔 | 逐帧+LLM 重写 | 逐帧结果润色 | 保留时间锚点 |
+| `frame_seq` | 固定间隔 | 整段帧序列伪视频 | 全场景通用（推荐） | 需 VLM 协议 `openai_video` |
+| `video_native` | 场景切换点 | 切片直输 | 慢切换（会议/讲座/访谈） | 需 `openai_video` + `minio.public_endpoint`；录屏不推荐 |
+
+### S3 `frame_seq` 帧序列伪视频（2026-10）
+
+整段帧以 `{"type":"video","video":[帧 data URL 列表],"fps":N}` 喂 VLM，模型感知时序。
+真实 API 实测（qwen3.8-27b，5 场景矩阵）全场景零翻车、input token 最低。
+
+- **协议要求**：VLM 模型的协议必须配 `openai_video`（专用视频客户端
+  `OpenAICompatibleVideoLLM`，模型管理里把所选 VLM 协议改为 `openai_video`）。
+  客户端缺 `generate_text_from_frames` 时任务直接失败并提示改协议（fail fast）。
+- **只接固定间隔抽帧**：scene 帧时刻不均匀，`fps` 语义失效。
+- **长视频分段**：DashScope 帧列表单次请求硬限 4-512 张，超限按
+  `frame_seq_chunk_frames`（默认 512）固定 size 分段，尾段 < 8 帧并入前段；
+  段间并发默认 2（伪视频请求体大，不与逐帧并发同档）。
+- **时间校准**：每段 prompt 注入帧时刻表（`帧#0=12.5s ...`），修实测发现的
+  ~1s 系统性偏移；chunk 时间区间仍由代码绝对时间构建，模型文本时间只给人看。
+
+### S4 `video_native` 视频直输（2026-10）
+
+按场景切换点聚片，每片 ffmpeg `-c copy` 流复制切出（无重编码）上传临时
+MinIO 对象，模型直接看视频（`{"type":"video_url","video_url":{"url":...}}`）。
+慢切换场景最优（切换定位准+结构推理+token 省）；快切换时间戳漂移 1-3s
+（机制性，代码侧时间权威兜底）；录屏翻车（服务商内部分辨率压缩丢 UI 小字，
+文档标注不推荐）。
+
+- **协议/网络要求**：VLM 协议 `openai_video`；`minio.public_endpoint` 必须配置
+  （外部 VLM 服务下载切片用，缺失时告警但片描述会失败）。
+- **聚片**：场景切换点作片边界（片内单一场景段）；切换点间距超
+  `video_native_chunk_sec`（默认 540s，DashScope 10min 硬限留 60s 裕量）的
+  区间均分切小；尾片 < `video_native_min_tail_sec`（默认 30s）并入前片。
+- **临时对象生命周期**：`{base}_vtmp/` 前缀即用即删（无论成败 finally 清理）。
+- **降级链**：服务商明确拒绝视频输入（`VideoInputNotSupportedError`）且
+  `video_native_fallback_to_frame_seq=true`（默认）→ 告警并自动降级
+  frame_seq 全套；其它错误不降级（fail fast）。
+- **时间权威在代码侧**：chunk 时间区间全部由代码绝对时间构建；prompt 注入
+  `{t0}` 片起始绝对秒做双重校正，但模型输出的时间只给人看不参与对齐。
+
 ### Rules
 
-- `frame_interval` and `max_frames` work together.
-- if `vlm_description_enabled=false`, `vlm_model` is ignored.
-- if `vlm_description_enabled=true`, `vlm_model` is optional.
+- `frame_interval` and `max_frames` work together (except `scene` / `video_native`).
+- `vlm_model` 必选：留空任务直接失败（不回退用户默认、不串用 image 的模型）。
+- `vlm_fallback_model` 是用户显式配置的备用模型，配额/鉴权失败时回退一次。
+- `vlm_skip_on_quota_error=true` 时全帧配额失败写占位描述而非任务失败。
+- 所有策略共用音轨 ASR 融合（`transcribe_audio`）与步骤综合（`steps_enabled`）——
+  S3/S4 的段/片产出与 grouped 同构（`frame_groups` 锚点展开），下游零改动复用。
 
 ## Audio Parsing Structure
 

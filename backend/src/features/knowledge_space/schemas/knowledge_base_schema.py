@@ -184,19 +184,27 @@ class ImageParsingConfig(BaseModel):
 class VideoParsingConfig(BaseModel):
     """Video parsing config.
 
-    strategy（视频解析策略，5 预设映射到抽帧/去重/描述三阶段组合）：
+    strategy（视频解析策略，预设映射到抽帧/去重/描述三阶段组合）：
     - "simple": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）
     - "scene": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述
     - "dedup": 固定间隔 + 直方图相似度去重 + 逐帧单图描述
     - "grouped": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述
     - "rewrite": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）
+    - "frame_seq": 固定间隔抽帧的整段帧序列以伪视频喂 VLM（模型感知时序），
+      需 VLM 协议配 openai_video；只接固定间隔抽帧（scene 帧时刻不均匀，fps 语义失效）
+    - "video_native": 切片直输 VLM（模型直接看视频，慢切换场景最优；录屏
+      不推荐——服务商内部分辨率压缩丢 UI 小字）。需 VLM 协议配 openai_video
+      + minio.public_endpoint（外部 VLM 下载切片）；抽帧强制走 scene
+      （切换点即聚片边界）；被服务商拒视频输入时自动降级 frame_seq（可关）。
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["simple", "scene", "dedup", "grouped", "rewrite"] = Field(
+    strategy: Literal[
+        "simple", "scene", "dedup", "grouped", "rewrite", "frame_seq", "video_native"
+    ] = Field(
         default="simple",
-        description="视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
+        description="视频解析策略：7 预设（抽帧/去重/描述三阶段组合）",
     )
     frame_interval: float = Field(default=5.0, ge=0.5, le=60.0)
     max_frames: int = Field(default=60, ge=1, le=1000)
@@ -217,6 +225,20 @@ class VideoParsingConfig(BaseModel):
     dedup_similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     # 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3。
     group_size: int | None = Field(default=None, ge=1, le=20)
+    # 帧序列伪视频每段帧数上限（strategy=frame_seq），默认 512（DashScope 帧列表
+    # 单次请求硬限 4-512 张）；长视频超限自动分段，尾段过短并入前段。
+    frame_seq_chunk_frames: int | None = Field(default=None, ge=8, le=512)
+    # ===== S4 视频直输（strategy=video_native）=====
+    # 单片时长上限（秒），默认 540（DashScope 视频时长硬限 10min 留 60s 裕量；
+    # 尾片并入后前片最长 540+min_tail，仍 < 600s 硬限）。
+    video_native_chunk_sec: float | None = Field(default=None, ge=30.0, le=540.0)
+    # 尾片并入阈值（秒），默认 30：尾片短于该值并入前片。
+    video_native_min_tail_sec: float | None = Field(default=None, ge=0.0, le=120.0)
+    # 片间并发上限，默认 2（切片上传+直输请求均比逐帧重，与逐帧并发分档）。
+    video_native_concurrency: int | None = Field(default=None, ge=1, le=4)
+    # 服务商明确拒绝视频输入（VideoInputNotSupportedError）时是否自动降级
+    # frame_seq 帧序列策略，默认 True；关闭则直接失败（fail fast）。
+    video_native_fallback_to_frame_seq: bool = Field(default=True)
     # ===== 音轨 ASR 融合（批2 c3/c4）=====
     # 开启后提取原始视频音轨做 ASR 转写，旁白按时间归入帧描述行（双轨融合）。
     transcribe_audio: bool = Field(default=False)

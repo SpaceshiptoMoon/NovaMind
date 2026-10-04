@@ -32,7 +32,10 @@ from novamind.engines.document.media.video.frame_description import (
     describe_grouped,
     describe_single,
 )
-from novamind.features.knowledge_space.exceptions import DocumentProcessingError
+from novamind.features.knowledge_space.exceptions import (
+    DocumentProcessingError,
+    PermanentProcessingError,
+)
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import (
     media_processing,
@@ -537,3 +540,520 @@ async def test_video_vlm_concurrency_clamped_to_range(monkeypatch):
     )
 
     assert captured["concurrency"] == 20  # clamp 到上界
+
+# ---------------------------------------------------------------------------
+# S3 frame_seq：编排接线——策略分发、fps/chunk_frames 透传、能力缺失快速失败
+# ---------------------------------------------------------------------------
+
+
+class _FrameSeqVlmClient:
+    """带 generate_text_from_frames 能力的假 VLM client。"""
+
+    async def generate_text_from_frames(self, *a, **k):
+        return "desc"
+
+
+@pytest.mark.asyncio
+async def test_frame_seq_strategy_dispatch_and_kwargs(monkeypatch):
+    """S3 编排：strategy=frame_seq 时走 describe_frame_sequence，
+    fps=1/frame_interval、frame_seq_chunk_frames 透传，产出按 grouped 同款接线展开。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    ctx = SimpleNamespace(
+        pipeline_config={
+            "parsing": {
+                "video": {
+                    "strategy": "frame_seq",
+                    "vlm_model": "v-vlm",
+                    "frame_interval": 2.0,
+                    "frame_seq_chunk_frames": 128,
+                }
+            }
+        },
+        embedding_config={"model": "emb", "dimension": 8},
+    )
+
+    captured: dict = {}
+
+    async def fake_load(session, doc, task):
+        return ctx
+
+    async def fake_cancel(doc_id):
+        return None
+
+    async def fake_extract(content, interval, maxf):
+        return [(b"f", 0.0, 0), (b"f", 2.0, 1), (b"f", 4.0, 2)]
+
+    async def fake_get_minio(cls):
+        return _FakeMinio()
+
+    async def fake_describe_seq(frames, vlm_client, prompt, **kw):
+        captured["fps"] = kw.get("fps")
+        captured["chunk_frames"] = kw.get("chunk_frames")
+        captured["n_frames"] = len(frames)
+        # 返回两段（同构 grouped）：段0 覆盖帧 0-1，段1 覆盖帧 2
+        return [("seg0", 0.0, 2.0, [0, 1]), ("seg1", 4.0, 4.0, [2])]
+
+    async def fake_persist(document, text, session, logger):
+        captured["full_text"] = text
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        classmethod(fake_get_minio),
+    )
+    monkeypatch.setattr(media_processing, "describe_frame_sequence", fake_describe_seq)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
+    )
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _FrameSeqVlmClient()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    assert captured["fps"] == 0.5  # 1/2.0
+    assert captured["chunk_frames"] == 128
+    assert captured["n_frames"] == 3
+    # full_text 含两段描述
+    assert "seg0" in captured["full_text"] and "seg1" in captured["full_text"]
+
+
+@pytest.mark.asyncio
+async def test_frame_seq_client_without_video_method_raises_permanent(monkeypatch):
+    """S3 能力缺失：VLM client 无 generate_text_from_frames 时抛 PermanentProcessingError，
+    提示协议改为 openai_video，不静默降级。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    ctx = SimpleNamespace(
+        pipeline_config={
+            "parsing": {"video": {"strategy": "frame_seq", "vlm_model": "v-vlm"}}
+        },
+        embedding_config={"model": "emb", "dimension": 8},
+    )
+
+    async def fake_load(session, doc, task):
+        return ctx
+
+    async def fake_cancel(doc_id):
+        return None
+
+    async def fake_extract(content, interval, maxf):
+        return [(b"f", 0.0, 0)]
+
+    async def fake_get_minio(cls):
+        return _FakeMinio()
+
+    monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        classmethod(fake_get_minio),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
+    )
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return object()  # 无视频能力
+
+    session = _FakeSession()
+    with pytest.raises(PermanentProcessingError, match="openai_video"):
+        await media_processing.process_video_document(
+            document=document,
+            file_content=b"fake",
+            session=session,
+            logger=_silent_logger(),
+            task=None,
+            model_config_port=_MCS(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# S4 video_native：编排接线——强制 scene 抽帧、降级链、能力缺失快速失败
+# ---------------------------------------------------------------------------
+
+
+class _NativeVlmClient:
+    """带视频直输能力的假 VLM client。"""
+
+    def __init__(self, url_responses=None, frames_responses=None):
+        self.url_responses = list(url_responses or [])
+        self.frames_responses = list(frames_responses or [])
+
+    async def generate_text_from_video_url(self, url, prompt, **kw):
+        r = self.url_responses.pop(0) if self.url_responses else "片描述"
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    async def generate_text_from_frames(self, frames, prompt, **kw):
+        r = self.frames_responses.pop(0) if self.frames_responses else "降级段描述"
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+class _FakeNativeMinio:
+    """带 public_endpoint / bucket / 前缀清理记录的 MinIO 假件。"""
+
+    public_endpoint = "https://minio.example.com"
+    bucket_name = "novamind"
+
+    def __init__(self):
+        self.uploaded: list = []
+        self.cleaned_prefixes: list = []
+
+    async def upload_file(self, object_name, data, content_type):
+        self.uploaded.append(object_name)
+
+    async def get_public_file_url(self, bucket, object_name, expires=3600):
+        return f"https://pub.example.com/{object_name}"
+
+    async def delete_objects_by_prefix(self, prefix):
+        self.cleaned_prefixes.append(prefix)
+
+
+def _native_video_mocks(monkeypatch, video_overrides: dict, minio_instance):
+    """装配 video_native 编排测试的公共 monkeypatch 组。"""
+    video_cfg = {"strategy": "video_native", "vlm_model": "v-vlm", **video_overrides}
+    ctx = SimpleNamespace(
+        pipeline_config={"parsing": {"video": video_cfg}},
+        embedding_config={"model": "emb", "dimension": 8},
+    )
+
+    async def fake_load(session, doc, task):
+        return ctx
+
+    async def fake_cancel(doc_id):
+        return None
+
+    async def fake_extract_scene(content, maxf, **kw):
+        # 假场景帧：含首帧 0 + 两个切换点
+        return [(b"f", 0.0, 0), (b"f", 100.0, 1), (b"f", 200.0, 2)]
+
+    async def fake_extract_fixed(content, interval, maxf):
+        raise AssertionError("video_native 应强制走 scene 抽帧，不应调 fixed")
+
+    async def fake_get_minio(cls):
+        return minio_instance
+
+    monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "extract_frames_scene", fake_extract_scene)
+    monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract_fixed)
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        classmethod(fake_get_minio),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "p"
+    )
+    # read_video_metadata 是编排分支内的懒 import，patch 源模块符号
+    monkeypatch.setattr(
+        "novamind.engines.document.media.video.video_utils.read_video_metadata",
+        lambda p: {"duration": 300.0},
+    )
+
+
+@pytest.mark.asyncio
+async def test_video_native_dispatch_scene_and_cleanup(monkeypatch):
+    """S4 编排：强制 scene 抽帧、真实 duration 透传、临时对象闭包注入、产出锚点接线。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    captured: dict = {}
+
+    _native_video_mocks(monkeypatch, {}, minio)
+
+    async def fake_describe_native(path, duration, scene_ts, client, prompt, **kw):
+        captured["path"] = path
+        captured["duration"] = duration
+        captured["scene_ts"] = scene_ts
+        captured["upload"] = kw.get("upload_segment") is not None
+        captured["cleanup"] = kw.get("cleanup_segments") is not None
+        return [("片0", 0.0, 100.0, [0, 1]), ("片1", 100.0, 300.0, [2])]
+
+    async def fake_persist(document, text, session, logger):
+        captured["full_text"] = text
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _NativeVlmClient()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    # scene 抽帧产物作为聚片边界（含首帧 0）；真实 duration 透传
+    assert captured["scene_ts"] == [0.0, 100.0, 200.0]
+    assert captured["duration"] == 300.0
+    assert captured["upload"] and captured["cleanup"]
+    # full_text 两片锚点
+    assert "片0" in captured["full_text"] and "片1" in captured["full_text"]
+
+
+@pytest.mark.asyncio
+async def test_video_native_reject_falls_back_to_frame_seq(monkeypatch):
+    """降级链：VideoInputNotSupportedError + 开关默认开 → 降级调 describe_frame_sequence。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    _native_video_mocks(monkeypatch, {}, minio)
+
+    from novamind.shared.ai_models.llm.openai_compatible_video import (
+        VideoInputNotSupportedError,
+    )
+
+    fallback_called: dict = {}
+
+    async def fake_describe_native(*a, **kw):
+        raise AllFrameDescriptionsFailedError(
+            first_error=VideoInputNotSupportedError("4xx not support video"),
+            total_frames=3,
+        )
+
+    async def fake_describe_seq(frames, vlm_client, prompt, **kw):
+        fallback_called["fps"] = kw.get("fps")
+        fallback_called["n"] = len(frames)
+        return [("降级段", 0.0, 200.0, [0, 1, 2])]
+
+    async def fake_persist(document, text, session, logger):
+        fallback_called["full_text"] = text
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
+    monkeypatch.setattr(media_processing, "describe_frame_sequence", fake_describe_seq)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _NativeVlmClient()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    assert fallback_called["n"] == 3
+    assert "降级段" in fallback_called["full_text"]
+
+
+@pytest.mark.asyncio
+async def test_video_native_reject_no_fallback_config_fails(monkeypatch):
+    """降级链关闭：VideoInputNotSupportedError 不降级，走全失败路径抛错。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    _native_video_mocks(
+        monkeypatch, {"video_native_fallback_to_frame_seq": False}, minio
+    )
+
+    from novamind.shared.ai_models.llm.openai_compatible_video import (
+        VideoInputNotSupportedError,
+    )
+
+    async def fake_describe_native(*a, **kw):
+        raise AllFrameDescriptionsFailedError(
+            first_error=VideoInputNotSupportedError("4xx not support video"),
+            total_frames=3,
+        )
+
+    async def fail_seq(*a, **kw):
+        raise AssertionError("降级开关关闭，不应调 frame_seq")
+
+    monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
+    monkeypatch.setattr(media_processing, "describe_frame_sequence", fail_seq)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _NativeVlmClient()
+
+    session = _FakeSession()
+    with pytest.raises(DocumentProcessingError, match="所有帧"):
+        await media_processing.process_video_document(
+            document=document,
+            file_content=b"fake",
+            session=session,
+            logger=_silent_logger(),
+            task=None,
+            model_config_port=_MCS(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_video_native_other_error_no_fallback(monkeypatch):
+    """其它异常（非视频输入拒绝）：不降级，按全失败路径抛错。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    _native_video_mocks(monkeypatch, {}, minio)
+
+    async def fake_describe_native(*a, **kw):
+        raise AllFrameDescriptionsFailedError(
+            first_error=RuntimeError("网络超时"), total_frames=3,
+        )
+
+    async def fail_seq(*a, **kw):
+        raise AssertionError("非拒绝类错误不应降级")
+
+    monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
+    monkeypatch.setattr(media_processing, "describe_frame_sequence", fail_seq)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _NativeVlmClient()
+
+    session = _FakeSession()
+    with pytest.raises(DocumentProcessingError, match="所有帧"):
+        await media_processing.process_video_document(
+            document=document,
+            file_content=b"fake",
+            session=session,
+            logger=_silent_logger(),
+            task=None,
+            model_config_port=_MCS(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_video_native_client_without_url_method_raises_permanent(monkeypatch):
+    """S4 能力缺失：client 无 generate_text_from_video_url 抛 PermanentProcessingError。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    _native_video_mocks(monkeypatch, {}, minio)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return object()
+
+    session = _FakeSession()
+    with pytest.raises(PermanentProcessingError, match="openai_video"):
+        await media_processing.process_video_document(
+            document=document,
+            file_content=b"fake",
+            session=session,
+            logger=_silent_logger(),
+            task=None,
+            model_config_port=_MCS(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# 批3：S3/S4 段/片 idx_list 与 _synthesize_steps 帧层覆盖率校验兼容
+# ---------------------------------------------------------------------------
+
+
+def _fake_llm_steps_client(steps_json: list[dict]):
+    """返回输出固定步骤 JSON 的假 LLM client。"""
+    import json as _json
+
+    class _C:
+        async def generate_text(self, prompt, **kw):
+            return _json.dumps({"steps": steps_json}, ensure_ascii=False)
+
+    return _C()
+
+
+@pytest.mark.asyncio
+async def test_synth_steps_full_coverage_with_s3_s4_frame_groups(monkeypatch):
+    """批3：S3/S4 同构 frame_groups（段/片锚点→idx_list）下，步骤区间端点取锚点，
+    _steps_coverage_gap 展开后帧层全覆盖 → 步骤综合成功。"""
+    # S3 段结构：段0 [0,1]，段1 [2,3]，段2 [4]——frame_groups 同构 grouped
+    frame_groups = {0: [0, 1], 2: [2, 3], 4: [4]}
+    frame_timeline_map = {0: (0.0, 10.0), 2: (10.0, 20.0), 4: (20.0, None)}
+    steps = [
+        {"no": 1, "title": "准备", "body": "x", "start_frame_idx": 0, "end_frame_idx": 0},
+        {"no": 2, "title": "操作", "body": "y", "start_frame_idx": 2, "end_frame_idx": 2},
+        {"no": 3, "title": "收尾", "body": "z", "start_frame_idx": 4, "end_frame_idx": 4},
+    ]
+    llm = _fake_llm_steps_client(steps)
+    document = _make_video_document()
+    out = await media_processing._synthesize_steps(
+        document=document,
+        full_text="[00:00:00#0] 段0\n\n[00:00:10#2] 段1\n\n[00:00:20#4] 段2",
+        frame_timeline_map=frame_timeline_map,
+        frame_groups=frame_groups,
+        llm_client=llm,
+        max_steps=30,
+        logger=_silent_logger(),
+    )
+    assert out is not None and len(out) == 3
+
+
+@pytest.mark.asyncio
+async def test_synth_steps_missing_segment_retry_then_degrade(monkeypatch):
+    """批3：故意缺一段 → 缺口非空重试 1 次 → 仍缺 → 返回 None（降级不失败）。"""
+    frame_groups = {0: [0, 1], 2: [2, 3], 4: [4]}
+    frame_timeline_map = {0: (0.0, 10.0), 2: (10.0, 20.0), 4: (20.0, None)}
+    # 缺段2（锚点 4）的步骤：重试也缺 → None
+    steps_missing = [
+        {"no": 1, "title": "准备", "body": "x", "start_frame_idx": 0, "end_frame_idx": 0},
+        {"no": 2, "title": "操作", "body": "y", "start_frame_idx": 2, "end_frame_idx": 2},
+    ]
+    llm = _fake_llm_steps_client(steps_missing)
+    document = _make_video_document()
+    out = await media_processing._synthesize_steps(
+        document=document,
+        full_text="[00:00:00#0] 段0\n\n[00:00:10#2] 段1\n\n[00:00:20#4] 段2",
+        frame_timeline_map=frame_timeline_map,
+        frame_groups=frame_groups,
+        llm_client=llm,
+        max_steps=30,
+        logger=_silent_logger(),
+    )
+    assert out is None
+
+
+def test_steps_coverage_gap_s4_pieces_expansion():
+    """批3：S4 片 idx_list（片区间覆盖帧）展开语义与 grouped 一致——
+    区间端点帧 idx 经 frame_groups 展开为片内全部帧。"""
+    # S4：片0 锚点 0 → [0,1]；片1 锚点 2 → [2]
+    frame_groups = {0: [0, 1], 2: [2]}
+    steps = [{"no": 1, "title": "t", "body": "b", "start_frame_idx": 0, "end_frame_idx": 2}]
+    gap = media_processing._steps_coverage_gap(steps, {0, 1, 2}, frame_groups)
+    # 步骤区间 [0,2] 覆盖锚点 0/1/2：0 展开为 [0,1]，2 展开为 [2] → 全覆盖
+    assert gap == set()
