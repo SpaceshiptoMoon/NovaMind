@@ -101,6 +101,46 @@ class DocumentResponse(BaseModel):
             return int(result.get("token_count", 0) or 0)
         return 0
 
+    @computed_field
+    @property
+    def chunk_type(self) -> str | None:
+        """内容类型（video/audio/text 等），从最新任务的 pipeline_result 提取"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            value = result.get("chunk_type")
+            return str(value) if value else None
+        return None
+
+    @computed_field
+    @property
+    def duration_seconds(self) -> float | None:
+        """媒体时长（秒），音视频任务完成后写入；文本或未处理文档为 None"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            value = result.get("duration_seconds")
+            return float(value) if value else None
+        return None
+
+    @computed_field
+    @property
+    def frame_count(self) -> int | None:
+        """视频抽帧数，视频任务完成后写入；非视频或未处理文档为 None"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            value = result.get("frame_count")
+            return int(value) if value else None
+        return None
+
+    @computed_field
+    @property
+    def segment_count(self) -> int | None:
+        """音频 ASR 转写分段数，音频任务完成后写入；非音频或未处理文档为 None"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            value = result.get("segment_count")
+            return int(value) if value else None
+        return None
+
 
 class DocumentListResponse(BaseModel):
     """文档列表响应"""

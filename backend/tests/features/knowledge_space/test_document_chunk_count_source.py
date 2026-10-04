@@ -65,3 +65,58 @@ def test_chunk_count_zero_when_no_task_or_missing_key():
 
     # chunk_count 值为 None（脏数据）不崩、回 0
     assert DocumentResponse.model_validate(_doc_with_task({"chunk_count": None})).chunk_count == 0
+
+
+def test_media_metadata_fields_exposed_from_pipeline_result():
+    """正向：视频/音频形 pipeline_result 的媒体元信息全量透出。"""
+    video_doc = _doc_with_task({
+        "chunk_count": 4,
+        "chunk_type": "video",
+        "frame_count": 12,
+        "duration_seconds": 62.35,
+        "indexed_at": "2026-10-04T00:00:00",
+    })
+    resp = DocumentResponse.model_validate(video_doc)
+    assert resp.chunk_type == "video"
+    assert resp.frame_count == 12
+    assert resp.duration_seconds == 62.35
+    assert resp.segment_count is None  # 视频文档无分段数，不误报
+
+    audio_doc = _doc_with_task({
+        "chunk_count": 9,
+        "chunk_type": "audio",
+        "segment_count": 33,
+        "duration_seconds": 185.1,
+    })
+    resp = DocumentResponse.model_validate(audio_doc)
+    assert resp.chunk_type == "audio"
+    assert resp.segment_count == 33
+    assert resp.duration_seconds == 185.1
+    assert resp.frame_count is None  # 音频文档无帧数，不误报
+
+
+def test_media_metadata_fields_none_when_absent():
+    """反向：文本文档 / 无任务 / 缺键 / 脏数据时媒体字段为 None 不误报。"""
+    # 文本文档：pipeline_result 无媒体键
+    text_doc = _doc_with_task({"chunk_count": 5, "token_count": 1200})
+    resp = DocumentResponse.model_validate(text_doc)
+    assert resp.chunk_type is None
+    assert resp.duration_seconds is None
+    assert resp.frame_count is None
+    assert resp.segment_count is None
+    assert resp.chunk_count == 5
+
+    # 无任务
+    doc = _doc_with_task(None)
+    doc.task = None
+    resp = DocumentResponse.model_validate(doc)
+    assert resp.duration_seconds is None
+    assert resp.frame_count is None
+
+    # 值为 None（脏数据）不崩、回 None
+    resp = DocumentResponse.model_validate(
+        _doc_with_task({"frame_count": None, "duration_seconds": None, "chunk_type": None})
+    )
+    assert resp.frame_count is None
+    assert resp.duration_seconds is None
+    assert resp.chunk_type is None

@@ -94,6 +94,40 @@ async def _snap_minio():
     return await ClientFactory.get_minio_client()
 
 
+def _probe_video_duration(file_path: str | None) -> float | None:
+    """探测视频真实时长（秒）。
+
+    Args:
+        file_path: 本地视频路径；None（bytes-only 路径/测试）直接不可用。
+
+    Returns:
+        时长秒数；探测失败返回 None（能力缺失方向安全——调用方区分
+        「探测不可用」与「真实 0 时长」，不做错误兜底值）。
+    """
+    if not file_path:
+        return None
+    try:
+        from novamind.engines.document.media.video.video_utils import read_video_metadata
+
+        return float(read_video_metadata(file_path).get("duration") or 0) or None
+    except Exception:
+        return None
+
+
+def _probe_audio_duration(segments: list[dict[str, Any]]) -> float | None:
+    """从 ASR segments 推断音频内容时长（末段结束时刻）。
+
+    Args:
+        segments: ASR 转写段列表（元素带 ``end`` 秒）。
+
+    Returns:
+        末段 ``end`` 最大值（尾部静音不计——ASR 内容时长是本领域口径）；
+        无有效段时 None。
+    """
+    ends = [float(seg.get("end") or 0) for seg in segments if seg.get("end") is not None]
+    return round(max(ends), 2) if ends else None
+
+
 async def _resolve_asr_route(
     document: Document,
     model_config_port: ModelConfigService,
@@ -503,12 +537,16 @@ async def _audio_resume_tail(
         user_id=document.uploader_id,
     )
     if task:
-        task.mark_completed(result={
+        completed_result: dict[str, Any] = {
             "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.AUDIO,
             "resumed_from_snapshot": True,
             "indexed_at": now_china().isoformat(),
-        })
+        }
+        snap_duration = snap.get("duration_seconds")
+        if snap_duration:
+            completed_result["duration_seconds"] = float(snap_duration)
+        task.mark_completed(result=completed_result)
     await session.commit()
     logger.info(
         "音频文档处理完成（断点续跑）", document_id=document.id,
@@ -559,12 +597,20 @@ async def _video_resume_tail(
         user_id=document.uploader_id,
     )
     if task:
-        task.mark_completed(result={
+        completed_result: dict[str, Any] = {
             "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.VIDEO,
             "resumed_from_snapshot": True,
             "indexed_at": now_china().isoformat(),
-        })
+        }
+        # 还原后的帧路径即全量帧（写入侧按 frame_idx 全量保存），帧数可精确还原
+        resumed_frame_count = len(resumed_frame_paths or {})
+        if resumed_frame_count:
+            completed_result["frame_count"] = resumed_frame_count
+        snap_duration = snap.get("duration_seconds")
+        if snap_duration:
+            completed_result["duration_seconds"] = float(snap_duration)
+        task.mark_completed(result=completed_result)
     await session.commit()
     logger.info(
         "视频文档处理完成（断点续跑）", document_id=document.id,
@@ -725,6 +771,10 @@ async def process_video_document(
             document_id=document.id,
             error_message=f"视频 {document.filename} 未能提取到任何帧",
         )
+
+    # 真实时长软探测（展示透出 + video_native 聚片复用一次探测结果）；
+    # file_path 缺席或探测失败为 None，后续各消费点自行决策
+    video_duration_probed = _probe_video_duration(file_path)
 
     # 1.5 去重（dedup 策略：相邻帧直方图相似度去重，frame_idx 重映射为连续序号）
     if strategy == "dedup":
@@ -907,15 +957,20 @@ async def process_video_document(
                 native_video_path = tmp_source.name
 
             # 聚片边界的依据：场景帧 ts（extract_frames_scene 产物，含首帧 0）；
-            # duration 用真实元数据（末帧 ts + 间隔只是近似，会让末片边界错）
-            from novamind.engines.document.media.video.video_utils import read_video_metadata
-            try:
-                video_duration = float(read_video_metadata(native_video_path).get("duration") or 0)
-            except Exception as meta_exc:
-                raise DocumentProcessingError(
-                    document_id=document.id,
-                    error_message=f"视频 {document.filename} 元数据探测失败，无法聚片: {meta_exc}",
-                ) from meta_exc
+            # duration 用真实元数据（末帧 ts + 间隔只是近似，会让末片边界错）。
+            # 复用帧提取后的软探测结果；探测不可用（None）时补一次硬探测，
+            # 仍失败才报错——聚片边界质量决定描述质量，此处不可静默近似。
+            if video_duration_probed is not None:
+                video_duration = video_duration_probed
+            else:
+                from novamind.engines.document.media.video.video_utils import read_video_metadata
+                try:
+                    video_duration = float(read_video_metadata(native_video_path).get("duration") or 0)
+                except Exception as meta_exc:
+                    raise DocumentProcessingError(
+                        document_id=document.id,
+                        error_message=f"视频 {document.filename} 元数据探测失败，无法聚片: {meta_exc}",
+                    ) from meta_exc
             if video_duration <= 0:
                 # 元数据缺失时长时退化用末帧近似（能力缺失方向安全，末片边界略保守）
                 video_duration = max(ts for _, ts, _ in frames) + frame_interval
@@ -1162,6 +1217,7 @@ async def process_video_document(
                             **({"frame_groups": frame_groups} if frame_groups is not None else {}),
                         },
                         frame_paths=frame_paths,
+                        duration_seconds=video_duration_probed,
                     ),
                 )
             except Exception as snap_exc:
@@ -1205,10 +1261,17 @@ async def process_video_document(
 
     # 5. 写入处理结果到 Task（storage["frames"] 已在帧上传后立即持久化，此处不再重写）
     if task:
+        # 展示透出：优先真实探测时长；探测不可用时退末帧 ts + 间隔近似（与
+        # video_native 聚片兜底同方向，展示用途可接受）
+        if video_duration_probed and video_duration_probed > 0:
+            video_duration_out = round(video_duration_probed, 2)
+        else:
+            video_duration_out = round(max(ts for _, ts, _ in frames) + frame_interval, 2)
         task.mark_completed(result={
             "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.VIDEO,
             "frame_count": len(frames),
+            "duration_seconds": video_duration_out,
             "indexed_at": now_china().isoformat(),
         })
     await session.commit()
@@ -1462,6 +1525,7 @@ async def process_audio_document(
                         full_text=full_text,
                         parse_metadata=None,
                         time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
+                        duration_seconds=_probe_audio_duration(segments),
                     ),
                 )
             except Exception as snap_exc:
@@ -1490,12 +1554,16 @@ async def process_audio_document(
 
     # 4. 写入处理结果到 Task
     if task:
-        task.mark_completed(result={
+        completed_result: dict[str, Any] = {
             "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.AUDIO,
             "segment_count": len(segments),
             "indexed_at": now_china().isoformat(),
-        })
+        }
+        audio_duration = _probe_audio_duration(segments)
+        if audio_duration:
+            completed_result["duration_seconds"] = audio_duration
+        task.mark_completed(result=completed_result)
     await session.commit()
 
     logger.info(

@@ -2248,6 +2248,19 @@
             "title": "Chunk Count",
             "type": "integer"
           },
+          "chunk_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "内容类型（video/audio/text 等），从最新任务的 pipeline_result 提取",
+            "readOnly": true,
+            "title": "Chunk Type"
+          },
           "chunks": {
             "description": "分块列表",
             "items": {
@@ -2274,6 +2287,19 @@
             ],
             "description": "文档元数据",
             "title": "Doc Metadata"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "媒体时长（秒），音视频任务完成后写入；文本或未处理文档为 None",
+            "readOnly": true,
+            "title": "Duration Seconds"
           },
           "error_message": {
             "anyOf": [
@@ -2308,6 +2334,19 @@
             "title": "Filename",
             "type": "string"
           },
+          "frame_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "视频抽帧数，视频任务完成后写入；非视频或未处理文档为 None",
+            "readOnly": true,
+            "title": "Frame Count"
+          },
           "id": {
             "description": "文档ID",
             "title": "Id",
@@ -2323,6 +2362,19 @@
             "readOnly": true,
             "title": "Retry Count",
             "type": "integer"
+          },
+          "segment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "音频 ASR 转写分段数，音频任务完成后写入；非音频或未处理文档为 None",
+            "readOnly": true,
+            "title": "Segment Count"
           },
           "space_id": {
             "description": "所属空间ID",
@@ -2374,7 +2426,11 @@
           "retry_count",
           "error_message",
           "chunk_count",
-          "token_count"
+          "token_count",
+          "chunk_type",
+          "duration_seconds",
+          "frame_count",
+          "segment_count"
         ],
         "title": "DocumentDetailResponse",
         "type": "object"
@@ -2470,6 +2526,19 @@
             "title": "Chunk Count",
             "type": "integer"
           },
+          "chunk_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "内容类型（video/audio/text 等），从最新任务的 pipeline_result 提取",
+            "readOnly": true,
+            "title": "Chunk Type"
+          },
           "created_at": {
             "description": "上传时间",
             "format": "date-time",
@@ -2488,6 +2557,19 @@
             ],
             "description": "文档元数据",
             "title": "Doc Metadata"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "媒体时长（秒），音视频任务完成后写入；文本或未处理文档为 None",
+            "readOnly": true,
+            "title": "Duration Seconds"
           },
           "error_message": {
             "anyOf": [
@@ -2522,6 +2604,19 @@
             "title": "Filename",
             "type": "string"
           },
+          "frame_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "视频抽帧数，视频任务完成后写入；非视频或未处理文档为 None",
+            "readOnly": true,
+            "title": "Frame Count"
+          },
           "id": {
             "description": "文档ID",
             "title": "Id",
@@ -2537,6 +2632,19 @@
             "readOnly": true,
             "title": "Retry Count",
             "type": "integer"
+          },
+          "segment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "音频 ASR 转写分段数，音频任务完成后写入；非音频或未处理文档为 None",
+            "readOnly": true,
+            "title": "Segment Count"
           },
           "space_id": {
             "description": "所属空间ID",
@@ -2588,7 +2696,11 @@
           "retry_count",
           "error_message",
           "chunk_count",
-          "token_count"
+          "token_count",
+          "chunk_type",
+          "duration_seconds",
+          "frame_count",
+          "segment_count"
         ],
         "title": "DocumentResponse",
         "type": "object"

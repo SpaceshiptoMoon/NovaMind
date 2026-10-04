@@ -260,6 +260,7 @@ def build_parse_snapshot_payload(
     time_alignment: dict[str, Any] | None = None,
     frame_paths: dict[int, str] | None = None,
     splitting_config: dict[str, Any] | None = None,
+    duration_seconds: float | None = None,
 ) -> dict[str, Any]:
     """构造 parse_meta.json payload，各模态分支共用同一结构。
 
@@ -268,6 +269,7 @@ def build_parse_snapshot_payload(
       契约已随预签名 URL 一并退役，resume 只做残留占位符的 strip 兜底）
     - prechunked_items：结构化分块 [[text, per_chunk_meta], ...]（DeepDoc 等）
     - time_alignment / frame_paths：音视频的时间对齐与帧路径
+    - duration_seconds：音视频媒体时长（秒），resume 时透出到任务 pipeline_result
     - splitting_config：产出 prechunked_items 时的生效切分配置。文本切分实际
       发生在 parse 阶段内（DeepDoc rechunk），而 parse 指纹不含切分配置——
       resume 时据此比对：切分配置变了就从 full_text 重切，不采纳旧分块
@@ -287,6 +289,8 @@ def build_parse_snapshot_payload(
     if frame_paths:
         # 键为 int，JSON 序列化自动转 str；读取时用 restore_frame_paths 还原
         payload["frame_paths"] = {str(k): v for k, v in frame_paths.items()}
+    if duration_seconds:
+        payload["duration_seconds"] = duration_seconds
     return payload
 
 
