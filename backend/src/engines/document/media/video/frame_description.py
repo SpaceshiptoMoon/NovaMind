@@ -14,6 +14,7 @@ from novamind.engines.document.media.chunk_time_alignment import (
     format_time_anchor,
 )
 from novamind.engines.document.media.vlm import (
+    build_image_data_url,
     build_vlm_image_messages,
     build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
@@ -380,3 +381,174 @@ async def describe_rewrite(
         return joined, descriptions
 
     return rewritten.strip(), descriptions
+
+
+# 帧序列伪视频：单次请求帧数硬限（DashScope 帧列表模式 4-512 张），引擎侧再防一道。
+_FRAME_SEQ_MAX_FRAMES = 512
+# 帧序列伪视频段级 token 上限（一段描述多个帧，比 single 宽、比 grouped 略宽）。
+_DEFAULT_FRAME_SEQ_MAX_TOKENS = 4096
+# 帧序列伪视频段描述长度上限（一段覆盖多帧，比单帧 500 字放宽）。
+_FRAME_SEQ_MAX_DESC_LEN = _DEFAULT_MAX_DESC_LEN * 4
+
+
+def _plan_frame_sequence_chunks(
+    n_frames: int,
+    chunk_frames: int,
+    min_tail_frames: int,
+) -> list[tuple[int, int]]:
+    """把 n 帧切为若干 [start, end) 段（每段 ≤ chunk_frames），尾段过短并入前段。
+
+    固定 size 切分（前段各 chunk_frames 帧、尾段为余数），尾段帧数 <
+    min_tail_frames 时并入前段——前段最多达 chunk_frames + min_tail_frames - 1，
+    由调用方保证总和不超服务商 512 张硬限（chunk_frames 默认 512 时尾并后
+    ≤ 519，DashScope 按 512 拒绝则该段失败走跳过路径，配置层已约束）。
+
+    Args:
+        n_frames: 总帧数（>0）。
+        chunk_frames: 每段帧数上限（>0）。
+        min_tail_frames: 尾段最小帧数，不足则并入前段。
+
+    Returns:
+        ``[(start, end), ...]`` 段边界列表（左闭右开，升序连续覆盖全部帧）。
+    """
+    if n_frames <= chunk_frames:
+        return [(0, n_frames)]
+    chunks: list[tuple[int, int]] = [
+        (s, min(s + chunk_frames, n_frames))
+        for s in range(0, n_frames, chunk_frames)
+    ]
+    if len(chunks) >= 2 and (chunks[-1][1] - chunks[-1][0]) < min_tail_frames:
+        prev_start, _ = chunks[-2]
+        last_end = chunks[-1][1]
+        chunks[-2:] = [(prev_start, last_end)]
+    return chunks
+
+
+def _format_frame_time_table(frames: list[tuple[bytes, float, int]]) -> str:
+    """格式化帧时刻表（prompt 注入用），如 ``帧#0=12.5s 帧#1=17.5s ...``。
+
+    实测帧序列模式时间定位系统性偏 ~1s，prompt 显式给帧时刻可校准。
+    """
+    return " ".join(f"帧#{idx}={ts:.1f}s" for _, ts, idx in frames)
+
+
+async def describe_frame_sequence(
+    frames: list[tuple[bytes, float, int]],
+    vlm_client: Any,
+    prompt_template: str,
+    *,
+    fps: float,
+    logger: Any = logger,
+    vlm_model: str = "",
+    chunk_frames: int = _FRAME_SEQ_MAX_FRAMES,
+    min_tail_frames: int = 8,
+    max_tokens: int = _DEFAULT_FRAME_SEQ_MAX_TOKENS,
+    temperature: float = _DEFAULT_TEMPERATURE,
+    max_desc_len: int = _FRAME_SEQ_MAX_DESC_LEN,
+    log_context: dict[str, Any] | None = None,
+    cancelled_check: CancelledCheck | None = None,
+    concurrency: int = 2,
+    stats: dict[str, int] | None = None,
+) -> list[tuple[str, float, float, list[int]]]:
+    """帧序列伪视频描述（S3）：整段帧以 ``{"type":"video","video":[...],"fps":N}``
+    喂 VLM，模型感知时序。
+
+    长视频按 ``chunk_frames``（DashScope 帧列表 4-512 张硬限）固定 size 分段，
+    尾段帧数 < ``min_tail_frames`` 并入前段；每段 prompt 注入帧时刻表校准时间
+    定位（实测帧序列模式有 ~1s 系统性偏移）。段间有界并发（默认 2，伪视频
+    请求体大、网关超时风险高，不与逐帧并发同档）。
+
+    Args:
+        frames: 全量帧 ``[(jpeg_bytes, ts, frame_idx), ...]``，须按时间升序。
+        vlm_client: 须提供 ``generate_text_from_frames``（openai_video 协议客户端）。
+        prompt_template: 描述指令模板，含 ``{time_table}`` 占位符。
+        fps: 相邻帧间隔倒数（固定间隔抽帧 = 1/frame_interval）。
+        logger: 日志器。
+        vlm_model: 模型名（日志上下文）。
+        chunk_frames: 每段帧数上限。
+        min_tail_frames: 尾段最小帧数，不足并入前段。
+        max_tokens: 生成 token 上限。
+        temperature: 采样温度。
+        max_desc_len: 单段描述长度上限。
+        log_context: 附加日志键值。
+        cancelled_check: 取消检查回调（每段起跑前查）。
+        concurrency: 段间并发上限。
+        stats: 传入 dict 时写 ``{"failed": 失败段覆盖帧数合计}``。
+
+    Returns:
+        ``[(desc, start_ts, end_ts, idx_list), ...]`` 按时间升序，与
+        ``describe_grouped`` 同构；段锚点 = 段首帧 idx。
+
+    Raises:
+        AttributeError: vlm_client 无 ``generate_text_from_frames``（协议未配 openai_video）。
+        AllFrameDescriptionsFailedError: 所有段均失败。
+    """
+    if not frames:
+        return []
+
+    gen = getattr(vlm_client, "generate_text_from_frames", None)
+    if gen is None:
+        raise AttributeError(
+            "vlm_client 缺少 generate_text_from_frames 方法："
+            "请在模型管理中把 VLM 协议配置为 openai_video"
+        )
+
+    chunks = _plan_frame_sequence_chunks(len(frames), chunk_frames, min_tail_frames)
+    base_ctx: dict[str, Any] = dict(log_context or {})
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _describe_chunk(ci: int, chunk: list[tuple[bytes, float, int]]) -> dict[str, Any]:
+        if cancelled_check is not None and ci > 0:
+            await cancelled_check()
+        idx_list = [idx for _, _, idx in chunk]
+        start_ts = chunk[0][1]
+        end_ts = chunk[-1][1]
+        chunk_ctx = {**base_ctx, "chunk_index": ci, "frame_indices": idx_list}
+        result: dict[str, Any] = {
+            "ci": ci, "ok": False, "desc": None,
+            "start_ts": start_ts, "end_ts": end_ts, "idx_list": idx_list,
+            "exc": None,
+        }
+        prompt = prompt_template.format(time_table=_format_frame_time_table(chunk))
+        frame_urls = [build_image_data_url(fb, "image/jpeg") for fb, _, _ in chunk]
+        async with sem:
+            try:
+                desc = await gen(
+                    frame_urls, prompt, fps=fps,
+                    max_tokens=max_tokens, temperature=temperature,
+                )
+            except Exception as exc:
+                result["exc"] = exc
+                logger.warning(
+                    "帧序列伪视频段描述失败，跳过该段",
+                    chunk_index=ci, frame_count=len(chunk), error=str(exc), **base_ctx,
+                )
+                return result
+        if desc and desc.strip():
+            result["ok"] = True
+            result["desc"] = desc.strip()[:max_desc_len]
+        return result
+
+    chunk_results = await asyncio.gather(*[
+        _describe_chunk(ci, frames[s:e])
+        for ci, (s, e) in enumerate(chunks)
+    ])
+
+    results: list[tuple[str, float, float, list[int]]] = []
+    first_error: BaseException | None = None
+    failed_frames = 0
+    for r in sorted(chunk_results, key=lambda x: x["ci"]):
+        if r["ok"]:
+            results.append((r["desc"], r["start_ts"], r["end_ts"], r["idx_list"]))
+        else:
+            if first_error is None:
+                first_error = r["exc"]
+            failed_frames += len(r["idx_list"])
+
+    if not results:
+        raise AllFrameDescriptionsFailedError(
+            first_error=first_error, quota_failures=0, total_frames=len(frames),
+        )
+    if stats is not None:
+        stats["failed"] = failed_frames
+    return results

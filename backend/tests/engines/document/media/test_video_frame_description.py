@@ -20,6 +20,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.engines.document.media.video.frame_description import (
     AllFrameDescriptionsFailedError,
+    describe_frame_sequence,
     describe_grouped,
     describe_rewrite,
     describe_single,
@@ -305,3 +306,149 @@ async def test_describe_rewrite_empty_llm_output_falls_back():
 
     assert "[00:00:00#0]" in full_text
     assert descriptions == [("f0", 0.0, 0)]
+
+
+# ==================== describe_frame_sequence（S3 帧序列伪视频） ====================
+
+
+class FakeFrameSeqVlmClient:
+    """按序消费响应列表的假帧序列 VLM client。
+
+    ``responses`` 每项为 str（正常返回）或 Exception（抛出）。每次
+    ``generate_text_from_frames`` 调用记录 (frame_urls, prompt, fps) 到 ``calls``。
+    """
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    async def generate_text_from_frames(self, frame_data_urls, text_prompt, *, fps, **kwargs):
+        self.calls.append((list(frame_data_urls), text_prompt, fps))
+        if not self.responses:
+            raise RuntimeError("FakeFrameSeqVlmClient: no more responses")
+        r = self.responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+_SEQ_PROMPT = "描述这段画面。时刻表：{time_table}"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_single_chunk_within_limit():
+    """总帧数 ≤ chunk_frames：单段一次调用，prompt 含时刻表，fps 透传。"""
+    vlm = FakeFrameSeqVlmClient(["整段描述"])
+    out = await describe_frame_sequence(
+        _frames(6), vlm, _SEQ_PROMPT, fps=0.2, logger=fake_log,
+    )
+
+    assert out == [("整段描述", 0.0, 25.0, [0, 1, 2, 3, 4, 5])]
+    assert len(vlm.calls) == 1
+    urls, prompt, fps = vlm.calls[0]
+    assert len(urls) == 6
+    assert fps == 0.2
+    assert "帧#0=0.0s" in prompt and "帧#5=25.0s" in prompt
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_multi_chunk_fixed_split():
+    """超 chunk_frames 固定 size 分段：前段满 size、尾段为余数（min_tail=2 不触发尾并）。"""
+    vlm = FakeFrameSeqVlmClient(["段0", "段1", "段2"])
+    out = await describe_frame_sequence(
+        _frames(10), vlm, _SEQ_PROMPT, fps=1.0, logger=fake_log,
+        chunk_frames=4, min_tail_frames=2,
+    )
+
+    assert len(out) == 3
+    assert out[0][3] == [0, 1, 2, 3] and out[1][3] == [4, 5, 6, 7] and out[2][3] == [8, 9]
+    assert out[0][1] == 0.0 and out[2][2] == 45.0
+    # 每段 prompt 只含本段帧时刻
+    _, prompt0, _ = vlm.calls[0]
+    assert "帧#0=" in prompt0 and "帧#4=" not in prompt0
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_short_tail_merged():
+    """尾段帧数 < min_tail_frames 并入前段（n=515, chunk=512, min_tail=8 → 尾 3 帧并入）。"""
+    vlm = FakeFrameSeqVlmClient(["段0"])
+    out = await describe_frame_sequence(
+        _frames(515), vlm, _SEQ_PROMPT, fps=0.2, logger=fake_log,
+        chunk_frames=512, min_tail_frames=8,
+    )
+
+    assert len(out) == 1
+    assert out[0][3] == list(range(515))
+    assert len(vlm.calls) == 1
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_partial_failure_skipped_with_stats():
+    """部分段失败跳过留洞，stats 记失败帧数；全部成功 stats=0。"""
+    # n=10, chunk=4, min_tail=8：切分 [(0,4),(4,8),(8,10)] → 尾并 → [(0,4),(4,10)]
+    vlm = FakeFrameSeqVlmClient(["段0", Exception("boom")])
+    stats: dict[str, int] = {}
+    out = await describe_frame_sequence(
+        _frames(10), vlm, _SEQ_PROMPT, fps=1.0, logger=fake_log,
+        chunk_frames=4, min_tail_frames=8, stats=stats,
+    )
+
+    assert len(out) == 1 and out[0][0] == "段0"
+    assert stats == {"failed": 6}
+
+    ok = FakeFrameSeqVlmClient(["段0", "段1"])
+    stats2: dict[str, int] = {}
+    await describe_frame_sequence(
+        _frames(8), ok, _SEQ_PROMPT, fps=1.0, logger=fake_log,
+        chunk_frames=4, stats=stats2,
+    )
+    assert stats2 == {"failed": 0}
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_all_chunks_fail_raises():
+    """所有段失败抛 AllFrameDescriptionsFailedError。"""
+    vlm = FakeFrameSeqVlmClient([Exception("e0"), Exception("e1")])
+    with pytest.raises(AllFrameDescriptionsFailedError) as exc_info:
+        await describe_frame_sequence(
+            _frames(8), vlm, _SEQ_PROMPT, fps=1.0, logger=fake_log, chunk_frames=4,
+        )
+    assert exc_info.value.total_frames == 8
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_client_missing_method_raises():
+    """vlm_client 无 generate_text_from_frames → AttributeError 快速失败（提示协议配置）。"""
+    vlm = FakeVlmClient([])  # 只有 generate_text
+    with pytest.raises(AttributeError, match="openai_video"):
+        await describe_frame_sequence(
+            _frames(4), vlm, _SEQ_PROMPT, fps=1.0, logger=fake_log,
+        )
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_empty_frames_returns_empty():
+    """空帧列表直接返回空（不调 VLM）。"""
+    vlm = FakeFrameSeqVlmClient([])
+    out = await describe_frame_sequence(
+        [], vlm, _SEQ_PROMPT, fps=1.0, logger=fake_log,
+    )
+    assert out == [] and vlm.calls == []
+
+
+def test_plan_frame_sequence_chunks_uniform_split():
+    """纯函数：固定 size 切分边界连续、全覆盖；尾段 6 < min_tail 8 并入前段。"""
+    from novamind.engines.document.media.video.frame_description import (
+        _plan_frame_sequence_chunks,
+    )
+
+    chunks = _plan_frame_sequence_chunks(1030, 512, 8)
+    assert chunks == [(0, 512), (512, 1030)]  # 尾段 6 帧并入前段
+    # 连续全覆盖
+    assert chunks[0][0] == 0 and chunks[-1][1] == 1030
+    for (a_s, a_e), (b_s, b_e) in zip(chunks, chunks[1:]):
+        assert a_e == b_s
+    # 不触发尾并时每段 ≤ chunk_frames
+    plain = _plan_frame_sequence_chunks(1030, 512, 5)
+    assert plain == [(0, 512), (512, 1024), (1024, 1030)]
+    assert all(e - s <= 512 for s, e in plain)
