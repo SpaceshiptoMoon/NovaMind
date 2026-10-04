@@ -5,10 +5,16 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 export type TextStrategy = 'default' | 'deepdoc'
 /** 图片解析策略：VLM 描述或 DeepDoc OCR */
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
-/** 视频解析策略：5 种抽帧/去重/描述组合预设 */
-export type VideoStrategy = 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite'
+/** 视频解析策略：6 种抽帧/去重/描述组合预设 */
+export type VideoStrategy =
+  | 'simple'
+  | 'scene'
+  | 'dedup'
+  | 'grouped'
+  | 'rewrite'
+  | 'frame_seq'
 
-/** 视频解析策略选项（5 预设映射到抽帧/去重/描述三阶段组合）。 */
+/** 视频解析策略选项（6 预设映射到抽帧/去重/描述三阶段组合）。 */
 export const videoStrategyItems: Array<{
   value: VideoStrategy
   label: string
@@ -20,11 +26,23 @@ export const videoStrategyItems: Array<{
   { value: 'dedup', label: '相似去重', desc: '固定间隔 + 相似帧去重 + 逐帧描述' },
   { value: 'grouped', label: '分组描述', desc: '多帧一组喂 VLM 多图生成连贯描述' },
   { value: 'rewrite', label: '重写连贯', desc: '逐帧描述后 LLM 重写润色（保留时间锚点）' },
+  {
+    value: 'frame_seq',
+    label: '帧序列',
+    desc: '整段帧序列以伪视频喂 VLM，模型感知时序（需 VLM 协议 openai_video）',
+  },
 ]
 
 /** 校验视频策略枚举，非法值回退默认 simple */
 export function getVideoStrategyValue(value: unknown): VideoStrategy {
-  const allowed: VideoStrategy[] = ['simple', 'scene', 'dedup', 'grouped', 'rewrite']
+  const allowed: VideoStrategy[] = [
+    'simple',
+    'scene',
+    'dedup',
+    'grouped',
+    'rewrite',
+    'frame_seq',
+  ]
   return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
 }
 

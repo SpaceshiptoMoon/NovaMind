@@ -203,6 +203,7 @@ const configForm = reactive({
   videoSceneThreshold: null as number | null,
   videoDedupSimilarityThreshold: null as number | null,
   videoGroupSize: null as number | null,
+  videoFrameSeqChunkFrames: null as number | null,
   videoSceneMinInterval: null as number | null,
   videoTranscribeAudio: false,
   videoAsrModel: '',
@@ -271,6 +272,7 @@ watch(hasVideo, (value) => {
     configForm.videoSceneThreshold = null
     configForm.videoDedupSimilarityThreshold = null
     configForm.videoGroupSize = null
+    configForm.videoFrameSeqChunkFrames = null
     configForm.videoSceneMinInterval = null
     configForm.videoTranscribeAudio = false
     configForm.videoAsrModel = ''
@@ -361,6 +363,10 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
       : parsing.video.dedup_similarity_threshold
   configForm.videoGroupSize =
     parsing?.video?.group_size === undefined ? null : parsing.video.group_size
+  configForm.videoFrameSeqChunkFrames =
+    parsing?.video?.frame_seq_chunk_frames === undefined
+      ? null
+      : parsing.video.frame_seq_chunk_frames
   configForm.videoSceneMinInterval =
     parsing?.video?.scene_min_interval === undefined ? null : parsing.video.scene_min_interval
   configForm.videoTranscribeAudio = parsing?.video?.transcribe_audio ?? false
@@ -476,6 +482,9 @@ function buildParsingConfig(): ParsingConfig {
     }
     if (configForm.videoGroupSize !== null) {
       video.group_size = configForm.videoGroupSize
+    }
+    if (configForm.videoFrameSeqChunkFrames !== null) {
+      video.frame_seq_chunk_frames = configForm.videoFrameSeqChunkFrames
     }
     if (configForm.videoSceneMinInterval !== null) {
       video.scene_min_interval = configForm.videoSceneMinInterval

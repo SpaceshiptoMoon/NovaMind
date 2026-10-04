@@ -18,6 +18,7 @@ from novamind.engines.document.media.chunk_time_alignment import (
 from novamind.engines.document.media.video import (
     AllFrameDescriptionsFailedError,
     dedup_frame_diff,
+    describe_frame_sequence,
     describe_grouped,
     describe_rewrite,
     describe_single,
@@ -618,6 +619,8 @@ async def process_video_document(
     scene_min_interval = video_config.get("scene_min_interval")
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
     group_size = video_config.get("group_size") or 3
+    # 帧序列伪视频每段帧数上限（strategy=frame_seq），留空用引擎默认 512。
+    frame_seq_chunk_frames = video_config.get("frame_seq_chunk_frames")
 
     # 批次 5b：用注入的 ModelConfigService
     mcs = model_config_port
@@ -829,6 +832,40 @@ async def process_video_document(
             full_text = "\n\n".join(lines)
             frame_timeline_map = build_frame_timeline_map(timeline_input)
             descriptions_count = len(grouped_descs)
+        elif strategy == "frame_seq":
+            # frame_seq（S3 帧序列伪视频）：整段帧以 {"type":"video","video":[...],"fps":N}
+            # 喂 VLM，模型感知时序；每段 prompt 注入帧时刻表校准时间定位。
+            # 需 VLM 协议配 openai_video（专用视频客户端），缺失即 fail fast 不兜底。
+            if not hasattr(vlm_client, "generate_text_from_frames"):
+                raise PermanentProcessingError(
+                    document_id=document.id,
+                    error_message=(
+                        f"视频 {document.filename} frame_seq 策略需 VLM 协议为 openai_video，"
+                        "请在模型管理中把所选 VLM 模型的协议改为 openai_video"
+                    ),
+                )
+            seq_prompt = PromptManager.get_template("video_frame_sequence_description")
+            seq_kwargs: dict[str, Any] = {}
+            if frame_seq_chunk_frames:
+                seq_kwargs["chunk_frames"] = int(frame_seq_chunk_frames)
+            seq_descs = await describe_frame_sequence(
+                frames, vlm_client, seq_prompt,
+                fps=round(1.0 / max(frame_interval, 1e-6), 4),
+                logger=logger, vlm_model=vlm_model_name,
+                log_context=base_log_ctx, cancelled_check=cancelled_check,
+                stats=vlm_stats, **seq_kwargs,
+            )
+            seq_lines: list[str] = []
+            frame_groups = {}
+            seq_timeline_input: list[tuple[str, float, int]] = []
+            for desc, start_ts, _end_ts, idx_list in seq_descs:
+                anchor_idx = idx_list[0]
+                seq_lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
+                frame_groups[anchor_idx] = idx_list
+                seq_timeline_input.append((desc, start_ts, anchor_idx))
+            full_text = "\n\n".join(seq_lines)
+            frame_timeline_map = build_frame_timeline_map(seq_timeline_input)
+            descriptions_count = len(seq_descs)
         elif strategy == "rewrite":
             # rewrite：逐帧 single 描述 + LLM 重写连贯（保留锚点）；返回 (full_text, descriptions)
             single_prompt = PromptManager.get_template("video_frame_description")

@@ -364,8 +364,8 @@ export interface SplittingConfig {
 }
 
 export interface VideoParsingConfig {
-  /** 视频解析策略：5 预设（抽帧/去重/描述三阶段组合） */
-  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite'
+  /** 视频解析策略：6 预设（抽帧/去重/描述三阶段组合） */
+  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'frame_seq'
   /** 抽帧间隔（秒），0.5~60；动作密集视频可调小捕捉短动作 */
   frame_interval?: number
   /** 最大帧数，1~1000；长视频建议调大（如 300）避免尾部截断 */
@@ -382,6 +382,8 @@ export interface VideoParsingConfig {
   dedup_similarity_threshold?: number
   /** 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3 */
   group_size?: number
+  /** 帧序列伪视频每段帧数上限（strategy=frame_seq），8~512，默认 512；需 VLM 协议 openai_video */
+  frame_seq_chunk_frames?: number
   /** 音轨 ASR 融合：提取原始视频音轨转写，旁白按时间归入帧描述行 */
   transcribe_audio?: boolean
   /** 音轨 ASR 模型名（留空 = faster-whisper-tiny 本地转写） */

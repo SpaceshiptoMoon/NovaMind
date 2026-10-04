@@ -108,6 +108,18 @@
           />
           <span class="field-hint">每组喂 VLM 多图的帧数，默认 3（多图不支持时自动降级逐帧）</span>
         </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'frame_seq'" label="段帧数上限">
+          <el-input-number
+            v-model="configForm.videoFrameSeqChunkFrames"
+            :min="8"
+            :max="512"
+            placeholder="512"
+            style="width: 100%"
+          />
+          <span class="field-hint">
+            每段喂 VLM 的最大帧数，8~512，默认 512（API 硬限）；长视频建议配合抽帧间隔调大间隔而非减段帧数
+          </span>
+        </el-form-item>
         <el-form-item v-if="configForm.videoStrategy === 'scene'" label="最小帧间隔">
           <el-input-number
             v-model="configForm.videoSceneMinInterval"
@@ -287,6 +299,7 @@ type MultimodalParsingFormModel = {
   videoSceneThreshold: number | null
   videoDedupSimilarityThreshold: number | null
   videoGroupSize: number | null
+  videoFrameSeqChunkFrames: number | null
   videoSceneMinInterval: number | null
   videoTranscribeAudio: boolean
   videoAsrModel: string
