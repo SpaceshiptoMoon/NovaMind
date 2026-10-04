@@ -652,8 +652,10 @@ async function fetchDocuments(showLoading = true) {
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
 
 function hasActiveDocuments(): boolean {
+  // has_active_task 覆盖 arq 重试等待期（status=0 但任务仍活跃），轮询不停
+  // 以便取消/落定后列表及时刷新；字段缺席时回退状态判断（旧数据兼容）。
   return documents.value.some(
-    (d) => (d.status ?? 0) === DOC_STATUS.PENDING || (d.status ?? 0) === DOC_STATUS.PROCESSING,
+    (d) => d.has_active_task ?? ((d.status ?? 0) === DOC_STATUS.PENDING || (d.status ?? 0) === DOC_STATUS.PROCESSING),
   )
 }
 
@@ -729,15 +731,16 @@ const DOC_STATUS = {
 
 /**
  * 各状态可执行操作（与后端校验严格对齐，避免按钮可见却报错）：
- * - 0 待处理：首次处理 / 详情 / 删除
+ * - 0 待处理：无活跃任务时 首次处理/详情/删除；有活跃任务（arq 自动重试等待期
+ *   status 回落 0）时 取消/详情——后端活跃判定以 has_active_task 为准
  * - 1 处理中：取消 / 详情            （delete 被后端 DocumentAlreadyProcessingError 拒绝）
  * - 2 已完成：重新处理 / 详情 / 删除
  * - 3 失败：重试 / 详情 / 删除
  * - 4 已取消：重新处理 / 详情 / 删除
  */
 function canProcess(doc: DocType): boolean {
-  // 首次处理：从未入队解析的文档（仅状态 0 待处理）
-  return (doc.status ?? 0) === DOC_STATUS.PENDING
+  // 首次处理：从未入队解析的文档（仅状态 0 且无活跃任务；重试等待期点了会 409）
+  return (doc.status ?? 0) === DOC_STATUS.PENDING && !doc.has_active_task
 }
 
 function canReprocess(doc: DocType): boolean {
@@ -747,7 +750,9 @@ function canReprocess(doc: DocType): boolean {
 }
 
 function canCancel(doc: DocType): boolean {
-  return (doc.status ?? 0) === DOC_STATUS.PROCESSING
+  // 与后端 cancel 接口的活跃判定（PENDING/PROCESSING）同源：覆盖处理中
+  // 与 arq 自动重试等待期（status 回落 0 但任务仍可取消）
+  return (doc.has_active_task ?? (doc.status ?? 0) === DOC_STATUS.PROCESSING)
 }
 
 function canRetry(doc: DocType): boolean {
@@ -755,8 +760,8 @@ function canRetry(doc: DocType): boolean {
 }
 
 function canDelete(doc: DocType): boolean {
-  // 处理中的文档后端拒绝删除（有活跃任务），其余状态可删
-  return (doc.status ?? 0) !== DOC_STATUS.PROCESSING
+  // 有活跃任务的文档后端拒绝删除（DocumentAlreadyProcessingError），不显示必失败按钮
+  return !doc.has_active_task
 }
 
 async function handleProcessSingle(doc: DocType) {

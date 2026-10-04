@@ -566,6 +566,8 @@ export interface Document {
   status?: number // TaskStatus: 0=PENDING, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=CANCELLED
   retry_count?: number
   error_message?: string | null
+  // 存在活跃任务（PENDING/PROCESSING，含 arq 自动重试等待期）——与后端取消接口判定同源
+  has_active_task?: boolean
 }
 
 export interface Chunk {
