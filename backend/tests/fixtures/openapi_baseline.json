@@ -2243,7 +2243,7 @@
         "description": "文档详情响应（包含分块）",
         "properties": {
           "chunk_count": {
-            "description": "从 doc_metadata 中提取分块数量",
+            "description": "从最新任务的 pipeline_result 提取分块数量（与 KB 统计同数据源）",
             "readOnly": true,
             "title": "Chunk Count",
             "type": "integer"
@@ -2336,7 +2336,7 @@
             "type": "integer"
           },
           "token_count": {
-            "description": "从 doc_metadata 中提取 Token 总数",
+            "description": "从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）",
             "readOnly": true,
             "title": "Token Count",
             "type": "integer"
@@ -2465,7 +2465,7 @@
         "description": "文档响应\n\n注意：status / error_message / retry_count 原为 Document 模型上的列，\n现已迁移至 DocumentTask。为保持向后兼容，这些字段改为 computed_field，\n从关联的 task 字段读取。若未预加载 task，则返回默认值。\nprocessing_started_at / processed_at 已移除，可通过 task.started_at / task.completed_at 获取。",
         "properties": {
           "chunk_count": {
-            "description": "从 doc_metadata 中提取分块数量",
+            "description": "从最新任务的 pipeline_result 提取分块数量（与 KB 统计同数据源）",
             "readOnly": true,
             "title": "Chunk Count",
             "type": "integer"
@@ -2550,7 +2550,7 @@
             "type": "integer"
           },
           "token_count": {
-            "description": "从 doc_metadata 中提取 Token 总数",
+            "description": "从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）",
             "readOnly": true,
             "title": "Token Count",
             "type": "integer"

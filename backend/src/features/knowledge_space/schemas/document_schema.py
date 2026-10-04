@@ -86,17 +86,19 @@ class DocumentResponse(BaseModel):
     @computed_field
     @property
     def chunk_count(self) -> int:
-        """从 doc_metadata 中提取分块数量"""
-        if self.doc_metadata:
-            return self.doc_metadata.get("chunk_count", 0)
+        """从最新任务的 pipeline_result 提取分块数量（与 KB 统计同数据源）"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            return int(result.get("chunk_count", 0) or 0)
         return 0
 
     @computed_field
     @property
     def token_count(self) -> int:
-        """从 doc_metadata 中提取 Token 总数"""
-        if self.doc_metadata:
-            return self.doc_metadata.get("token_count", 0)
+        """从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）"""
+        if self.task:
+            result = getattr(self.task, "pipeline_result", None) or {}
+            return int(result.get("token_count", 0) or 0)
         return 0
 
 
