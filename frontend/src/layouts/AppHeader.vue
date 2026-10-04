@@ -60,6 +60,7 @@
 
       <!-- 通知铃铛 -->
       <el-popover
+        ref="notificationPopoverRef"
         placement="bottom-end"
         :width="360"
         trigger="click"
@@ -101,9 +102,7 @@
             </div>
           </div>
           <div v-if="notifStore.items.length > 0" class="notification-footer">
-            <el-button link type="primary" @click="router.push('/home/notifications')"
-              >查看全部</el-button
-            >
+            <el-button link type="primary" @click="handleViewAll">查看全部</el-button>
           </div>
         </div>
       </el-popover>
@@ -224,6 +223,14 @@ function handleNavCommand(path: string) {
 
 // ==================== 通知相关（经 notifStore：WS 实时 + 30s 轮询兜底） ====================
 const notifStore = useNotificationStore()
+
+// 点击「查看全部」跳转后须显式收起面板：目标页已是通知列表，弹层停留只会双份并存
+const notificationPopoverRef = ref<{ hide: () => void } | null>(null)
+
+function handleViewAll() {
+  notificationPopoverRef.value?.hide()
+  router.push('/home/notifications')
+}
 
 // 登录态驱动：登录后初始化订阅与轮询，登出后清理
 watch(
