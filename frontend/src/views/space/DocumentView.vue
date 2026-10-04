@@ -22,38 +22,35 @@
           </el-button>
         </section>
 
-        <!-- 单行统计条：常显三项，处理中/待处理仅在有活跃文档时出现（避免满屏无效 0） -->
-        <div class="stats-bar">
-          <div class="stats-item">
-            <span class="stats-label">文档</span>
-            <strong class="stats-value">{{ kbStats.document_count }}</strong>
-          </div>
-          <span class="stats-divider"></span>
-          <div class="stats-item">
-            <span class="stats-label">分块</span>
-            <strong class="stats-value">{{ kbStats.chunk_count }}</strong>
-          </div>
-          <span class="stats-divider"></span>
-          <div class="stats-item">
-            <span class="stats-label">已完成</span>
-            <strong class="stats-value">{{ kbStats.completed_documents }}</strong>
-          </div>
-          <template v-if="kbStats.processing_documents > 0">
+        <!-- 单行工具栏：统计（左）+ 批量操作 + 搜索筛选（右），替代旧的两层空条 -->
+        <div class="list-toolbar">
+          <div class="stats-inline">
+            <div class="stats-item">
+              <span class="stats-label">文档</span>
+              <strong class="stats-value">{{ kbStats.document_count }}</strong>
+            </div>
             <span class="stats-divider"></span>
             <div class="stats-item">
-              <span class="stats-label">处理中</span>
-              <strong class="stats-value is-warning">{{ kbStats.processing_documents }}</strong>
+              <span class="stats-label">分块</span>
+              <strong class="stats-value">{{ kbStats.chunk_count }}</strong>
             </div>
-          </template>
-        </div>
-
-        <div class="action-bar">
-          <div class="left-actions">
+            <span class="stats-divider"></span>
+            <div class="stats-item">
+              <span class="stats-label">已完成</span>
+              <strong class="stats-value">{{ kbStats.completed_documents }}</strong>
+            </div>
+            <template v-if="kbStats.processing_documents > 0">
+              <span class="stats-divider"></span>
+              <div class="stats-item">
+                <span class="stats-label">处理中</span>
+                <strong class="stats-value is-warning">{{ kbStats.processing_documents }}</strong>
+              </div>
+            </template>
+          </div>
+          <div class="right-actions">
             <el-button v-if="selectedIds.length > 0" @click="showProcessDialog(selectedIds)">
               批量处理 ({{ selectedIds.length }})
             </el-button>
-          </div>
-          <div class="right-actions">
             <el-input
               v-model="searchKeyword"
               class="search-input"
@@ -111,7 +108,7 @@
             </EmptyState>
           </div>
           <div v-for="doc in documents" :key="doc.id" class="doc-card" @click="goToDetail(doc.id)">
-            <!-- 选择复选框（hover / 已选显示） -->
+            <!-- 选择复选框（hover / 已选显示），与 cover 顶对齐 -->
             <el-checkbox
               class="doc-card-check"
               :model-value="selectedIds.includes(doc.id)"
@@ -130,10 +127,14 @@
               {{ doc.file_type.toUpperCase().slice(0, 3) }}
             </div>
 
-            <!-- 主体 -->
+            <!-- 主体：名称 + meta 行（状态标签头随、元信息完整） -->
             <div class="doc-card-body">
               <div class="doc-card-name" :title="doc.filename">{{ doc.filename }}</div>
               <div class="doc-card-meta">
+                <el-tag :type="getStatusConfig(doc.status).type" effect="plain" size="small">
+                  {{ getStatusConfig(doc.status).text }}
+                </el-tag>
+                <span class="meta-dot">·</span>
                 <span>{{ formatFileSize(doc.file_size) }}</span>
                 <template v-if="doc.duration_seconds">
                   <span class="meta-dot">·</span>
@@ -146,61 +147,37 @@
               </div>
             </div>
 
-            <!-- 状态 + 操作 -->
-            <div class="doc-card-side">
-              <el-tag :type="getStatusConfig(doc.status).type" effect="plain" size="small">
-                {{ getStatusConfig(doc.status).text }}
-              </el-tag>
-              <div class="doc-card-actions" @click.stop>
-                <el-tooltip v-if="canProcess(doc)" content="首次处理" placement="top">
-                  <el-button
-                    :icon="VideoPlay"
-                    circle
-                    size="small"
-                    type="primary"
-                    @click="handleProcessSingle(doc)"
-                  />
-                </el-tooltip>
-                <el-tooltip v-if="canReprocess(doc)" content="重新处理" placement="top">
-                  <el-button
-                    :icon="RefreshRight"
-                    circle
-                    size="small"
-                    type="primary"
-                    @click="handleProcessSingle(doc)"
-                  />
-                </el-tooltip>
-                <el-tooltip v-if="canCancel(doc)" content="取消" placement="top">
-                  <el-button
-                    :icon="Close"
-                    circle
-                    size="small"
-                    type="warning"
-                    @click="handleCancelSingle(doc)"
-                  />
-                </el-tooltip>
-                <el-tooltip v-if="canRetry(doc)" content="重试" placement="top">
-                  <el-button
-                    :icon="RefreshRight"
-                    circle
-                    size="small"
-                    type="warning"
-                    @click="handleRetrySingle(doc)"
-                  />
-                </el-tooltip>
-                <el-tooltip content="详情" placement="top">
-                  <el-button :icon="View" circle size="small" @click="goToDetail(doc.id)" />
-                </el-tooltip>
-                <el-tooltip v-if="canDelete(doc)" content="删除" placement="top">
-                  <el-button
-                    :icon="Delete"
-                    circle
-                    size="small"
-                    type="danger"
-                    @click="handleDelete(doc)"
-                  />
-                </el-tooltip>
-              </div>
+            <!-- 操作钮组：右缘垂直居中，hover 卡片时 ghost 图标浮现（替代彩色实底圆钮） -->
+            <div class="doc-card-actions" @click.stop>
+              <el-tooltip v-if="canProcess(doc)" content="首次处理" placement="top">
+                <el-button :icon="VideoPlay" text size="small" @click="handleProcessSingle(doc)" />
+              </el-tooltip>
+              <el-tooltip v-if="canReprocess(doc)" content="重新处理" placement="top">
+                <el-button
+                  :icon="RefreshRight"
+                  text
+                  size="small"
+                  @click="handleProcessSingle(doc)"
+                />
+              </el-tooltip>
+              <el-tooltip v-if="canCancel(doc)" content="取消" placement="top">
+                <el-button :icon="Close" text size="small" @click="handleCancelSingle(doc)" />
+              </el-tooltip>
+              <el-tooltip v-if="canRetry(doc)" content="重试" placement="top">
+                <el-button :icon="RefreshRight" text size="small" @click="handleRetrySingle(doc)" />
+              </el-tooltip>
+              <el-tooltip content="详情" placement="top">
+                <el-button :icon="View" text size="small" @click="goToDetail(doc.id)" />
+              </el-tooltip>
+              <el-tooltip v-if="canDelete(doc)" content="删除" placement="top">
+                <el-button
+                  :icon="Delete"
+                  text
+                  size="small"
+                  class="is-danger-quiet"
+                  @click="handleDelete(doc)"
+                />
+              </el-tooltip>
             </div>
           </div>
         </div>
@@ -967,17 +944,21 @@ onMounted(async () => {
   background: var(--color-text-faint);
 }
 
-/* ===== 单行统计条（WikiBrowserView wiki-stats 同款语言） ===== */
-.stats-bar {
+/* ===== 单行工具栏：统计（左）+ 搜索筛选（右），无框融进页面（替代旧的双层空条） ===== */
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-4);
+}
+
+.stats-inline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-3) var(--space-5);
-  margin: 0 0 var(--space-4);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
-  background: var(--color-bg-card);
+  gap: var(--space-4);
 }
 
 .stats-item {
@@ -993,7 +974,7 @@ onMounted(async () => {
 
 .stats-value {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: 1.2;
@@ -1008,19 +989,6 @@ onMounted(async () => {
   align-self: stretch;
   width: 1px;
   background: var(--color-border-light);
-}
-
-.action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-4);
-}
-
-.left-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
 }
 
 .right-actions {
@@ -1156,21 +1124,20 @@ onMounted(async () => {
   min-height: 76px;
   transition:
     border-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    transform var(--transition-base);
+    box-shadow var(--transition-fast);
 }
 
+/* 密排网格不做位移上浮（transform 会扰动邻卡视觉），只提边框与阴影一档 */
 .doc-card:hover {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
-/* 选择复选框：hover / 已选时可见，贴卡片左上角 */
+/* 选择复选框：hover / 已选时可见，与 cover 顶对齐（负 margin 抵消卡片 padding） */
 .doc-card-check {
   position: absolute;
-  top: 2px;
-  left: 3px;
+  top: 10px;
+  left: 10px;
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
@@ -1195,13 +1162,19 @@ onMounted(async () => {
   user-select: none;
 }
 
-/* 主体 */
+/* 主体：名称 + meta（状态标签头随、元信息完整） */
 .doc-card-body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: padding-right var(--transition-base);
+}
+
+/* hover 时右上角浮现操作钮组，主体右缘同步让位防文字被背板压住 */
+.doc-card:hover .doc-card-body {
+  padding-right: 100px;
 }
 
 .doc-card-name {
@@ -1221,7 +1194,7 @@ onMounted(async () => {
 .doc-card-meta {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -1229,29 +1202,59 @@ onMounted(async () => {
   text-overflow: ellipsis;
 }
 
+/* 状态标签内联在 meta 行首，与文件元信息同排（替代旧右侧独立列） */
+.doc-card-meta .el-tag {
+  flex-shrink: 0;
+}
+
 .meta-dot {
   color: var(--color-text-faint);
 }
 
-/* 状态 + hover 操作 */
-.doc-card-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
+/* 操作钮组：hover 时绝对定位浮现右上角（白底背板隔离文字），非 hover 不占视觉；
+   卡片 hover 时主体右缘同步让位（见 .doc-card:hover .doc-card-body），
+   避免 308px 窄卡上按钮组永久挤压名称/meta 列 */
 .doc-card-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
   display: flex;
   align-items: center;
+  /* EP 相邻按钮默认 12px 间距对图标组过散，收敛为紧凑组 */
   gap: 2px;
+  padding: 2px 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
   opacity: 0;
   transition: opacity var(--transition-base);
 }
 
 .doc-card:hover .doc-card-actions {
   opacity: 1;
+}
+
+.doc-card-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+/* 安静破坏性：删除钮常态墨阶，hover 才显 danger 色（彩色实底圆钮的高饱和噪点收敛） */
+.doc-card-actions :deep(.el-button.is-danger-quiet) {
+  color: var(--color-text-muted);
+}
+
+.doc-card-actions :deep(.el-button.is-danger-quiet:hover) {
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
+}
+
+/* 安静破坏性：删除钮常态墨阶，hover 才显 danger 色（彩色实底圆钮的高饱和噪点收敛） */
+.doc-card-actions :deep(.el-button.is-danger-quiet) {
+  color: var(--color-text-muted);
+}
+
+.doc-card-actions :deep(.el-button.is-danger-quiet:hover) {
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
 }
 
 .document-view :deep(.el-upload-list) {
@@ -1273,9 +1276,13 @@ onMounted(async () => {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .action-bar {
-    flex-wrap: wrap;
-    gap: var(--space-2);
+  .list-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-inline {
+    padding: 0 var(--space-1);
   }
 
   .right-actions {
@@ -1299,12 +1306,6 @@ onMounted(async () => {
     padding: var(--space-3);
   }
 
-  .action-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-3);
-  }
-
   .right-actions {
     justify-content: space-between;
   }
@@ -1318,24 +1319,12 @@ onMounted(async () => {
   }
 }
 
-/* 极窄视口（≤480px）：卡片内部换结构——hover 操作列与复选框隐藏（触屏无 hover，
-   操作入口由详情页承载），卡片改纵向堆叠（cover 上、名称中、meta 下、状态标签尾），
-   名称列拿到满宽不再被固定子项挤压（R2/R3 评审 320px 实测：两行堆叠下 body 仅 56px） */
+/* 极窄视口（≤480px）：hover 操作钮与复选框隐藏（触屏无 hover，操作入口由详情页承载），
+   卡片保持横向结构——tag 已内联在 meta 行，名称列不再被固定侧列挤压 */
 @media (max-width: 480px) {
-  .doc-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .doc-card-actions,
   .doc-card-check {
     display: none;
-  }
-
-  .doc-card-side {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
   }
 }
 </style>
