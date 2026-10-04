@@ -514,6 +514,8 @@ class KnowledgeBaseUpdate(BaseModel):
     """Update KB request."""
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    # 归档/激活（1=活跃 2=归档）；0（删除）不在此通道，删除走 DELETE 端点
+    status: Literal[1, 2] | None = Field(default=None)
     config: KnowledgeBaseConfig | None = Field(default=None)
 
 

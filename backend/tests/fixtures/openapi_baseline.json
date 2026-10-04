@@ -4763,6 +4763,21 @@
               }
             ],
             "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  1,
+                  2
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
         "title": "KnowledgeBaseUpdate",
@@ -6965,11 +6980,6 @@
       "PdfParsingConfig": {
         "description": "PDF parsing config.",
         "properties": {
-          "ocr_enabled": {
-            "default": false,
-            "title": "Ocr Enabled",
-            "type": "boolean"
-          },
           "parser": {
             "anyOf": [
               {

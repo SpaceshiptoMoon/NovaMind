@@ -18,6 +18,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_editor,
     validate_space_member,
 )
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
@@ -164,9 +165,13 @@ async def update_knowledge_base(
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新知识库基础信息（名称/描述），可写成员。"""
-    # 验证知识库访问权限
-    await validate_kb_writable(kb_id, space_id, db)
+    """更新知识库基础信息（名称/描述/归档状态），可写成员。"""
+    # 归档库整体禁写，但「激活」本身是唯一的放行出口——先降级为读取校验，
+    # 状态迁移合法性（仅归档↔激活）由 service 层状态机把关。
+    if data.status == KnowledgeBaseStatus.ACTIVE and data.name is None and data.config is None:
+        await validate_kb_access(kb_id, space_id, db)
+    else:
+        await validate_kb_writable(kb_id, space_id, db)
 
     # 构建更新数据（仅包含实际提交的字段）
     update_data = data.model_dump(exclude_unset=True)

@@ -252,6 +252,18 @@ class KnowledgeBaseService:
         for field in protected_fields:
             data.pop(field, None)
 
+        # 状态变更只允许 归档↔激活 两个方向；DELETED 走专用删除端点
+        new_status = data.get("status")
+        if new_status is not None and int(new_status) != kb.status:
+            allowed = {
+                KnowledgeBaseStatus.ACTIVE: KnowledgeBaseStatus.ARCHIVED,
+                KnowledgeBaseStatus.ARCHIVED: KnowledgeBaseStatus.ACTIVE,
+            }
+            if allowed.get(kb.status) != int(new_status):
+                raise InvalidParameterError(
+                    f"知识库状态不允许从 {kb.status} 变更为 {new_status}"
+                )
+
         # config 走深度合并：PUT 路由传的是 exclude_unset 后的部分片段，
         # 需并入现有 config，避免未传的子配置被丢弃。
         if "config" in data:
