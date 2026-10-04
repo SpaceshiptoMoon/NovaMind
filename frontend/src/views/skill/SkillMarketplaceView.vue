@@ -8,18 +8,17 @@
         <el-icon><Setting /></el-icon>
         审核管理
       </el-button>
+      <SkillFormatDialog v-if="permStore.hasPermission('skill.config')" />
       <el-upload
         v-if="permStore.hasPermission('skill.config')"
         :show-file-list="false"
         :before-upload="handleUpload"
         accept=".zip"
       >
-        <SkillFormatTooltip>
-          <el-button type="primary" :loading="skillStore.uploading">
-            <el-icon><Upload /></el-icon>
-            上传技能
-          </el-button>
-        </SkillFormatTooltip>
+        <el-button type="primary" :loading="skillStore.uploading">
+          <el-icon><Upload /></el-icon>
+          上传技能
+        </el-button>
       </el-upload>
       <!-- 空态 CTA 复用同一条上传通道（隐藏 input + 程序化触发） -->
       <input
@@ -216,7 +215,7 @@ import { useSkillStore } from '@/stores/skill'
 import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import SkillFormatTooltip from '@/components/skill/SkillFormatTooltip.vue'
+import SkillFormatDialog from '@/components/skill/SkillFormatDialog.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
