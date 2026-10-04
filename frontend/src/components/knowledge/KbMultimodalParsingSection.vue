@@ -120,6 +120,49 @@
             每段喂 VLM 的最大帧数，8~512，默认 512（API 硬限）；长视频建议配合抽帧间隔调大间隔而非减段帧数
           </span>
         </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'video_native'" label="单片时长">
+          <el-input-number
+            v-model="configForm.videoNativeChunkSec"
+            :min="30"
+            :max="540"
+            :step="30"
+            placeholder="540"
+            style="width: 100%"
+          />
+          <span class="field-hint">
+            单片时长上限（秒），30~540，默认 540（服务商 10 分钟硬限留裕量）；按场景切换点聚片
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'video_native'" label="尾片阈值">
+          <el-input-number
+            v-model="configForm.videoNativeMinTailSec"
+            :min="0"
+            :max="120"
+            :step="5"
+            placeholder="30"
+            style="width: 100%"
+          />
+          <span class="field-hint">尾片短于该秒数并入前片，0~120，默认 30</span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'video_native'" label="片间并发">
+          <el-input-number
+            v-model="configForm.videoNativeConcurrency"
+            :min="1"
+            :max="4"
+            placeholder="2"
+            style="width: 100%"
+          />
+          <span class="field-hint">切片直输的并发上限，1~4，默认 2（切片上传+直输均较重）</span>
+        </el-form-item>
+        <el-form-item
+          v-if="configForm.videoStrategy === 'video_native'"
+          label="拒绝降级"
+        >
+          <el-switch v-model="configForm.videoNativeFallbackToFrameSeq" />
+          <span class="field-hint">
+            服务商明确拒收视频输入时自动降级为帧序列策略；关闭则直接失败
+          </span>
+        </el-form-item>
         <el-form-item v-if="configForm.videoStrategy === 'scene'" label="最小帧间隔">
           <el-input-number
             v-model="configForm.videoSceneMinInterval"
@@ -300,6 +343,10 @@ type MultimodalParsingFormModel = {
   videoDedupSimilarityThreshold: number | null
   videoGroupSize: number | null
   videoFrameSeqChunkFrames: number | null
+  videoNativeChunkSec: number | null
+  videoNativeMinTailSec: number | null
+  videoNativeConcurrency: number | null
+  videoNativeFallbackToFrameSeq: boolean
   videoSceneMinInterval: number | null
   videoTranscribeAudio: boolean
   videoAsrModel: string

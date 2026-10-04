@@ -22,6 +22,7 @@ from novamind.engines.document.media.video import (
     describe_grouped,
     describe_rewrite,
     describe_single,
+    describe_video_native,
     extract_frames_fixed,
     extract_frames_fixed_from_path,
     extract_frames_scene,
@@ -621,6 +622,13 @@ async def process_video_document(
     group_size = video_config.get("group_size") or 3
     # 帧序列伪视频每段帧数上限（strategy=frame_seq），留空用引擎默认 512。
     frame_seq_chunk_frames = video_config.get("frame_seq_chunk_frames")
+    # S4 视频直输（strategy=video_native）：聚片/降级链旋钮，留空用引擎默认。
+    video_native_chunk_sec = video_config.get("video_native_chunk_sec")
+    video_native_min_tail_sec = video_config.get("video_native_min_tail_sec")
+    video_native_concurrency = video_config.get("video_native_concurrency")
+    video_native_fallback_to_frame_seq = bool(
+        video_config.get("video_native_fallback_to_frame_seq", True)
+    )
 
     # 批次 5b：用注入的 ModelConfigService
     mcs = model_config_port
@@ -690,7 +698,7 @@ async def process_video_document(
             logger=logger,
         )
 
-    if strategy == "scene":
+    if strategy in ("scene", "video_native"):
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
             scene_kwargs["scene_threshold"] = scene_threshold
@@ -866,6 +874,135 @@ async def process_video_document(
             full_text = "\n\n".join(seq_lines)
             frame_timeline_map = build_frame_timeline_map(seq_timeline_input)
             descriptions_count = len(seq_descs)
+        elif strategy == "video_native":
+            # video_native（S4 视频直输）：切片直输 VLM，慢切换场景最优。
+            # 需 VLM 协议配 openai_video；切片吃本地路径（file_path 缺席时落临时文件）。
+            if not hasattr(vlm_client, "generate_text_from_video_url"):
+                raise PermanentProcessingError(
+                    document_id=document.id,
+                    error_message=(
+                        f"视频 {document.filename} video_native 策略需 VLM 协议为 openai_video，"
+                        "请在模型管理中把所选 VLM 模型的协议改为 openai_video"
+                    ),
+                )
+            native_prompt = PromptManager.get_template("video_native_description")
+            native_kwargs: dict[str, Any] = {}
+            if video_native_chunk_sec:
+                native_kwargs["max_segment_sec"] = float(video_native_chunk_sec)
+            if video_native_min_tail_sec is not None:
+                native_kwargs["min_tail_sec"] = float(video_native_min_tail_sec)
+            if video_native_concurrency:
+                native_kwargs["concurrency"] = int(video_native_concurrency)
+
+            # 切片源路径：优先 worker 落盘的 file_path；缺席（旧 bytes 路径/测试）落临时文件
+            native_video_path = file_path
+            tmp_source: Any = None
+            if native_video_path is None:
+                import tempfile as _tempfile
+                tmp_source = _tempfile.NamedTemporaryFile(
+                    suffix=f"_{document.id}_native_src", delete=False,
+                )
+                tmp_source.write(file_content or b"")
+                tmp_source.close()
+                native_video_path = tmp_source.name
+
+            # 聚片边界的依据：场景帧 ts（extract_frames_scene 产物，含首帧 0）；
+            # duration 用真实元数据（末帧 ts + 间隔只是近似，会让末片边界错）
+            from novamind.engines.document.media.video.video_utils import read_video_metadata
+            try:
+                video_duration = float(read_video_metadata(native_video_path).get("duration") or 0)
+            except Exception as meta_exc:
+                raise DocumentProcessingError(
+                    document_id=document.id,
+                    error_message=f"视频 {document.filename} 元数据探测失败，无法聚片: {meta_exc}",
+                ) from meta_exc
+            if video_duration <= 0:
+                # 元数据缺失时长时退化用末帧近似（能力缺失方向安全，末片边界略保守）
+                video_duration = max(ts for _, ts, _ in frames) + frame_interval
+            scene_keyframe_ts = [ts for _, ts, _ in frames]
+
+            # 临时对象命名空间：{base}_vtmp/ 前缀，cleanup 走前缀删除（即用即删）
+            vtmp_prefix = f"{base_object}_vtmp/"
+            if not getattr(minio_client, "public_endpoint", None):
+                logger.warning(
+                    "video_native 需 minio.public_endpoint 配置，否则外部 VLM 服务"
+                    "无法下载切片 URL，片描述将失败",
+                    document_id=document.id,
+                )
+
+            async def _upload_segment(seg_bytes: bytes, seg_idx: int) -> str:
+                seg_object = f"{vtmp_prefix}seg_{seg_idx:03d}.mp4"
+                await minio_client.upload_file(seg_object, seg_bytes, "video/mp4")
+                bucket = getattr(minio_client, "bucket_name", None) or "novamind"
+                return await minio_client.get_public_file_url(bucket, seg_object)
+
+            async def _cleanup_segments() -> None:
+                await minio_client.delete_objects_by_prefix(vtmp_prefix)
+
+            try:
+                native_descs = await describe_video_native(
+                    native_video_path, video_duration, scene_keyframe_ts,
+                    vlm_client, native_prompt,
+                    upload_segment=_upload_segment,
+                    cleanup_segments=_cleanup_segments,
+                    logger=logger, vlm_model=vlm_model_name,
+                    log_context=base_log_ctx, cancelled_check=cancelled_check,
+                    stats=vlm_stats, **native_kwargs,
+                )
+            except AllFrameDescriptionsFailedError as native_exc:
+                if not video_native_fallback_to_frame_seq:
+                    raise
+                first = native_exc.first_error
+                from novamind.shared.ai_models.llm.openai_compatible_video import (
+                    VideoInputNotSupportedError,
+                )
+                if not isinstance(first, VideoInputNotSupportedError):
+                    raise
+                # 服务商明确拒绝视频输入 → 降级 frame_seq 全套（告警可观测）
+                logger.warning(
+                    "video_native 被服务商拒绝（VideoInputNotSupportedError），"
+                    "按配置降级 frame_seq 帧序列策略",
+                    document_id=document.id, first_error=str(first),
+                )
+                if not hasattr(vlm_client, "generate_text_from_frames"):
+                    raise PermanentProcessingError(
+                        document_id=document.id,
+                        error_message=(
+                            f"视频 {document.filename} video_native 降级 frame_seq 也需 "
+                            "VLM 协议 openai_video（缺 generate_text_from_frames）"
+                        ),
+                    ) from native_exc
+                seq_prompt_fb = PromptManager.get_template(
+                    "video_frame_sequence_description"
+                )
+                seq_kwargs_fb: dict[str, Any] = {}
+                if frame_seq_chunk_frames:
+                    seq_kwargs_fb["chunk_frames"] = int(frame_seq_chunk_frames)
+                native_descs = await describe_frame_sequence(
+                    frames, vlm_client, seq_prompt_fb,
+                    fps=round(1.0 / max(frame_interval, 1e-6), 4),
+                    logger=logger, vlm_model=vlm_model_name,
+                    log_context=base_log_ctx, cancelled_check=cancelled_check,
+                    stats=vlm_stats, **seq_kwargs_fb,
+                )
+            finally:
+                if tmp_source is not None:
+                    from pathlib import Path as _P
+                    _P(tmp_source.name).unlink(missing_ok=True)
+
+            native_lines: list[str] = []
+            frame_groups = {}
+            native_timeline_input: list[tuple[str, float, int]] = []
+            for desc, start_ts, _end_ts, idx_list in native_descs:
+                if not idx_list:
+                    continue  # 片区间未覆盖任何场景帧（均分兜底片），无锚点可挂
+                anchor_idx = idx_list[0]
+                native_lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
+                frame_groups[anchor_idx] = idx_list
+                native_timeline_input.append((desc, start_ts, anchor_idx))
+            full_text = "\n\n".join(native_lines)
+            frame_timeline_map = build_frame_timeline_map(native_timeline_input)
+            descriptions_count = len(native_descs)
         elif strategy == "rewrite":
             # rewrite：逐帧 single 描述 + LLM 重写连贯（保留锚点）；返回 (full_text, descriptions)
             single_prompt = PromptManager.get_template("video_frame_description")

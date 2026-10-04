@@ -5,7 +5,7 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 export type TextStrategy = 'default' | 'deepdoc'
 /** 图片解析策略：VLM 描述或 DeepDoc OCR */
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
-/** 视频解析策略：6 种抽帧/去重/描述组合预设 */
+/** 视频解析策略：7 种抽帧/去重/描述组合预设 */
 export type VideoStrategy =
   | 'simple'
   | 'scene'
@@ -13,8 +13,9 @@ export type VideoStrategy =
   | 'grouped'
   | 'rewrite'
   | 'frame_seq'
+  | 'video_native'
 
-/** 视频解析策略选项（6 预设映射到抽帧/去重/描述三阶段组合）。 */
+/** 视频解析策略选项（7 预设映射到抽帧/去重/描述三阶段组合）。 */
 export const videoStrategyItems: Array<{
   value: VideoStrategy
   label: string
@@ -31,6 +32,11 @@ export const videoStrategyItems: Array<{
     label: '帧序列',
     desc: '整段帧序列以伪视频喂 VLM，模型感知时序（需 VLM 协议 openai_video）',
   },
+  {
+    value: 'video_native',
+    label: '视频直输',
+    desc: '按场景切换切片直输 VLM，慢切换场景（会议/讲座）最优（需 openai_video + minio 公网端点；录屏不推荐）',
+  },
 ]
 
 /** 校验视频策略枚举，非法值回退默认 simple */
@@ -42,6 +48,7 @@ export function getVideoStrategyValue(value: unknown): VideoStrategy {
     'grouped',
     'rewrite',
     'frame_seq',
+    'video_native',
   ]
   return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
 }
