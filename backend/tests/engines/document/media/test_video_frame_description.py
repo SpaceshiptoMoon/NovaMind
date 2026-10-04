@@ -18,12 +18,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.engines.document.media.video import frame_description as fd
 from novamind.engines.document.media.video.frame_description import (
     AllFrameDescriptionsFailedError,
     describe_frame_sequence,
     describe_grouped,
     describe_rewrite,
     describe_single,
+    describe_video_native,
 )
 
 pytestmark = pytest.mark.unit
@@ -452,3 +454,156 @@ def test_plan_frame_sequence_chunks_uniform_split():
     plain = _plan_frame_sequence_chunks(1030, 512, 5)
     assert plain == [(0, 512), (512, 1024), (1024, 1030)]
     assert all(e - s <= 512 for s, e in plain)
+
+# ==================== describe_video_native（S4 视频直输） ====================
+
+
+class FakeNativeVlmClient:
+    """按序消费响应列表的假视频直输 VLM client。
+
+    ``responses`` 每项为 str（正常返回）或 Exception（抛出）。每次
+    ``generate_text_from_video_url`` 调用记录 (url, prompt) 到 ``calls``。
+    """
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    async def generate_text_from_video_url(self, video_url, text_prompt, **kwargs):
+        self.calls.append((video_url, text_prompt))
+        if not self.responses:
+            raise RuntimeError("FakeNativeVlmClient: no more responses")
+        r = self.responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+_NATIVE_PROMPT = "描述原视频 {t0} 秒起的片段。"
+
+
+def _fake_upload_store():
+    """构造记录调用的 upload/cleanup 假闭包对。"""
+    uploaded: list[tuple[bytes, int]] = []
+    cleaned = {"n": 0}
+
+    async def upload(seg_bytes: bytes, seg_idx: int) -> str:
+        uploaded.append((seg_bytes, seg_idx))
+        return f"https://tmp.example/seg_{seg_idx:03d}.mp4"
+
+    async def cleanup() -> None:
+        cleaned["n"] += 1
+
+    return upload, cleanup, uploaded, cleaned
+
+
+@pytest.fixture
+def fake_slice(monkeypatch):
+    """打桩 _slice_video_segment：写假字节到输出路径，记录切片参数。"""
+    calls: list[tuple[str, float, float, str]] = []
+
+    def _slice(video_path, t0, t1, output_path, **kw):
+        calls.append((video_path, t0, t1, output_path))
+        Path(output_path).write_bytes(b"FAKESEG")
+        return output_path
+
+    monkeypatch.setattr(fd, "_slice_video_segment", _slice)
+    return calls
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_native_two_segments_dispatch(fake_slice):
+    """单切换点两片：每片各调一次 URL 方法，prompt 含 t0，切片参数正确，临时对象清理被调。
+
+    scene_keyframe_ts 是全部场景帧 ts（含首帧 0）：帧 0（ts=0）属片 0，
+    帧 1（ts=100，切换点帧开启新场景）属片 1。
+    """
+    vlm = FakeNativeVlmClient(["片0描述", "片1描述"])
+    upload, cleanup, uploaded, cleaned = _fake_upload_store()
+
+    out = await describe_video_native(
+        "/fake/v.mp4", 300.0, [0.0, 100.0], vlm, _NATIVE_PROMPT,
+        upload_segment=upload, cleanup_segments=cleanup, logger=fake_log,
+    )
+
+    assert len(out) == 2
+    assert out[0] == ("片0描述", 0.0, 100.0, [0])
+    assert out[1] == ("片1描述", 100.0, 300.0, [1])
+    assert len(vlm.calls) == 2
+    url0, prompt0 = vlm.calls[0]
+    assert url0 == "https://tmp.example/seg_000.mp4"
+    assert "0.0" in prompt0  # t0 注入
+    _, prompt1 = vlm.calls[1]
+    assert "100.0" in prompt1
+    # 切片参数：两片边界对齐切换点
+    assert fake_slice[0][1] == 0.0 and fake_slice[0][2] == 100.0
+    assert fake_slice[1][1] == 100.0 and fake_slice[1][2] == 300.0
+    # 上传与清理
+    assert [u[1] for u in uploaded] == [0, 1]
+    assert cleaned["n"] == 1
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_native_cleanup_called_on_all_fail(fake_slice):
+    """全片失败也走 finally 清理临时对象。"""
+    vlm = FakeNativeVlmClient([RuntimeError("boom"), RuntimeError("boom")])
+    upload, cleanup, uploaded, cleaned = _fake_upload_store()
+
+    with pytest.raises(AllFrameDescriptionsFailedError):
+        await describe_video_native(
+            "/fake/v.mp4", 300.0, [100.0], vlm, _NATIVE_PROMPT,
+            upload_segment=upload, cleanup_segments=cleanup, logger=fake_log,
+        )
+
+    assert cleaned["n"] == 1
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_native_partial_failure_skipped_with_stats(fake_slice):
+    """部分片失败：跳过留洞 + stats 记失败片覆盖帧数；idx_list 取片内场景帧。"""
+    vlm = FakeNativeVlmClient([RuntimeError("boom"), "片1描述", "片2描述", "片3描述"])
+    upload, cleanup, uploaded, cleaned = _fake_upload_store()
+    stats: dict[str, int] = {}
+
+    # 三个内部切换点 → 4 片；全部场景帧 ts=[0,100,200,300] 各属一片
+    out = await describe_video_native(
+        "/fake/v.mp4", 400.0, [0.0, 100.0, 200.0, 300.0], vlm, _NATIVE_PROMPT,
+        upload_segment=upload, cleanup_segments=cleanup,
+        logger=fake_log, stats=stats,
+    )
+
+    assert len(out) == 3
+    assert out[0] == ("片1描述", 100.0, 200.0, [1])
+    assert out[1] == ("片2描述", 200.0, 300.0, [2])
+    assert stats == {"failed": 1}  # 片0 只覆盖帧 0
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_native_client_without_method_raises():
+    """client 缺 generate_text_from_video_url：AttributeError 快速失败。"""
+    upload, cleanup, _, _ = _fake_upload_store()
+    with pytest.raises(AttributeError, match="openai_video"):
+        await describe_video_native(
+            "/fake/v.mp4", 100.0, [50.0], object(), _NATIVE_PROMPT,
+            upload_segment=upload, cleanup_segments=cleanup, logger=fake_log,
+        )
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_native_reject_error_propagates(fake_slice):
+    """VideoInputNotSupportedError 原样上抛，引擎层不吞（编排层决策降级）。"""
+    from novamind.shared.ai_models.llm.openai_compatible_video import (
+        VideoInputNotSupportedError,
+    )
+
+    vlm = FakeNativeVlmClient([VideoInputNotSupportedError("4xx not support video")])
+    upload, cleanup, _, _ = _fake_upload_store()
+
+    # 单片场景：唯一片抛拒绝 → 全片失败 → AllFrameDescriptionsFailedError
+    # 携带 first_error=拒绝异常；编排层从 first_error 链判降级
+    with pytest.raises(AllFrameDescriptionsFailedError) as exc_info:
+        await describe_video_native(
+            "/fake/v.mp4", 100.0, [], vlm, _NATIVE_PROMPT,
+            upload_segment=upload, cleanup_segments=cleanup, logger=fake_log,
+        )
+    assert isinstance(exc_info.value.first_error, VideoInputNotSupportedError)
