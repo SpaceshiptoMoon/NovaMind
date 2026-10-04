@@ -23,6 +23,10 @@
   --color-chip-active-text: #ffffff;
   --color-send-active: #2e2e2e;
   --color-send-active-hover: #444444;
+  /* 悬浮提示弹层（EP effect=dark 的 tooltip）：恒定深墨底骨白字，两主题一致——
+     不可复用 btn-primary（dark 反白为浅灰底，语义是按钮不是弹层） */
+  --color-tooltip-bg: #2e2e2e;
+  --color-tooltip-text: #fafafa;
 
   /* Accent 与 primary 统一墨水蓝（选中态/图形锚点） */
   --color-accent: #20618f;
@@ -281,6 +285,9 @@ html[data-theme='dark'] {
   --color-chip-active-text: #141416;
   --color-send-active: #dcdcdf;
   --color-send-active-hover: #e8e8ea;
+  /* 悬浮提示弹层：与亮色同值恒定深墨底（弹层浮于内容上，暗色页仍用深墨不刺眼） */
+  --color-tooltip-bg: #2e2e2e;
+  --color-tooltip-text: #fafafa;
 
   /* Accent 提亮 */
   --color-accent: #86afd4;

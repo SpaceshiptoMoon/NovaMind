@@ -14,10 +14,12 @@
         :before-upload="handleUpload"
         accept=".zip"
       >
-        <el-button type="primary" :loading="skillStore.uploading">
-          <el-icon><Upload /></el-icon>
-          上传技能
-        </el-button>
+        <SkillFormatTooltip>
+          <el-button type="primary" :loading="skillStore.uploading">
+            <el-icon><Upload /></el-icon>
+            上传技能
+          </el-button>
+        </SkillFormatTooltip>
       </el-upload>
       <!-- 空态 CTA 复用同一条上传通道（隐藏 input + 程序化触发） -->
       <input
@@ -155,7 +157,7 @@
         :headline="activeTab === 'mine' ? '你还没有上传技能' : '没有找到匹配的技能'"
         :description="
           activeTab === 'mine'
-            ? '将技能打包为 .zip 上传，即可在广场发布分享给团队成员'
+            ? '将技能打包为 .zip（内含 SKILL.md）上传，即可在广场发布分享给团队成员'
             : searchKeyword || selectedCategory || selectedTags.length
               ? '换个关键词或清除筛选条件再试试'
               : '广场暂无已发布技能，上传第一个技能让大家用起来'
@@ -214,6 +216,7 @@ import { useSkillStore } from '@/stores/skill'
 import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import SkillFormatTooltip from '@/components/skill/SkillFormatTooltip.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()

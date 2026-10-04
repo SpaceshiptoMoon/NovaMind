@@ -67,7 +67,9 @@
               </el-button>
               <el-button v-else type="warning" @click="handleUnpublish">取消发布</el-button>
               <el-upload :show-file-list="false" :before-upload="handleUpdateVersion" accept=".zip">
-                <el-button>更新版本</el-button>
+                <SkillFormatTooltip>
+                  <el-button>更新版本</el-button>
+                </SkillFormatTooltip>
               </el-upload>
               <el-button type="danger" @click="handleDelete">删除</el-button>
             </template>
@@ -182,6 +184,7 @@ import { useSkillStore } from '@/stores/skill'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { skillApi } from '@/api/skill'
+import SkillFormatTooltip from '@/components/skill/SkillFormatTooltip.vue'
 
 const route = useRoute()
 const router = useRouter()
