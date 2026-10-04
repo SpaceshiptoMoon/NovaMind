@@ -267,6 +267,10 @@
             v-bind="{ webkitdirectory: true, directory: true }"
             @change="handleFolderChange"
           />
+          <div v-if="uploadProgressVisible" class="chunk-progress">
+            <el-progress :percentage="uploadProgress" :stroke-width="10" />
+            <div class="chunk-progress-tip">大文件分片上传中，请勿关闭页面</div>
+          </div>
           <template #footer>
             <el-button @click="uploadDialogVisible = false">取消</el-button>
             <el-button
@@ -359,6 +363,10 @@ const uploadLoading = ref(false)
 const processLoading = ref(false)
 const uploadDialogVisible = ref(false)
 const processDialogVisible = ref(false)
+
+// 分片上传聚合进度（>100MB 单文件自动走分片路径时展示）
+const uploadProgress = ref(0)
+const uploadProgressVisible = ref(false)
 
 const spaceTypes = ref<string[]>(['text'])
 const kbName = ref('')
@@ -551,6 +559,31 @@ async function handleUpload() {
       ElMessage.warning('未找到可上传文件，请重新选择')
       return
     }
+
+    // 单文件超阈值自动切分片上传（大视频防单请求巨体；分片天然绕开
+    // nginx client_max_body_size，单片 timeout/重试让慢网络可恢复）
+    const CHUNKED_THRESHOLD = 100 * 1024 * 1024
+    if (!Array.isArray(filesToSend) && filesToSend.size > CHUNKED_THRESHOLD) {
+      uploadProgress.value = 0
+      uploadProgressVisible.value = true
+      try {
+        await documentApi.uploadDocumentChunked(
+          spaceId.value,
+          kbId.value,
+          filesToSend,
+          (percent) => {
+            uploadProgress.value = percent
+          },
+        )
+        ElMessage.success('文档分片上传成功')
+        uploadDialogVisible.value = false
+        await fetchDocuments()
+      } finally {
+        uploadProgressVisible.value = false
+      }
+      return
+    }
+
     const res = await documentApi.uploadDocument(spaceId.value, kbId.value, filesToSend)
 
     if ('total' in res) {
@@ -1083,6 +1116,17 @@ onMounted(async () => {
 
 .hidden-folder-input {
   display: none;
+}
+
+/* 分片上传聚合进度（大文件） */
+.chunk-progress {
+  margin-top: var(--space-3);
+}
+
+.chunk-progress-tip {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
 }
 
 .process-desc {
