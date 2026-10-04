@@ -401,6 +401,7 @@ const PROTOCOL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
   vlm: [
     { value: 'openai', label: 'OpenAI' },
+    { value: 'openai_video', label: 'OpenAI 视频（帧序列/直输）' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'ollama', label: 'Ollama' },
   ],

@@ -5994,9 +5994,10 @@
             "type": "string"
           },
           "protocol": {
-            "description": "通信协议: openai/anthropic/ollama/transformers",
+            "description": "通信协议: openai/openai_video/anthropic/ollama/transformers",
             "examples": [
               "openai",
+              "openai_video",
               "anthropic"
             ],
             "maxLength": 50,
@@ -6965,11 +6966,6 @@
       "PdfParsingConfig": {
         "description": "PDF parsing config.",
         "properties": {
-          "ocr_enabled": {
-            "default": false,
-            "title": "Ocr Enabled",
-            "type": "boolean"
-          },
           "parser": {
             "anyOf": [
               {

@@ -7,16 +7,21 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.llm.anthropic_llm import AnthropicLLM
 from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
+from novamind.shared.ai_models.llm.openai_compatible_video import (
+    OpenAICompatibleVideoLLM,
+    VideoInputNotSupportedError,
+)
 from novamind.shared.ai_models.llm.transformers_llm import TransformersLLM
 
 AnthropicLLM._FACTORY_PROTOCOL = "anthropic"
 OllamaLLM._FACTORY_PROTOCOL = "ollama"
 OpenAICompatibleLLM._FACTORY_PROTOCOL = "openai"
+OpenAICompatibleVideoLLM._FACTORY_PROTOCOL = "openai_video"
 TransformersLLM._FACTORY_PROTOCOL = "transformers"
 
 _LLM_REGISTRY: dict[str, type[BaseLLM]] = {
     cls._FACTORY_PROTOCOL: cls  # type: ignore[attr-defined]
-    for cls in (OpenAICompatibleLLM, AnthropicLLM, OllamaLLM, TransformersLLM)
+    for cls in (OpenAICompatibleLLM, OpenAICompatibleVideoLLM, AnthropicLLM, OllamaLLM, TransformersLLM)
 }
 
 
@@ -67,6 +72,8 @@ def create_llm_client(
 __all__ = [
     "BaseLLM",
     "OpenAICompatibleLLM",
+    "OpenAICompatibleVideoLLM",
+    "VideoInputNotSupportedError",
     "AnthropicLLM",
     "OllamaLLM",
     "TransformersLLM",
