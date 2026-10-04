@@ -139,14 +139,20 @@ defineProps<{
 }
 
 .deepdoc-badge {
+  /* 与同行 el-select 输入框同尺寸对齐：32px 高 / 180px 宽 / 14px 字号 / base 圆角，
+     视觉上呈现为「锁定的输入框」而非游离标签 */
   display: inline-flex;
   align-items: center;
-  padding: 4px 12px;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 180px;
+  height: 32px;
+  padding: 0 11px;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
   background: var(--color-bg-card);
   color: var(--color-text-secondary);
-  font-size: var(--text-sm);
+  font-size: 14px;
   font-weight: var(--weight-semibold);
   white-space: nowrap;
   flex-shrink: 0;
