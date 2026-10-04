@@ -699,6 +699,10 @@ def test_memory_error_cascade_still_raises_retry_and_marks_task(monkeypatch):
                 async def download_document(self, bucket_name, object_name):
                     return b"fake"
 
+                async def download_document_to_file(self, bucket_name, object_name, dest_path):
+                    Path(dest_path).write_bytes(b"fake")
+                    return 4
+
             async def _fake_get_minio_client():
                 return _FakeMinio()
 
@@ -802,6 +806,10 @@ def test_memory_error_disposes_engine_pool_before_retry_marking(monkeypatch):
                 async def download_document(self, bucket_name, object_name):
                     return b"fake"
 
+                async def download_document_to_file(self, bucket_name, object_name, dest_path):
+                    Path(dest_path).write_bytes(b"fake")
+                    return 4
+
             async def _fake_get_minio_client():
                 return _FakeMinio()
 
@@ -890,6 +898,10 @@ def test_generic_error_keeps_engine_pool_alive(monkeypatch):
             class _FakeMinio:
                 async def download_document(self, bucket_name, object_name):
                     return b"fake"
+
+                async def download_document_to_file(self, bucket_name, object_name, dest_path):
+                    Path(dest_path).write_bytes(b"fake")
+                    return 4
 
             async def _fake_get_minio_client():
                 return _FakeMinio()

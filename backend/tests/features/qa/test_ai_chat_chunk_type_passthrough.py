@@ -29,7 +29,7 @@ def _kb_repo_patch(monkeypatch, kb_ids):
         def __init__(self, db):
             pass
 
-        async def get_by_space(self, space_id):
+        async def get_by_space(self, space_id, status=None, skip=0, limit=100):
             return [_KB(i) for i in kb_ids]
 
     from novamind.features.knowledge_space.repository import knowledge_base_repository as mod
