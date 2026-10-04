@@ -9,9 +9,7 @@
     <el-card v-loading="loading" shadow="never" class="config-shell">
       <section class="editor-section editor-section-first">
         <div class="section-heading">
-          <div>
-            <h3 class="section-title">选择知识库要启用的数据类型</h3>
-          </div>
+          <h3 class="section-title">选择知识库要启用的数据类型</h3>
           <p class="section-desc">选择这个知识库需要处理的内容类型。</p>
         </div>
 
@@ -35,29 +33,28 @@
         </el-checkbox-group>
       </section>
 
-      <div class="section-nav">
+      <nav class="section-nav" aria-label="配置分区">
         <button
           v-for="(step, index) in steps"
           :key="step.title"
           type="button"
           class="nav-pill"
           :class="{ 'is-active': currentStep === index }"
+          :aria-current="currentStep === index ? 'step' : undefined"
           @click="goToStep(index)"
         >
-          <span class="nav-index">0{{ index + 1 }}</span>
+          <span class="nav-index">{{ index + 1 }}</span>
           <span class="nav-copy">
             <strong>{{ step.title }}</strong>
             <small>{{ step.desc }}</small>
           </span>
         </button>
-      </div>
+      </nav>
 
       <section v-show="currentStep === 1" class="editor-section">
         <div class="section-heading">
-          <div>
-            <h3 class="section-title">配置主切分策略和模态覆盖参数</h3>
-          </div>
-          <p class="section-desc">不同策略只显示会生效的参数。</p>
+          <h3 class="section-title">切分策略</h3>
+          <p class="section-desc">控制文档切分成块的方式，不同策略只显示会生效的参数。</p>
         </div>
 
         <KbSplittingSection :config-form="configForm" />
@@ -65,10 +62,8 @@
 
       <section v-show="currentStep === 0" class="editor-section">
         <div class="section-heading">
-          <div>
-            <h3 class="section-title">按文档类型和模态配置解析方式</h3>
-          </div>
-          <p class="section-desc">已按后端约束自动收口无效字段。</p>
+          <h3 class="section-title">解析策略</h3>
+          <p class="section-desc">按文档类型和模态选择解析方式，无效字段已按后端约束自动隐藏。</p>
         </div>
 
         <KbTextParsingSection v-if="hasText" :config-form="configForm" />
@@ -85,10 +80,8 @@
 
       <section v-show="currentStep === 2" class="editor-section">
         <div class="section-heading">
-          <div>
-            <h3 class="section-title">设置问题生成开关和 LLM 参数</h3>
-          </div>
-          <p class="section-desc">开启后用于生成辅助问题，增强检索召回。</p>
+          <h3 class="section-title">问题生成</h3>
+          <p class="section-desc">为每个分块自动生成辅助问题，增强检索召回。</p>
         </div>
 
         <KbQuestionGenerationSection :config-form="configForm" :llm-models="llmModels" />
@@ -96,9 +89,7 @@
 
       <section v-show="currentStep === 3" class="editor-section">
         <div class="section-heading">
-          <div>
-            <h3 class="section-title">设置 Wiki 自动生成</h3>
-          </div>
+          <h3 class="section-title">Wiki 生成</h3>
           <p class="section-desc">文档解析完成后自动整理互链知识页面。</p>
         </div>
 
@@ -170,10 +161,10 @@ const kbId = computed(() => Number(route.params.kbId))
 const goListPath = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases`)
 
 const steps = [
-  { title: '解析策略', desc: 'parsing' },
-  { title: '切分策略', desc: 'splitting' },
-  { title: '问题生成', desc: 'question_generation' },
-  { title: 'Wiki 生成', desc: 'wiki' },
+  { title: '解析策略', desc: '各类型文档的解析方式' },
+  { title: '切分策略', desc: '分块大小与切分算法' },
+  { title: '问题生成', desc: '辅助问题增强检索召回' },
+  { title: 'Wiki 生成', desc: '自动整理互链知识页' },
 ]
 
 const currentStep = ref(0)
@@ -609,98 +600,110 @@ onMounted(() => {
 
 .section-nav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  padding: var(--space-6) var(--space-6) 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6) 0;
 }
 
+/* 步骤导航 pill：选中用墨水蓝淡底+实线边框（与模态 checkbox 卡的形态区分开） */
 .nav-pill {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   text-align: left;
   cursor: pointer;
+  min-width: 0;
   transition:
-    transform var(--transition-fast),
     box-shadow var(--transition-fast),
-    border-color var(--transition-fast);
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .nav-pill:hover {
-  transform: translateY(-1px);
   border-color: var(--color-border);
   box-shadow: var(--shadow-sm);
 }
 
 .nav-pill.is-active {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
 }
 
 .nav-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-xl);
-  background: var(--color-primary-subtle);
-  color: var(--color-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   flex-shrink: 0;
+}
+
+.nav-pill.is-active .nav-index {
+  background: var(--color-primary);
+  color: #fff;
 }
 
 .nav-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
 }
 
 .nav-copy strong {
   color: var(--color-text);
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.nav-pill.is-active .nav-copy strong {
+  color: var(--color-primary);
 }
 
 .nav-copy small {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor-section {
   padding: var(--space-8) var(--space-6);
 }
 
+/* 标题+副标题纵排（desc 紧贴标题，不再右漂半屏） */
 .section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-5);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .section-title {
-  margin: 0;
-  font-size: var(--text-3xl);
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
 }
 
 .section-desc {
-  max-width: 320px;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading-normal);
 }
 
 .modality-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: var(--space-3);
 }
 
@@ -710,7 +713,7 @@ onMounted(() => {
   margin-right: 0;
   padding: var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   transition:
     transform var(--transition-fast),
@@ -725,9 +728,8 @@ onMounted(() => {
 }
 
 .modality-grid :deep(.el-checkbox.is-checked) {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
 }
 
 .modality-grid :deep(.el-checkbox__label) {
@@ -786,14 +788,9 @@ onMounted(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .section-heading,
   .config-footer {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .section-desc {
-    max-width: none;
   }
 }
 
@@ -812,10 +809,6 @@ onMounted(() => {
     grid-template-columns: 1fr;
     padding-left: var(--space-4);
     padding-right: var(--space-4);
-  }
-
-  .section-title {
-    font-size: var(--text-2xl);
   }
 
   .footer-actions {
