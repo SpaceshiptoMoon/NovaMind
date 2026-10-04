@@ -57,19 +57,22 @@
         <el-form-item v-if="configForm.videoStrategy !== 'scene'" label="抽帧间隔">
           <el-slider
             v-model="configForm.videoFrameInterval"
-            :min="1"
+            :min="0.5"
             :max="60"
+            :step="0.5"
             show-input
             :show-input-controls="false"
           />
+          <span class="field-hint">相邻帧间隔秒数，默认 5（动作密集视频建议调小防关键动作被跳过）</span>
         </el-form-item>
         <el-form-item label="最大帧数">
           <el-input-number
             v-model="configForm.videoMaxFrames"
             :min="1"
-            :max="200"
+            :max="1000"
             style="width: 100%"
           />
+          <span class="field-hint">默认 60；长视频建议调大（5s 间隔下 60 帧 ≈ 5 分钟）</span>
         </el-form-item>
         <el-form-item v-if="configForm.videoStrategy === 'scene'" label="场景阈值">
           <el-input-number
@@ -105,6 +108,20 @@
           />
           <span class="field-hint">每组喂 VLM 多图的帧数，默认 3（多图不支持时自动降级逐帧）</span>
         </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'scene'" label="最小帧间隔">
+          <el-input-number
+            v-model="configForm.videoSceneMinInterval"
+            :min="0.1"
+            :max="10"
+            :step="0.5"
+            :precision="1"
+            placeholder="2"
+            style="width: 100%"
+          />
+          <span class="field-hint">
+            相邻场景帧最小间隔秒数，默认 2（动作密集如下锅/倒料建议调小，防 2-3 秒动作被跳过）
+          </span>
+        </el-form-item>
         <el-form-item label="视觉描述">
           <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
         </el-form-item>
@@ -123,6 +140,78 @@
               :value="model.model"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="音轨转写">
+          <el-switch v-model="configForm.videoTranscribeAudio" />
+          <span class="field-hint">
+            提取音轨做 ASR 转写，旁白按时间归并进对应帧（做菜视频的用量/火候等关键信息多在旁白里，建议开启）
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoTranscribeAudio" label="ASR 模型">
+          <el-select
+            v-model="configForm.videoAsrModel"
+            clearable
+            filterable
+            placeholder="默认：本地 Whisper（免费）"
+            style="width: 100%"
+          >
+            <el-option-group label="本地">
+              <el-option label="本地 Whisper（免费）" value="faster-whisper-tiny" />
+            </el-option-group>
+            <el-option-group v-if="asrModels.length" label="云端模型">
+              <el-option
+                v-for="model in asrModels"
+                :key="model.model"
+                :label="model.model"
+                :value="model.model"
+              />
+            </el-option-group>
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoTranscribeAudio" label="旁白语言">
+          <el-select
+            v-model="configForm.videoAsrLanguage"
+            clearable
+            placeholder="自动检测"
+            style="width: 100%"
+          >
+            <el-option label="自动检测" value="" />
+            <el-option label="中文" value="zh" />
+            <el-option label="英文" value="en" />
+            <el-option label="日文" value="ja" />
+            <el-option label="韩文" value="ko" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="步骤综合">
+          <el-switch v-model="configForm.videoStepsEnabled" />
+          <span class="field-hint">
+            用 LLM 把逐帧描述与旁白综合为可执行的操作步骤（带帧层覆盖率校验，漏帧自动重试，仍缺则告警跳过不阻塞文档）
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStepsEnabled" label="综合 LLM">
+          <el-select
+            v-model="configForm.videoStepsLlmModel"
+            clearable
+            filterable
+            placeholder="留空时继承空间默认 LLM"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in llmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStepsEnabled" label="步骤上限">
+          <el-input-number
+            v-model="configForm.videoStepsMaxSteps"
+            :min="1"
+            :max="200"
+            style="width: 100%"
+          />
+          <span class="field-hint">超出的步骤截断，默认 30（长视频可调大）</span>
         </el-form-item>
       </el-form>
     </div>
@@ -198,6 +287,13 @@ type MultimodalParsingFormModel = {
   videoSceneThreshold: number | null
   videoDedupSimilarityThreshold: number | null
   videoGroupSize: number | null
+  videoSceneMinInterval: number | null
+  videoTranscribeAudio: boolean
+  videoAsrModel: string
+  videoAsrLanguage: string
+  videoStepsEnabled: boolean
+  videoStepsLlmModel: string
+  videoStepsMaxSteps: number
   audioAsrModel: string
   audioAsrLanguage: string
 }
@@ -209,6 +305,7 @@ defineProps<{
   hasAudio: boolean
   vlmModels: AvailableModelItem[]
   asrModels: AvailableModelItem[]
+  llmModels: AvailableModelItem[]
 }>()
 </script>
 
