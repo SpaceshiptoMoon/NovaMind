@@ -177,6 +177,43 @@ class DocumentBatchUploadResponse(BaseModel):
     failed: list[FailedFileItem] = Field(default_factory=list, description="上传失败的文件列表")
 
 
+# ========== 分片上传相关 Schema ==========
+
+
+class ChunkUploadInitRequest(BaseModel):
+    """分片上传会话初始化请求"""
+    filename: str = Field(..., min_length=1, max_length=255, description="文件名")
+    total_size: int = Field(..., gt=0, description="整文件字节数（客户端预计算）")
+    total_chunks: int = Field(..., ge=1, le=100000, description="分片总数")
+    file_sha256: str = Field(..., min_length=64, max_length=64, description="整文件 sha256（hex，完整性比对凭证）")
+
+
+class ChunkUploadInitResponse(BaseModel):
+    """分片上传会话初始化响应"""
+    upload_id: str = Field(..., description="会话 ID（后续 chunk/complete/abort 均携带）")
+    chunk_size_hint: int = Field(..., description="建议分片大小（字节，固定 offset 布局的步长）")
+    session_ttl_sec: int = Field(..., description="会话 TTL（秒，每次分片写入续期）")
+
+
+class ChunkUploadStatusResponse(BaseModel):
+    """分片写入状态响应"""
+    upload_id: str = Field(..., description="会话 ID")
+    chunk_index: int = Field(..., description="本次写入的分片序号")
+    duplicate: bool = Field(..., description="是否重复片（幂等命中，未重复写盘）")
+    received_chunks: int = Field(..., description="已收分片数（不含占位）")
+
+
+class ChunkUploadCompleteRequest(BaseModel):
+    """分片上传完成请求"""
+    file_sha256: str = Field(..., min_length=64, max_length=64, description="整文件 sha256（与 init 申报比对，不符拒入）")
+
+
+class ChunkUploadAbortResponse(BaseModel):
+    """分片上传取消响应"""
+    upload_id: str = Field(..., description="会话 ID")
+    aborted: bool = Field(..., description="是否已取消（会话不存在时幂等返回 True）")
+
+
 # ========== 拆分解析相关 Schema ==========
 
 

@@ -1104,6 +1104,21 @@
         "title": "Body_create_test_set_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_post",
         "type": "object"
       },
+      "Body_put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put": {
+        "properties": {
+          "chunk": {
+            "description": "分片二进制数据",
+            "format": "binary",
+            "title": "Chunk",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk"
+        ],
+        "title": "Body_put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put",
+        "type": "object"
+      },
       "Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post": {
         "properties": {
           "new_doc_id": {
@@ -1755,6 +1770,144 @@
           "content"
         ],
         "title": "ChunkResponse",
+        "type": "object"
+      },
+      "ChunkUploadAbortResponse": {
+        "description": "分片上传取消响应",
+        "properties": {
+          "aborted": {
+            "description": "是否已取消（会话不存在时幂等返回 True）",
+            "title": "Aborted",
+            "type": "boolean"
+          },
+          "upload_id": {
+            "description": "会话 ID",
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "aborted"
+        ],
+        "title": "ChunkUploadAbortResponse",
+        "type": "object"
+      },
+      "ChunkUploadCompleteRequest": {
+        "description": "分片上传完成请求",
+        "properties": {
+          "file_sha256": {
+            "description": "整文件 sha256（与 init 申报比对，不符拒入）",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "File Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_sha256"
+        ],
+        "title": "ChunkUploadCompleteRequest",
+        "type": "object"
+      },
+      "ChunkUploadInitRequest": {
+        "description": "分片上传会话初始化请求",
+        "properties": {
+          "file_sha256": {
+            "description": "整文件 sha256（hex，完整性比对凭证）",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "filename": {
+            "description": "文件名",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "total_chunks": {
+            "description": "分片总数",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Total Chunks",
+            "type": "integer"
+          },
+          "total_size": {
+            "description": "整文件字节数（客户端预计算）",
+            "exclusiveMinimum": 0.0,
+            "title": "Total Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filename",
+          "total_size",
+          "total_chunks",
+          "file_sha256"
+        ],
+        "title": "ChunkUploadInitRequest",
+        "type": "object"
+      },
+      "ChunkUploadInitResponse": {
+        "description": "分片上传会话初始化响应",
+        "properties": {
+          "chunk_size_hint": {
+            "description": "建议分片大小（字节，固定 offset 布局的步长）",
+            "title": "Chunk Size Hint",
+            "type": "integer"
+          },
+          "session_ttl_sec": {
+            "description": "会话 TTL（秒，每次分片写入续期）",
+            "title": "Session Ttl Sec",
+            "type": "integer"
+          },
+          "upload_id": {
+            "description": "会话 ID（后续 chunk/complete/abort 均携带）",
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "chunk_size_hint",
+          "session_ttl_sec"
+        ],
+        "title": "ChunkUploadInitResponse",
+        "type": "object"
+      },
+      "ChunkUploadStatusResponse": {
+        "description": "分片写入状态响应",
+        "properties": {
+          "chunk_index": {
+            "description": "本次写入的分片序号",
+            "title": "Chunk Index",
+            "type": "integer"
+          },
+          "duplicate": {
+            "description": "是否重复片（幂等命中，未重复写盘）",
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "received_chunks": {
+            "description": "已收分片数（不含占位）",
+            "title": "Received Chunks",
+            "type": "integer"
+          },
+          "upload_id": {
+            "description": "会话 ID",
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "chunk_index",
+          "duplicate",
+          "received_chunks"
+        ],
+        "title": "ChunkUploadStatusResponse",
         "type": "object"
       },
       "CitationClickRequest": {
@@ -21306,6 +21459,325 @@
           }
         ],
         "summary": "上传文档",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/chunk-upload/init": {
+      "post": {
+        "description": "申报文件名/总大小/分片数/整文件 sha256，服务端建 Redis 会话并返回 upload_id 与建议分片大小",
+        "operationId": "init_chunk_upload_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload_init_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkUploadInitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkUploadInitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "初始化分片上传会话",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/chunk-upload/{upload_id}/abort": {
+      "post": {
+        "description": "删除会话与暂存 .part 文件（幂等：会话不存在也返回成功）",
+        "operationId": "abort_chunk_upload_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__abort_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "会话 ID",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "description": "会话 ID",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkUploadAbortResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "取消分片上传",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/chunk-upload/{upload_id}/chunks/{chunk_index}": {
+      "put": {
+        "description": "按固定 offset 定位写 .part 暂存文件；重复片幂等返回，乱序可写；每次调用校验会话归属",
+        "operationId": "put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "会话 ID",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "description": "会话 ID",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "分片序号（0 起）",
+            "in": "path",
+            "name": "chunk_index",
+            "required": true,
+            "schema": {
+              "description": "分片序号（0 起）",
+              "minimum": 0,
+              "title": "Chunk Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkUploadStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "写入一个分片",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/chunk-upload/{upload_id}/complete": {
+      "post": {
+        "description": "校验分片收齐+整文件 sha256 比对（不符 400 不入 MinIO），通过后走与单文件一致的校验/查重/落库链路",
+        "operationId": "complete_chunk_upload_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "会话 ID",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "description": "会话 ID",
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkUploadCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "完成分片上传",
         "tags": [
           "文档管理",
           "文档管理"

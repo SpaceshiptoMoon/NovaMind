@@ -11,6 +11,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
 from fastapi.responses import Response
 from novamind.core.database.database import get_db
+from novamind.core.middleware.rate_limit import RateLimits, get_limiter
 from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
     get_current_user_id,
@@ -24,13 +25,21 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_member,
 )
 from novamind.features.knowledge_space.exceptions import (
+    ChunkUploadConflictError,
+    ChunkUploadSessionError,
     DocumentInvalidTypeError,
     DocumentNotFoundError,
     DocumentSizeExceededError,
+    KnowledgeBaseNotFoundError,
     SpaceAccessDeniedError,
 )
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.schemas.document_schema import (
+    ChunkUploadAbortResponse,
+    ChunkUploadCompleteRequest,
+    ChunkUploadInitRequest,
+    ChunkUploadInitResponse,
+    ChunkUploadStatusResponse,
     ChunkListResponse,
     ChunkResponse,
     DocumentBatchProcessRequest,
@@ -53,10 +62,17 @@ from novamind.features.knowledge_space.schemas.document_task_schema import (
 )
 from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.chunk_upload_service import (
+    ChunkUploadLimits,
+    ChunkUploadSessionService,
+)
 from novamind.features.knowledge_space.services.document_file_types import SUPPORTED_FILE_TYPES
 from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 文件大小限制：读取层上限取全部模态的最大值。逐模态权威校验在
@@ -250,6 +266,190 @@ async def upload_document(
         ],
         failed=all_failed,
     )
+
+
+# ==================== 分片上传（大文件） ====================
+
+
+def _get_chunk_session_service() -> ChunkUploadSessionService:
+    """分片会话服务无状态依赖（Redis 客户端内部懒取），直接构造。"""
+    return ChunkUploadSessionService()
+
+
+@router.post(
+    "/{kb_id}/documents/chunk-upload/init",
+    response_model=ChunkUploadInitResponse,
+    summary="初始化分片上传会话",
+    description="申报文件名/总大小/分片数/整文件 sha256，服务端建 Redis 会话并返回 upload_id 与建议分片大小",
+)
+@get_limiter().limit(RateLimits.UPLOAD)
+async def init_chunk_upload(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    payload: ChunkUploadInitRequest,
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+    db: AsyncSession = Depends(get_db),
+):
+    """初始化分片上传会话（会话绑定 user_id+kb_id，后续每次分片写入校验归属）。"""
+    await validate_kb_writable(kb_id, space_id, db)
+
+    # 扩展名白名单预检（把明显非法的请求挡在会话创建前；完整魔数校验在 complete）
+    filename = os.path.basename(payload.filename)
+    _, ext = os.path.splitext(filename.lower())
+    if ext not in ALLOWED_FILE_EXTENSIONS:
+        raise DocumentInvalidTypeError(ext=ext, allowed=sorted(ALLOWED_FILE_EXTENSIONS))
+
+    # 会话累计字节硬顶：模态上限与全局读取上限取小（防声明超配）
+    kb = await KnowledgeBaseRepository(db).get_by_id(kb_id)
+    if not kb:
+        raise KnowledgeBaseNotFoundError(kb_id)
+    modality_cap = DocumentUploadService._get_max_file_size(None, kb, ext.lstrip("."))
+    global_cap = _get_global_upload_read_limit()
+    max_total_bytes = min(modality_cap, global_cap)
+
+    result = await _get_chunk_session_service().init_session(
+        user_id=user_id,
+        kb_id=kb_id,
+        space_id=space_id,
+        filename=filename,
+        total_size=payload.total_size,
+        total_chunks=payload.total_chunks,
+        max_total_bytes=max_total_bytes,
+    )
+    return ChunkUploadInitResponse(**result)
+
+
+@router.put(
+    "/{kb_id}/documents/chunk-upload/{upload_id}/chunks/{chunk_index}",
+    response_model=ChunkUploadStatusResponse,
+    summary="写入一个分片",
+    description="按固定 offset 定位写 .part 暂存文件；重复片幂等返回，乱序可写；每次调用校验会话归属",
+)
+@get_limiter().limit(RateLimits.UPLOAD)
+async def put_chunk(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    upload_id: Annotated[str, Path(description="会话 ID")],
+    chunk_index: Annotated[int, Path(ge=0, description="分片序号（0 起）")],
+    chunk: UploadFile = File(..., description="分片二进制数据"),
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+):
+    """写入一片（归属校验在服务层每次执行；单分片体积与会话累计硬顶在服务层）。"""
+    data = await chunk.read()
+    result = await _get_chunk_session_service().put_chunk(
+        upload_id=upload_id,
+        user_id=user_id,
+        kb_id=kb_id,
+        chunk_index=chunk_index,
+        data=data,
+    )
+    return ChunkUploadStatusResponse(**result)
+
+
+@router.post(
+    "/{kb_id}/documents/chunk-upload/{upload_id}/complete",
+    response_model=DocumentUploadResponse,
+    summary="完成分片上传",
+    description="校验分片收齐+整文件 sha256 比对（不符 400 不入 MinIO），通过后走与单文件一致的校验/查重/落库链路",
+)
+@get_limiter().limit(RateLimits.UPLOAD)
+async def complete_chunk_upload(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    upload_id: Annotated[str, Path(description="会话 ID")],
+    payload: ChunkUploadCompleteRequest,
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+    document_upload_service: DocumentUploadService = Depends(get_document_upload_service),
+    audit_service: AuditService = Depends(get_audit_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """完成上传：收齐校验→sha256 比对→复用流式上传语义落库→清理 .part。"""
+    await validate_kb_writable(kb_id, space_id, db)
+
+    session_service = _get_chunk_session_service()
+    # 归属校验（complete 同样不放过）：会话必须属于当前 user+kb
+    sess = await session_service.load_session(upload_id)
+    if not sess:
+        raise ChunkUploadSessionError(f"上传会话不存在或已过期: {upload_id}")
+    if int(sess["user_id"]) != user_id or int(sess["kb_id"]) != kb_id:
+        raise ChunkUploadSessionError("无权操作该上传会话")
+
+    # 收齐校验（片数+字节数守恒）
+    await session_service.verify_ready(upload_id)
+
+    # complete 幂等锁：防并发 complete 双写 MinIO（SETNX，TTL 与会话同量级）
+    limits = ChunkUploadLimits.from_config()
+    if not await session_service.complete_lock(upload_id, limits.session_ttl_sec):
+        raise ChunkUploadConflictError(upload_id)
+
+    try:
+        # 端到端完整性：流式算 .part 全文件 sha256，与申报比对（不符抛 400 且不入 MinIO）
+        actual_sha = await session_service.compute_file_sha256(
+            upload_id, int(sess["total_size"])
+        )
+        if actual_sha != payload.file_sha256.lower():
+            raise ChunkUploadChecksumMismatchError(
+                expected_size=int(sess["total_size"]),
+                actual_size=int(sess["total_size"]),
+            )
+
+        uploaded = await document_upload_service.upload_document_from_part(
+            kb_id=kb_id,
+            uploader_id=user_id,
+            filename=sess["filename"],
+            part_path=session_service._part_path(upload_id),
+            expected_size=int(sess["total_size"]),
+            expected_sha256=actual_sha,
+        )
+    except Exception:
+        # 失败方向安全：废弃会话（状态置 CORRUPT）+清 .part，不留可重放残骸
+        await session_service.finalize_state(upload_id, "CORRUPT")
+        await session_service.cleanup_part(upload_id)
+        raise
+
+    # 成功：终态 DONE + 清理 .part
+    await session_service.finalize_state(upload_id, "DONE")
+    await session_service.cleanup_part(upload_id)
+
+    await audit_service.log_document_upload(
+        space_id=space_id,
+        user_id=user_id,
+        document_id=uploaded.document_id,
+        filename=uploaded.filename,
+        file_size=uploaded.file_size,
+        request=request,
+    )
+    return DocumentUploadResponse(
+        document_id=uploaded.document_id,
+        filename=uploaded.filename,
+        status="uploaded",
+        message="文档分片上传成功，等待拆分解析",
+    )
+
+
+@router.post(
+    "/{kb_id}/documents/chunk-upload/{upload_id}/abort",
+    response_model=ChunkUploadAbortResponse,
+    summary="取消分片上传",
+    description="删除会话与暂存 .part 文件（幂等：会话不存在也返回成功）",
+)
+async def abort_chunk_upload(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    upload_id: Annotated[str, Path(description="会话 ID")],
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+):
+    """取消分片上传会话。"""
+    await _get_chunk_session_service().abort(upload_id=upload_id, user_id=user_id, kb_id=kb_id)
+    return ChunkUploadAbortResponse(upload_id=upload_id, aborted=True)
 
 
 @router.get(

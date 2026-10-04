@@ -46,6 +46,31 @@ export const documentApi = {
     )
   },
 
+  /**
+   * 分片上传大文件（>100MB 单文件建议走此路径）。
+   *
+   * init → 逐片 PUT（乱序/重试安全，单片 timeout 120s + 退避重试 2 次）→
+   * complete（整文件 sha256 比对）。onProgress 为聚合进度百分比。
+   */
+  uploadDocumentChunked(
+    spaceId: number,
+    kbId: number,
+    file: File,
+    onProgress?: (percent: number) => void,
+  ) {
+    const base = `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/chunk-upload`
+    return request.uploadChunked<UploadDocumentResponse>(
+      {
+        init: `${base}/init`,
+        chunk: (uploadId, index) => `${base}/${uploadId}/chunks/${index}`,
+        complete: (uploadId) => `${base}/${uploadId}/complete`,
+        abort: (uploadId) => `${base}/${uploadId}/abort`,
+      },
+      file,
+      { onProgress },
+    )
+  },
+
   /** 文档详情（元信息与解析状态） */
   getDocument(spaceId: number, kbId: number, docId: number) {
     return request.get<DocumentDetail>(

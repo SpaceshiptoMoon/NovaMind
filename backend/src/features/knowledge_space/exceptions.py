@@ -369,6 +369,44 @@ class DocumentAlreadyProcessingError(KnowledgeSpaceError):
         self.document_id = document_id
 
 
+# ==================== 分片上传相关异常 ====================
+
+class ChunkUploadSessionError(KnowledgeSpaceError):
+    """分片上传会话非法（不存在/归属不符/状态不允许/参数越界）"""
+    _serializable_attrs: ClassVar[list[str]] = ["upload_id"]
+
+    def __init__(self, message: str, upload_id: str | None = None):
+        super().__init__(
+            message=message,
+            code="CHUNK_UPLOAD_SESSION_INVALID",
+        )
+        self.upload_id = upload_id
+
+
+class ChunkUploadChecksumMismatchError(KnowledgeSpaceError):
+    """分片整文件校验失败（sha256 或字节数不符），拒入 MinIO"""
+
+    def __init__(self, expected_size: int, actual_size: int):
+        super().__init__(
+            message=(
+                f"分片组装后文件与申报不符（申报 {expected_size} 字节，"
+                f"实际 {actual_size} 字节），已拒绝入库"
+            ),
+            code="CHUNK_UPLOAD_CHECKSUM_MISMATCH",
+        )
+
+
+class ChunkUploadConflictError(KnowledgeSpaceError):
+    """分片 complete 并发冲突（已有进行中的 complete）"""
+
+    def __init__(self, upload_id: str):
+        super().__init__(
+            message=f"分片上传 {upload_id} 已有进行中的 complete 请求",
+            code="CHUNK_UPLOAD_CONFLICT",
+        )
+        self.upload_id = upload_id
+
+
 # ==================== 检索相关异常 ====================
 
 class SearchError(KnowledgeSpaceError):
@@ -546,6 +584,9 @@ __all__ = [
     "DocumentConversionError",
     "DocumentSizeExceededError",
     "DocumentCountExceededError",
+    "ChunkUploadSessionError",
+    "ChunkUploadChecksumMismatchError",
+    "ChunkUploadConflictError",
     "DocumentAlreadyProcessingError",
     "SearchError",
     "EmbeddingError",

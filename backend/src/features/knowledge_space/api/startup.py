@@ -6,6 +6,9 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.exceptions import (
     CannotModifySelfRoleError,
     CannotRemoveLastAdminError,
+    ChunkUploadChecksumMismatchError,
+    ChunkUploadConflictError,
+    ChunkUploadSessionError,
     DocumentAlreadyExistsError,
     DocumentAlreadyProcessingError,
     DocumentConversionError,
@@ -101,6 +104,10 @@ def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
         DocumentInvalidTypeError: 400,
         DocumentSizeExceededError: 400,
         DocumentCountExceededError: 400,
+        # 分片上传相关
+        ChunkUploadSessionError: 400,
+        ChunkUploadChecksumMismatchError: 400,
+        ChunkUploadConflictError: 409,
         # 检索相关
         SearchError: 400,
         EmbeddingError: 400,

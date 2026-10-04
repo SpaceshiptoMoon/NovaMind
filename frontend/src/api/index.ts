@@ -211,6 +211,38 @@ function getDefaultMessage(status: number): string {
   return map[status] || '请求失败'
 }
 
+/**
+ * 流式计算文件 sha256（hex）：File.slice 逐块读，内存峰值与文件大小解耦。
+ *
+ * Web Crypto 无增量摘要 API——单块 4MB 收集后一次 digest；大文件把全部块的
+ * ArrayBuffer 拼进一个 Uint8Array 再喂（File.slice 是引用，物化发生在
+ * arrayBuffer() 调用时，浏览器内部按块搬运）。分片上传的完整性凭证，
+ * complete 时与后端重组文件的 sha256 比对。
+ */
+async function sha256File(file: File | Blob): Promise<string> {
+  const BLOCK = 4 * 1024 * 1024
+  const parts: Blob[] = []
+  for (let offset = 0; offset < file.size; offset += BLOCK) {
+    parts.push(file.slice(offset, offset + BLOCK))
+  }
+  let input: ArrayBuffer
+  if (parts.length === 1 && parts[0]) {
+    input = await parts[0].arrayBuffer()
+  } else {
+    const total = new Uint8Array(file.size)
+    let pos = 0
+    for (const p of parts) {
+      total.set(new Uint8Array(await p.arrayBuffer()), pos)
+      pos += p.size
+    }
+    input = total.buffer
+  }
+  const digest = await crypto.subtle.digest('SHA-256', input)
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 // 导出请求方法 — 响应直接返回 data，不需要 .data.data
 /**
  * 类型化请求方法集：泛型直接落到响应体，错误统一 toast + reject
@@ -302,6 +334,125 @@ export const request = {
 
       xhr.send(formData)
     })
+  },
+
+  /**
+   * 分片上传（大文件）：init → 逐片 PUT（固定 offset，乱序/重试安全）→ complete。
+   *
+   * 单片 XHR timeout 120s + 失败重试 2 次（指数退避 1s/2s）；进度按已确认字节
+   * 聚合计算（重试片不虚增进度）。整文件 sha256 由本函数流式计算（File.slice
+   * 逐块读，内存峰值与文件大小解耦），与 complete 申报值比对不符后端拒入。
+   *
+   * @param urls 四端点路径构造器（调用方注入，本函数不耦合具体路由前缀）
+   * @param file 待上传文件
+   * @param options chunkSize 分片大小（默认 16MB）；onProgress 聚合进度回调
+   */
+  async uploadChunked<T>(
+    urls: {
+      init: string
+      chunk: (uploadId: string, index: number) => string
+      complete: (uploadId: string) => string
+      abort: (uploadId: string) => string
+    },
+    file: File,
+    options?: { chunkSize?: number; onProgress?: (percent: number) => void },
+  ): Promise<T> {
+    const chunkSize = options?.chunkSize ?? 16 * 1024 * 1024
+    const onProgress = options?.onProgress
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken()
+
+    const fileSha256 = await sha256File(file)
+    const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize))
+
+    const initRes = await instance.post<{
+      upload_id: string
+      chunk_size_hint: number
+    }>(urls.init, {
+      filename: file.name,
+      total_size: file.size,
+      total_chunks: totalChunks,
+      file_sha256: fileSha256,
+    })
+    const uploadId = initRes.data.upload_id
+    const serverHint = initRes.data.chunk_size_hint
+    // 服务端步长与本端不一致时以服务端固定 offset 布局为准（同一布局才能拼回）
+    const effectiveChunkSize = serverHint > 0 ? serverHint : chunkSize
+    const effectiveTotalChunks = Math.max(1, Math.ceil(file.size / effectiveChunkSize))
+
+    let confirmedBytes = 0
+    const reportProgress = () => {
+      if (onProgress) {
+        onProgress(Math.round((confirmedBytes / file.size) * 100))
+      }
+    }
+
+    const putOneChunk = async (index: number): Promise<void> => {
+      const start = index * effectiveChunkSize
+      const blob = file.slice(start, Math.min(start + effectiveChunkSize, file.size))
+      const bytes = blob.size
+
+      let lastError: Error | null = null
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, 1000 * attempt))
+        }
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.open('PUT', `${baseURL}${urls.chunk(uploadId, index)}`, true)
+            if (token) {
+              xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+            }
+            xhr.responseType = 'text'
+            xhr.timeout = 120 * 1000
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                confirmedBytes += bytes
+                reportProgress()
+                resolve()
+                return
+              }
+              const contentType = xhr.getResponseHeader('content-type') || ''
+              let message = getDefaultMessage(xhr.status)
+              try {
+                const payload = contentType.includes('application/json') && xhr.responseText
+                  ? JSON.parse(xhr.responseText)
+                  : null
+                message = payload?.error?.message || payload?.message || payload?.detail || message
+              } catch {
+                /* 保留默认消息 */
+              }
+              reject(new Error(message))
+            }
+            xhr.onerror = () => reject(new Error('分片上传请求失败'))
+            xhr.ontimeout = () => reject(new Error('分片上传超时'))
+            xhr.send(blob)
+          })
+          return
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err))
+        }
+      }
+      throw lastError ?? new Error('分片上传失败')
+    }
+
+    try {
+      for (let i = 0; i < effectiveTotalChunks; i++) {
+        await putOneChunk(i)
+      }
+      const completeRes = await instance.post<T>(urls.complete(uploadId), {
+        file_sha256: fileSha256,
+      })
+      onProgress?.(100)
+      return completeRes.data
+    } catch (err) {
+      // 失败即取消会话（best-effort；后端 TTL/cron 也会兜底清理）
+      instance.post(urls.abort(uploadId), {}).catch(() => undefined)
+      const message = err instanceof Error ? err.message : '分片上传失败'
+      ElMessage.error(message)
+      throw err
+    }
   },
 
   // 文件下载（返回 blob）

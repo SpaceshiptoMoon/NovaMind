@@ -299,6 +299,12 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             video_vlm_concurrency=parsing.get("video_vlm_concurrency", 4),
             max_upload_size_mb=parsing.get("max_upload_size_mb", 2048),
             download_tmp_dir=parsing.get("download_tmp_dir", None),
+            chunk_upload_dir=parsing.get("chunk_upload_dir", None),
+            chunk_upload_session_ttl_sec=parsing.get("chunk_upload_session_ttl_sec", 86400),
+            chunk_upload_max_chunk_mb=parsing.get("chunk_upload_max_chunk_mb", 32),
+            chunk_upload_max_sessions_per_user=parsing.get(
+                "chunk_upload_max_sessions_per_user", 5
+            ),
         ),
         retrieval=RetrievalConfig(
             top_k=retrieval.get("top_k", 5),
