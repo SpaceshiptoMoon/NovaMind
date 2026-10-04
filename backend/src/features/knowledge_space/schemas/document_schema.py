@@ -141,6 +141,23 @@ class DocumentResponse(BaseModel):
             return int(value) if value else None
         return None
 
+    @computed_field
+    @property
+    def has_active_task(self) -> bool:
+        """是否存在活跃处理任务（PENDING/PROCESSING），与取消接口的活跃判定同源。
+
+        覆盖 arq 自动重试等待期：此时 status 回落 0 但任务仍活跃、可取消，
+        前端据此显示取消按钮，避免「待处理」状态下的取消盲区。
+        """
+        if not self.task:
+            return False
+        task_status = getattr(self.task, "status", None)
+        if task_status is None:
+            return False
+        if hasattr(task_status, "value"):
+            task_status = task_status.value
+        return int(task_status) in (0, 1)
+
 
 class DocumentListResponse(BaseModel):
     """文档列表响应"""

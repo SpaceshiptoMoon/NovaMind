@@ -2347,6 +2347,12 @@
             "readOnly": true,
             "title": "Frame Count"
           },
+          "has_active_task": {
+            "description": "是否存在活跃处理任务（PENDING/PROCESSING），与取消接口的活跃判定同源。\n\n覆盖 arq 自动重试等待期：此时 status 回落 0 但任务仍活跃、可取消，\n前端据此显示取消按钮，避免「待处理」状态下的取消盲区。",
+            "readOnly": true,
+            "title": "Has Active Task",
+            "type": "boolean"
+          },
           "id": {
             "description": "文档ID",
             "title": "Id",
@@ -2430,7 +2436,8 @@
           "chunk_type",
           "duration_seconds",
           "frame_count",
-          "segment_count"
+          "segment_count",
+          "has_active_task"
         ],
         "title": "DocumentDetailResponse",
         "type": "object"
@@ -2617,6 +2624,12 @@
             "readOnly": true,
             "title": "Frame Count"
           },
+          "has_active_task": {
+            "description": "是否存在活跃处理任务（PENDING/PROCESSING），与取消接口的活跃判定同源。\n\n覆盖 arq 自动重试等待期：此时 status 回落 0 但任务仍活跃、可取消，\n前端据此显示取消按钮，避免「待处理」状态下的取消盲区。",
+            "readOnly": true,
+            "title": "Has Active Task",
+            "type": "boolean"
+          },
           "id": {
             "description": "文档ID",
             "title": "Id",
@@ -2700,7 +2713,8 @@
           "chunk_type",
           "duration_seconds",
           "frame_count",
-          "segment_count"
+          "segment_count",
+          "has_active_task"
         ],
         "title": "DocumentResponse",
         "type": "object"

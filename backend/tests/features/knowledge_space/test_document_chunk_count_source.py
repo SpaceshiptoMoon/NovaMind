@@ -120,3 +120,21 @@ def test_media_metadata_fields_none_when_absent():
     assert resp.frame_count is None
     assert resp.duration_seconds is None
     assert resp.chunk_type is None
+
+
+def test_has_active_task_true_for_pending_and_processing():
+    """正向：PENDING/PROCESSING 均判活跃——含 arq 自动重试等待期（status 回落 0）。"""
+    # arq 重试等待期：任务真实存在、状态 PENDING(0)，可取消
+    assert DocumentResponse.model_validate(_doc_with_task(None, task_status=0)).has_active_task is True
+    # 处理中 PROCESSING(1)
+    assert DocumentResponse.model_validate(_doc_with_task(None, task_status=1)).has_active_task is True
+
+
+def test_has_active_task_false_for_terminal_or_no_task():
+    """反向：终态（完成/失败/取消）与无任务不判活跃——取消按钮应收起。"""
+    for terminal in (2, 3, 4):  # COMPLETED / FAILED / CANCELLED
+        assert DocumentResponse.model_validate(_doc_with_task(None, task_status=terminal)).has_active_task is False
+
+    doc = _doc_with_task(None)
+    doc.task = None
+    assert DocumentResponse.model_validate(doc).has_active_task is False
