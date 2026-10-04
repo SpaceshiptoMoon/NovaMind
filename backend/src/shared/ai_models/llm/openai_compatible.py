@@ -31,6 +31,34 @@ from tenacity import (
 
 logger = get_logger(__name__)
 
+# 服务商强制 enable_thinking 的错误特征（如 DashScope qwen3.8 系列强制 True，
+# 客户端默认 False 会被 400 拒绝）。命中后按服务商要求的值自适应重试一次。
+_THINKING_RESTRICTED_PATTERN = "enable_thinking"
+_THINKING_RESTRICTED_HINT = "restricted to "
+
+
+def _restricted_thinking_value(exc: BaseException) -> bool | None:
+    """从 400 错误信息解析服务商强制要求的 enable_thinking 值。
+
+    Args:
+        exc: 服务商返回的异常。
+
+    Returns:
+        强制要求的布尔值；非该类约束错误时返回 None（不干预）。
+    """
+    text = str(exc)
+    if _THINKING_RESTRICTED_PATTERN not in text:
+        return None
+    idx = text.find(_THINKING_RESTRICTED_HINT)
+    if idx < 0:
+        return None
+    tail = text[idx + len(_THINKING_RESTRICTED_HINT):].lstrip()
+    if tail.startswith("True"):
+        return True
+    if tail.startswith("False"):
+        return False
+    return None
+
 
 class OpenAICompatibleLLM(BaseLLM):
     """
@@ -161,16 +189,27 @@ class OpenAICompatibleLLM(BaseLLM):
             try:
                 response = await self.client.chat.completions.create(**kwargs)
             except Exception as e:
-                elapsed = time.monotonic() - start_time
-                logger.warning(
-                    "LLM 请求失败",
-                    model=self.model,
-                    error_type=type(e).__name__,
-                    error=str(e)[:200],
-                    elapsed_s=round(elapsed, 1),
-                    timeout=self.timeout,
-                )
-                raise
+                # 服务商强制 enable_thinking 取值（qwen3.8 系列强制 True）：
+                # 按错误提示的值自适应重试一次，其余异常照常抛出。
+                forced = _restricted_thinking_value(e)
+                if forced is not None and forced is not enable_thinking:
+                    logger.warning(
+                        "服务商强制 enable_thinking 取值，自适应重试",
+                        model=self.model, forced_value=forced,
+                    )
+                    kwargs["extra_body"]["enable_thinking"] = forced
+                    response = await self.client.chat.completions.create(**kwargs)
+                else:
+                    elapsed = time.monotonic() - start_time
+                    logger.warning(
+                        "LLM 请求失败",
+                        model=self.model,
+                        error_type=type(e).__name__,
+                        error=str(e)[:200],
+                        elapsed_s=round(elapsed, 1),
+                        timeout=self.timeout,
+                    )
+                    raise
 
             elapsed = time.monotonic() - start_time
 
