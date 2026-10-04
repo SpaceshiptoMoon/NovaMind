@@ -861,6 +861,39 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
         logger.warning("取消后清理 ES 数据失败", document_id=document_id, error=str(e))
 
 
+async def _job_still_alive(job_id: str | None) -> bool:
+    """按 arq 三层键判断 job 是否仍在排队或执行。
+
+    Redis 查询异常时保守返回 True（无法验证时不收编，宁可下次启动再看，
+    也不误杀长队列里正常排队的任务）。
+
+    Args:
+        job_id: arq job ID；None/空直接视为不存活。
+
+    Returns:
+        job 在队列 zset、job 定义键或 in-progress 键任一存在返回 True。
+    """
+    if not job_id:
+        return False
+    try:
+        import arq.constants as arq_constants
+
+        from novamind.shared.mq import get_arq_pool
+
+        pool = await get_arq_pool()
+        queue_name = getattr(pool, "queue_name", "arq:queue")
+        if await pool.zscore(queue_name, job_id) is not None:
+            return True
+        key_exists = await pool.exists(
+            arq_constants.job_key_prefix + job_id,
+            arq_constants.in_progress_key_prefix + job_id,
+        )
+        return bool(key_exists)
+    except Exception as e:
+        logger.warning("无法验证 PENDING 任务 job 存活，保守跳过", job_id=job_id, error=str(e))
+        return True
+
+
 async def recover_orphan_documents() -> int:
     """
     恢复孤儿文档：查询所有 PROCESSING 状态的文档，重新入队
@@ -886,9 +919,16 @@ async def recover_orphan_documents() -> int:
         tasks = await repo.get_processing_tasks()
         # PENDING 孤儿：任务行停在 PENDING 但 arq 层 job 已消失（job 键 TTL 过期
         # 或 Redis 被清）——无人消费也无人收编，文档永久卡「处理中」（doc574/item755
-        # 卡 25 天事故）。与 PROCESSING 同口径收编。
-        pending_tasks = await repo.get_stale_pending_tasks()
-        tasks.extend(pending_tasks)
+        # 卡 25 天事故）。时间只是粗筛；长队列排队数小时属正常，必须逐个用
+        # Redis 事实复核——job 三层键全不存在才是真孤儿，仍在队列/执行中的跳过。
+        stale_pending = await repo.get_stale_pending_tasks()
+        pending_orphans = [t for t in stale_pending if not await _job_still_alive(t.job_id)]
+        tasks.extend(pending_orphans)
+        if stale_pending and not pending_orphans:
+            logger.info(
+                "超龄 PENDING 任务均在队列中，不误收编",
+                checked=len(stale_pending),
+            )
 
         if not tasks:
             logger.info("无需恢复的孤儿文档")

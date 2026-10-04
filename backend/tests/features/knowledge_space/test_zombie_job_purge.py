@@ -358,13 +358,20 @@ def test_recover_orphan_requeue_branch_purges_old_jobs(monkeypatch):
     assert calls["unbind"] == []
 
 
-def test_recover_orphan_covers_stale_pending(monkeypatch):
-    """超龄 PENDING 孤儿也要收编（item 755 卡 25 天事故）。
+def _patch_job_alive(monkeypatch, alive_jobs: set) -> None:
+    """打桩 _job_still_alive：alive_jobs 内的 job_id 视为仍在队列/执行。"""
 
-    任务行停在 PENDING、arq job 已消失（job 键 TTL 过期/Redis 清空）时，
+    async def _fake_alive(job_id):
+        return job_id in alive_jobs
+
+    monkeypatch.setattr(document_tasks_module, "_job_still_alive", _fake_alive)
+
+
+def test_recover_orphan_covers_stale_pending(monkeypatch):
+    """超龄 PENDING 且 job 已消失的孤儿要收编（item 755 卡 25 天事故）。
+
+    任务行停在 PENDING、arq job 三层键全无（TTL 过期/Redis 清空）时，
     原 recover 只查 PROCESSING，PENDING 无人收编 → 文档永久卡「处理中」。
-    正用例：queued_at 早于阈值 1h 的 PENDING 被重入队；
-    相邻正常场景：刚入队（阈值内）的 PENDING 不误伤。
     """
     from novamind.shared.utils.time_utils import now_china
 
@@ -387,7 +394,7 @@ def test_recover_orphan_covers_stale_pending(monkeypatch):
                     storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
-            # 超龄 PENDING（25 天前入队）——应被收编
+            # 超龄 PENDING（25 天前入队，job 已丢失）——应被收编
             session.add(
                 DocumentTask(
                     id=1,
@@ -404,6 +411,7 @@ def test_recover_orphan_covers_stale_pending(monkeypatch):
             await session.commit()
 
             _make_recover_patches(monkeypatch=monkeypatch, session=session, max_tries=3, calls=calls)
+            _patch_job_alive(monkeypatch, alive_jobs=set())  # lost-job 不在存活集
             recovered = await recover_orphan_documents()
             task = (await session.execute(select(DocumentTask).where(DocumentTask.id == 1))).scalars().one()
             return recovered, task
@@ -418,8 +426,65 @@ def test_recover_orphan_covers_stale_pending(monkeypatch):
     assert calls["purge"] == [(574, "recovered-job")]
 
 
+def test_recover_orphan_skips_queued_stale_pending(monkeypatch):
+    """超龄但 job 仍在队列的 PENDING 不收编——长队列排队数小时属正常。
+
+    时间阈值只粗筛；job 仍在 arq:queue / in-progress 说明只是前面压着长任务，
+    重入队会产生重复 job 双跑。
+    """
+    from novamind.shared.utils.time_utils import now_china
+
+    engine = asyncio.run(_setup_sqlite())
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    calls = {"unbind": [], "purge": [], "bind": []}
+
+    async def _run():
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            # 超龄 3h 但 job 仍在队列——正常排队
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="queued-job",
+                    retry_count=0,
+                    queued_at=now_china() - timedelta(hours=3),
+                )
+            )
+            await session.commit()
+
+            _make_recover_patches(monkeypatch=monkeypatch, session=session, max_tries=3, calls=calls)
+            _patch_job_alive(monkeypatch, alive_jobs={"queued-job"})
+            recovered = await recover_orphan_documents()
+            task = (await session.execute(select(DocumentTask).where(DocumentTask.id == 1))).scalars().one()
+            return recovered, task
+
+    recovered, task = asyncio.run(_run())
+    asyncio.run(engine.dispose())
+
+    assert recovered == 0
+    assert task.job_id == "queued-job"  # 未被动过
+    assert calls["bind"] == []
+
+
 def test_recover_orphan_skips_fresh_pending(monkeypatch):
-    """刚入队的 PENDING（阈值 1h 内）不被误收编——正常排队任务重入队会产生重复 job。"""
+    """刚入队的 PENDING（粗筛阈值 10 分钟内）不进复核面——时间粗筛就不该捞到它。"""
     from novamind.shared.utils.time_utils import now_china
 
     engine = asyncio.run(_setup_sqlite())
@@ -457,6 +522,8 @@ def test_recover_orphan_skips_fresh_pending(monkeypatch):
             await session.commit()
 
             _make_recover_patches(monkeypatch=monkeypatch, session=session, max_tries=3, calls=calls)
+            # fresh-job 标记为存活也应无差别：粗筛就排除它
+            _patch_job_alive(monkeypatch, alive_jobs={"fresh-job"})
             recovered = await recover_orphan_documents()
             task = (await session.execute(select(DocumentTask).where(DocumentTask.id == 1))).scalars().one()
             return recovered, task

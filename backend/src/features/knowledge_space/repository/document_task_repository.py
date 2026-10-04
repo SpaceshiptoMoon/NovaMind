@@ -295,21 +295,21 @@ class DocumentTaskRepository:
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.status == TaskStatus.PROCESSING))
         return list(result.scalars().all())
 
-    async def get_stale_pending_tasks(self) -> list[DocumentTask]:
-        """列出疑似孤儿的 PENDING 任务项。
+    async def get_stale_pending_tasks(self, *, max_age_seconds: int = 600) -> list[DocumentTask]:
+        """列出待复核的 PENDING 任务项（时间粗筛，不判死活）。
 
-        PENDING 且 queued_at 早于阈值：正常队列在 max(重试间隔, 数分钟) 内必被消费
-        或转 PROCESSING，超龄 PENDING 意味着 arq job 已丢失（job 键 TTL 过期或
-        Redis 被清），需要与 PROCESSING 孤儿同口径收编。阈值取保守的 1 小时，
-        避免误伤启动窗口内正常排队的任务。
+        时间条件只是缩小查询面的粗筛：长队列（前面压着长视频等大任务）排队
+        可能耗时数小时，时间阈值本身不能判孤儿。真正的死活判定由调用方逐个
+        查 Redis——job 三层键（queue zset / job 定义 / in-progress）全部不存在
+        才是 job 丢失（doc574/item755 卡 25 天事故）。
 
         Args:
-            stale_after_seconds: 判定超龄的秒数阈值，默认 3600。
+            max_age_seconds: 粗筛的入队超龄秒数，默认 600（10 分钟）。
 
         Returns:
-            超龄 PENDING 任务项列表。
+            入队超过阈值的 PENDING 任务项列表，待调用方 Redis 复核。
         """
-        threshold = now_china() - timedelta(seconds=3600)
+        threshold = now_china() - timedelta(seconds=max_age_seconds)
         result = await self.session.execute(
             select(DocumentTask).where(
                 DocumentTask.status == TaskStatus.PENDING,
