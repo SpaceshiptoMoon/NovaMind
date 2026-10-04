@@ -231,9 +231,14 @@ function downloadTemplate(fmt: 'tree' | 'md') {
 </style>
 
 <style>
-/* el-dialog 经 teleport 到 body，弹窗体高度约束需全局类收敛作用范围（与测评页同款） */
-.skill-format-dialog .el-dialog {
-  height: 86vh;
+/* el-dialog 的 class 落在 .el-dialog 根元素本身（teleport 到 body，scoped 命不中）。
+   固定视口高度 + flex 列布局：标题常驻、body 内嵌滚动，弹窗整体不随 overlay 滚动 */
+.skill-format-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: 94vw;
+  height: 80vh;
+  margin-bottom: 6vh;
 }
 
 .skill-format-dialog .el-dialog__body {
