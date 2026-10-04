@@ -366,7 +366,9 @@ export interface SplittingConfig {
 export interface VideoParsingConfig {
   /** 视频解析策略：5 预设（抽帧/去重/描述三阶段组合） */
   strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite'
+  /** 抽帧间隔（秒），0.5~60；动作密集视频可调小捕捉短动作 */
   frame_interval?: number
+  /** 最大帧数，1~1000；长视频建议调大（如 300）避免尾部截断 */
   max_frames?: number
   vlm_description_enabled?: boolean
   vlm_model?: string
@@ -374,10 +376,24 @@ export interface VideoParsingConfig {
   vlm_skip_on_quota_error?: boolean
   /** 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3 */
   scene_threshold?: number
+  /** 场景抽帧切换点间隔保护（strategy=scene，秒），0.1~10，默认 2.0；动作密集视频调小 */
+  scene_min_interval?: number
   /** 去重相似度阈值（strategy=dedup），0~1，默认 0.95 */
   dedup_similarity_threshold?: number
   /** 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3 */
   group_size?: number
+  /** 音轨 ASR 融合：提取原始视频音轨转写，旁白按时间归入帧描述行 */
+  transcribe_audio?: boolean
+  /** 音轨 ASR 模型名（留空 = faster-whisper-tiny 本地转写） */
+  asr_model?: string
+  /** ASR 语言提示（留空 = 自动检测） */
+  language?: string
+  /** 步骤综合：LLM 汇总双轨描述输出带时间区间的操作步骤（覆盖率校验防遗漏） */
+  steps_enabled?: boolean
+  /** 步骤综合 LLM 模型名（留空 = 用户默认 LLM） */
+  steps_llm_model?: string
+  /** 步骤条目上限，1~200，默认 30 */
+  steps_max_steps?: number
 }
 
 export interface AudioParsingConfig {

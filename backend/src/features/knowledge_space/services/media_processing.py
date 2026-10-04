@@ -1,16 +1,19 @@
 """音视频文档处理管道：视频走关键帧提取加 VLM 逐帧描述，音频走 ASR 转写，之后统一文本切分、embedding 与 ES 入库。"""
 
+import asyncio
 from typing import Any
 
 from novamind.engines.document.media.audio import (
     AudioFileInvalidError,
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
+    transcribe_audio_with_dashscope,
 )
 from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
     build_segment_timeline_map,
     format_time_anchor,
+    merge_audio_into_frame_lines,
 )
 from novamind.engines.document.media.video import (
     AllFrameDescriptionsFailedError,
@@ -87,6 +90,380 @@ async def _snap_minio():
     from novamind.shared.storage.client_factory import ClientFactory
 
     return await ClientFactory.get_minio_client()
+
+
+async def _resolve_asr_route(
+    document: Document,
+    model_config_port: ModelConfigService,
+    asr_model: str,
+) -> tuple[str, str, str | None, str | None]:
+    """解析 ASR 模型名到实际路由（协议/模型/API 凭证）。
+
+    本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local；云端模型
+    凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」串用
+    （审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
+
+    Args:
+        document: 文档（uploader_id 用于凭证查询）。
+        model_config_port: 模型配置端口。
+        asr_model: 显式配置的 ASR 模型名（空串/None 由调用方归一为本地默认）。
+
+    Returns:
+        (protocol, model, api_key, base_url) 四元组。
+
+    Raises:
+        PermanentProcessingError: 云端模型凭证缺失。
+    """
+    if asr_model == "faster-whisper-tiny":
+        return "local", asr_model, None, None
+
+    asr_creds = await model_config_port.get_credentials_by_model(
+        document.uploader_id, "asr", asr_model
+    )
+    if not asr_creds:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
+                f"API 配置，或将知识库音频解析配置切回本地默认"
+                f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
+            ),
+        )
+    protocol = asr_creds.protocol or "openai"
+    model = asr_creds.model or asr_model
+    return protocol, model, asr_creds.api_key, asr_creds.base_url
+
+
+async def _run_asr_transcription(
+    *,
+    file_content: bytes,
+    file_type: str,
+    protocol: str,
+    model: str,
+    api_key: str | None,
+    base_url: str | None,
+    language: str | None,
+    engine_audio_config: AudioConfig,
+    document: Document,
+) -> list:
+    """按协议分发执行一次 ASR 转写（不含本地锁/失败语义——归调用方）。
+
+    音频文档与视频音轨共用同一路由：openai → Whisper / dashscope →
+    Paraformer（MinIO 中转）/ local → faster-whisper（须持有 ASR 锁）。
+    """
+    if protocol == "local":
+        return await transcribe_audio_local(
+            file_content=file_content,
+            file_type=file_type,
+            language=language,
+            audio_config=engine_audio_config,
+        )
+    if protocol == "dashscope":
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        minio_client = await ClientFactory.get_minio_client()
+        storage_info = document.get_storage_info()
+        language_hints = [language] if language else None
+        return await transcribe_audio_with_dashscope(
+            file_content=file_content,
+            file_type=file_type,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            minio_bucket=storage_info.get("minio_bucket"),
+            language_hints=language_hints,
+            minio_client=minio_client,
+        )
+    return await transcribe_audio_with_timestamps(
+        file_content=file_content,
+        file_type=file_type,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        language=language,
+    )
+
+
+async def _transcribe_video_audio(
+    *,
+    document: Document,
+    file_path: str | None,
+    file_content: bytes | None,
+    model_config_port: ModelConfigService,
+    asr_model: str,
+    language: str | None,
+    engine_audio_config: AudioConfig,
+    logger,
+) -> list[dict[str, Any]]:
+    """视频音轨转写：ffmpeg 提取 + ASR 路由复用（c3 双轨融合的音侧）。
+
+    音轨提取必须有原始文件（归一化产物带 ``-an`` 已丢音轨）：优先
+    ``file_path``（worker 落盘路径），否则 ``file_content`` 写临时文件。
+    两者均缺时返回空列表（能力缺失方向安全——告警跳过，文档不失败）。
+
+    失败语义（与音频文档的致命语义不同：视频旁白是增强能力，帧描述
+    独立可用，旁白获取失败不应拖死文档）：
+    - 本地 ASR 忙碌（LocalASRBusyError）原样上抛：延后重入队不吞；
+    - 凭证缺失 / 提取失败 / ASR 失败：告警跳过返回空列表。
+
+    Returns:
+        ASR segments（可为空列表 = 无音轨/转写失败/无可用输入）。
+    """
+    # 音轨源文件就位：file_path 直用；bytes 落临时盘
+    audio_source: str | None = file_path
+    tmp_audio_src: str | None = None
+    if audio_source is None and file_content:
+        import tempfile
+        from pathlib import Path
+
+        suffix = Path(document.filename or "video.mp4").suffix or ".mp4"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(file_content)
+            tmp_audio_src = tmp.name
+        audio_source = tmp_audio_src
+    try:
+        if audio_source is None:
+            logger.warning(
+                "视频音轨转写跳过：无原始文件可用（file_path/file_content 均缺）",
+                document_id=document.id,
+            )
+            return []
+
+        from novamind.engines.document.media.video import (
+            AudioTrackExtractionError,
+            extract_audio_track,
+        )
+
+        try:
+            asr_protocol, asr_model, asr_api_key, asr_base_url = await _resolve_asr_route(
+                document, model_config_port, asr_model
+            )
+        except PermanentProcessingError as exc:
+            logger.warning(
+                "视频音轨 ASR 凭证缺失，跳过音轨（帧描述继续）",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+
+        # 本地 ASR：锁在音轨提取前获取——忙碌重入队时不白跑 ffmpeg 提取
+        local_lock_acquired = False
+        if asr_protocol == "local":
+            from novamind.engines.document.media.audio import (
+                acquire_asr_or_busy,
+                force_release_asr_slot,
+            )
+
+            if not await acquire_asr_or_busy():
+                logger.info("本地 ASR 忙碌，视频音轨延后重入队", document_id=document.id)
+                raise LocalASRBusyError(document_id=document.id)
+            local_lock_acquired = True
+        try:
+            audio_bytes = await asyncio.to_thread(extract_audio_track, audio_source)
+            if not audio_bytes:
+                return []
+            return await _run_asr_transcription(
+                file_content=audio_bytes,
+                file_type="mp3",
+                protocol=asr_protocol,
+                model=asr_model,
+                api_key=asr_api_key,
+                base_url=asr_base_url,
+                language=language,
+                engine_audio_config=engine_audio_config,
+                document=document,
+            )
+        except AudioTrackExtractionError as exc:
+            logger.warning(
+                "视频音轨提取失败，跳过音轨继续帧描述",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+        except Exception as exc:
+            logger.warning(
+                "视频音轨 ASR 失败，跳过音轨继续帧描述（旁白信息缺失但文档不失败）",
+                document_id=document.id, error=str(exc),
+            )
+            return []
+        finally:
+            if local_lock_acquired:
+                from novamind.engines.document.media.audio import force_release_asr_slot
+
+                force_release_asr_slot()
+    finally:
+        if tmp_audio_src is not None:
+            from pathlib import Path as _P
+
+            _P(tmp_audio_src).unlink(missing_ok=True)
+
+
+def _parse_steps_json(response: str) -> list[dict[str, Any]]:
+    """解析步骤综合 LLM 输出的 JSON（容忍 ```json 围栏与前后噪声）。"""
+    import json
+    import re as _re
+
+    text = (response or "").strip()
+    fence = _re.search(r"```(?:json)?\s*(.+?)\s*```", text, _re.DOTALL)
+    if fence:
+        text = fence.group(1)
+    # 前后噪声兜底：截取首个 { 到末个 } 之间
+    lbrace = text.find("{")
+    rbrace = text.rfind("}")
+    if lbrace >= 0 and rbrace > lbrace:
+        text = text[lbrace : rbrace + 1]
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return []
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(steps, list):
+        return []
+    parsed: list[dict[str, Any]] = []
+    for s in steps:
+        if not isinstance(s, dict):
+            continue
+        title = str(s.get("title") or "").strip()
+        body = str(s.get("body") or "").strip()
+        if not title and not body:
+            continue
+        try:
+            start_idx = int(s.get("start_frame_idx"))
+            end_idx = int(s.get("end_frame_idx"))
+        except (TypeError, ValueError):
+            continue
+        if end_idx < start_idx:
+            start_idx, end_idx = end_idx, start_idx
+        parsed.append({
+            "no": len(parsed) + 1,
+            "title": title,
+            "body": body,
+            "start_frame_idx": start_idx,
+            "end_frame_idx": end_idx,
+        })
+    return parsed
+
+
+def _steps_coverage_gap(
+    steps: list[dict[str, Any]],
+    anchor_indices: set[int],
+    frame_groups: dict[int, list[int]] | None,
+) -> set[int]:
+    """计算双层覆盖缺口：帧层（全部帧 idx 被步骤区间覆盖）。
+
+    grouped 策略下步骤区间端点是组首帧 idx，经 frame_groups 展开为组内全部帧。
+    返回未被任何步骤区间覆盖的帧 idx 集合（空集 = 帧层全覆盖）。
+    """
+    def _expand(idx: int) -> list[int]:
+        if frame_groups and idx in frame_groups:
+            return list(frame_groups[idx])
+        return [idx]
+
+    covered: set[int] = set()
+    for step in steps:
+        for i in range(step["start_frame_idx"], step["end_frame_idx"] + 1):
+            covered.update(_expand(i))
+    return anchor_indices - covered
+
+
+async def _synthesize_steps(
+    *,
+    document: Document,
+    full_text: str,
+    frame_timeline_map: dict[int, tuple[float | None, float | None]],
+    frame_groups: dict[int, list[int]] | None,
+    llm_client: Any,
+    max_steps: int,
+    logger,
+    document_id: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """步骤综合 pass：LLM 汇总双轨描述输出带帧区间的操作步骤（批2 c4）。
+
+    双层覆盖率校验（「不遗漏」的机制保证）：
+    - 帧层：全部锚点帧 idx 被 steps 的 [start, end] 区间覆盖（grouped 经
+      frame_groups 展开）；
+    - 旁白层：调用方在归并后保证每个含旁白的帧仍是一个锚点帧，帧层覆盖
+      即蕴含旁白层（旁白不单独出现在无帧区间）。
+
+    缺失 → 带清单重试 1 次 → 仍缺 → 返回 None（告警降级，文档不失败，
+    保留帧级 chunks——失败方向安全）。
+
+    Returns:
+        步骤条目列表（已按 no 排序、idx 区间合法、条数 ≤ max_steps），
+        或 None 表示综合失败/全覆盖不可达，调用方跳过步骤 chunks。
+    """
+    from novamind.shared.prompts.templates import PromptManager
+
+    anchor_indices = set(frame_timeline_map.keys())
+    if not anchor_indices:
+        return None
+
+    prompt_tpl = PromptManager.get_template("video_steps_synthesis")
+    # 输入即双轨描述行本身（含锚点/画面/旁白），LLM 据此输出步骤 JSON
+    synthesis_input = full_text
+    if len(synthesis_input) > 60_000:
+        logger.warning(
+            "步骤综合输入过长，截断到 60000 字符（尾部帧可能不被覆盖）",
+            document_id=document.id, input_len=len(synthesis_input),
+        )
+        synthesis_input = synthesis_input[:60_000]
+
+    last_gap: set[int] = set()
+    for attempt in range(2):
+        messages = [{"role": "user", "content": f"{prompt_tpl}\n\n--- 双轨描述 ---\n{synthesis_input}"}]
+        if attempt == 1 and last_gap:
+            gap_list = sorted(last_gap)[:50]
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"你上一轮输出的步骤未覆盖以下帧序号：{gap_list}。"
+                    f"请重新输出完整 JSON，确保每个帧序号都落在某个步骤的 "
+                    f"start_frame_idx..end_frame_idx 区间内。"
+                ),
+            })
+        try:
+            response = await llm_client.generate_text(
+                prompt=messages,
+                max_tokens=4096,
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            logger.warning(
+                "步骤综合 LLM 调用失败，跳过步骤 chunks（帧级 chunks 保留）",
+                document_id=document.id, attempt=attempt + 1, error=str(exc),
+            )
+            return None
+
+        steps = _parse_steps_json(response)
+        if not steps:
+            logger.warning(
+                "步骤综合输出解析为空，重试或降级",
+                document_id=document.id, attempt=attempt + 1,
+                response_preview=(response or "")[:200],
+            )
+            last_gap = anchor_indices
+            continue
+        if len(steps) > max_steps:
+            steps = steps[:max_steps]
+        gap = _steps_coverage_gap(steps, anchor_indices, frame_groups)
+        if not gap:
+            logger.info(
+                "步骤综合完成（帧层全覆盖）",
+                document_id=document.id, step_count=len(steps),
+            )
+            return steps
+        last_gap = gap
+        logger.warning(
+            "步骤综合帧覆盖缺口，重试",
+            document_id=document.id, attempt=attempt + 1,
+            gap_count=len(gap), gap_sample=sorted(gap)[:20],
+        )
+
+    logger.warning(
+        "步骤综合重试后仍有帧覆盖缺口，降级跳过步骤 chunks（帧级 chunks 保留）",
+        document_id=document.id, gap_count=len(last_gap),
+        gap_sample=sorted(last_gap)[:20],
+    )
+    return None
 
 
 async def _audio_resume_tail(
@@ -238,6 +615,7 @@ async def process_video_document(
     vlm_concurrency = max(1, min(20, int(get_config().knowledge_base.parsing.video_vlm_concurrency)))
     # 高级参数（可选，留空用引擎层默认）
     scene_threshold = video_config.get("scene_threshold")
+    scene_min_interval = video_config.get("scene_min_interval")
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
     group_size = video_config.get("group_size") or 3
 
@@ -283,10 +661,38 @@ async def process_video_document(
                 )
         logger.info("视频解析快照未命中/不可用，走全量抽帧+VLM", document_id=document.id)
 
+    # ===== c3 音轨 ASR 融合（旁白）：ffmpeg 提取原始视频音轨 → ASR 转写。
+    # 在 VLM 描述前执行——本地 ASR 忙碌上抛重入队时不白烧 VLM 配额；
+    # 凭证缺失/提取失败/转写失败告警跳过（能力缺失方向安全，帧描述独立可用）。
+    # transcribe_audio 开关与 asr_model/language 由视频解析配置给出（c4 加
+    # schema 字段；此处直接读 video_config dict，配置未显式开启时零行为变化）。
+    audio_segments: list[dict[str, Any]] = []
+    transcribe_enabled = bool(video_config.get("transcribe_audio", False))
+    if transcribe_enabled:
+        from novamind.setting.yaml_config import get_config
+
+        engine_audio_config = AudioConfig(
+            local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
+            local_whisper_cpu_threads=get_config().knowledge_base.parsing.local_whisper_cpu_threads,
+        )
+        audio_asr_model = video_config.get("asr_model") or "faster-whisper-tiny"
+        audio_segments = await _transcribe_video_audio(
+            document=document,
+            file_path=file_path,
+            file_content=file_content,
+            model_config_port=mcs,
+            asr_model=audio_asr_model,
+            language=video_config.get("language"),
+            engine_audio_config=engine_audio_config,
+            logger=logger,
+        )
+
     if strategy == "scene":
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
             scene_kwargs["scene_threshold"] = scene_threshold
+        if scene_min_interval is not None:
+            scene_kwargs["min_interval"] = scene_min_interval
         if file_path is not None:
             frames = await extract_frames_scene_from_path(file_path, max_frames, **scene_kwargs)
         else:
@@ -397,6 +803,8 @@ async def process_video_document(
     frame_timeline_map: dict[int, tuple[float | None, float | None]] = {}
     frame_groups: dict[int, list[int]] | None = None
     descriptions_count = 0
+    # VLM 失败帧出参（引擎写入 failed 计数；全失败走异常路径不写）
+    vlm_stats: dict[str, int] = {}
 
     try:
         if strategy == "grouped":
@@ -408,7 +816,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             lines: list[str] = []
             frame_groups = {}
@@ -438,7 +846,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             frame_timeline_map = build_frame_timeline_map(descriptions)
             descriptions_count = len(descriptions)
@@ -450,7 +858,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
-                concurrency=vlm_concurrency,
+                concurrency=vlm_concurrency, stats=vlm_stats,
             )
             full_text_lines = [f"{format_time_anchor(ts, idx)} {desc}" for desc, ts, idx in descriptions]
             full_text = "\n\n".join(full_text_lines)
@@ -482,6 +890,70 @@ async def process_video_document(
                 document_id=document.id,
                 error_message=f"视频 {document.filename} 所有帧的VLM描述均失败{detail}{hint}",
             )
+
+    # ===== c3 双轨归并：ASR 旁白 segments 注入帧描述行（画面+旁白同锚点）。
+    # 归并计数进 task metrics（audio_segments_total/merged/dropped），旁白
+    # 有无丢失可观测；dropped>0 时告警日志（帧区间空洞外的 segment 被丢弃）。
+    audio_merge_metrics: dict[str, int] = {}
+    if audio_segments:
+        desc_lines = full_text.split("\n\n")
+        merged_lines, audio_merge_metrics = merge_audio_into_frame_lines(
+            desc_lines, audio_segments, frame_timeline_map
+        )
+        full_text = "\n\n".join(merged_lines)
+        if audio_merge_metrics.get("dropped"):
+            logger.warning(
+                "视频旁白 segments 未全部归入帧区间（帧区间空洞外被丢弃）",
+                document_id=document.id, **audio_merge_metrics,
+            )
+        logger.info(
+            "视频双轨归并完成", document_id=document.id, **audio_merge_metrics,
+        )
+
+    # ===== c4 步骤综合：LLM 汇总双轨描述 → 带帧区间的操作步骤条目。
+    # 双层覆盖率校验（帧层全覆盖；旁白已归并进锚点行，帧覆盖即旁白覆盖）；
+    # 失败/缺口重试 1 次后降级 None（帧级 chunks 保留，文档不失败）。
+    steps_items: list[tuple[str, dict[str, Any]]] | None = None
+    if bool(video_config.get("steps_enabled", False)):
+        steps_llm_name = video_config.get("steps_llm_model")
+        if not steps_llm_name:
+            steps_llm_name = await mcs.get_user_default_model_name(document.uploader_id, "llm")
+        steps_ok = bool(steps_llm_name)
+        if steps_llm_name:
+            try:
+                steps_llm_client = await mcs.get_llm_client_by_model(document.uploader_id, steps_llm_name)
+            except Exception as exc:
+                logger.warning(
+                    "步骤综合 LLM 客户端装配失败，跳过步骤 chunks（帧级 chunks 保留）",
+                    document_id=document.id, model=steps_llm_name, error=str(exc),
+                )
+                steps_ok = False
+        if steps_ok and steps_llm_name:
+            max_steps = int(video_config.get("steps_max_steps") or 30)
+            steps = await _synthesize_steps(
+                document=document,
+                full_text=full_text,
+                frame_timeline_map=frame_timeline_map,
+                frame_groups=frame_groups,
+                llm_client=steps_llm_client,
+                max_steps=max_steps,
+                logger=logger,
+            )
+            if steps:
+                # 步骤条目带首帧锚点进 chunk：对齐后获得 start/end/frame_indices，
+                # 锚点被剥离，section 标记步骤类型供前端区分展示
+                steps_items = []
+                for step in steps:
+                    anchor = format_time_anchor(
+                        frame_timeline_map[step["start_frame_idx"]][0] or 0.0,
+                        step["start_frame_idx"],
+                    )
+                    title = step["title"] or f"步骤 {step['no']}"
+                    body = f"{title}\n{step['body']}"[:2000]
+                    steps_items.append((f"{anchor} {body}", {"section": "steps"}))
+                logger.info(
+                    "步骤 chunks 构造完成", document_id=document.id, step_count=len(steps_items),
+                )
 
     # 帧描述全文 MD 持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, full_text, session, logger)
@@ -519,7 +991,17 @@ async def process_video_document(
                 logger.warning("视频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     if task:
-        await finish_step_committed(session, task, "descriptions_generated", metrics={"description_count": descriptions_count})
+        desc_metrics: dict[str, Any] = {"description_count": descriptions_count}
+        if vlm_stats.get("failed"):
+            # 单帧 VLM 失败从静默留洞变可观测（与音轨归并 metrics 同面板）
+            desc_metrics["vlm_failed_frames"] = vlm_stats["failed"]
+            logger.warning(
+                "部分帧 VLM 描述失败（已跳过留洞）",
+                document_id=document.id, failed_frames=vlm_stats["failed"],
+            )
+        if audio_merge_metrics:
+            desc_metrics.update(audio_merge_metrics)
+        await finish_step_committed(session, task, "descriptions_generated", metrics=desc_metrics)
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
     tail_result = await run_post_parse_tail(
@@ -533,6 +1015,7 @@ async def process_video_document(
         pipeline_config=pipeline_config,
         splitting_config=splitting_config,
         full_text=full_text,
+        steps_items=steps_items,
         frame_paths=frame_paths,
         time_alignment={
             "timeline_map": frame_timeline_map,
@@ -597,39 +1080,16 @@ async def process_audio_document(
     )
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
-    from novamind.engines.document.media.audio import transcribe_audio_with_dashscope
-
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await check_document_cancelled(document.id)
 
     # ===== 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
     mcs = model_config_port
 
-    # 查 ASR 凭证（按显式配置的模型名精确匹配）：
-    # - 本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local，无需 API 配置；
-    # - 云端模型凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」
-    #   串用（审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
-    asr_api_key: str | None = None
-    asr_base_url: str | None = None
-    asr_protocol = "openai"  # 默认
-
-    if asr_model == "faster-whisper-tiny":
-        asr_protocol = "local"
-    else:
-        asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
-        if not asr_creds:
-            raise PermanentProcessingError(
-                document_id=document.id,
-                error_message=(
-                    f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
-                    f"API 配置，或将知识库音频解析配置切回本地默认"
-                    f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
-                ),
-            )
-        asr_api_key = asr_creds.api_key
-        asr_base_url = asr_creds.base_url
-        asr_protocol = asr_creds.protocol or "openai"
-        asr_model = asr_creds.model or asr_model  # 以实际凭证的模型名为准
+    # 凭证解析与协议分发抽成模块级函数（视频音轨复用同一路由）
+    asr_protocol, asr_model, asr_api_key, asr_base_url = await _resolve_asr_route(
+        document, mcs, asr_model
+    )
 
     # ===== 解析快照命中检查（审计 P1#2：音频快照此前只写不读，RETRY 时 ASR
     # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名），
@@ -671,43 +1131,23 @@ async def process_audio_document(
         file_type=document.file_type, model=asr_model, protocol=asr_protocol,
     )
 
-    # 路由 ASR 协议到具体转写实现。抽成内部函数，便于 local 失败时用云端凭证回退重试。
+    # 本地/云端失败语义在调用方（锁获取/永久错误归因），此处只做协议分发
     async def _run_asr(
         protocol: str,
         model: str,
         api_key: str | None,
         base_url: str | None,
     ) -> list:
-        if protocol == "local":
-            return await transcribe_audio_local(
-                file_content=file_content,
-                file_type=document.file_type,
-                language=language,
-                audio_config=engine_audio_config,
-            )
-        if protocol == "dashscope":
-            # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
-            from novamind.shared.storage.client_factory import ClientFactory
-            minio_client = await ClientFactory.get_minio_client()
-            storage_info = document.get_storage_info()
-            language_hints = [language] if language else None
-            return await transcribe_audio_with_dashscope(
-                file_content=file_content,
-                file_type=document.file_type,
-                model=model,
-                api_key=api_key,
-                base_url=base_url,
-                minio_bucket=storage_info.get("minio_bucket"),
-                language_hints=language_hints,
-                minio_client=minio_client,
-            )
-        return await transcribe_audio_with_timestamps(
+        return await _run_asr_transcription(
             file_content=file_content,
             file_type=document.file_type,
+            protocol=protocol,
             model=model,
             api_key=api_key,
             base_url=base_url,
             language=language,
+            engine_audio_config=engine_audio_config,
+            document=document,
         )
 
     if task:

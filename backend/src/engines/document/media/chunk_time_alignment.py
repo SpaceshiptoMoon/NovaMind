@@ -76,6 +76,105 @@ def build_segment_timeline_map(
     return timeline
 
 
+def merge_audio_into_frame_lines(
+    lines: list[str],
+    segments: list[dict[str, Any]],
+    timeline_map: dict[int, tuple[float | None, float | None]],
+) -> tuple[list[str], dict[str, int]]:
+    """把 ASR 旁白 segments 按 ``start`` 归入覆盖它的帧区间，注回描述行。
+
+    行格式：``[HH:MM:SS#idx] 画面:... 旁白:...``（帧描述与旁白同锚点，
+    切分后 ``align_chunk_times`` 零改动）。
+    - segment 按 ``start`` 归属帧区间 ``[start, end)``；跨帧长 segment
+      按 start 归属、不拆分（拆分会割裂语义完整的句子）；
+    - 帧行无锚点（异常输入）原样保留；segment 落在首帧之前或所有帧区间
+      空洞之外（末帧 end=None 视为覆盖到无穷远）时跳过并计入
+      ``dropped``（调用方据此告警，旁白有无丢失可观测）。
+    - 已带「旁白:」的行不重复注入（幂等，防 resume 二次拼接）；
+      一行含多个锚点（rewrite LLM 偶发合并行）时汇总全部锚点的
+      segment 注入首个锚点之后，不丢旁白。
+
+    帧区间须按 start 升序且 end 单调不降（``build_frame_timeline_map``
+    产物天然如此），据此对有序 ASR segments 做 cursor 前进线性扫 O(n+m)；
+    segment 乱序时 cursor 回退重扫（正确性优先，退化为 O(n·m)）。
+
+    Args:
+        lines: 帧描述行列表（``[HH:MM:SS#idx] desc`` 格式）。
+        segments: ASR segments（``{"start": float, "text": str}``）。
+        timeline_map: ``{frame_idx: (start_sec, end_sec)}``，值可含 None。
+
+    Returns:
+        (新行列表, metrics)；metrics 键为 audio_segments_total（非空
+        segment 总数）/ audio_segments_merged（注入到帧行的数量）/
+        audio_segments_dropped（未归入的），可直接进 task metrics。
+    """
+    # 排序索引：frame_idx 升序的 (start, end, frame_idx)；end=None → inf（末帧开放区间）
+    spans: list[tuple[float, float, int]] = []
+    for idx, (start, end) in timeline_map.items():
+        if start is None:
+            continue
+        spans.append((float(start), float(end) if end is not None else float("inf"), idx))
+    spans.sort(key=lambda s: (s[0], s[2]))
+
+    assigned: dict[int, list[str]] = {}
+    total = 0
+    cursor = 0
+    last_start = -1.0
+    for seg in segments:
+        text = str(seg.get("text") or "").strip()
+        if not text:
+            continue
+        total += 1
+        start = seg.get("start")
+        if start is None:
+            continue
+        start_f = float(start)
+        if start_f < last_start:
+            cursor = 0
+        last_start = start_f
+        # cursor 前进：跳过 end <= start 的区间（帧区间连续时一次扫过不回退）
+        while cursor < len(spans) and spans[cursor][1] <= start_f:
+            cursor += 1
+        if cursor < len(spans) and spans[cursor][0] <= start_f:
+            assigned.setdefault(spans[cursor][2], []).append((start_f, text))
+
+    def _metrics(merged: int) -> dict[str, int]:
+        return {
+            "audio_segments_total": total,
+            "audio_segments_merged": merged,
+            "audio_segments_dropped": total - merged,
+        }
+
+    if not assigned:
+        return list(lines), _metrics(0)
+
+    # 帧内 segment 按时间排序（乱序 ASR 输入时保证旁白拼接时间有序）
+    ordered = {idx: [t for _, t in sorted(pairs)] for idx, pairs in assigned.items()}
+    merged_count = 0
+    new_lines: list[str] = []
+    for line in lines:
+        if "旁白:" in line:
+            # 幂等重跑：已注入的行跳过，其 segment 不计入本轮 merged
+            new_lines.append(line)
+            continue
+        idxs = [int(m) for m in _ANCHOR_RE.findall(line)]
+        if not idxs:
+            new_lines.append(line)
+            continue
+        segs = [s for i in idxs for s in ordered.get(i, [])]
+        if not segs:
+            new_lines.append(line)
+            continue
+        merged_count += len(segs)
+        m = _ANCHOR_RE.search(line)
+        anchor_prefix = line[: m.end()]
+        rest = line[m.end():].lstrip()
+        new_lines.append(f"{anchor_prefix} 画面:{rest} 旁白:{' '.join(segs)}")
+    # dropped 按「本轮未注入」计（幂等重跑时已注入 segment 也算 dropped，
+    # 守恒式 total == merged + dropped 恒成立；首次运行的 dropped 即真丢失）
+    return new_lines, _metrics(merged_count)
+
+
 def align_chunk_times(
     chunk_items: list[tuple[str, dict[str, Any]]],
     timeline_map: dict[int, tuple[float | None, float | None]],

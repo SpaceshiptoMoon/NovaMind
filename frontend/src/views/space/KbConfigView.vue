@@ -79,6 +79,7 @@
           :has-audio="hasAudio"
           :vlm-models="vlmModels"
           :asr-models="asrModels"
+          :llm-models="llmModels"
         />
       </section>
 
@@ -212,6 +213,13 @@ const configForm = reactive({
   videoSceneThreshold: null as number | null,
   videoDedupSimilarityThreshold: null as number | null,
   videoGroupSize: null as number | null,
+  videoSceneMinInterval: null as number | null,
+  videoTranscribeAudio: false,
+  videoAsrModel: '',
+  videoAsrLanguage: '',
+  videoStepsEnabled: false,
+  videoStepsLlmModel: '',
+  videoStepsMaxSteps: 30,
 
   audioAsrModel: '',
   audioAsrLanguage: '',
@@ -273,6 +281,13 @@ watch(hasVideo, (value) => {
     configForm.videoSceneThreshold = null
     configForm.videoDedupSimilarityThreshold = null
     configForm.videoGroupSize = null
+    configForm.videoSceneMinInterval = null
+    configForm.videoTranscribeAudio = false
+    configForm.videoAsrModel = ''
+    configForm.videoAsrLanguage = ''
+    configForm.videoStepsEnabled = false
+    configForm.videoStepsLlmModel = ''
+    configForm.videoStepsMaxSteps = 30
   }
 })
 
@@ -356,6 +371,14 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
       : parsing.video.dedup_similarity_threshold
   configForm.videoGroupSize =
     parsing?.video?.group_size === undefined ? null : parsing.video.group_size
+  configForm.videoSceneMinInterval =
+    parsing?.video?.scene_min_interval === undefined ? null : parsing.video.scene_min_interval
+  configForm.videoTranscribeAudio = parsing?.video?.transcribe_audio ?? false
+  configForm.videoAsrModel = parsing?.video?.asr_model || ''
+  configForm.videoAsrLanguage = parsing?.video?.language || ''
+  configForm.videoStepsEnabled = parsing?.video?.steps_enabled ?? false
+  configForm.videoStepsLlmModel = parsing?.video?.steps_llm_model || ''
+  configForm.videoStepsMaxSteps = parsing?.video?.steps_max_steps ?? 30
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
   configForm.audioAsrLanguage = parsing?.audio?.language || ''
 
@@ -464,6 +487,21 @@ function buildParsingConfig(): ParsingConfig {
     if (configForm.videoGroupSize !== null) {
       video.group_size = configForm.videoGroupSize
     }
+    if (configForm.videoSceneMinInterval !== null) {
+      video.scene_min_interval = configForm.videoSceneMinInterval
+    }
+    video.transcribe_audio = configForm.videoTranscribeAudio
+    video.asr_model = configForm.videoTranscribeAudio
+      ? configForm.videoAsrModel || undefined
+      : undefined
+    video.language = configForm.videoTranscribeAudio
+      ? configForm.videoAsrLanguage || undefined
+      : undefined
+    video.steps_enabled = configForm.videoStepsEnabled
+    video.steps_llm_model = configForm.videoStepsEnabled
+      ? configForm.videoStepsLlmModel || undefined
+      : undefined
+    video.steps_max_steps = configForm.videoStepsMaxSteps
     parsing.video = video
   }
 

@@ -199,8 +199,8 @@ class VideoParsingConfig(BaseModel):
         default="simple",
         description="视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
     )
-    frame_interval: float = Field(default=5.0, ge=1.0, le=60.0)
-    max_frames: int = Field(default=60, ge=1, le=200)
+    frame_interval: float = Field(default=5.0, ge=0.5, le=60.0)
+    max_frames: int = Field(default=60, ge=1, le=1000)
     vlm_description_enabled: bool = Field(default=False)
     vlm_model: str | None = Field(default=None)
     # VLM 主模型因配额/鉴权类错误失败时，回退到的备用 VLM 模型名（用户在模型管理中配置过的）。
@@ -211,10 +211,28 @@ class VideoParsingConfig(BaseModel):
     # 高级参数（可选，留空用引擎层默认）：
     # 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3。
     scene_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # 场景抽帧切换点间隔保护（strategy=scene，秒），默认 2.0。动作密集视频
+    # （下锅/倒料 2-3 秒）可调小到 0.5，让相邻切换点都留帧，不再被间隔保护吞掉。
+    scene_min_interval: float | None = Field(default=None, ge=0.1, le=10.0)
     # 去重相似度阈值（strategy=dedup），0~1，默认 0.95。
     dedup_similarity_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     # 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3。
     group_size: int | None = Field(default=None, ge=1, le=20)
+    # ===== 音轨 ASR 融合（批2 c3/c4）=====
+    # 开启后提取原始视频音轨做 ASR 转写，旁白按时间归入帧描述行（双轨融合）。
+    transcribe_audio: bool = Field(default=False)
+    # 音轨 ASR 模型名（留空 = faster-whisper-tiny 本地转写，与音频文档默认一致）。
+    asr_model: str | None = Field(default=None)
+    # ASR 语言提示（留空 = 自动检测）。
+    language: str | None = Field(default=None)
+    # ===== 步骤综合（批2 c4）=====
+    # 开启后在帧级 chunks 之外追加全局步骤综合 pass：LLM 汇总双轨描述输出
+    # 带时间区间的操作步骤条目，双层覆盖率校验（帧层+旁白层）防遗漏。
+    steps_enabled: bool = Field(default=False)
+    # 步骤综合所用 LLM 模型名（留空 = 用户默认 LLM）。
+    steps_llm_model: str | None = Field(default=None)
+    # 步骤条目上限（防超长视频步骤爆炸），默认 30。
+    steps_max_steps: int = Field(default=30, ge=1, le=200)
 
 
 class AudioParsingConfig(BaseModel):

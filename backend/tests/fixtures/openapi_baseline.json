@@ -12743,6 +12743,17 @@
       "VideoParsingConfig": {
         "description": "Video parsing config.\n\nstrategy（视频解析策略，5 预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）",
         "properties": {
+          "asr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Model"
+          },
           "dedup_similarity_threshold": {
             "anyOf": [
               {
@@ -12759,7 +12770,7 @@
           "frame_interval": {
             "default": 5.0,
             "maximum": 60.0,
-            "minimum": 1.0,
+            "minimum": 0.5,
             "title": "Frame Interval",
             "type": "number"
           },
@@ -12776,12 +12787,36 @@
             ],
             "title": "Group Size"
           },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
           "max_frames": {
             "default": 60,
-            "maximum": 200.0,
+            "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Max Frames",
             "type": "integer"
+          },
+          "scene_min_interval": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Min Interval"
           },
           "scene_threshold": {
             "anyOf": [
@@ -12796,6 +12831,29 @@
             ],
             "title": "Scene Threshold"
           },
+          "steps_enabled": {
+            "default": false,
+            "title": "Steps Enabled",
+            "type": "boolean"
+          },
+          "steps_llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps Llm Model"
+          },
+          "steps_max_steps": {
+            "default": 30,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Steps Max Steps",
+            "type": "integer"
+          },
           "strategy": {
             "default": "simple",
             "description": "视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
@@ -12808,6 +12866,11 @@
             ],
             "title": "Strategy",
             "type": "string"
+          },
+          "transcribe_audio": {
+            "default": false,
+            "title": "Transcribe Audio",
+            "type": "boolean"
           },
           "vlm_description_enabled": {
             "default": false,

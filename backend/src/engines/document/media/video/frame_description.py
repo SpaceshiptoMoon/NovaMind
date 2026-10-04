@@ -74,6 +74,7 @@ async def describe_single(
     cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 5,
     concurrency: int = 4,
+    stats: dict[str, int] | None = None,
 ) -> list[tuple[str, float, int]]:
     """逐帧单图 VLM 描述（有界并发）。
 
@@ -82,6 +83,9 @@ async def describe_single(
     ``AllFrameDescriptionsFailedError``。``concurrency`` 控制 VLM 逐帧并发数（默认 4），
     缓解长视频串行逼近 arq job_timeout；用 ``asyncio.Semaphore``+``gather`` 保序、保
     quota 累计、保 fallback、保取消检查。
+
+    ``stats`` 传入 dict 时写入 ``{"failed": 部分失败帧数}``（含空响应帧；全失败
+    抛错路径不写），供编排层把失败帧计入 task metrics——单帧 VLM 失败不再静默留洞。
     """
     base_ctx: dict[str, Any] = dict(log_context or {})
     sem = asyncio.Semaphore(max(1, concurrency))
@@ -138,19 +142,24 @@ async def describe_single(
     descriptions: list[tuple[str, float, int]] = []
     first_error: BaseException | None = None
     quota_failures = 0
+    failed = 0
     for frame_idx, ts, desc, exc, was_quota in raw:
         if desc is not None:
             descriptions.append((desc, ts, frame_idx))
-        elif exc is not None:
-            if first_error is None:
-                first_error = exc
-            if was_quota:
-                quota_failures += 1
+        else:
+            failed += 1
+            if exc is not None:
+                if first_error is None:
+                    first_error = exc
+                if was_quota:
+                    quota_failures += 1
 
     if not descriptions:
         raise AllFrameDescriptionsFailedError(
             first_error=first_error, quota_failures=quota_failures, total_frames=len(frames),
         )
+    if stats is not None:
+        stats["failed"] = failed
     return descriptions
 
 
@@ -172,6 +181,7 @@ async def describe_grouped(
     cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 1,
     concurrency: int = 4,
+    stats: dict[str, int] | None = None,
 ) -> list[tuple[str, float, float, list[int]]]:
     """多帧一组喂 VLM 多图消息生成连贯描述。
 
@@ -179,6 +189,9 @@ async def describe_grouped(
     ``group_size <= 1`` 时退化为逐帧 single（每帧自成一组）。
     某组多图调用失败时该组降级为逐帧 single 描述，不阻塞整体；全部组失败抛
     ``AllFrameDescriptionsFailedError``。
+
+    ``stats`` 传入 dict 时写入 ``{"failed": 彻底失败组的帧数合计}``（组多图失败
+    且逐帧回退也全失败的组），供编排层计入 task metrics。
     """
     base_ctx: dict[str, Any] = dict(log_context or {})
 
@@ -256,6 +269,7 @@ async def describe_grouped(
     first_error: BaseException | None = None
     any_group_succeeded = False
     quota_failures = 0
+    failed_frames = 0
     for r in sorted(group_results, key=lambda x: x["gi"]):
         if r["ok"]:
             results.append((r["desc"], r["start_ts"], r["end_ts"], r["idx_list"]))
@@ -270,6 +284,7 @@ async def describe_grouped(
         if first_error is None:
             first_error = r["main_exc"] or r["single_first_error"]
         quota_failures += r["single_quota"]
+        failed_frames += len(r["idx_list"])
 
     if not any_group_succeeded:
         raise AllFrameDescriptionsFailedError(
@@ -277,6 +292,8 @@ async def describe_grouped(
             quota_failures=min(quota_failures, len(frames)),
             total_frames=len(frames),
         )
+    if stats is not None:
+        stats["failed"] = failed_frames
     return results
 
 
@@ -301,6 +318,7 @@ async def describe_rewrite(
     cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 5,
     concurrency: int = 4,
+    stats: dict[str, int] | None = None,
 ) -> tuple[str, list[tuple[str, float, int]]]:
     """逐帧描述 + LLM 重写连贯，保留 ``[HH:MM:SS#idx]`` 锚点。
 
@@ -312,6 +330,7 @@ async def describe_rewrite(
 
     返回 ``(full_text, descriptions)``：``full_text`` 为带锚点的最终 md（成功=LLM 重写输出，
     回退=原逐帧拼接），``descriptions`` 为原 single 列表（供 ``build_frame_timeline_map`` 构建时间线）。
+    ``stats`` 透传 describe_single（写 failed 计数）。
     """
     base_ctx: dict[str, Any] = dict(log_context or {})
 
@@ -323,7 +342,7 @@ async def describe_rewrite(
         vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
         is_quota_error=is_quota_error, log_context=base_ctx,
         cancelled_check=cancelled_check, cancel_every=cancel_every,
-        concurrency=concurrency,
+        concurrency=concurrency, stats=stats,
     )
 
     # 2. 拼接带锚点文本
