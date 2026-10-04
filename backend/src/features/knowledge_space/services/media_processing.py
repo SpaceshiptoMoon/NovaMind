@@ -930,14 +930,17 @@ async def process_video_document(
                     document_id=document.id,
                 )
 
+            # 桶名取 default_bucket（MinioClient 实际属性；upload_file/get_public_file_url
+            # 均按此桶工作，勿用不存在的 bucket_name 属性兜底出错误桶名）
+            native_bucket = getattr(minio_client, "default_bucket", None) or "novamind"
+
             async def _upload_segment(seg_bytes: bytes, seg_idx: int) -> str:
                 seg_object = f"{vtmp_prefix}seg_{seg_idx:03d}.mp4"
                 await minio_client.upload_file(seg_object, seg_bytes, "video/mp4")
-                bucket = getattr(minio_client, "bucket_name", None) or "novamind"
-                return await minio_client.get_public_file_url(bucket, seg_object)
+                return await minio_client.get_public_file_url(native_bucket, seg_object)
 
             async def _cleanup_segments() -> None:
-                await minio_client.delete_objects_by_prefix(vtmp_prefix)
+                await minio_client.delete_objects_by_prefix(native_bucket, vtmp_prefix)
 
             try:
                 native_descs = await describe_video_native(

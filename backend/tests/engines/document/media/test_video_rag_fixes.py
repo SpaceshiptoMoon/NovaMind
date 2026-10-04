@@ -717,7 +717,7 @@ class _FakeNativeMinio:
     """带 public_endpoint / bucket / 前缀清理记录的 MinIO 假件。"""
 
     public_endpoint = "https://minio.example.com"
-    bucket_name = "novamind"
+    default_bucket = "novamind"
 
     def __init__(self):
         self.uploaded: list = []
@@ -727,10 +727,12 @@ class _FakeNativeMinio:
         self.uploaded.append(object_name)
 
     async def get_public_file_url(self, bucket, object_name, expires=3600):
-        return f"https://pub.example.com/{object_name}"
+        # 镜像真实语义：桶名错（非 default_bucket）即签出错误 URL，用例据此断言
+        return f"https://pub.example.com/{bucket}/{object_name}"
 
-    async def delete_objects_by_prefix(self, prefix):
-        self.cleaned_prefixes.append(prefix)
+    async def delete_objects_by_prefix(self, bucket_name, prefix):
+        # 镜像真实签名 (bucket_name, prefix)；漏传桶名会 TypeError（修复前 bug）
+        self.cleaned_prefixes.append((bucket_name, prefix))
 
 
 def _native_video_mocks(monkeypatch, video_overrides: dict, minio_instance):
@@ -824,6 +826,64 @@ async def test_video_native_dispatch_scene_and_cleanup(monkeypatch):
     assert captured["upload"] and captured["cleanup"]
     # full_text 两片锚点
     assert "片0" in captured["full_text"] and "片1" in captured["full_text"]
+
+
+@pytest.mark.asyncio
+async def test_video_native_closures_use_default_bucket(monkeypatch):
+    """回归：S4 上传/清理闭包必须用 MinioClient.default_bucket（真实属性名）。
+
+    修复前闭包用 getattr(minio_client, "bucket_name")（属性不存在）兜底出
+    硬编码桶名，且 cleanup 漏传桶名参数——delete_objects_by_prefix TypeError，
+    临时切片对象永久残留（E2E 实测 doc587）。
+    """
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    minio = _FakeNativeMinio()
+    captured: dict = {}
+
+    _native_video_mocks(monkeypatch, {}, minio)
+
+    async def fake_describe_native(path, duration, scene_ts, client, prompt, **kw):
+        # 真实调用闭包：上传两片再清理（描述结果不重要，重要的是闭包行为）
+        url0 = await kw["upload_segment"](b"seg0", 0)
+        url1 = await kw["upload_segment"](b"seg1", 1)
+        await kw["cleanup_segments"]()
+        captured["urls"] = [url0, url1]
+        return [("片0", 0.0, duration, [0, 1])]
+
+    async def fake_persist(document, text, session, logger):
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return _NativeVlmClient()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    # 上传对象落在 vtmp 前缀（帧图等其它上传不在断言范围）；清理以 (default_bucket, 前缀) 两参调用成功
+    seg_uploads = [o for o in minio.uploaded if "_vtmp/" in o]
+    assert seg_uploads == ["obj_vtmp/seg_000.mp4", "obj_vtmp/seg_001.mp4"]
+    assert minio.cleaned_prefixes == [("novamind", "obj_vtmp/")]
+    # URL 桶段=default_bucket（闭包桶名来自真实属性，非兜底硬编码）
+    assert captured["urls"] == [
+        "https://pub.example.com/novamind/obj_vtmp/seg_000.mp4",
+        "https://pub.example.com/novamind/obj_vtmp/seg_001.mp4",
+    ]
 
 
 @pytest.mark.asyncio
