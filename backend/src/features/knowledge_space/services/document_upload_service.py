@@ -17,6 +17,7 @@ from novamind.engines.document.converters.doc_converter import (
     convert_doc_to_docx,
 )
 from novamind.features.knowledge_space.exceptions import (
+    ChunkUploadChecksumMismatchError,
     DocumentAlreadyExistsError,
     DocumentConversionError,
     DocumentInvalidTypeError,
@@ -278,6 +279,105 @@ class DocumentUploadService:
     # [Content_Types].xml 位于首个局部文件头之后，8KB 覆盖其在常规文件中的位置；
     # 超出此窗口仍读不到签名表命中的类型时 validate_file 按既有两级探测判拒。
     _MAGIC_HEAD_BYTES = 8 * 1024
+
+    async def upload_document_from_part(
+        self,
+        kb_id: int,
+        uploader_id: int,
+        filename: str,
+        part_path,
+        *,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> UploadedDocumentResult:
+        """分片组装完成后从 .part 磁盘文件上传（批3 路径）。
+
+        与 ``upload_document_streamed`` 共享全部校验/查重/持久化语义（权限、
+        文件名、模态、魔数、SAVEPOINT、IntegrityError 兜底、孤儿补偿），差异
+        仅在数据形态：字节已在服务端 .part 文件中（分片会话累计写入），此处只
+        做端到端完整性比对（sha256 与字节数）后开句柄流式上传 MinIO。
+
+        Args:
+            part_path: .part 文件路径（调用方保证归属本会话）。
+            expected_size: 会话申报的整文件字节数。
+            expected_sha256: 客户端申报的整文件 sha256（hex）。
+
+        Raises:
+            ChunkUploadChecksumMismatchError: 文件实际大小与申报不符。
+            其余同 ``upload_document_streamed``。
+        """
+        # 1-3. 参数/KB/权限：与整包路径共用前置（异常语义一致）
+        if not filename or not filename.strip():
+            raise InvalidParameterError("文件名不能为空", field="filename")
+
+        kb = await self.kb_repo.get_by_id(kb_id)
+        if not kb:
+            raise KnowledgeBaseNotFoundError(kb_id)
+
+        member = await self.member_repo.get_by_space_and_user(kb.space_id, uploader_id)
+        if not member or not member.is_active():
+            raise SpaceAccessDeniedError(kb.space_id, uploader_id, "无权在此知识库上传文档")
+        if not self.permission_service.can_upload_document(member):
+            raise SpaceAccessDeniedError(
+                kb.space_id, uploader_id, "需要编辑者或更高权限才能上传文档"
+            )
+
+        # 4. 文件名校验 + 模态
+        ext = self._get_file_type(filename)
+        allowed_types = self._get_allowed_file_types(kb)
+        file_type = await self._check_kb_modality(kb, ext)
+
+        # 5. 端到端完整性：文件实际大小比对（sha256 由会话服务流式算好传入）
+        actual_size = os.path.getsize(part_path)
+        if actual_size != expected_size:
+            raise ChunkUploadChecksumMismatchError(
+                expected_size=expected_size, actual_size=actual_size
+            )
+
+        # 6. 模态大小上限（权威校验）
+        max_size = self._get_max_file_size(kb, file_type)
+        if actual_size > max_size:
+            raise DocumentSizeExceededError(actual_size, max_size)
+
+        # 7. 魔数校验：只读头部（复用流式路径的头部窗口语义）
+        def _read_head(path, size: int) -> bytes:
+            with open(path, "rb") as f:
+                return f.read(size)
+
+        head = await asyncio.to_thread(_read_head, part_path, self._MAGIC_HEAD_BYTES)
+        file_info = await asyncio.to_thread(
+            validate_file,
+            content=head,
+            filename=filename,
+            allowed_extensions=allowed_types,
+            max_file_size=max_size,
+        )
+        if not file_info.is_valid:
+            self.logger.warning(
+                "分片上传文件验证失败",
+                filename=filename,
+                extension=file_info.extension,
+                detected_mime=file_info.detected_mime,
+                message=file_info.validation_message,
+            )
+            raise DocumentInvalidTypeError(f"{file_info.extension}: {file_info.validation_message}")
+
+        # 8-9. 查重 + 持久化 + MinIO 流式上传（.part 句柄；expected_sha256 即查重哈希）
+        stream = open(part_path, "rb")
+        try:
+            return await self._dedup_and_persist(
+                kb=kb,
+                kb_id=kb_id,
+                uploader_id=uploader_id,
+                filename=filename,
+                file_type=file_type,
+                file_size=actual_size,
+                file_hash=expected_sha256,
+                upload_bytes=None,
+                upload_stream=stream,
+            )
+        finally:
+            stream.close()
 
     async def _check_kb_modality(self, kb: KnowledgeBase, extension: str) -> str:
         """按知识库有效模态合集校验扩展名，通过则返回该扩展名。"""

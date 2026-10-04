@@ -104,6 +104,18 @@ class ParsingConfig:
     # （TEMP/TMP）。大视频（2GB 级）流式写盘需要有独立分区/大盘的部署期旋钮，
     # 避免打爆系统盘或容器可写层。
     download_tmp_dir: str | None = None
+    # 分片上传暂存目录（绝对路径）。None 时用系统默认临时目录下的
+    # novamind_chunk_uploads/ 子目录。与 download_tmp_dir 同理：大文件分片
+    # 暂存需要独立数据盘时配置。
+    chunk_upload_dir: str | None = None
+    # 分片上传会话 TTL（秒）。每次 chunk PUT 续期；过期后 Redis 键自动清理，
+    # .part 残留由 cron 兜底扫（TTL×2 mtime）。默认 24h 覆盖慢网络大文件。
+    chunk_upload_session_ttl_sec: int = 86400
+    # 单分片最大体积（MB）。防单请求巨片绕过分片意义（nginx 层另有
+    # client_max_body_size 联动）。前端默认 16MB/片，此处留裕量。
+    chunk_upload_max_chunk_mb: int = 32
+    # 单用户并发分片上传会话数上限。防会话数堆积占用暂存盘（磁盘填充防护之一）。
+    chunk_upload_max_sessions_per_user: int = 5
 
 
 @dataclass

@@ -130,6 +130,9 @@ class AppLifespanManager:
                 process_wiki_ingest_task,
                 process_wiki_retract_task,
             )
+            from novamind.features.knowledge_space.services.chunk_upload_service import (
+                cleanup_stale_parts,
+            )
             from novamind.features.knowledge_ops.tasks.attribution_worker import (
                 attribute_pending_events,
             )
@@ -163,6 +166,8 @@ class AppLifespanManager:
                 cron_jobs=[
                     # 孤儿聊天附件清理：每天 03:17（上传超 7 天且无消息引用）
                     cron(cleanup_orphan_attachments, hour=3, minute=17),
+                    # 孤儿分片暂存清理：每天 03:41（Redis TTL 丢失窗口兜底，mtime 超 2×TTL）
+                    cron(cleanup_stale_parts, hour=3, minute=41),
                     # kb-ops A1 失败问答归因：每 30 分钟（回溯 7 天、批上限 50 条）
                     cron(attribute_pending_events, minute={0, 30}, second=30),
                     # kb-ops A2 知识运营周报：每周一 09:23（错开整点防任务风暴）
