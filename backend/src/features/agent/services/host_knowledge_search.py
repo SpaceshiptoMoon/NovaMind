@@ -219,8 +219,15 @@ class HostKnowledgeSearchPort:
             )
             raw_results: list[dict[str, Any]] = result.get("results", [])
         else:
-            # kb_id 缺省：空间下全部 KB，跨库检索取前 3 个合并
-            kbs = await self._kb_service().get_space_knowledge_bases(space_id)
+            # kb_id 缺省：空间下活跃 KB 跨库检索取前 3 个合并。
+            # 归档库不参与召回；显式指定归档 kb_id 的由 SearchService 拦截。
+            from novamind.features.knowledge_space.models.knowledge_base import (
+                KnowledgeBaseStatus,
+            )
+
+            kbs = await self._kb_service().get_space_knowledge_bases(
+                space_id, status=KnowledgeBaseStatus.ACTIVE
+            )
             if not kbs:
                 return []
 

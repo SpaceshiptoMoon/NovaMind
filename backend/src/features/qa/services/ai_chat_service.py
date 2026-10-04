@@ -864,15 +864,20 @@ class AIChatService:
         )
         search_service = self._search_service
 
-        # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
+        # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）。
+        # 默认回退列表只取活跃库——归档库不参与 RAG 召回；
+        # 显式指定归档 kb_id 的由 SearchService 服务层拦截（KnowledgeBaseArchivedError）。
         if kb_ids:
             target_kb_ids: list[int] = list(kb_ids)
         else:
+            from novamind.features.knowledge_space.models.knowledge_base import (
+                KnowledgeBaseStatus,
+            )
             from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                 KnowledgeBaseRepository,
             )
             kb_repo = KnowledgeBaseRepository(self.db)
-            kbs = await kb_repo.get_by_space(space_id)
+            kbs = await kb_repo.get_by_space(space_id, status=KnowledgeBaseStatus.ACTIVE)
             target_kb_ids = [kb.id for kb in kbs[:3]]
 
         if not target_kb_ids:

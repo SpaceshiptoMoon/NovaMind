@@ -21,6 +21,7 @@ from novamind.features.knowledge_space.exceptions import (
     EmbeddingError,
     InvalidSearchModeError,
     InvalidSearchWeightError,
+    KnowledgeBaseArchivedError,
     KnowledgeBaseAccessDeniedError,
     KnowledgeBaseNotFoundError,
     SearchError,
@@ -514,6 +515,12 @@ class SearchService:
                 user_id=user_id,
                 reason="知识库不属于该空间",
             )
+
+        # 2.5 归档库退出检索：归档 = 冻结写入且不参与召回。
+        # 服务层兜底拦截（路由/QA RAG/归因 worker/MCP 都经此处），
+        # 显式指定归档 kb_id 的检索直接拒绝，不静默返回空结果。
+        if kb.is_archived():
+            raise KnowledgeBaseArchivedError(kb_id)
 
         # 3. 验证用户权限（检查是否是空间成员或空间是否公开）
         is_member = await self.member_repo.is_member(kb.space_id, user_id)

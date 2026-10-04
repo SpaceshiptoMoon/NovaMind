@@ -295,6 +295,9 @@ async def _replay_search(
     from novamind.features.knowledge_space.api.dependencies import (
         get_elasticsearch_client,
     )
+    from novamind.features.knowledge_space.models.knowledge_base import (
+        KnowledgeBaseStatus,
+    )
     from novamind.features.knowledge_space.repository.knowledge_base_repository import (
         KnowledgeBaseRepository,
     )
@@ -307,7 +310,9 @@ async def _replay_search(
 
     kb_repo = KnowledgeBaseRepository(db)
     if not kb_ids:
-        kbs = await kb_repo.get_by_space(space_id)
+        # 默认回退列表只取活跃库（与主链路 _retrieve_knowledge 一致）——
+        # 归档库不参与召回；显式指定归档 kb_id 的由 SearchService 拦截。
+        kbs = await kb_repo.get_by_space(space_id, status=KnowledgeBaseStatus.ACTIVE)
         kb_ids = [kb.id for kb in kbs[:3]]
     if not kb_ids:
         return []
