@@ -129,6 +129,11 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
 def read_video_metadata(filepath: str) -> dict:
     """经 imageio/pyav 探测视频时长、帧率与总帧数；探测失败抛 VideoMetadataError。
 
+    imageio 2.37 的 ``improps(plugin="pyav")`` 返回对象不含 duration/fps
+    （``getattr`` 恒 None，实测 2.37.3 + av 18），仅 n_images 可用——若直接
+    使用会把帧数低算（duration 回退为 n_images/default_fps 的错误积）。
+    因此 duration/fps 缺失时用 pyav 流元数据回退，两者皆不可得才返回 0。
+
     Args:
         filepath: 视频文件路径。
 
@@ -145,11 +150,48 @@ def read_video_metadata(filepath: str) -> dict:
     except Exception as exc:
         raise VideoMetadataError(f"视频元数据探测失败: {exc}") from exc
 
-    duration = getattr(props, "duration", 0)
-    fps = getattr(props, "fps", 30)
-    n_images = getattr(props, "n_images", 0)
+    duration = getattr(props, "duration", None)
+    fps = getattr(props, "fps", None)
+    n_images = getattr(props, "n_images", 0) or 0
 
-    return {"duration": duration, "fps": fps, "n_images": n_images}
+    if not duration or not fps:
+        duration, fps = _read_stream_metadata_fallback(filepath, duration, fps)
+
+    return {"duration": duration or 0, "fps": fps or 0, "n_images": n_images}
+
+
+def _read_stream_metadata_fallback(
+    filepath: str, duration: float | None, fps: float | None
+) -> tuple[float | None, float | None]:
+    """pyav 流元数据回退：读 average_rate 与容器/流时长，仅补缺失项。
+
+    Args:
+        filepath: 视频文件路径。
+        duration: 已得时长（None/0 视为缺失）。
+        fps: 已得帧率（None/0 视为缺失）。
+
+    Returns:
+        (duration, fps) 补齐后的值；pyav 打不开或字段缺失时保持原值。
+    """
+    import av
+
+    try:
+        with av.open(filepath) as container:
+            streams = container.streams.video
+            if not streams:
+                return duration, fps
+            stream = streams[0]
+            if not fps and stream.average_rate:
+                fps = float(stream.average_rate)
+            if not duration:
+                if stream.duration is not None:
+                    duration = float(stream.duration) * float(stream.time_base)
+                elif container.duration is not None:
+                    duration = float(container.duration) / 1_000_000
+    except Exception:
+        # 能力缺失方向安全：回退失败保留原值，由调用方兜底路径处理
+        return duration, fps
+    return duration, fps
 
 
 def read_frame_at(filepath: str, timestamp: float, fps: float):
