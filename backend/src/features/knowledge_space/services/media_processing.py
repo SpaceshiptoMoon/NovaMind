@@ -296,6 +296,176 @@ async def _transcribe_video_audio(
             _P(tmp_audio_src).unlink(missing_ok=True)
 
 
+def _parse_steps_json(response: str) -> list[dict[str, Any]]:
+    """解析步骤综合 LLM 输出的 JSON（容忍 ```json 围栏与前后噪声）。"""
+    import json
+    import re as _re
+
+    text = (response or "").strip()
+    fence = _re.search(r"```(?:json)?\s*(.+?)\s*```", text, _re.DOTALL)
+    if fence:
+        text = fence.group(1)
+    # 前后噪声兜底：截取首个 { 到末个 } 之间
+    lbrace = text.find("{")
+    rbrace = text.rfind("}")
+    if lbrace >= 0 and rbrace > lbrace:
+        text = text[lbrace : rbrace + 1]
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return []
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(steps, list):
+        return []
+    parsed: list[dict[str, Any]] = []
+    for s in steps:
+        if not isinstance(s, dict):
+            continue
+        title = str(s.get("title") or "").strip()
+        body = str(s.get("body") or "").strip()
+        if not title and not body:
+            continue
+        try:
+            start_idx = int(s.get("start_frame_idx"))
+            end_idx = int(s.get("end_frame_idx"))
+        except (TypeError, ValueError):
+            continue
+        if end_idx < start_idx:
+            start_idx, end_idx = end_idx, start_idx
+        parsed.append({
+            "no": len(parsed) + 1,
+            "title": title,
+            "body": body,
+            "start_frame_idx": start_idx,
+            "end_frame_idx": end_idx,
+        })
+    return parsed
+
+
+def _steps_coverage_gap(
+    steps: list[dict[str, Any]],
+    anchor_indices: set[int],
+    frame_groups: dict[int, list[int]] | None,
+) -> set[int]:
+    """计算双层覆盖缺口：帧层（全部帧 idx 被步骤区间覆盖）。
+
+    grouped 策略下步骤区间端点是组首帧 idx，经 frame_groups 展开为组内全部帧。
+    返回未被任何步骤区间覆盖的帧 idx 集合（空集 = 帧层全覆盖）。
+    """
+    def _expand(idx: int) -> list[int]:
+        if frame_groups and idx in frame_groups:
+            return list(frame_groups[idx])
+        return [idx]
+
+    covered: set[int] = set()
+    for step in steps:
+        for i in range(step["start_frame_idx"], step["end_frame_idx"] + 1):
+            covered.update(_expand(i))
+    return anchor_indices - covered
+
+
+async def _synthesize_steps(
+    *,
+    document: Document,
+    full_text: str,
+    frame_timeline_map: dict[int, tuple[float | None, float | None]],
+    frame_groups: dict[int, list[int]] | None,
+    llm_client: Any,
+    max_steps: int,
+    logger,
+    document_id: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """步骤综合 pass：LLM 汇总双轨描述输出带帧区间的操作步骤（批2 c4）。
+
+    双层覆盖率校验（「不遗漏」的机制保证）：
+    - 帧层：全部锚点帧 idx 被 steps 的 [start, end] 区间覆盖（grouped 经
+      frame_groups 展开）；
+    - 旁白层：调用方在归并后保证每个含旁白的帧仍是一个锚点帧，帧层覆盖
+      即蕴含旁白层（旁白不单独出现在无帧区间）。
+
+    缺失 → 带清单重试 1 次 → 仍缺 → 返回 None（告警降级，文档不失败，
+    保留帧级 chunks——失败方向安全）。
+
+    Returns:
+        步骤条目列表（已按 no 排序、idx 区间合法、条数 ≤ max_steps），
+        或 None 表示综合失败/全覆盖不可达，调用方跳过步骤 chunks。
+    """
+    from novamind.shared.prompts.templates import PromptManager
+
+    anchor_indices = set(frame_timeline_map.keys())
+    if not anchor_indices:
+        return None
+
+    prompt_tpl = PromptManager.get_template("video_steps_synthesis")
+    # 输入即双轨描述行本身（含锚点/画面/旁白），LLM 据此输出步骤 JSON
+    synthesis_input = full_text
+    if len(synthesis_input) > 60_000:
+        logger.warning(
+            "步骤综合输入过长，截断到 60000 字符（尾部帧可能不被覆盖）",
+            document_id=document.id, input_len=len(synthesis_input),
+        )
+        synthesis_input = synthesis_input[:60_000]
+
+    last_gap: set[int] = set()
+    for attempt in range(2):
+        messages = [{"role": "user", "content": f"{prompt_tpl}\n\n--- 双轨描述 ---\n{synthesis_input}"}]
+        if attempt == 1 and last_gap:
+            gap_list = sorted(last_gap)[:50]
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"你上一轮输出的步骤未覆盖以下帧序号：{gap_list}。"
+                    f"请重新输出完整 JSON，确保每个帧序号都落在某个步骤的 "
+                    f"start_frame_idx..end_frame_idx 区间内。"
+                ),
+            })
+        try:
+            response = await llm_client.generate_text(
+                prompt=messages,
+                max_tokens=4096,
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
+        except Exception as exc:
+            logger.warning(
+                "步骤综合 LLM 调用失败，跳过步骤 chunks（帧级 chunks 保留）",
+                document_id=document.id, attempt=attempt + 1, error=str(exc),
+            )
+            return None
+
+        steps = _parse_steps_json(response)
+        if not steps:
+            logger.warning(
+                "步骤综合输出解析为空，重试或降级",
+                document_id=document.id, attempt=attempt + 1,
+                response_preview=(response or "")[:200],
+            )
+            last_gap = anchor_indices
+            continue
+        if len(steps) > max_steps:
+            steps = steps[:max_steps]
+        gap = _steps_coverage_gap(steps, anchor_indices, frame_groups)
+        if not gap:
+            logger.info(
+                "步骤综合完成（帧层全覆盖）",
+                document_id=document.id, step_count=len(steps),
+            )
+            return steps
+        last_gap = gap
+        logger.warning(
+            "步骤综合帧覆盖缺口，重试",
+            document_id=document.id, attempt=attempt + 1,
+            gap_count=len(gap), gap_sample=sorted(gap)[:20],
+        )
+
+    logger.warning(
+        "步骤综合重试后仍有帧覆盖缺口，降级跳过步骤 chunks（帧级 chunks 保留）",
+        document_id=document.id, gap_count=len(last_gap),
+        gap_sample=sorted(last_gap)[:20],
+    )
+    return None
+
+
 async def _audio_resume_tail(
     *,
     document: Document,
@@ -735,6 +905,51 @@ async def process_video_document(
             "视频双轨归并完成", document_id=document.id, **audio_merge_metrics,
         )
 
+    # ===== c4 步骤综合：LLM 汇总双轨描述 → 带帧区间的操作步骤条目。
+    # 双层覆盖率校验（帧层全覆盖；旁白已归并进锚点行，帧覆盖即旁白覆盖）；
+    # 失败/缺口重试 1 次后降级 None（帧级 chunks 保留，文档不失败）。
+    steps_items: list[tuple[str, dict[str, Any]]] | None = None
+    if bool(video_config.get("steps_enabled", False)):
+        steps_llm_name = video_config.get("steps_llm_model")
+        if not steps_llm_name:
+            steps_llm_name = await mcs.get_user_default_model_name(document.uploader_id, "llm")
+        steps_ok = bool(steps_llm_name)
+        if steps_llm_name:
+            try:
+                steps_llm_client = await mcs.get_llm_client_by_model(document.uploader_id, steps_llm_name)
+            except Exception as exc:
+                logger.warning(
+                    "步骤综合 LLM 客户端装配失败，跳过步骤 chunks（帧级 chunks 保留）",
+                    document_id=document.id, model=steps_llm_name, error=str(exc),
+                )
+                steps_ok = False
+        if steps_ok and steps_llm_name:
+            max_steps = int(video_config.get("steps_max_steps") or 30)
+            steps = await _synthesize_steps(
+                document=document,
+                full_text=full_text,
+                frame_timeline_map=frame_timeline_map,
+                frame_groups=frame_groups,
+                llm_client=steps_llm_client,
+                max_steps=max_steps,
+                logger=logger,
+            )
+            if steps:
+                # 步骤条目带首帧锚点进 chunk：对齐后获得 start/end/frame_indices，
+                # 锚点被剥离，section 标记步骤类型供前端区分展示
+                steps_items = []
+                for step in steps:
+                    anchor = format_time_anchor(
+                        frame_timeline_map[step["start_frame_idx"]][0] or 0.0,
+                        step["start_frame_idx"],
+                    )
+                    title = step["title"] or f"步骤 {step['no']}"
+                    body = f"{title}\n{step['body']}"[:2000]
+                    steps_items.append((f"{anchor} {body}", {"section": "steps"}))
+                logger.info(
+                    "步骤 chunks 构造完成", document_id=document.id, step_count=len(steps_items),
+                )
+
     # 帧描述全文 MD 持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, full_text, session, logger)
 
@@ -788,6 +1003,7 @@ async def process_video_document(
         pipeline_config=pipeline_config,
         splitting_config=splitting_config,
         full_text=full_text,
+        steps_items=steps_items,
         frame_paths=frame_paths,
         time_alignment={
             "timeline_map": frame_timeline_map,

@@ -687,6 +687,7 @@ async def run_post_parse_tail(
     splitting_config: dict[str, Any],
     full_text: str = "",
     prechunked_items: list[tuple[str, dict[str, Any]]] | None = None,
+    steps_items: list[tuple[str, dict[str, Any]]] | None = None,
     parse_metadata: dict[str, Any] | None = None,
     frame_paths: dict[int, str] | None = None,
     time_alignment: dict[str, Any] | None = None,
@@ -698,6 +699,9 @@ async def run_post_parse_tail(
     文本/音频/视频三模态共用此尾，统一节点名 split/embedded/question_generation/indexed。
     - 转换器若已产出结构化分块（如 DeepDoc），传 prechunked_items，尾直接采用，不再二次切分；
       否则传 full_text，尾用 split_md_text 切分（音频/视频走此分支）。
+    - steps_items（视频步骤综合产物）：带锚点的步骤条目，在切分后、时间对齐前
+      append 到 chunk_items——照常经 align_chunk_times 获得 start/end/frame_indices
+      与锚点剥离，与帧级 chunks 共用同一 ES 元数据管道；传 None 无行为变化。
     - QG 由 pipeline_config["question_generation"]["enabled"] 控制，失败跳过、留空，与文本管道原逻辑一致。
     - parse_fingerprint 非 None 时启用断点续跑：split/embed 指纹匹配即复用快照产物，
       不匹配则在完成后写快照。None = 不启用（兼容现有测试）。
@@ -768,6 +772,11 @@ async def run_post_parse_tail(
             )
             split_strategy = strategy
     chunk_count = len(chunk_items)
+    # 步骤综合产物 append（视频步骤 chunks）：在对齐前注入，与帧级 chunks 共用
+    # align_chunk_times 的时间反查/锚点剥离与 build_es_chunks 元数据管道。
+    if steps_items:
+        chunk_items = list(chunk_items) + list(steps_items)
+        chunk_count = len(chunk_items)
     await finish_step_committed(session, task, "split", metrics={
         "chunk_count": chunk_count,
         "split_strategy": split_strategy,
