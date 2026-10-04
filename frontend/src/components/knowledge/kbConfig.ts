@@ -88,11 +88,10 @@ export const DEFAULT_QUESTION_PROMPT_TEMPLATE = `留空则使用系统默认模�
 文档内容：
 {{content}}`
 
-/** 后端 config.text_parsing → 表单字段（逐类型回填策略与 PDF OCR 开关） */
+/** 后端 config.text_parsing → 表单字段（逐类型回填策略） */
 export function applyTextParsingConfig(
   target: {
     pdfStrategy: TextStrategy
-    pdfOcrEnabled: boolean
     docxStrategy: TextStrategy
     excelStrategy: TextStrategy
     pptStrategy: TextStrategy
@@ -105,7 +104,6 @@ export function applyTextParsingConfig(
   textConfig?: TextParsingConfig,
 ) {
   target.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
-  target.pdfOcrEnabled = textConfig?.pdf?.ocr_enabled ?? false
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
   target.excelStrategy = getTextStrategyValue(textConfig?.excel?.strategy)
   target.pptStrategy = getTextStrategyValue(textConfig?.ppt?.strategy)
@@ -119,7 +117,6 @@ export function applyTextParsingConfig(
 /** 表单字段 → 后端 TextParsingConfig（deepdoc 策略时 PDF 固定 parser=full） */
 export function buildTextParsingConfigFromForm(source: {
   pdfStrategy: TextStrategy
-  pdfOcrEnabled: boolean
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
   pptStrategy: TextStrategy
@@ -134,7 +131,6 @@ export function buildTextParsingConfigFromForm(source: {
       strategy: source.pdfStrategy,
       // 前端只暴露 default/deepdoc 两个选择；deepdoc 固定走 full（推荐模式）
       parser: source.pdfStrategy === 'deepdoc' ? 'full' : undefined,
-      ocr_enabled: source.pdfOcrEnabled,
     },
     docx: { strategy: source.docxStrategy },
     excel: { strategy: source.excelStrategy },

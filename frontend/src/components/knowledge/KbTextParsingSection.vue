@@ -2,34 +2,25 @@
   <div class="sub-section">
     <h4 class="sub-title">文本解析</h4>
     <p class="sub-desc">
-      按文件类型设置解析策略。PDF 额外支持解析器与 OCR，其他文本类型仅支持默认 / DeepDoc。
+      按文件类型设置解析策略，与配置值一一对应：默认（default）/ DeepDoc（deepdoc）。扫描件等图片型 PDF 请选 DeepDoc。
     </p>
 
     <el-form :model="configForm" label-width="120px" class="config-form">
       <div class="pdf-panel">
         <div class="panel-title">PDF 专属参数</div>
         <el-row :gutter="20">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="解析策略">
               <el-select v-model="configForm.pdfStrategy" style="width: 100%">
-                <el-option label="默认（PyPDF2）" value="default" />
+                <el-option label="默认" value="default" />
                 <el-option label="DeepDoc" value="deepdoc" />
               </el-select>
               <div class="field-hint">
                 {{
                   configForm.pdfStrategy === 'deepdoc'
                     ? 'DeepDoc：全量流水线（每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别），扫描件、图片 PDF、数字原生 PDF 通吃，能力最全但较慢。'
-                    : '默认：PyPDF2 直出文字层，快但无版面分析；扫描件可配合下方"启用 OCR"做 Tesseract OCR。'
+                    : '默认（default）：PyPDF2 直出文字层，快但无版面分析；扫描件请改用 DeepDoc。'
                 }}
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="configForm.pdfStrategy === 'default'" :span="8">
-            <el-form-item label="启用 OCR">
-              <el-switch v-model="configForm.pdfOcrEnabled" />
-              <div class="field-hint">
-                仅"默认（PyPDF2）"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。选 DeepDoc 时 OCR
-                由 full 解析器内建（逐框融合，plain 无 OCR），无需此开关。
               </div>
             </el-form-item>
           </el-col>
@@ -42,7 +33,7 @@
             <span class="text-strategy-label">{{ item.label }}</span>
           </div>
           <el-select v-model="configForm[item.key]" style="width: 180px">
-            <el-option v-if="!item.deepdocOnly" label="默认" value="default" />
+            <el-option v-if="!item.deepdocOnly" label="默认（default）" value="default" />
             <el-option label="DeepDoc" value="deepdoc" />
           </el-select>
         </div>
@@ -52,13 +43,12 @@
 </template>
 
 <script setup lang="ts">
-/** 知识库配置弹窗的文本解析分区：PDF 专属解析策略与 OCR 开关 + 各文本类型解析策略 */
+/** 知识库配置弹窗的文本解析分区：PDF 专属解析策略 + 各文本类型解析策略 */
 import { textStrategyItems } from './kbConfig'
 import type { TextStrategy } from './kbConfig'
 
 type TextParsingFormModel = {
   pdfStrategy: TextStrategy
-  pdfOcrEnabled: boolean
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
   pptStrategy: TextStrategy

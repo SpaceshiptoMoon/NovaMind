@@ -1,5 +1,4 @@
 """文档解析管道：DocumentLoader（按扩展名路由解析器） + DocumentProcessor（编排解析 / 切分 / 元数据） + DocumentRegistry（解析器注册表）。"""
-import asyncio
 from pathlib import Path
 
 from novamind.engines.document.integrations.deepdoc import (
@@ -265,7 +264,6 @@ class DocumentProcessor:
     async def read_full_text(
         self,
         file_path: str | Path,
-        ocr_enabled: bool = False,
     ) -> str:
         """Reader-only：读取文件并合并为全文，不做切分。
 
@@ -276,7 +274,8 @@ class DocumentProcessor:
             file_path: 文件路径。
 
         Returns:
-            文件的完整文本内容；文字层为空且 ocr_enabled 时的 PDF 走 OCR 兜底。
+            文件的完整文本内容。扫描版 PDF（文字层为空）需改用 DeepDoc 策略，
+            本路径不做 OCR 兜底。
 
         Raises:
             ValueError: 不支持的文件类型。
@@ -304,9 +303,12 @@ class DocumentProcessor:
             doc.get("content") or doc.get("text", "") for doc in documents
         )
 
-        if not full_text.strip() and ocr_enabled and extension == "pdf":
-            full_text = await self._ocr_pdf_text(file_path)
-
+        if not full_text.strip() and extension == "pdf":
+            logger.warning(
+                "PDF 文字层为空（疑似扫描件），默认策略无法提取内容；"
+                "请在 KB 配置中将 PDF 解析策略改为 DeepDoc",
+                filename=file_path.name,
+            )
 
         logger.info(
             "文档全文读取完成",
@@ -314,55 +316,8 @@ class DocumentProcessor:
             extension=extension,
             paragraphs=len(documents),
             char_count=len(full_text),
-            ocr_enabled=ocr_enabled,
         )
         return full_text
-
-    async def _ocr_pdf_text(self, file_path: Path) -> str:
-        """Fallback OCR for scanned PDFs when text extraction returns empty."""
-        return await asyncio.to_thread(self._ocr_pdf_text_sync, file_path)
-
-    @staticmethod
-    def _ocr_pdf_text_sync(file_path: Path) -> str:
-        """扫描版 PDF 的 OCR 兜底（fitz + Tesseract）；缺 Tesseract 抛错，页级失败记 WARNING 跳过。"""
-        try:
-            import fitz
-        except Exception:
-            logger.warning("PDF OCR fallback unavailable", filename=file_path.name, reason="fitz_not_installed")
-            return ""
-
-        # fitz.get_textpage_ocr() 底层依赖系统级 Tesseract 二进制。此前 Tesseract 缺失时
-        # 每页 OCR 抛异常被下方页循环的 try/except 静默吞成空串，扫描版 PDF 入库为空且无报错。
-        # 这里前置检查并把缺失上抛为 RuntimeError，让任务 FAILED 且消息可见。
-        import shutil
-        if not shutil.which("tesseract"):
-            raise RuntimeError(
-                "PDF OCR 需要 Tesseract 系统二进制，当前未安装在 PATH；"
-                "无法对扫描版 PDF 做 OCR。请安装 Tesseract 或在 KB 配置中关闭 ocr_enabled"
-            )
-
-        page_texts: list[str] = []
-        try:
-            with fitz.open(file_path) as pdf:
-                for page in pdf:
-                    try:
-                        textpage = page.get_textpage_ocr()
-                        text = page.get_text(textpage=textpage).strip()
-                    except Exception as exc:
-                        logger.warning(
-                            "PDF OCR page failed",
-                            filename=file_path.name,
-                            page_number=page.number + 1,
-                            error=str(exc),
-                        )
-                        text = ""
-                    if text:
-                        page_texts.append(text)
-        except Exception as exc:
-            logger.warning("PDF OCR fallback failed", filename=file_path.name, error=str(exc))
-            return ""
-
-        return "\n\n".join(page_texts)
 
     async def split_text(
         self,
@@ -459,7 +414,7 @@ class DocumentProcessor:
 
         Args:
             file_path: 文件路径。
-            parsing_config: 解析配置（strategy / deepdoc_parser_id / ocr_enabled 等）。
+            parsing_config: 解析配置（strategy / deepdoc_parser_id 等）。
             splitting_config: 切分配置（strategy / chunk_size / chunk_overlap 等）。
 
         Returns:
@@ -485,7 +440,7 @@ class DocumentProcessor:
 
         Args:
             file_path: 文件路径。
-            parsing_config: 解析配置（strategy / parser_id / pdf_mode / ocr_enabled 等）。
+            parsing_config: 解析配置（strategy / parser_id / pdf_mode 等）。
             splitting_config: 切分配置（strategy/chunk_size 等，无 embedding 时回退）。
 
         Returns:
@@ -608,14 +563,12 @@ class DocumentProcessor:
             filename=Path(file_path).name,
             file_type=file_type,
             parsing_strategy=parsing_strategy,
-            ocr_enabled=parsing_config.get("ocr_enabled", False),
             splitting_strategy=splitting_config.get("strategy", "recursive"),
             splitting_chunk_size=splitting_config.get("chunk_size", 1000),
             splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
         )
         full_text = await self.read_full_text(
             file_path,
-            ocr_enabled=bool(parsing_config.get("ocr_enabled", False)),
         )
         chunks = await self.split_text(
             full_text,

@@ -183,7 +183,6 @@ const configForm = reactive({
   kbSpaceTypes: ['text'] as string[],
 
   pdfStrategy: 'default' as TextStrategy,
-  pdfOcrEnabled: false,
   docxStrategy: 'default' as TextStrategy,
   excelStrategy: 'deepdoc' as TextStrategy,
   pptStrategy: 'deepdoc' as TextStrategy,

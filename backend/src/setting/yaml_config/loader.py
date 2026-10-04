@@ -290,7 +290,6 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         parsing=ParsingConfig(
             extract_images=parsing.get("extract_images", False),
             extract_tables=parsing.get("extract_tables", True),
-            ocr_enabled=parsing.get("ocr_enabled", False),
             preserve_structure=parsing.get("preserve_structure", True),
             encoding=parsing.get("encoding", "utf-8"),
             vlm_description_enabled=parsing.get("vlm_description_enabled", False),

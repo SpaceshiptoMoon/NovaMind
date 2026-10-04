@@ -76,10 +76,9 @@ class SplittingConfig:
 
 @dataclass
 class ParsingConfig:
-    """knowledge_base.parsing 段：解析开关（图片/表格/OCR/结构保留/VLM 描述）与本地 whisper、视频 VLM 并发等媒体参数。"""
+    """knowledge_base.parsing 段：解析开关（图片/表格/结构保留/VLM 描述）与本地 whisper、视频 VLM 并发等媒体参数。"""
     extract_images: bool = False
     extract_tables: bool = True
-    ocr_enabled: bool = False
     preserve_structure: bool = True
     encoding: str = "utf-8"
     vlm_description_enabled: bool = False

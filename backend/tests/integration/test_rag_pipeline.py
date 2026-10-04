@@ -193,7 +193,9 @@ def step_2_create_kb():
                 "chunk_overlap": 50,
             },
             "parsing": {
-                "ocr_enabled": False,
+                "text": {
+                    "pdf": {"strategy": "default"},
+                },
             },
             "question_generation": {
                 "enabled": True,

@@ -409,7 +409,6 @@ export interface TextTypeParsingConfig {
 
 export interface PdfParsingConfig extends TextTypeParsingConfig {
   parser?: PdfParserName
-  ocr_enabled?: boolean
 }
 
 export interface TextParsingConfig {

@@ -126,7 +126,6 @@ class PdfParsingConfig(TextTypeParsingConfig):
     """PDF parsing config."""
 
     parser: PdfParserName | None = Field(default=None)
-    ocr_enabled: bool = Field(default=False)
 
     @model_validator(mode="after")
     def validate_parser_usage(self):
@@ -327,6 +326,8 @@ class ParsingConfig(BaseModel):
             "deepdoc_parser_id",
             "deepdoc_pdf_mode",
             "deepdoc_formula_recognition",
+            # ocr_enabled 已随 Tesseract OCR 兜底删除，保留在 legacy 键集合里
+            # 让旧配置仍触发迁移分支（值本身被丢弃，不再写入新结构）
             "ocr_enabled",
             "vlm_description_enabled",
             "vlm_model",
@@ -342,7 +343,6 @@ class ParsingConfig(BaseModel):
             "full" if pdf_mode in {"layout", "vision", "full", "plain"}
             else None
         )
-        ocr_enabled = bool(legacy.get("ocr_enabled", False))
         vlm_enabled = bool(legacy.get("vlm_description_enabled", False))
         vlm_model = legacy.get("vlm_model")
 
@@ -352,7 +352,7 @@ class ParsingConfig(BaseModel):
             "deepdoc_pdf_mode": migrated_pdf_mode,
             "deepdoc_formula_recognition": legacy.get("deepdoc_formula_recognition"),
             "text": {
-                "pdf": {"strategy": "default", "ocr_enabled": ocr_enabled},
+                "pdf": {"strategy": "default"},
                 "docx": {"strategy": "default"},
                 # Excel/PPT/EPUB 仅支持 deepdoc（default 模式无 reader）
                 "excel": {"strategy": "deepdoc"},
@@ -596,7 +596,6 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
     - strategy
     - deepdoc_parser_id
     - deepdoc_pdf_mode
-    - ocr_enabled
     - vlm_description_enabled
     - vlm_model
     """
@@ -650,7 +649,6 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
 
     if target_doc_type == "pdf":
         pdf_cfg = text.pdf
-        result["ocr_enabled"] = pdf_cfg.ocr_enabled
         if pdf_cfg.strategy == "deepdoc" and pdf_cfg.parser:
             result["deepdoc_parser_id"] = PDF_PARSER_TO_LEGACY_ID[pdf_cfg.parser]
             if pdf_cfg.parser in ("full", "plain"):

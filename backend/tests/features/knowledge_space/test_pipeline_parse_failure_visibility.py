@@ -6,8 +6,8 @@
 - P0-1 图片 ``deepdoc_ocr``：``_process_image_ocr_static`` 误调不存在的
   ``DeepDocParser.aparse_bytes`` 且 ``except Exception`` 吞成空串 → 改调
   ``parse_bytes`` + 缺依赖/异常上抛 ``DocumentProcessingError``。
-- P0-2 PDF OCR fallback：``_ocr_pdf_text_sync`` 在 Tesseract 缺失时逐页吞错返回空串
-  → 前置 ``shutil.which('tesseract')`` 检查，缺失抛 ``RuntimeError``。
+- P0-2 PDF Tesseract OCR fallback：整条路径已删除（依赖系统级二进制且部署
+  不预装，开关形同虚设）；扫描件正解 = KB 配置切 DeepDoc。测试守护删除态。
 - P1-3 图片 ``vlm`` 策略 ``vlm_model`` 留空：不做"回退用户默认 VLM"兜底，直接抛
   ``DocumentProcessingError``，要求用户在解析配置中显式选择（保证路径可追踪）。
 - P1-4 ES 索引 embedding dimension：``bulk_index_chunks`` 在 ``embedding_dim`` 缺失时
@@ -155,21 +155,16 @@ async def test_image_vlm_raises_when_vlm_model_empty(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# P0-2：PDF OCR fallback 缺 Tesseract 时显式抛错
+# P0-2：PDF Tesseract OCR fallback 已整体删除（能力不完整：依赖系统级
+# Tesseract 二进制且部署不预装，用户开了开关也走不通）。扫描件 PDF 的正解
+# 是 KB 配置切 DeepDoc 策略。此处守护"删除后不复活"。
 # ---------------------------------------------------------------------------
 
 
-def test_pdf_ocr_raises_without_tesseract(monkeypatch):
-    """ocr_enabled 走 OCR fallback 时，Tesseract 不在 PATH 应抛 RuntimeError，
-    而非逐页吞错返回空串让扫描版 PDF 静默入库为空。"""
-
-    def _fake_which(name):
-        return None if name == "tesseract" else "/usr/bin/" + name
-
-    monkeypatch.setattr("shutil.which", _fake_which)
-
-    with pytest.raises(RuntimeError, match="Tesseract"):
-        DocumentProcessor._ocr_pdf_text_sync(Path("any.pdf"))
+def test_pdf_tesseract_ocr_fallback_removed():
+    """_ocr_pdf_text/_ocr_pdf_text_sync 应已从 DocumentProcessor 删除，不再兜底。"""
+    assert not hasattr(DocumentProcessor, "_ocr_pdf_text")
+    assert not hasattr(DocumentProcessor, "_ocr_pdf_text_sync")
 
 
 # ---------------------------------------------------------------------------

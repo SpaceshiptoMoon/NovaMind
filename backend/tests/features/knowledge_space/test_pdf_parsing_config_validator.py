@@ -31,10 +31,9 @@ pytestmark = pytest.mark.unit
 
 def test_pdf_default_strategy_auto_clears_residual_parser():
     """strategy=default + 残留 parser → 自动清 parser=None，不抛错。"""
-    cfg = PdfParsingConfig(strategy="default", parser="full", ocr_enabled=True)
+    cfg = PdfParsingConfig(strategy="default", parser="full")
     assert cfg.parser is None, "default 模式应自动清 parser"
     assert cfg.strategy == "default"
-    assert cfg.ocr_enabled is True  # 其他字段不受影响
 
 
 def test_pdf_default_strategy_without_parser_unchanged():
@@ -46,7 +45,7 @@ def test_pdf_default_strategy_without_parser_unchanged():
 
 def test_pdf_deepdoc_strategy_retains_parser():
     """strategy=deepdoc + parser → 保留 parser（deepdoc 模式取用 parser）。"""
-    cfg = PdfParsingConfig(strategy="deepdoc", parser="full", ocr_enabled=True)
+    cfg = PdfParsingConfig(strategy="deepdoc", parser="full")
     assert cfg.parser == "full"
     assert cfg.strategy == "deepdoc"
 
@@ -63,7 +62,8 @@ def test_pdf_deepdoc_strategy_without_parser_allowed():
 def test_kb_config_tolerates_default_with_residual_parser():
     """深度合并产生 strategy=default + 残留 parser=full 时，KnowledgeBaseConfig
     反序列化不抛错且 parser 被清——旧版在此抛 ValidationError → route 500。"""
-    # 模拟深度合并结果：库里原 deepdoc+full，用户 PATCH strategy=default，parser 残留
+    # 模拟深度合并结果：库里原 deepdoc+full，用户 PATCH strategy=default，parser 残留；
+    # ocr_enabled 为已删字段的旧值，应被忽略而非报错
     merged = {
         "space_type": ["text"],
         "parsing": {
@@ -84,4 +84,3 @@ def test_kb_config_tolerates_default_with_residual_parser():
     cfg = KnowledgeBaseConfig.model_validate(merged)  # 旧版在此抛错
     assert cfg.parsing.text.pdf.strategy == "default"
     assert cfg.parsing.text.pdf.parser is None, "残留 parser 应被 validator 自动清"
-    assert cfg.parsing.text.pdf.ocr_enabled is True

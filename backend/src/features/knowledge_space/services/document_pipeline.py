@@ -412,7 +412,6 @@ async def execute_document_pipeline(
             parsing_strategy=parsing_config.get("strategy", "default"),
             deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
             deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
-            ocr_enabled=parsing_config.get("ocr_enabled", False),
             vlm_description_enabled=parsing_config.get("vlm_description_enabled", False),
             splitting_strategy=splitting_config.get("strategy", "recursive"),
             splitting_chunk_size=splitting_config.get("chunk_size", 1000),

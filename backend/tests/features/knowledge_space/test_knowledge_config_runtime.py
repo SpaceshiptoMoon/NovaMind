@@ -62,7 +62,8 @@ def test_knowledge_base_config_drops_removed_fields():
     assert "image" not in dumped["splitting"]
     assert "extract_tables" not in dumped["parsing"]
     assert "preserve_structure" not in dumped["parsing"]
-    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    # ocr_enabled 已随 Tesseract OCR 兜底删除，残留键被丢弃
+    assert "ocr_enabled" not in dumped["parsing"]["text"]["pdf"]
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
     assert "video" not in dumped["splitting"]
     assert dumped["parsing"]["audio"]["language"] == "zh"
@@ -99,7 +100,8 @@ def test_legacy_parsing_config_is_migrated_to_new_structure():
     dumped = config.model_dump()
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
     assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
-    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    # ocr_enabled 已删除，legacy 值触发迁移但字段本身被丢弃
+    assert "ocr_enabled" not in dumped["parsing"]["text"]["pdf"]
     assert dumped["parsing"]["image"]["strategy"] == "vlm"
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
     assert dumped["parsing"]["audio"]["language"] == "zh"
@@ -129,7 +131,7 @@ def test_legacy_parsing_config_keeps_all_supported_fields():
     dumped = config.model_dump()
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
     assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
-    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    assert "ocr_enabled" not in dumped["parsing"]["text"]["pdf"]
     assert dumped["parsing"]["image"]["strategy"] == "vlm"
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
     assert dumped["parsing"]["video"]["frame_interval"] == 8
@@ -146,7 +148,6 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
                 "pdf": {
                     "strategy": "deepdoc",
                     "parser": "full",
-                    "ocr_enabled": True,
                 }
             }
         },
@@ -156,7 +157,8 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
     assert runtime["strategy"] == "deepdoc"
     assert runtime["deepdoc_parser_id"] == "pdf_full"
     assert runtime["deepdoc_pdf_mode"] == "full"
-    assert runtime["ocr_enabled"] is True
+    # OCR 兜底已删除，runtime dict 不再携带 ocr_enabled 键
+    assert "ocr_enabled" not in runtime
 
 
 def test_runtime_parsing_config_passes_formula_recognition_flag():
@@ -183,7 +185,6 @@ def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys
                 "pdf": {
                     "strategy": "deepdoc",
                     "parser": "full",
-                    "ocr_enabled": True,
                 },
                 "docx": {"strategy": "deepdoc"},
             },
@@ -197,7 +198,6 @@ def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys
     assert runtime["strategy"] == "deepdoc"
     assert runtime["deepdoc_parser_id"] == "pdf_full"
     assert runtime["deepdoc_pdf_mode"] == "full"
-    assert runtime["ocr_enabled"] is True
 
 
 def test_pdf_default_strategy_rejects_parser():
@@ -317,7 +317,8 @@ async def test_generate_image_description_prefers_configured_vlm_model():
 
 
 @pytest.mark.anyio("asyncio")
-async def test_pdf_ocr_fallback_is_used_when_enabled(monkeypatch, tmp_path):
+async def test_pdf_empty_text_layer_logs_hint_no_ocr(monkeypatch, tmp_path):
+    """OCR 兜底已删除：扫描件 PDF（文字层空）返回空串并告警提示改用 DeepDoc，不再触发 OCR。"""
     pdf_path = tmp_path / "scan.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n")
 
@@ -325,14 +326,10 @@ async def test_pdf_ocr_fallback_is_used_when_enabled(monkeypatch, tmp_path):
     fake_reader = SimpleNamespace(load_data=AsyncMock(return_value=[]))
     processor._readers["pdf"] = fake_reader
 
-    async def fake_ocr(path):
-        return "ocr text"
+    assert not hasattr(processor, "_ocr_pdf_text"), "OCR 兜底方法应已删除"
 
-    monkeypatch.setattr(processor, "_ocr_pdf_text", fake_ocr)
-
-    full_text = await processor.read_full_text(pdf_path, ocr_enabled=True)
-
-    assert full_text == "ocr text"
+    full_text = await processor.read_full_text(pdf_path)
+    assert full_text == ""
 
 
 @pytest.mark.anyio("asyncio")

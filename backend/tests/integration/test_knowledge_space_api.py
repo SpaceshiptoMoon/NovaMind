@@ -473,7 +473,9 @@ def test_2_3_create_knowledge_base():
                 "chunk_overlap": 100
             },
             "parsing": {
-                "ocr_enabled": False
+                "text": {
+                    "pdf": {"strategy": "default"}
+                }
             },
             "question_generation": {
                 "enabled": False
@@ -636,7 +638,7 @@ def test_2_6_get_kb_config():
     assert_field_exists(config, "splitting", "parsing", "question_generation", label="知识库配置内容")
     assert_field_exists(parsing, "text", label="解析配置")
     assert_field_exists(text_cfg, "pdf", "docx", "excel", "ppt", "epub", "markdown", "html", "txt", "json", label="文本解析配置")
-    assert_field_exists(pdf, "strategy", "ocr_enabled", label="PDF 解析配置")
+    assert_field_exists(pdf, "strategy", label="PDF 解析配置")
     assert_field_exists(splitting, "strategy", "chunk_size", "chunk_overlap", label="切分配置")
 
 
@@ -660,8 +662,7 @@ def test_2_7_update_kb_config():
             "text": {
                 "pdf": {
                     "strategy": "deepdoc",
-                    "parser": "layout",
-                    "ocr_enabled": True
+                    "parser": "layout"
                 },
                 "docx": {"strategy": "default"},
                 "excel": {"strategy": "deepdoc"},
@@ -735,7 +736,6 @@ def test_2_7_update_kb_config():
 
     assert_field(pdf, "strategy", "deepdoc", label="PDF 解析配置")
     assert_field(pdf, "parser", "layout", label="PDF 解析配置")
-    assert_field(pdf, "ocr_enabled", True, label="PDF 解析配置")
     assert_field((text_cfg.get("excel") or {}), "strategy", "deepdoc", label="Excel 解析配置")
     assert_field(image, "strategy", "vlm", label="图片解析配置")
     assert_field(image, "vlm_model", "test-vlm-model", label="图片解析配置")
