@@ -39,6 +39,9 @@
   --color-bg: #f5f5f3;
   --color-bg-card: #ffffff;
   --color-bg-card-elevated: #ffffff;
+  /* 斑马纹被动条纹档（EP --el-fill-color-lighter 映射源）：白卡上隐约可辨的 EP 原生档位；
+     hover 是交互反馈色，被动条纹不得挪用（曾误映射 bg-hover 致第二行像永远悬停） */
+  --color-bg-stripe: #fafafa;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
   --color-bg-hover: #efefed;
@@ -297,6 +300,8 @@ html[data-theme='dark'] {
   --color-bg: #0c0c0e;
   --color-bg-card: #18181b;
   --color-bg-card-elevated: #1e1e21;
+  /* 斑马纹暗色档：卡底抬半档，条纹相对卡底降半档，保持「隐约可辨」同档对比 */
+  --color-bg-stripe: #141417;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
   --color-bg-hover: #26262a;
@@ -384,8 +389,10 @@ html[data-theme='dark'] {
 
   --el-fill-color-blank: var(--color-bg-card);
   --el-fill-color: #26262a;
+  /* lighter 是斑马纹被动条纹档，随 --color-bg-stripe 走；light 保持卡色
+     （表行 hover 在暗色经 main.css 覆写为 hover 档，见下） */
   --el-fill-color-light: var(--color-bg-card-elevated);
-  --el-fill-color-lighter: #2c2c31;
+  --el-fill-color-lighter: var(--color-bg-stripe);
   --el-fill-color-extra-light: var(--color-bg-card-elevated);
   --el-fill-color-dark: #34343a;
   --el-fill-color-darker: #3d3d44;

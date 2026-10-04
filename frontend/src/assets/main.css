@@ -59,7 +59,6 @@
 
   --el-bg-color: var(--color-bg-card);
   --el-bg-color-page: var(--color-bg);
-  --el-fill-color-light: var(--color-bg-card-elevated);
   --el-border-color: var(--color-border);
   --el-border-color-light: var(--color-border-light);
   --el-text-color-primary: var(--color-text);
@@ -70,7 +69,11 @@
   /* EP 其余 fill/border 档映射到项目 token——EP 默认值是冷蓝灰，骨白底下不映射会显脏；
      暗色档在 base.css dark 块直接覆盖 */
   --el-fill-color: var(--color-bg-hover);
-  --el-fill-color-lighter: var(--color-bg-hover);
+  /* 斑马纹（--el-fill-color-lighter）是被动条纹，用专用浅档而非 hover 交互色
+     （曾误映射 bg-hover 致条纹行像永远悬停）；fill-color-light 是表行 hover
+     （--el-table-row-hover-bg-color）与若干组件浅底档，指向 hover 色保证可感知 */
+  --el-fill-color-light: var(--color-bg-hover);
+  --el-fill-color-lighter: var(--color-bg-stripe);
   --el-fill-color-extra-light: var(--color-bg);
   --el-fill-color-dark: var(--color-border);
   --el-fill-color-darker: var(--color-border);
