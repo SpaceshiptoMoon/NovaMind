@@ -52,7 +52,8 @@
                 <span class="mono-text">{{ row.model }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="protocol" label="协议" width="100">
+            <!-- 协议名有 openai_video 等长值，min-width 让列随内容伸展，避免 tag 被裁 -->
+            <el-table-column prop="protocol" label="协议" min-width="130">
               <template #default="{ row }">
                 <el-tag size="small" effect="plain">{{ row.protocol }}</el-tag>
               </template>
