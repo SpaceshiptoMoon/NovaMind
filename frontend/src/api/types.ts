@@ -555,6 +555,11 @@ export interface Document {
   doc_metadata: Record<string, unknown> | null
   chunk_count: number
   token_count: number
+  // 以下媒体元信息由后端从 DocumentTask.pipeline_result 派生（computed_field），非媒体类型为 null
+  chunk_type?: string | null
+  duration_seconds?: number | null
+  frame_count?: number | null
+  segment_count?: number | null
   created_at: string
   updated_at: string | null
   // 以下字段由后端从 DocumentTask 派生（computed_field），可能为默认值

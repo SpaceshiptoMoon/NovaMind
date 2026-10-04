@@ -51,17 +51,21 @@
           <span class="meta-label">上传时间</span>
           <span class="meta-value">{{ formatDate(document.created_at) }}</span>
         </div>
-        <div v-if="(document.doc_metadata as Record<string, unknown>)?.chunk_type" class="meta-item">
+        <div v-if="document.duration_seconds != null" class="meta-item">
+          <span class="meta-label">时长</span>
+          <span class="meta-value">{{ formatDuration(document.duration_seconds) }}</span>
+        </div>
+        <div v-if="document.chunk_type" class="meta-item">
           <span class="meta-label">内容类型</span>
-          <span class="meta-value">{{ chunkTypeLabels[(document.doc_metadata as Record<string, unknown>).chunk_type as string] || (document.doc_metadata as Record<string, unknown>).chunk_type }}</span>
+          <span class="meta-value">{{ chunkTypeLabels[document.chunk_type] || document.chunk_type }}</span>
         </div>
-        <div v-if="(document.doc_metadata as Record<string, unknown>)?.frame_count != null" class="meta-item">
+        <div v-if="document.frame_count != null" class="meta-item">
           <span class="meta-label">视频帧数</span>
-          <span class="meta-value">{{ (document.doc_metadata as Record<string, unknown>).frame_count }}</span>
+          <span class="meta-value">{{ document.frame_count }}</span>
         </div>
-        <div v-if="(document.doc_metadata as Record<string, unknown>)?.segment_count != null" class="meta-item">
+        <div v-if="document.segment_count != null" class="meta-item">
           <span class="meta-label">音频分段数</span>
-          <span class="meta-value">{{ (document.doc_metadata as Record<string, unknown>).segment_count }}</span>
+          <span class="meta-value">{{ document.segment_count }}</span>
         </div>
       </div>
 

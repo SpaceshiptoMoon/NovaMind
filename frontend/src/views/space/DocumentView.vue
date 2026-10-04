@@ -135,6 +135,10 @@
               <div class="doc-card-name" :title="doc.filename">{{ doc.filename }}</div>
               <div class="doc-card-meta">
                 <span>{{ formatFileSize(doc.file_size) }}</span>
+                <template v-if="doc.duration_seconds">
+                  <span class="meta-dot">·</span>
+                  <span>{{ formatDuration(doc.duration_seconds) }}</span>
+                </template>
                 <span class="meta-dot">·</span>
                 <span>{{ doc.chunk_count ?? 0 }} 分块</span>
                 <span class="meta-dot">·</span>
@@ -342,7 +346,7 @@ import {
 } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { formatFileSize, formatShortDate } from '@/utils/format'
+import { formatDuration, formatFileSize, formatShortDate } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
