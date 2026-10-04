@@ -980,3 +980,80 @@ async def test_video_native_client_without_url_method_raises_permanent(monkeypat
             task=None,
             model_config_port=_MCS(),
         )
+
+
+# ---------------------------------------------------------------------------
+# 批3：S3/S4 段/片 idx_list 与 _synthesize_steps 帧层覆盖率校验兼容
+# ---------------------------------------------------------------------------
+
+
+def _fake_llm_steps_client(steps_json: list[dict]):
+    """返回输出固定步骤 JSON 的假 LLM client。"""
+    import json as _json
+
+    class _C:
+        async def generate_text(self, prompt, **kw):
+            return _json.dumps({"steps": steps_json}, ensure_ascii=False)
+
+    return _C()
+
+
+@pytest.mark.asyncio
+async def test_synth_steps_full_coverage_with_s3_s4_frame_groups(monkeypatch):
+    """批3：S3/S4 同构 frame_groups（段/片锚点→idx_list）下，步骤区间端点取锚点，
+    _steps_coverage_gap 展开后帧层全覆盖 → 步骤综合成功。"""
+    # S3 段结构：段0 [0,1]，段1 [2,3]，段2 [4]——frame_groups 同构 grouped
+    frame_groups = {0: [0, 1], 2: [2, 3], 4: [4]}
+    frame_timeline_map = {0: (0.0, 10.0), 2: (10.0, 20.0), 4: (20.0, None)}
+    steps = [
+        {"no": 1, "title": "准备", "body": "x", "start_frame_idx": 0, "end_frame_idx": 0},
+        {"no": 2, "title": "操作", "body": "y", "start_frame_idx": 2, "end_frame_idx": 2},
+        {"no": 3, "title": "收尾", "body": "z", "start_frame_idx": 4, "end_frame_idx": 4},
+    ]
+    llm = _fake_llm_steps_client(steps)
+    document = _make_video_document()
+    out = await media_processing._synthesize_steps(
+        document=document,
+        full_text="[00:00:00#0] 段0\n\n[00:00:10#2] 段1\n\n[00:00:20#4] 段2",
+        frame_timeline_map=frame_timeline_map,
+        frame_groups=frame_groups,
+        llm_client=llm,
+        max_steps=30,
+        logger=_silent_logger(),
+    )
+    assert out is not None and len(out) == 3
+
+
+@pytest.mark.asyncio
+async def test_synth_steps_missing_segment_retry_then_degrade(monkeypatch):
+    """批3：故意缺一段 → 缺口非空重试 1 次 → 仍缺 → 返回 None（降级不失败）。"""
+    frame_groups = {0: [0, 1], 2: [2, 3], 4: [4]}
+    frame_timeline_map = {0: (0.0, 10.0), 2: (10.0, 20.0), 4: (20.0, None)}
+    # 缺段2（锚点 4）的步骤：重试也缺 → None
+    steps_missing = [
+        {"no": 1, "title": "准备", "body": "x", "start_frame_idx": 0, "end_frame_idx": 0},
+        {"no": 2, "title": "操作", "body": "y", "start_frame_idx": 2, "end_frame_idx": 2},
+    ]
+    llm = _fake_llm_steps_client(steps_missing)
+    document = _make_video_document()
+    out = await media_processing._synthesize_steps(
+        document=document,
+        full_text="[00:00:00#0] 段0\n\n[00:00:10#2] 段1\n\n[00:00:20#4] 段2",
+        frame_timeline_map=frame_timeline_map,
+        frame_groups=frame_groups,
+        llm_client=llm,
+        max_steps=30,
+        logger=_silent_logger(),
+    )
+    assert out is None
+
+
+def test_steps_coverage_gap_s4_pieces_expansion():
+    """批3：S4 片 idx_list（片区间覆盖帧）展开语义与 grouped 一致——
+    区间端点帧 idx 经 frame_groups 展开为片内全部帧。"""
+    # S4：片0 锚点 0 → [0,1]；片1 锚点 2 → [2]
+    frame_groups = {0: [0, 1], 2: [2]}
+    steps = [{"no": 1, "title": "t", "body": "b", "start_frame_idx": 0, "end_frame_idx": 2}]
+    gap = media_processing._steps_coverage_gap(steps, {0, 1, 2}, frame_groups)
+    # 步骤区间 [0,2] 覆盖锚点 0/1/2：0 展开为 [0,1]，2 展开为 [2] → 全覆盖
+    assert gap == set()
