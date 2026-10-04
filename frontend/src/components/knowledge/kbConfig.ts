@@ -61,6 +61,10 @@ export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
 
+/** deepdocOnly 类型（Excel/PPT/EPUB）唯一合法策略——后端 schema 为 Literal["deepdoc"]，
+ * 配置缺失或残留非法值时恒回填 deepdoc（与后端运行时兜底语义一致）。 */
+export const DEEPDOC_ONLY_STRATEGY: TextStrategy = 'deepdoc'
+
 /**
  * 问题生成的系统默认提示词模板（用于占位提示）。
  *
@@ -105,9 +109,9 @@ export function applyTextParsingConfig(
 ) {
   target.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
-  target.excelStrategy = getTextStrategyValue(textConfig?.excel?.strategy)
-  target.pptStrategy = getTextStrategyValue(textConfig?.ppt?.strategy)
-  target.epubStrategy = getTextStrategyValue(textConfig?.epub?.strategy)
+  target.excelStrategy = DEEPDOC_ONLY_STRATEGY
+  target.pptStrategy = DEEPDOC_ONLY_STRATEGY
+  target.epubStrategy = DEEPDOC_ONLY_STRATEGY
   target.markdownStrategy = getTextStrategyValue(textConfig?.markdown?.strategy)
   target.htmlStrategy = getTextStrategyValue(textConfig?.html?.strategy)
   target.txtStrategy = getTextStrategyValue(textConfig?.txt?.strategy)
@@ -133,9 +137,9 @@ export function buildTextParsingConfigFromForm(source: {
       parser: source.pdfStrategy === 'deepdoc' ? 'full' : undefined,
     },
     docx: { strategy: source.docxStrategy },
-    excel: { strategy: source.excelStrategy },
-    ppt: { strategy: source.pptStrategy },
-    epub: { strategy: source.epubStrategy },
+    excel: { strategy: DEEPDOC_ONLY_STRATEGY },
+    ppt: { strategy: DEEPDOC_ONLY_STRATEGY },
+    epub: { strategy: DEEPDOC_ONLY_STRATEGY },
     markdown: { strategy: source.markdownStrategy },
     html: { strategy: source.htmlStrategy },
     txt: { strategy: source.txtStrategy },

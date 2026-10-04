@@ -2,7 +2,8 @@
   <div class="sub-section">
     <h4 class="sub-title">文本解析</h4>
     <p class="sub-desc">
-      按文件类型设置解析策略，与配置值一一对应：默认（default）/ DeepDoc（deepdoc）。扫描件等图片型 PDF 请选 DeepDoc。
+      按文件类型设置解析策略：默认或 DeepDoc。扫描件等图片型 PDF 请选 DeepDoc；Excel、PPT、EPUB
+      仅支持 DeepDoc。
     </p>
 
     <el-form :model="configForm" label-width="120px" class="config-form">
@@ -15,13 +16,6 @@
                 <el-option label="默认" value="default" />
                 <el-option label="DeepDoc" value="deepdoc" />
               </el-select>
-              <div class="field-hint">
-                {{
-                  configForm.pdfStrategy === 'deepdoc'
-                    ? 'DeepDoc：全量流水线（每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别），扫描件、图片 PDF、数字原生 PDF 通吃，能力最全但较慢。'
-                    : '默认（default）：PyPDF2 直出文字层，快但无版面分析；扫描件请改用 DeepDoc。'
-                }}
-              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -32,8 +26,10 @@
           <div class="text-strategy-copy">
             <span class="text-strategy-label">{{ item.label }}</span>
           </div>
-          <el-select v-model="configForm[item.key]" style="width: 180px">
-            <el-option v-if="!item.deepdocOnly" label="默认（default）" value="default" />
+          <!-- deepdocOnly 类型唯一合法策略即 deepdoc，渲染为固定徽标而非单选项下拉 -->
+          <span v-if="item.deepdocOnly" class="deepdoc-badge">DeepDoc</span>
+          <el-select v-else v-model="configForm[item.key]" style="width: 180px">
+            <el-option label="默认" value="default" />
             <el-option label="DeepDoc" value="deepdoc" />
           </el-select>
         </div>
@@ -140,5 +136,19 @@ defineProps<{
 .text-strategy-copy small {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+}
+
+.deepdoc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 </style>
