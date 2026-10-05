@@ -1014,12 +1014,54 @@
         "type": "object"
       },
       "AudioParsingConfig": {
-        "description": "Audio parsing config.",
+        "description": "音频解析配置（KB 级）。\n\nasr_model 语义：None/空 = 走本地 faster-whisper（引擎档位由 YAML\nknowledge_base.parsing.local_whisper_model 决定，默认 large-v3，开发机\n降档配置）；云端模型名（如 whisper-1 / paraformer-v2）须在模型管理中\n配置同名凭证。",
         "properties": {
           "asr_model": {
-            "default": "whisper-1",
-            "title": "Asr Model",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Model"
+          },
+          "clean_enabled": {
+            "default": false,
+            "title": "Clean Enabled",
+            "type": "boolean"
+          },
+          "clean_llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clean Llm Model"
+          },
+          "diarization_enabled": {
+            "default": false,
+            "title": "Diarization Enabled",
+            "type": "boolean"
+          },
+          "hotwords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotwords"
           },
           "language": {
             "anyOf": [
@@ -1031,6 +1073,43 @@
               }
             ],
             "title": "Language"
+          },
+          "pause_gap_seconds": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Gap Seconds"
+          },
+          "speaker_count": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Count"
+          },
+          "split_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Mode"
           }
         },
         "title": "AudioParsingConfig",
@@ -13090,6 +13169,21 @@
             ],
             "title": "Group Size"
           },
+          "hotwords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hotwords"
+          },
           "language": {
             "anyOf": [
               {
@@ -22189,6 +22283,102 @@
           }
         ],
         "summary": "获取文档详情",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/audio/clip": {
+      "get": {
+        "description": "按秒级时间区间从音频/视频原件切片返回 mp3 片段（批次④ chunk 区间回跳播放）。鉴权与图片代理端点一致；区间非法/源文件缺失返回 400/404。",
+        "operationId": "get_audio_clip_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__audio_clip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "片段起点（秒）",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "description": "片段起点（秒）",
+              "minimum": 0,
+              "title": "Start",
+              "type": "number"
+            }
+          },
+          {
+            "description": "片段终点（秒）",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "description": "片段终点（秒）",
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "title": "End",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取音频/视频片段",
         "tags": [
           "文档管理",
           "文档管理"

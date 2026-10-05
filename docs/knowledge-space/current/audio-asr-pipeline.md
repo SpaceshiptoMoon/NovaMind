@@ -78,16 +78,48 @@ YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认�
 
 ## 6. 云端轨边界
 
-- **DashScope**：录音文件识别热词仅支持百炼控制台预注册的 `phrase_id`，不支持自由
-  热词注入——KB 配置了 `hotwords` 时服务端**告警忽略**（日志可见，行为可追踪）。
-- **OpenAI 协议**：无热词参数，同上告警忽略。
-- 热词能力矩阵：本地 = 全量生效；云端 = 告警忽略。
+- **热词**：DashScope 录音文件识别热词仅支持百炼控制台预注册的 `phrase_id`，
+  不支持自由热词注入——KB 配置了 `hotwords` 时服务端**告警忽略**（日志可见，
+  行为可追踪）。OpenAI 协议无热词参数，同上告警忽略。
+- **说话人分离**（批次④）：DashScope 协议 `diarization_enabled=true`（可选
+  `speaker_count` 2~100 参考值，仅单声道、建议 ≤2h），segment 带 `speaker_id`
+  （0 起始整数）；transcript 行内追加 `[说话人N]` 标签（人可读），chunk
+  `metadata.speaker_id` 聚合去重（逗号串，ES keyword）。本地 faster-whisper
+  协议暂不支持（需 pyannote 额外模型），配置后告警忽略。
 
-## 7. 已知边界与后续批次（未实施）
+## 7. 批次②③④产物链（2026-10-05 实施）
 
-- **ASR 置信度透出**：segment 已采集 `avg_logprob/no_speech_prob`（用于幻觉过滤），
-  尚未写入 ES chunk metadata（第二批「产物干净」范围）。
-- **LLM 清洗/标点恢复**：未实施（第二批范围）。当前标点完全依赖模型自带输出
-  （large-v3 中文标点可用，tiny 差）。
-- **说话人分离**：未实施（第四批范围，DashScope `diarization_enabled` 或本地 pyannote）。
-- **音频专用切分**：复用通用 recursive + 行锚点切分（第三批范围：停顿边界+话题切分）。
+### 双产物（raw + clean）
+- raw 全文：`{base}_parsed/full_text.md`（`persist_parsed_text`，解析后立即落库）；
+- clean 全文（`audio.clean_enabled=true` 时）：`{base}_parsed/clean_text.md`
+  （LLM 逐批清洗，`audio.clean_llm_model` 留空 = 用户默认 LLM）；
+- **入库检索用 clean**，raw 溯源；清洗硬契约 = **行数不变**（逐行与 raw 锚点
+  对齐），行数漂移/LLM 失败整批降级 raw（宁可不清洗，不丢内容不错位）；
+- clean 配置（`asr_clean`）与引擎参数（`asr_engine`）均进解析指纹——开关/
+  模型变化 → RETRY 重新清洗；快照 payload 带 `clean_text`，resume 免重清洗。
+
+### 置信度与说话人写 ES
+- segment 采集 `avg_logprob/no_speech_prob`；`sigmoid(avg_logprob)` 归一 0~1，
+  按 chunk 覆盖的锚点聚合均值 → `metadata.confidence`（float，可按质量过滤）；
+- `metadata.speaker_id`：聚合去重的说话人标签串；无数据不写键（保持 None 语义）；
+- 聚合发生在 `run_post_parse_tail` 切分后、锚点剥离前（pipeline_steps 1.4 步），
+  随切分快照持久化——resume 免重聚合。
+
+### 音频专用切分（`audio.split_mode="pause_topic"`）
+- 引擎 `group_transcript_segments`：停顿间隙（`audio.pause_gap_seconds`，默认
+  0.8s）强制切组（硬墙，不跨边界合并），组内按 `splitting.chunk_size` 封组；
+- 产出 prechunked items 走 structural 切分路径，锚点行原样保留 → 切分后
+  `align_chunk_times` 正常反查时间；None/recursive 维持通用 line_aware 切分。
+
+### chunk 区间回跳播放
+- 端点 `GET /api/v1/spaces/{sid}/knowledge-bases/{kid}/documents/{did}/audio/clip
+  ?start=&end=`：MinIO 流式落盘原件 → ffmpeg 切片（`clip_extractor.py`）→
+  mp3 字节响应（16kHz 单声道）；鉴权与图片代理一致（space member + KB 校验）；
+- 前端检索结果卡片「▶ 播放片段」（SearchView）：按 chunk `metadata.start_time/
+  end_time` 请求切片，Blob URL 播放；说话人标签同卡片展示。
+
+### CER/WER 评测基建
+- `engines/document/media/audio/evaluation.py`：Levenshtein 对齐（字符/词两级），
+  CER 主指标（中文）、WER 可选；评测前归一（去标点/空白/大小写）——标点差异
+  不污染识别准确率；`evaluate_transcript(ref, hyp)` 综合入口。上层接入
+  kb-ops 质量基线或独立评测脚本时直接调用，本身无 IO/feature 依赖。

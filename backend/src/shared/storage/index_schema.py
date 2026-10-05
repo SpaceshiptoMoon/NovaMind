@@ -146,6 +146,9 @@ class DefaultIndexSchema:
                     "end_time": {"type": "float"},
                     "duration": {"type": "float"},
                     "speaker_id": {"type": "keyword"},
+                    # ASR 转写置信度（0~1）：chunk 内 segments 的 language-agnostic
+                    # 概率聚合（sigmoid(avg_logprob) 均值），检索侧可按质量过滤。
+                    "confidence": {"type": "float"},
                     # 视频帧图：显式声明类型，避免 ES 动态映射把 frame_paths 推断为 text+keyword
                     # 子字段（无法直接按 path 过滤）、frame_indices 推断为 long。
                     "frame_paths": {"type": "keyword"},

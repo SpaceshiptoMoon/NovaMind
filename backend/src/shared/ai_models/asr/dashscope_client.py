@@ -46,6 +46,8 @@ def submit_transcription(
     model: str,
     file_urls: list[str],
     language_hints: list[str] | None = None,
+    diarization_enabled: bool | None = None,
+    speaker_count: int | None = None,
 ):
     """提交转写任务（HTTP URL 形态，非 fileid://）。
 
@@ -53,6 +55,10 @@ def submit_transcription(
         model: Paraformer 模型名（如 paraformer-v2）。
         file_urls: 音频文件的公网 HTTP URL 列表。
         language_hints: 语言提示列表（如 zh、en）；None 表示不指定。
+        diarization_enabled: 自动说话人分离（批次④）；仅单声道音频支持，
+            建议音频 ≤2h。None 表示不传（服务端默认关闭）。
+        speaker_count: 说话人数量参考值（2~100），仅在 diarization_enabled
+            时生效；None = 自动判断（只是辅助，不保证精确人数）。
 
     Returns:
         DashScope 提交响应对象，task_id 经 output.task_id 获取。
@@ -68,6 +74,10 @@ def submit_transcription(
     }
     if language_hints:
         call_kwargs["language_hints"] = language_hints
+    if diarization_enabled is not None:
+        call_kwargs["diarization_enabled"] = diarization_enabled
+    if speaker_count is not None:
+        call_kwargs["speaker_count"] = speaker_count
 
     task_response = Transcription.async_call(**call_kwargs)
 
@@ -181,11 +191,16 @@ def extract_segments(output_dict: dict[str, Any]) -> list[dict]:
                 sent_dict = _as_dict(sent)
                 text = sent_dict.get("text", "").strip()
                 if text:
-                    segments.append({
+                    seg: dict = {
                         "text": text,
                         "start": sent_dict.get("begin_time", 0) / 1000.0,
                         "end": sent_dict.get("end_time", 0) / 1000.0,
-                    })
+                    }
+                    # 说话人分离（diarization_enabled=true）时服务端返回
+                    # speaker_id（0 起始整数）；未开启时字段不出现，不写键。
+                    if sent_dict.get("speaker_id") is not None:
+                        seg["speaker_id"] = sent_dict["speaker_id"]
+                    segments.append(seg)
         else:
             text = item_dict.get("transcription", "").strip()
             if text:

@@ -2,6 +2,7 @@
 
 路由前缀 /api/v1/spaces/{space_id}/knowledge-bases（另含空间级扁平路由）。
 """
+import asyncio
 import mimetypes
 import os
 from pathlib import Path as FilePath
@@ -29,6 +30,7 @@ from novamind.features.knowledge_space.exceptions import (
     ChunkUploadSessionError,
     DocumentInvalidTypeError,
     DocumentNotFoundError,
+    DocumentProcessingError,
     DocumentSizeExceededError,
     KnowledgeBaseNotFoundError,
     SpaceAccessDeniedError,
@@ -890,6 +892,82 @@ async def get_document_image(
         headers={
             "Content-Disposition": f'inline; filename="{encoded_filename}"',
             "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/audio/clip",
+    summary="获取音频/视频片段",
+    description=(
+        "按秒级时间区间从音频/视频原件切片返回 mp3 片段（批次④ chunk 区间回跳"
+        "播放）。鉴权与图片代理端点一致；区间非法/源文件缺失返回 400/404。"
+    ),
+)
+async def get_audio_clip(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    start: Annotated[float, Query(ge=0, description="片段起点（秒）")],
+    end: Annotated[float, Query(gt=0, le=3600, description="片段终点（秒）")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """按时间区间切片音频/视频原件（chunk 回跳播放的数据源）"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    chunk_type = (document.file_type or "").lower()
+    if chunk_type not in ("mp3", "wav", "flac", "aac", "ogg", "m4a",
+                          "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv"):
+        raise DocumentProcessingError(
+            document_id=document_id,
+            error_message="音频片段端点仅支持音频/视频文档",
+        )
+
+    from novamind.engines.document.media.audio import (
+        AudioClipExtractionError,
+        extract_audio_clip,
+    )
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    # 原件流式落盘（8MB 分块写盘，内存与文件大小解耦；视频原件可达 GB 级）
+    minio_client = await ClientFactory.get_minio_client()
+    storage_info = document.get_storage_info()
+    object_name = storage_info.get("minio_object_name", "")
+    if not object_name:
+        raise DocumentNotFoundError(document_id)
+    import asyncio
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(
+        suffix=f".{document.file_type}", delete=False
+    ) as tmp:
+        source_path = tmp.name
+    try:
+        await minio_client.download_document_to_file(
+            minio_client.default_bucket, object_name, source_path
+        )
+        clip = await asyncio.to_thread(
+            extract_audio_clip, source_path, float(start), float(end)
+        )
+    except AudioClipExtractionError as exc:
+        raise DocumentProcessingError(
+            document_id=document_id, error_message=f"音频片段提取失败: {exc}"
+        ) from exc
+    finally:
+        FilePath(source_path).unlink(missing_ok=True)
+
+    return Response(
+        content=clip,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "private, max-age=86400",
+            "Content-Disposition": f'inline; filename="clip_{document_id}_{start:.1f}-{end:.1f}.mp3"',
         },
     )
 

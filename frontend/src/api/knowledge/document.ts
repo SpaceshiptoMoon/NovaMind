@@ -216,4 +216,19 @@ export const documentApi = {
       { params: { chunk_id: chunkId } },
     )
   },
+
+  /** 获取音频/视频片段 Blob URL（批次④ chunk 区间回跳播放，带认证） */
+  async getAudioClipBlobUrl(
+    spaceId: number,
+    kbId: number,
+    docId: number,
+    start: number,
+    end: number,
+  ): Promise<string> {
+    const response = await instance.get(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/audio/clip`,
+      { params: { start, end }, responseType: 'blob' },
+    )
+    return window.URL.createObjectURL(response.data as Blob)
+  },
 }

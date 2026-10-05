@@ -1,6 +1,7 @@
 """音视频文档处理管道：视频走关键帧提取加 VLM 逐帧描述，音频走 ASR 转写，之后统一文本切分、embedding 与 ES 入库。"""
 
 import asyncio
+import re
 from typing import Any
 
 from novamind.engines.document.media.audio import (
@@ -79,6 +80,10 @@ _VLM_QUOTA_OR_AUTH_MARKERS = (
     "authentication",
     "permission denied",
 )
+
+# 转写锚点行前缀匹配：「[HH:MM:SS#idx]（可选说话人标签）正文」——
+# 清洗/切分共用（批次②③）。
+_ANCHOR_LINE_RE = re.compile(r"^(\[\d{2}:\d{2}:\d{2}#\d+\])")
 
 
 def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
@@ -230,6 +235,8 @@ async def _run_asr_transcription(
     engine_audio_config: AudioConfig,
     document: Document,
     hotwords: list[str] | None = None,
+    diarization_enabled: bool | None = None,
+    speaker_count: int | None = None,
 ) -> list:
     """按协议分发执行一次 ASR 转写（不含本地锁/失败语义——归调用方）。
 
@@ -238,8 +245,15 @@ async def _run_asr_transcription(
 
     热词仅本地协议生效；云端协议显式告警忽略（DashScope 录音文件识别仅支持
     控制台预注册 phrase_id，OpenAI 协议无热词参数）——不静默丢弃，行为可追踪。
+    说话人分离仅 DashScope 协议生效（批次④）；本地协议告警忽略（需 pyannote
+    额外模型，未实施）。
     """
     if protocol == "local":
+        if diarization_enabled:
+            logger.warning(
+                "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），忽略 diarization 配置",
+                document_id=document.id,
+            )
         return await transcribe_audio_local(
             file_content=file_content,
             file_type=file_type,
@@ -266,6 +280,8 @@ async def _run_asr_transcription(
             base_url=base_url,
             minio_bucket=storage_info.get("minio_bucket"),
             language_hints=language_hints,
+            diarization_enabled=diarization_enabled,
+            speaker_count=speaker_count,
             minio_client=minio_client,
         )
     if hotwords:
@@ -281,6 +297,87 @@ async def _run_asr_transcription(
         base_url=base_url,
         language=language,
     )
+
+
+def _split_anchor_line(line: str) -> tuple[str, str] | None:
+    """拆分「[锚点] 文本」行为 (锚点前缀, 正文)；无锚点返回 None。"""
+    m = _ANCHOR_LINE_RE.match(line)
+    if not m:
+        return None
+    return m.group(1), line[m.end():].lstrip()
+
+
+async def clean_transcript_lines(
+    transcript_lines: list[str],
+    llm_client,
+    logger,
+    *,
+    batch_size: int = 30,
+    document_id: int | None = None,
+) -> tuple[list[str], dict[str, int]]:
+    """LLM 逐批清洗转写行（批次②双产物的 clean 侧）。
+
+    行一一对应是硬契约（清洗产物按行号与 raw 锚点对齐）：每批 LLM 输出行数
+    与输入不一致 → 该批整体降级用 raw（失败方向安全——宁可不清洗，不丢内容/
+    不错位）。单批失败同样降级，文档不失败。
+
+    Args:
+        transcript_lines: raw 锚点行（``[HH:MM:SS#idx] text``）。
+        llm_client: LLM 客户端（generate_text(prompt=messages, ...)）。
+        logger: 日志记录器。
+        batch_size: 每批送 LLM 的行数（转写行较短，30 行/批在上下文与
+            请求数之间取平衡）。
+        document_id: 日志上下文。
+
+    Returns:
+        (清洗后行列表——与输入等长，metrics)；
+        metrics 键：clean_batches_total/clean_batches_failed/clean_lines_degraded。
+    """
+    from novamind.shared.prompts.templates import PromptManager
+
+    metrics = {"clean_batches_total": 0, "clean_batches_failed": 0, "clean_lines_degraded": 0}
+    if not transcript_lines or llm_client is None:
+        return list(transcript_lines), metrics
+
+    prompt_tpl = PromptManager.get_template("audio_transcript_clean")
+    cleaned: list[str] = []
+    for start in range(0, len(transcript_lines), batch_size):
+        batch = transcript_lines[start : start + batch_size]
+        metrics["clean_batches_total"] += 1
+        try:
+            response = await llm_client.generate_text(
+                prompt=[{
+                    "role": "user",
+                    "content": f"{prompt_tpl}\n\n--- 转写行 ---\n" + "\n".join(batch),
+                }],
+                max_tokens=4096,
+                temperature=0.1,
+            )
+            out_lines = [
+                ln for ln in (response or "").splitlines() if ln.strip()
+            ]
+        except Exception as exc:
+            logger.warning(
+                "转写清洗 LLM 调用失败，该批降级用 raw",
+                document_id=document_id,
+                batch=start // batch_size + 1, error=str(exc),
+            )
+            out_lines = []
+        # 行数校验（对齐契约）：不一致 → 该批整体降级
+        if len(out_lines) != len(batch):
+            if out_lines:
+                logger.warning(
+                    "转写清洗输出行数不一致（in=%d out=%d），该批降级用 raw",
+                    document_id=document_id,
+                    batch=start // batch_size + 1,
+                    in_lines=len(batch), out_lines=len(out_lines),
+                )
+            metrics["clean_batches_failed"] += 1
+            metrics["clean_lines_degraded"] += len(batch)
+            cleaned.extend(batch)
+            continue
+        cleaned.extend(ln.strip() for ln in out_lines)
+    return cleaned, metrics
 
 
 async def _transcribe_video_audio(
@@ -583,8 +680,38 @@ async def _audio_resume_tail(
 ) -> None:
     """音频解析快照命中后的续跑尾：persist → 切分/向量化/问题生成/索引 → 完成。"""
     resumed_time_alignment = restore_time_alignment(snap.get("time_alignment"))
+    # 批次②④：质量元数据聚合数据源。快照不存 segments 原始列表（体积考虑），
+    # resume 时无法重聚合——聚合 meta 已在切分快照（chunks.json）里，这里不重复。
+    resumed_time_alignment.pop("audio_segments", None)
 
     await persist_parsed_text(document, full_text, session, logger)
+
+    # 批次②双产物 resume：快照带 clean_text 时重建 clean MinIO 产物并作为
+    # 入库文本；快照无 clean_text = 当时未启用清洗，raw 入库（语义一致）。
+    clean_text = str(snap.get("clean_text") or "")
+    if clean_text.strip():
+        from novamind.shared.storage.client_factory import ClientFactory as _CFR
+
+        try:
+            clean_minio = await _CFR.get_minio_client()
+            clean_object = (
+                f"{(document.storage or {}).get('minio_object_name', '')}"
+                f"_parsed/clean_text.md"
+            )
+            await clean_minio.upload_file(
+                clean_object,
+                clean_text.encode("utf-8-sig"),
+                "text/markdown; charset=utf-8",
+            )
+            document.storage = {
+                **(document.storage or {}),
+                "clean_text_object": clean_object,
+            }
+        except Exception as up_exc:
+            logger.warning(
+                "resume 重建 clean 产物失败（入库仍用 clean 文本）",
+                document_id=document.id, error=str(up_exc),
+            )
 
     tail_result = await run_post_parse_tail(
         document=document,
@@ -596,7 +723,7 @@ async def _audio_resume_tail(
         embedding_config=ctx.embedding_config,
         pipeline_config=pipeline_config,
         splitting_config=splitting_config,
-        full_text=full_text,
+        full_text=clean_text if clean_text.strip() else full_text,
         time_alignment=resumed_time_alignment,
         parse_fingerprint=parse_fingerprint,
         user_id=document.uploader_id,
@@ -1353,6 +1480,8 @@ def _audio_asr_fingerprint_params(
     model: str,
     engine_audio_config: AudioConfig,
     hotwords: list[str] | None,
+    diarization_enabled: bool = False,
+    speaker_count: int | None = None,
 ) -> dict[str, Any]:
     """音频 ASR 快照指纹的引擎参数块（命中检查与保存侧共用的单一事实源）。
 
@@ -1373,6 +1502,8 @@ def _audio_asr_fingerprint_params(
         "beam_size": getattr(engine_audio_config, "local_whisper_beam_size", None),
         "vad_enabled": getattr(engine_audio_config, "local_whisper_vad_enabled", True),
         "hotwords": sorted(hotwords or []),
+        "diarization_enabled": diarization_enabled,
+        "speaker_count": speaker_count,
     }
 
 
@@ -1410,6 +1541,9 @@ async def process_audio_document(
     language = audio_config.get("language")
     # ASR 热词：仅本地协议生效（云端协议在 _run_asr_transcription 内告警忽略）
     asr_hotwords: list[str] | None = audio_config.get("hotwords") or None
+    # 说话人分离（批次④）：仅 DashScope 协议生效；本地协议告警忽略。
+    asr_diarization = bool(audio_config.get("diarization_enabled"))
+    asr_speaker_count = audio_config.get("speaker_count")
 
     # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 构造 AudioConfig
     # 注入本地 faster-whisper 全量推理参数（档位/目录/设备/量化/束宽/VAD），
@@ -1436,7 +1570,8 @@ async def process_audio_document(
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
-            asr_protocol, asr_model, engine_audio_config, asr_hotwords
+            asr_protocol, asr_model, engine_audio_config, asr_hotwords,
+            diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
         )
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
@@ -1478,6 +1613,7 @@ async def process_audio_document(
         api_key: str | None,
         base_url: str | None,
     ) -> list:
+        """以本流程解析出的凭证与质量参数（热词/说话人分离）执行一次转写。"""
         return await _run_asr_transcription(
             file_content=file_content,
             file_type=document.file_type,
@@ -1489,6 +1625,8 @@ async def process_audio_document(
             engine_audio_config=engine_audio_config,
             document=document,
             hotwords=asr_hotwords,
+            diarization_enabled=asr_diarization,
+            speaker_count=asr_speaker_count,
         )
 
     if task:
@@ -1576,11 +1714,21 @@ async def process_audio_document(
     # 转写全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     # 双锚点 [HH:MM:SS#seg_idx]：seg_idx 用 enumerate 原始 segments 顺序（跳过空文本仍占原序号，
     # 保持 anchor #idx 与 segment_timeline_map 键一致），切分后反查映射回 segment 时间区间。
+    # 说话人标签（批次④，DashScope diarization 提供）：行内追加 [说话人N]，
+    # 锚点剥离时一并从检索文本剥掉（人可读，不进 embedding）。
     transcript_lines = []
+    transcript_line_by_seg: dict[int, str] = {}
     for seg_idx, seg in enumerate(segments):
         if not seg.get("text", "").strip():
             continue
-        transcript_lines.append(f"{format_time_anchor(seg.get('start', 0), seg_idx)} {seg['text']}")
+        speaker_tag = (
+            f" [说话人{seg['speaker_id']}]" if seg.get("speaker_id") is not None else ""
+        )
+        line = (
+            f"{format_time_anchor(seg.get('start', 0), seg_idx)}{speaker_tag} {seg['text']}"
+        )
+        transcript_lines.append(line)
+        transcript_line_by_seg[seg_idx] = line
     segment_timeline_map = build_segment_timeline_map(segments)
     if not transcript_lines:
         logger.warning(
@@ -1603,14 +1751,85 @@ async def process_audio_document(
     full_text = "\n".join(transcript_lines)
     await persist_parsed_text(document, full_text, session, logger)
 
+    # ===== 批次②双产物：LLM 清洗（可选开关）→ clean 全文持久化 =====
+    # raw 全文已落 MinIO（persist_parsed_text）；clean_enabled 开启时逐批清洗，
+    # 失败逐批降级 raw（失败方向安全）。clean 配置进指纹（clean_fingerprint_params），
+    # 开关/模型变化 → 指纹变化 → RETRY 重新清洗。
+    clean_metrics: dict[str, int] = {}
+    clean_enabled = bool(audio_config.get("clean_enabled"))
+    clean_full_text = ""
+    if clean_enabled:
+        clean_llm_model = str(audio_config.get("clean_llm_model") or "")
+        try:
+            if not clean_llm_model:
+                clean_llm_model = await mcs.get_user_default_model_name(
+                    document.uploader_id, "llm"
+                ) or ""
+            clean_llm = (
+                await mcs.get_llm_client_by_model(document.uploader_id, clean_llm_model)
+                if clean_llm_model else None
+            )
+        except Exception as llm_exc:
+            logger.warning(
+                "清洗 LLM 客户端获取失败，本次跳过清洗（raw 入库）",
+                document_id=document.id, model=clean_llm_model, error=str(llm_exc),
+            )
+            clean_llm = None
+        if clean_llm is not None:
+            cleaned_lines, clean_metrics = await clean_transcript_lines(
+                transcript_lines, clean_llm, logger, document_id=document.id,
+            )
+            clean_full_text = "\n".join(cleaned_lines)
+            if clean_full_text.strip() and clean_full_text != full_text:
+                from novamind.engines.document.media.audio import (
+                    upload_parsed_text_to_minio,
+                )
+                from novamind.shared.storage.client_factory import ClientFactory as _CFC
+
+                try:
+                    clean_minio = await _CFC.get_minio_client()
+                    clean_object = (
+                        f"{(document.storage or {}).get('minio_object_name', '')}"
+                        f"_parsed/clean_text.md"
+                    )
+                    await clean_minio.upload_file(
+                        clean_object,
+                        clean_full_text.encode("utf-8-sig"),
+                        "text/markdown; charset=utf-8",
+                    )
+                    document.storage = {
+                        **(document.storage or {}),
+                        "clean_text_object": clean_object,
+                    }
+                    logger.info(
+                        "清洗全文已上传 MinIO", document_id=document.id,
+                        object_name=clean_object, size_chars=len(clean_full_text),
+                    )
+                except Exception as up_exc:
+                    logger.warning(
+                        "清洗全文上传 MinIO 失败（raw 不受影响）",
+                        document_id=document.id, error=str(up_exc),
+                    )
+            else:
+                logger.info(
+                    "清洗产物与 raw 一致或为空，跳过 clean 产物写入",
+                    document_id=document.id,
+                )
+
     # 断点续跑：计算解析指纹 + 保存带 time_alignment 的解析快照（resume 时免重跑 ASR）。
+    # clean 配置进指纹：开关/模型变化 → 指纹变化 → RETRY 重新清洗并重建产物。
     audio_parse_fp = ""
     if SNAPSHOTS_ENABLED:
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
-            asr_protocol, asr_model, engine_audio_config, asr_hotwords
+            asr_protocol, asr_model, engine_audio_config, asr_hotwords,
+            diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
         )
+        audio_runtime_parsing["asr_clean"] = {
+            "clean_enabled": clean_enabled,
+            "clean_llm_model": str(audio_config.get("clean_llm_model") or ""),
+        }
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
         except Exception as fp_exc:
@@ -1630,16 +1849,49 @@ async def process_audio_document(
                         parse_metadata=None,
                         time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
                         duration_seconds=_probe_audio_duration(segments),
+                        clean_text=clean_full_text or None,
                     ),
                 )
             except Exception as snap_exc:
                 logger.warning("音频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     if task:
-        await finish_step_committed(session, task, "transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
+        await finish_step_committed(
+            session, task, "transcription_done",
+            metrics={
+                "segment_count": len(segments), "asr_protocol": asr_protocol,
+                "language": language, **clean_metrics,
+            },
+        )
 
     # 2-4. 切分/向量化/问题生成/索引：交由共享后置尾
+    # 入库文本取 clean（双产物语义：clean 检索、raw 溯源）；clean 缺失/失败
+    # 降级 raw——切分输入行数与 timeline 一致由清洗的行数契约保证。
+    # time_alignment 附带 audio_segments（批次②④质量元数据聚合的数据源）。
+    # split_mode=pause_topic（批次③）：segment 停顿边界聚组产出 prechunked
+    # items 走 structural 切分路径（边界永不落 segment 中间）；None/recursive
+    # 维持通用切分（line_aware 锚点行累积）。
+    indexing_text = clean_full_text if clean_full_text.strip() else full_text
     splitting_config = dict(pipeline_config.get("splitting", {}))
+    pause_gap = audio_config.get("pause_gap_seconds")
+    prechunked_items = None
+    if audio_config.get("split_mode") == "pause_topic":
+        from novamind.engines.document.media.audio import group_transcript_segments
+
+        groups = group_transcript_segments(
+            segments,
+            target_chunk_size=int(splitting_config.get("chunk_size") or 800),
+            pause_gap_seconds=float(pause_gap) if pause_gap is not None else 0.8,
+        )
+        # 组直接映射到锚点行（transcript_line_by_seg：seg_idx → 行文本，跳空段）：
+        # 组内每行带原锚点（切分后 align_chunk_times 反查时间），行间 \n 连接。
+        prechunked_items = [
+            ("\n".join(transcript_line_by_seg[i] for i in group), {}) for group in groups
+        ]
+        logger.info(
+            "音频停顿边界切分", document_id=document.id,
+            segments=len(segments), groups=len(groups),
+        )
     tail_result = await run_post_parse_tail(
         document=document,
         session=session,
@@ -1650,8 +1902,13 @@ async def process_audio_document(
         embedding_config=ctx.embedding_config,
         pipeline_config=pipeline_config,
         splitting_config=splitting_config,
-        full_text=full_text,
-        time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
+        full_text=indexing_text,
+        prechunked_items=prechunked_items,
+        time_alignment={
+            "timeline_map": segment_timeline_map,
+            "is_video": False,
+            "audio_segments": segments,
+        },
         parse_fingerprint=audio_parse_fp or None,
         user_id=document.uploader_id,
     )
@@ -1663,6 +1920,7 @@ async def process_audio_document(
             "chunk_type": ChunkType.AUDIO,
             "segment_count": len(segments),
             "indexed_at": now_china().isoformat(),
+            **({"cleaned": True} if clean_full_text.strip() else {}),
         }
         audio_duration = _probe_audio_duration(segments)
         if audio_duration:

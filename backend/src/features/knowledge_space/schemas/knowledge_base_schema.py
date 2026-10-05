@@ -279,6 +279,27 @@ class AudioParsingConfig(BaseModel):
     # 仅支持控制台预注册的 phrase_id），传入时告警忽略。上限 100 条防解码
     # prompt 膨胀拖慢转写。
     hotwords: list[str] | None = Field(default=None, max_length=100)
+    # LLM 清洗开关（批次②双产物）：开启后用 LLM 逐批清洗转写文本（去口水词/
+    # 口语句面化），clean 产物入库检索，raw 原样存档可溯源。清洗失败逐批
+    # 降级用 raw（失败方向安全），文档不失败。
+    clean_enabled: bool = Field(default=False)
+    # 清洗所用 LLM 模型名（留空 = 用户默认 LLM）。
+    clean_llm_model: str | None = Field(default=None)
+    # 音频切分模式（批次③）：None/recursive = 通用切分（复用知识库顶层切分
+    # 配置）；"pause_topic" = 停顿边界优先切分（ASR segment 间隙强边界 +
+    # 目标尺寸合并，忽略顶层 chunk_size 之外的切分参数）。
+    split_mode: str | None = Field(default=None)
+    # 停顿边界阈值（秒，仅 split_mode=pause_topic 生效）：相邻 segment 间隙
+    # 超过该值视为话题切换点，强制切分边界。默认 0.8s（对应说话人自然换气/
+    # 换话题的停顿时长量级）。
+    pause_gap_seconds: float | None = Field(default=None, ge=0.0, le=10.0)
+    # 说话人分离（批次④，仅 DashScope 协议生效）：开启后每个 segment 带
+    # speaker_id 标签（写入 transcript 行与 chunk metadata.speaker_id）。
+    # 本地 faster-whisper 协议暂不支持（需 pyannote 额外模型），配置后告警忽略。
+    diarization_enabled: bool = Field(default=False)
+    # 说话人数量参考值（2~100，仅 diarization_enabled 时生效；None = 自动判断，
+    # 仅辅助算法不保证精确人数）。
+    speaker_count: int | None = Field(default=None, ge=2, le=100)
 
 
 class ParsingConfig(BaseModel):

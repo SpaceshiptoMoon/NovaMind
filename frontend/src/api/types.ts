@@ -422,6 +422,18 @@ export interface AudioParsingConfig {
   language?: string
   /** ASR 热词（领域词表，如产品名/人名/术语；仅本地协议生效，上限 100） */
   hotwords?: string[]
+  /** LLM 清洗开关（双产物：clean 入库检索、raw 溯源；失败逐批降级 raw） */
+  clean_enabled?: boolean
+  /** 清洗 LLM 模型名（留空 = 用户默认 LLM） */
+  clean_llm_model?: string
+  /** 切分模式：留空 = 通用切分；'pause_topic' = 停顿边界优先切分 */
+  split_mode?: string
+  /** 停顿边界阈值（秒，仅 split_mode=pause_topic；默认 0.8） */
+  pause_gap_seconds?: number
+  /** 说话人分离（仅 DashScope 协议生效；本地协议告警忽略） */
+  diarization_enabled?: boolean
+  /** 说话人数量参考值（2~100，仅 diarization_enabled 时生效） */
+  speaker_count?: number
 }
 
 export type PdfParserName = 'full' | 'plain'

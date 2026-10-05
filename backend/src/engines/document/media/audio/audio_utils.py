@@ -568,6 +568,7 @@ async def transcribe_audio_local(
         loop = asyncio.get_running_loop()
 
         def _invoke_subprocess(lang: str | None):
+            """以当前引擎参数向子进程提交一次转写（首次与 zh 重试共用）。"""
             return loop.run_in_executor(
                 _asr_executor,
                 _transcribe_in_subprocess,
@@ -779,6 +780,8 @@ async def transcribe_audio_with_dashscope(
     base_url: str | None = None,
     minio_bucket: str | None = None,
     language_hints: list[str] | None = None,
+    diarization_enabled: bool | None = None,
+    speaker_count: int | None = None,
     *,
     minio_client,
 ) -> list[dict]:
@@ -795,11 +798,14 @@ async def transcribe_audio_with_dashscope(
         base_url: DashScope/百炼 平台 API 地址，不传则使用 SDK 默认
         minio_bucket: MinIO 桶名，用于上传临时文件生成预签名 URL
         language_hints: 语言提示列表，如 ['zh', 'en']，仅 paraformer-v2 支持
+        diarization_enabled: 说话人分离（批次④）；仅单声道音频支持，建议 ≤2h。
+            None = 不传（服务端默认关闭）。开启后 segment 带 speaker_id。
+        speaker_count: 说话人数量参考值（2~100），仅 diarization_enabled 时生效。
         minio_client: MinIO 客户端（关键字注入，批次 6a-5 切断对
             ``shared.clients.ClientFactory`` 的惰性 import；调用方负责经宿主装配获取）
 
     Returns:
-        [{"text": "...", "start": 0.0, "end": 5.2}, ...]
+        [{"text": "...", "start": 0.0, "end": 5.2, ("speaker_id": 0), ...}]
     """
     import uuid
 
@@ -845,7 +851,8 @@ async def transcribe_audio_with_dashscope(
         # 轮询走 async 包装：to_thread 隔离 + 总超时，SDK wait 是同步 sleep 循环，
         # 直接调用会冻结整个 worker 事件循环（2026-09 链路审计 P0）。
         task_response = submit_transcription(
-            model=model, file_urls=[uploaded_url], language_hints=language_hints
+            model=model, file_urls=[uploaded_url], language_hints=language_hints,
+            diarization_enabled=diarization_enabled, speaker_count=speaker_count,
         )
         output_dict = await await_transcription_async(task_response.output.task_id)
         logger.info("DashScope 转写原始结果: %s", str(output_dict)[:2000])
@@ -863,3 +870,170 @@ async def transcribe_audio_with_dashscope(
                 logger.debug("已清理 MinIO 临时文件: %s", temp_object_name)
             except Exception as e:
                 logger.warning("清理 MinIO 临时文件失败: %s, error=%s", temp_object_name, str(e))
+
+
+# ========== 转写产物质量元数据（批次②：置信度贯穿 chunk metadata） ==========
+
+
+def sigmoid_confidence(avg_logprob: float | None) -> float | None:
+    """把 ASR segment 的 avg_logprob（对数域，负值）映射为 0~1 置信度。
+
+    语言无关的通用判据：log-probability 经 sigmoid 归一，-1.0（幻觉过滤阈值）
+    映射到约 0.27，-0.3（高置信）映射到约 0.57——单调保持相对高低关系，
+    绝对值只作排序/过滤参考，不作绝对准确率解读。
+
+    Args:
+        avg_logprob: segment 平均对数概率（None/缺失返回 None）。
+
+    Returns:
+        0~1 置信度（round 3 位）；入参无效返回 None。
+    """
+    if avg_logprob is None:
+        return None
+    import math
+
+    try:
+        return round(1.0 / (1.0 + math.exp(-float(avg_logprob))), 3)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def merge_segment_meta(
+    segments: list[dict],
+    seg_idx: int,
+    meta: dict | None,
+) -> dict:
+    """把单个 segment 的质量元数据合并进 chunk 元数据聚合（就地更新）。
+
+    当前聚合：confidence（sigmoid(avg_logprob) 均值）、speaker_id（去重排序的
+    说话人标签列表，来自批次④ DashScope diarization）。
+
+    Args:
+        segments: ASR segment 列表（元素可含 avg_logprob/speaker_id）。
+        seg_idx: 本 chunk 覆盖的 segment 在原列表中的序号。
+        meta: chunk 级聚合元数据 dict（None 时新建）。
+    """
+    meta = meta if meta is not None else {}
+    if seg_idx >= len(segments):
+        return meta
+    seg = segments[seg_idx]
+    conf = sigmoid_confidence(seg.get("avg_logprob"))
+    if conf is not None:
+        running = meta.get("_confidence_sum")
+        if running is None:
+            meta["_confidence_sum"] = conf
+            meta["_confidence_n"] = 1
+        else:
+            meta["_confidence_sum"] = running + conf
+            meta["_confidence_n"] = int(meta.get("_confidence_n") or 0) + 1
+    speaker = seg.get("speaker_id")
+    if speaker is not None:
+        speakers = list(meta.get("_speakers") or [])
+        if speaker not in speakers:
+            speakers.append(speaker)
+            meta["_speakers"] = speakers
+    return meta
+
+
+def finalize_segment_meta(meta: dict | None) -> dict:
+    """把聚合中间值收敛为最终 metadata 键（confidence/speaker_id），清理内部键。
+
+    Args:
+        meta: 经 merge_segment_meta 累积的 chunk 元数据（None 时返回空 dict）。
+
+    Returns:
+        仅含对外键的 dict：confidence（无置信度数据时无此键）、
+        speaker_id（无说话人数据时无此键；多说话人用逗号串——ES keyword）。
+    """
+    out: dict = {}
+    meta = meta or {}
+    n = meta.get("_confidence_n") or 0
+    if n:
+        out["confidence"] = round(meta["_confidence_sum"] / n, 3)
+    speakers = meta.get("_speakers") or []
+    if speakers:
+        out["speaker_id"] = ",".join(str(s) for s in sorted(speakers))
+    return out
+
+
+# ========== 音频专用切分（批次③：停顿边界 + 目标尺寸合并） ==========
+
+
+def group_transcript_segments(
+    segments: list[dict],
+    *,
+    target_chunk_size: int = 800,
+    pause_gap_seconds: float = 0.8,
+) -> list[list[int]]:
+    """把 ASR segments 按停顿边界聚组（纯逻辑，批次③音频专用切分核心）。
+
+    第一性判据：
+      1. **停顿边界**：相邻 segment 间隙（next.start - prev.end）≥
+         pause_gap_seconds → 强制切组。说话人换气/换话题的自然停顿是语义
+         边界最可靠的物理信号，与语言/内容无关。
+      2. **目标尺寸合并**：边界之间不足 target_chunk_size 字符的相邻组
+         合并（避免碎片 chunk 进检索）；超过的单组不拆——segment 原子性
+         优先（单 segment 超 target 也整段成组，由上层 line_aware 切分兜底
+         防超长）。
+
+    Args:
+        segments: ASR segment 列表（元素含 text/start/end 秒）。
+        target_chunk_size: 组目标字符数（对应知识库 splitting.chunk_size）。
+        pause_gap_seconds: 停顿间隙阈值（秒）。
+
+    Returns:
+        segment 序号分组列表（每组为递增 idx 列表，覆盖 0..len(segments)-1
+        中的全部非空段；空文本段跳过不占组）。
+    """
+    # 非空段的 (idx, len) 有序表
+    usable = [
+        (i, len(str(seg.get("text") or "")))
+        for i, seg in enumerate(segments)
+        if str(seg.get("text") or "").strip()
+    ]
+    if not usable:
+        return []
+
+    # 第一遍：按停顿边界切粗组（边界是硬墙，尺寸合并不跨边界）
+    groups: list[list[int]] = []
+    current: list[int] = [usable[0][0]]
+    for pos in range(1, len(usable)):
+        prev_i = current[-1]
+        idx, chars = usable[pos]
+        prev_seg = segments[prev_i]
+        seg = segments[idx]
+        gap_ok = (
+            seg.get("start") is not None
+            and prev_seg.get("end") is not None
+            and (float(seg["start"]) - float(prev_seg["end"])) >= pause_gap_seconds
+        )
+        if gap_ok:
+            groups.append(current)
+            current = [idx]
+        else:
+            current.append(idx)
+    groups.append(current)
+
+    # 第二遍（边界内尺寸聚合）：每个停顿边界组内部按目标尺寸切分——
+    # 累积到 target_chunk_size 就封组（防单话题组超长）；边界组本身过小
+    # 不跨边界合并（停顿边界优先于尺寸——碎片略多优于话题错切）。
+    final: list[list[int]] = []
+    for group in groups:
+        current: list[int] = []
+        current_chars = 0
+        for idx in group:
+            chars = _group_chars(segments, [idx])
+            if current and current_chars + chars > target_chunk_size:
+                final.append(current)
+                current = []
+                current_chars = 0
+            current.append(idx)
+            current_chars += chars
+        if current:
+            final.append(current)
+    return final
+
+
+def _group_chars(segments: list[dict], idxs: list[int]) -> int:
+    """组内 segment 文本总字符数。"""
+    return sum(len(str(segments[i].get("text") or "")) for i in idxs)

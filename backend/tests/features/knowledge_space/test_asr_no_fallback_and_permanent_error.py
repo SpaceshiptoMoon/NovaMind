@@ -66,7 +66,10 @@ def test_audio_unconfigured_model_defaults_to_local(monkeypatch):
         lambda: SimpleNamespace(
             knowledge_base=SimpleNamespace(
                 parsing=SimpleNamespace(
-                    local_whisper_model_dir="", local_whisper_cpu_threads=1,
+                    local_whisper_model_dir="", local_whisper_model=None,
+                    local_whisper_cpu_threads=1, local_whisper_device=None,
+                    local_whisper_compute_type=None, local_whisper_beam_size=None,
+                    local_whisper_vad_enabled=True,
                 )
             )
         ),
@@ -127,7 +130,10 @@ def test_cloud_model_missing_credentials_still_raises_permanent(monkeypatch):
         lambda: SimpleNamespace(
             knowledge_base=SimpleNamespace(
                 parsing=SimpleNamespace(
-                    local_whisper_model_dir="", local_whisper_cpu_threads=1,
+                    local_whisper_model_dir="", local_whisper_model=None,
+                    local_whisper_cpu_threads=1, local_whisper_device=None,
+                    local_whisper_compute_type=None, local_whisper_beam_size=None,
+                    local_whisper_vad_enabled=True,
                 )
             )
         ),

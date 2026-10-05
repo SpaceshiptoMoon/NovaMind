@@ -114,9 +114,29 @@
                         -
                         {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
                       </span>
+                      <span
+                        v-if="(result.chunk_type === 'audio' || result.chunk_type === 'video') && (result.metadata as Record<string, unknown>)?.start_time != null"
+                        class="clip-play-link"
+                        role="button"
+                        @click.stop="playClip(result)"
+                      >
+                        ▶ 播放片段
+                      </span>
+                      <span
+                        v-if="(result.metadata as Record<string, unknown>)?.speaker_id"
+                        class="speaker-tag"
+                      >说话人 {{ (result.metadata as Record<string, unknown>).speaker_id }}</span>
                       <span>分块 #{{ result.chunk_index + 1 }}</span>
                     </template>
                   </div>
+                  <audio
+                    v-if="playingClipKey === clipKeyOf(result)"
+                    :src="playingClipUrl ?? undefined"
+                    controls
+                    autoplay
+                    class="clip-audio"
+                    @ended="stopClip"
+                  ></audio>
                   <div v-if="result.questions?.length" class="result-questions">
                     <el-tag
                       v-for="q in result.questions.slice(0, 3)"
@@ -351,7 +371,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
-import { knowledgeBaseApi, searchApi } from '@/api/knowledge'
+import { knowledgeBaseApi, searchApi, documentApi } from '@/api/knowledge'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -389,6 +409,47 @@ function openWikiResult(result: SearchResultItem) {
     path: `/home/spaces/${spaceId.value}/knowledge-bases/${result.kb_id}/wiki`,
     query: { page: slug },
   })
+}
+
+// ===== 批次④：chunk 区间回跳播放（音频片段服务端切片） =====
+const playingClipKey = ref<string | null>(null)
+const playingClipUrl = ref<string | null>(null)
+
+function clipKeyOf(result: SearchResultItem): string {
+  return `${result.document_id}:${(result.metadata as Record<string, unknown>)?.start_time}`
+}
+
+async function playClip(result: SearchResultItem) {
+  const meta = result.metadata as Record<string, unknown> | undefined
+  if (!meta || meta.start_time == null) return
+  const key = clipKeyOf(result)
+  // 已在播放同一段 → 再次点击停止
+  if (playingClipKey.value === key) {
+    stopClip()
+    return
+  }
+  const start = Number(meta.start_time)
+  const end = Number(meta.end_time ?? start + 30)
+  try {
+    const url = await documentApi.getAudioClipBlobUrl(
+      spaceId.value,
+      result.kb_id,
+      result.document_id,
+      start,
+      end,
+    )
+    if (playingClipUrl.value) window.URL.revokeObjectURL(playingClipUrl.value)
+    playingClipUrl.value = url
+    playingClipKey.value = key
+  } catch {
+    ElMessage.error('音频片段获取失败')
+  }
+}
+
+function stopClip() {
+  if (playingClipUrl.value) window.URL.revokeObjectURL(playingClipUrl.value)
+  playingClipUrl.value = null
+  playingClipKey.value = null
 }
 
 const searching = ref(false)
@@ -947,10 +1008,35 @@ onMounted(() => {
 
 .result-footer {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-1);
   font-size: 11px;
   color: var(--color-text-faint);
+}
+
+.clip-play-link {
+  color: var(--color-primary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.clip-play-link:hover {
+  text-decoration: underline;
+}
+
+.speaker-tag {
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.clip-audio {
+  width: 100%;
+  margin-top: var(--space-2);
+  height: 36px;
 }
 
 .result-questions {

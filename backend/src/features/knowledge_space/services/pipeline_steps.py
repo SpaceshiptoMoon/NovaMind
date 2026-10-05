@@ -254,6 +254,12 @@ def build_es_chunks(
             if chunk_type != ChunkType.IMAGE:
                 chunk_meta["start_time"] = meta.get("start_time")
                 chunk_meta["end_time"] = meta.get("end_time")
+            # ASR 质量元数据（批次②④，聚合在 1.4 步完成）：置信度 0~1 +
+            # 说话人标签串（如 "0,1"）。无数据不写键，保持 None 语义。
+            if meta.get("confidence") is not None:
+                chunk_meta["confidence"] = float(meta["confidence"])
+            if meta.get("speaker_id"):
+                chunk_meta["speaker_id"] = str(meta["speaker_id"])
             if frame_paths and "frame_indices" in meta:
                 # dict.get(idx)：抽帧空洞或上传失败的 idx 自动跳过，不错位、不越界
                 chunk_meta["frame_paths"] = [
@@ -784,6 +790,27 @@ async def run_post_parse_tail(
         **({"resumed": True} if resumed_split else {}),
     })
     await check_document_cancelled(document.id)
+
+    # 1.4. 音频质量元数据聚合（批次②④，须在 align_chunk_times 剥离锚点前）：
+    # 按 chunk 文本里的锚点 idx 聚合 segment 置信度（sigmoid(avg_logprob) 均值）
+    # 与说话人标签，写进 per-chunk meta——build_es_chunks 原样透传进
+    # ES metadata.confidence/speaker_id；切分快照保存前完成，resume 免重聚合。
+    audio_segments = (time_alignment or {}).get("audio_segments")
+    if audio_segments and not resumed_split:
+        from novamind.engines.document.media.audio import (
+            finalize_segment_meta,
+            merge_segment_meta,
+        )
+        import re as _re
+
+        for text, meta in chunk_items:
+            idxs = [int(m) for m in _re.findall(r"#(\d+)", text)]
+            if not idxs:
+                continue
+            merged: dict = {}
+            for idx in idxs:
+                merged = merge_segment_meta(audio_segments, idx, merged)
+            meta.update(finalize_segment_meta(merged))
 
     # 1.5. 媒体时间对齐：切分后正则反查 [HH:MM:SS#idx] 锚点 → 填 start_time/end_time/frame_indices
     # + 剥离锚点得到纯描述 content（进 embedding）。仅音视频传 time_alignment；文本/图片 None 跳过。
