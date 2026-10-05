@@ -20,6 +20,8 @@ from novamind.shared.ai_models.base_model import (
     build_openai_http_client,
 )
 from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
+from novamind.shared.ai_models.errors import translate_provider_error
+from novamind.shared.ai_models.llm.quirks import LLMQuirks, is_stream_only_error, resolve_quirks
 from novamind.shared.logging import get_logger
 from openai import AsyncOpenAI
 from tenacity import (
@@ -36,13 +38,10 @@ logger = get_logger(__name__)
 _THINKING_RESTRICTED_PATTERN = "enable_thinking"
 _THINKING_RESTRICTED_HINT = "restricted to "
 
-# thinking 模式的默认思考预算系数：thinking_budget = max_tokens * 系数。
-# 依据（2026-10-05 实测 qwen3.8-2.4t-a95b）：thinking 模型的 reasoning 深度
-# 随文档信息密度暴涨（浅文本 400 字符、密集文本 8600+ 字符），reasoning 无界
-# 时会吃满输出预算导致 content 为空（completion_tokens 恰好撞满 max_tokens）。
-# 设 0.5：reasoning 与 content 各占一半预算，正文永远有输出空间；DashScope
-# 对 qwen3 系列支持 extra_body.thinking_budget，实测生效（reasoning 8200→206 字符）。
-_THINKING_BUDGET_RATIO = 0.5
+# thinking 模式的默认思考预算系数已迁至 quirks.LLMQuirks.thinking_budget_ratio
+#（依据 2026-10-05 实测 qwen3.8-2.4t-a95b：reasoning 无界时会吃满输出预算导致
+# content 为空；0.5 让正文永远有输出空间，DashScope 对 qwen3 系列实测生效）。
+# 本文件保留 reactive 自适应重试，作为声明层漏配时的运行时兜底。
 
 
 def _restricted_thinking_value(exc: BaseException) -> bool | None:
@@ -76,6 +75,10 @@ class OpenAICompatibleLLM(BaseLLM):
     支持文本生成和流式生成。
     """
 
+    # 类级兜底：测试常用 __new__ 绕过 __init__ 构造桩实例，实例属性缺失时
+    # 落到全默认怪癖（零行为差异）。
+    quirks: LLMQuirks = LLMQuirks()
+
     def __init__(
         self,
         api_key: str,
@@ -86,6 +89,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_concurrent: int = 10,
         default_system_prompt: str = "You are a helpful assistant.",
         prompt_cache_key: str | None = None,
+        quirks: LLMQuirks | None = None,
         **kwargs,
     ):
         """
@@ -105,6 +109,8 @@ class OpenAICompatibleLLM(BaseLLM):
                 命中；对不支持该字段的自建/第三方网关，多传字段通常被忽略，无害）。
                 构造链从用户模型配置 extra_config 读取：布尔 true → 按模型名生成
                 稳定键，字符串 → 字面量键（见 model_config_service）。
+            quirks: provider/model 怪癖声明；None 时按 base_url+model 自动解析
+                （resolve_quirks，未知模型落全默认，永不失败）。
         """
         super().__init__(
             api_key=api_key,
@@ -116,6 +122,7 @@ class OpenAICompatibleLLM(BaseLLM):
         )
         self.default_system_prompt = default_system_prompt
         self._prompt_cache_key = prompt_cache_key
+        self.quirks = quirks if quirks is not None else resolve_quirks(base_url, model_name)
 
         # OpenAI 客户端：禁用 SDK 内置重试，由 tenacity 统一管理重试。
         http_client = build_openai_http_client(
@@ -164,17 +171,24 @@ class OpenAICompatibleLLM(BaseLLM):
             return
         if "thinking_budget" in extra_body:
             return
-        extra_body["thinking_budget"] = max(int(max_tokens * _THINKING_BUDGET_RATIO), 16)
+        ratio = self.quirks.thinking_budget_ratio
+        extra_body["thinking_budget"] = max(int(max_tokens * ratio), 16)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(
-            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError)
-            + OPENAI_RETRY_EXCEPTIONS,
-        ),
-        reraise=True,
-    )
+    def _prepare_extra_body(self, extra_body: dict, max_tokens: int) -> None:
+        """请求发送前的 extra_body 统一整形收口：prompt_cache_key + thinking_budget。
+
+        所有请求方法（text/stream/structured/tools 系列）必须经此处收口，
+        禁止各自散调 _apply_prompt_cache_key/_apply_thinking_budget——
+        历史上 with_tools 系与 stream_structured 漏调 budget 导致同模型
+        不同调用路径行为不一致。
+
+        Args:
+            extra_body: 请求 extra_body dict，原地追加。
+            max_tokens: 本次请求的输出 token 上限。
+        """
+        self._apply_prompt_cache_key(extra_body)
+        self._apply_thinking_budget(extra_body, max_tokens)
+
     async def generate_text(
         self,
         prompt: str | list,
@@ -186,7 +200,50 @@ class OpenAICompatibleLLM(BaseLLM):
     ) -> str:
         """
         生成文本（带重试和并发控制）
+
+        stream-only 模型（quirks.stream_only，如 DashScope glm-4.5）在方法内部
+        改走流式聚合（LiteLLM should_fake_stream 先例）：返回契约不变，调用方无感。
         """
+        if self.quirks.stream_only:
+            chunks: list[str] = []
+            async for chunk in self.generate_text_stream(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                enable_thinking=enable_thinking,
+            ):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        return await self._generate_text_non_stream(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            response_format=response_format,
+            enable_thinking=enable_thinking,
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(
+            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError)
+            + OPENAI_RETRY_EXCEPTIONS,
+        ),
+        reraise=True,
+    )
+    async def _generate_text_non_stream(
+        self,
+        prompt: str | list,
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+        response_format: dict | None,
+        enable_thinking: bool,
+    ) -> str:
+        """非流式文本生成主体（tenacity 重试挂在此层，fake-stream 路径不经过）。"""
         async with self._get_semaphore():
             messages = self._build_messages(prompt)
             prompt_len = len(str(prompt)[:500])
@@ -201,8 +258,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if response_format:
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-            self._apply_prompt_cache_key(kwargs["extra_body"])
-            self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
+            self._prepare_extra_body(kwargs["extra_body"], max_tokens)
 
             logger.info(
                 "LLM 请求开始",
@@ -216,8 +272,10 @@ class OpenAICompatibleLLM(BaseLLM):
             try:
                 response = await self.client.chat.completions.create(**kwargs)
             except Exception as e:
-                # 服务商强制 enable_thinking 取值（qwen3.8 系列强制 True）：
-                # 按错误提示的值自适应重试一次，其余异常照常抛出。
+                # 双重兜底（quirks 声明漏了新 stream-only 模型时免于永久失败）：
+                # ① 服务商强制 enable_thinking 取值：按错误提示的值自适应重试一次
+                # ② stream-only 类 400：改走流式聚合重试一次
+                # 其余异常翻译为统一异常族后抛出。
                 forced = _restricted_thinking_value(e)
                 if forced is not None and forced is not enable_thinking:
                     logger.warning(
@@ -227,6 +285,21 @@ class OpenAICompatibleLLM(BaseLLM):
                     kwargs["extra_body"]["enable_thinking"] = forced
                     self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
                     response = await self.client.chat.completions.create(**kwargs)
+                elif is_stream_only_error(str(e)):
+                    logger.warning(
+                        "模型仅支持流式调用（未声明 stream_only），流式聚合重试",
+                        model=self.model,
+                    )
+                    chunks: list[str] = []
+                    async for chunk in self.generate_text_stream(
+                        prompt=prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        enable_thinking=enable_thinking,
+                    ):
+                        chunks.append(chunk)
+                    return "".join(chunks)
                 else:
                     elapsed = time.monotonic() - start_time
                     logger.warning(
@@ -237,7 +310,7 @@ class OpenAICompatibleLLM(BaseLLM):
                         elapsed_s=round(elapsed, 1),
                         timeout=self.timeout,
                     )
-                    raise
+                    raise translate_provider_error(e, model=self.model) from e
 
             elapsed = time.monotonic() - start_time
 
@@ -310,8 +383,7 @@ class OpenAICompatibleLLM(BaseLLM):
                     "stream": True,
                 }
                 create_kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-                self._apply_prompt_cache_key(create_kwargs["extra_body"])
-                self._apply_thinking_budget(create_kwargs["extra_body"], max_tokens)
+                self._prepare_extra_body(create_kwargs["extra_body"], max_tokens)
                 stream = await self.client.chat.completions.create(**create_kwargs)
             except Exception as e:
                 elapsed = time.monotonic() - start_time
@@ -322,7 +394,7 @@ class OpenAICompatibleLLM(BaseLLM):
                     error=str(e)[:200],
                     elapsed_s=round(elapsed, 1),
                 )
-                raise
+                raise translate_provider_error(e, model=self.model) from e
 
             async with stream:
                 async for chunk in stream:
@@ -375,8 +447,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if response_format:
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-            self._apply_prompt_cache_key(kwargs["extra_body"])
-            self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
+            self._prepare_extra_body(kwargs["extra_body"], max_tokens)
 
             start_time = time.monotonic()
             try:
@@ -384,7 +455,7 @@ class OpenAICompatibleLLM(BaseLLM):
             except Exception as e:
                 elapsed = time.monotonic() - start_time
                 logger.warning("LLM 请求失败", model=self.model, error=str(e)[:200], elapsed_s=round(elapsed, 1))
-                raise
+                raise translate_provider_error(e, model=self.model) from e
 
             msg = response.choices[0].message
             reasoning = getattr(msg, 'reasoning_content', None) or None
@@ -441,13 +512,13 @@ class OpenAICompatibleLLM(BaseLLM):
                 "stream": True,
                 "extra_body": {"enable_thinking": enable_thinking},
             }
-            self._apply_prompt_cache_key(create_kwargs["extra_body"])
+            self._prepare_extra_body(create_kwargs["extra_body"], max_tokens)
 
             try:
                 stream = await self.client.chat.completions.create(**create_kwargs)
             except Exception as e:
                 logger.warning("LLM 流式请求失败", model=self.model, error=str(e)[:200])
-                raise
+                raise translate_provider_error(e, model=self.model) from e
 
             has_reasoning = False
             has_content = False
@@ -518,9 +589,17 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-            self._apply_prompt_cache_key(kwargs["extra_body"])
+            self._prepare_extra_body(kwargs["extra_body"], max_tokens)
 
-            response = await self.client.chat.completions.create(**kwargs)
+            try:
+                response = await self.client.chat.completions.create(**kwargs)
+            except Exception as e:
+                logger.warning(
+                    "LLM 工具调用请求失败",
+                    model=self.model,
+                    error=str(e)[:200],
+                )
+                raise translate_provider_error(e, model=self.model) from e
 
             choice = response.choices[0]
 
@@ -592,9 +671,17 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-            self._apply_prompt_cache_key(kwargs["extra_body"])
+            self._prepare_extra_body(kwargs["extra_body"], max_tokens)
 
-            stream = await self.client.chat.completions.create(**kwargs)
+            try:
+                stream = await self.client.chat.completions.create(**kwargs)
+            except Exception as e:
+                logger.warning(
+                    "LLM 工具流式请求失败",
+                    model=self.model,
+                    error=str(e)[:200],
+                )
+                raise translate_provider_error(e, model=self.model) from e
 
             # 收集器：index -> {id, name, arguments}
             active_tool_calls: dict[int, dict] = {}

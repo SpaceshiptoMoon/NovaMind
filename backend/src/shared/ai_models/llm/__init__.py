@@ -11,6 +11,7 @@ from novamind.shared.ai_models.llm.openai_compatible_video import (
     OpenAICompatibleVideoLLM,
     VideoInputNotSupportedError,
 )
+from novamind.shared.ai_models.llm.quirks import LLMQuirks, resolve_quirks
 from novamind.shared.ai_models.llm.transformers_llm import TransformersLLM
 
 AnthropicLLM._FACTORY_PROTOCOL = "anthropic"
@@ -33,6 +34,7 @@ def create_llm_client(
     timeout: int = 60,
     max_retries: int = 3,
     max_concurrent: int = 10,
+    quirks: LLMQuirks | None = None,
     **kwargs,
 ) -> BaseLLM:
     """
@@ -46,6 +48,8 @@ def create_llm_client(
         timeout: 超时时间（秒）
         max_retries: 最大重试次数
         max_concurrent: 最大并发数
+        quirks: provider/model 怪癖声明；None 时 OpenAI 兼容客户端按
+            base_url+model 自动解析，其他协议客户端忽略。
         **kwargs: 协议特定的额外参数
 
     Returns:
@@ -62,6 +66,8 @@ def create_llm_client(
         "max_retries": max_retries,
         "max_concurrent": max_concurrent,
     }
+    if quirks is not None:
+        common_kwargs["quirks"] = quirks
 
     cls = _LLM_REGISTRY.get(protocol or "")
     if cls is None:
@@ -77,5 +83,7 @@ __all__ = [
     "AnthropicLLM",
     "OllamaLLM",
     "TransformersLLM",
+    "LLMQuirks",
+    "resolve_quirks",
     "create_llm_client",
 ]
