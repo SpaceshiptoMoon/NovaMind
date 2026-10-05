@@ -2321,6 +2321,19 @@
       "DocumentDetailResponse": {
         "description": "文档详情响应（包含分块）",
         "properties": {
+          "char_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析全文总字符数；未处理文档为 None",
+            "readOnly": true,
+            "title": "Char Count"
+          },
           "chunk_count": {
             "description": "从最新任务的 pipeline_result 提取分块数量（与 KB 统计同数据源）",
             "readOnly": true,
@@ -2380,6 +2393,32 @@
             "readOnly": true,
             "title": "Duration Seconds"
           },
+          "embedding_dim": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "embedding 向量维度；未配置或未处理文档为 None",
+            "readOnly": true,
+            "title": "Embedding Dim"
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "向量化使用的 embedding 模型名；未配置或未处理文档为 None",
+            "readOnly": true,
+            "title": "Embedding Model"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -2437,16 +2476,81 @@
             "title": "Id",
             "type": "integer"
           },
+          "image_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 内嵌图片数；非 DOCX 或未处理文档为 None（0 为真实值保留）",
+            "readOnly": true,
+            "title": "Image Count"
+          },
           "kb_id": {
             "description": "所属知识库ID",
             "title": "Kb Id",
             "type": "integer"
+          },
+          "outline_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF 书签大纲条数；无书签或非 PDF 为 None",
+            "readOnly": true,
+            "title": "Outline Count"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF 页数（full 模式解析产出）；非 PDF 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Page Count"
+          },
+          "parse_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析处理耗时（毫秒，任务 started_at 起算）；缺起点时为 None",
+            "readOnly": true,
+            "title": "Parse Duration Ms"
           },
           "retry_count": {
             "description": "重试次数，从最近一次 DocumentTask 读取",
             "readOnly": true,
             "title": "Retry Count",
             "type": "integer"
+          },
+          "section_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 段落数；非 DOCX 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Section Count"
           },
           "segment_count": {
             "anyOf": [
@@ -2472,8 +2576,21 @@
             "title": "Status",
             "type": "integer"
           },
+          "table_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 表格数；非 DOCX 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Table Count"
+          },
           "token_count": {
-            "description": "从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）",
+            "description": "空白词计数（管道写 total_tokens 键；旧键 token_count 兜底兼容）",
             "readOnly": true,
             "title": "Token Count",
             "type": "integer"
@@ -2516,6 +2633,15 @@
           "duration_seconds",
           "frame_count",
           "segment_count",
+          "page_count",
+          "outline_count",
+          "char_count",
+          "section_count",
+          "table_count",
+          "image_count",
+          "embedding_model",
+          "embedding_dim",
+          "parse_duration_ms",
           "has_active_task"
         ],
         "title": "DocumentDetailResponse",
@@ -2606,6 +2732,19 @@
       "DocumentResponse": {
         "description": "文档响应\n\n注意：status / error_message / retry_count 原为 Document 模型上的列，\n现已迁移至 DocumentTask。为保持向后兼容，这些字段改为 computed_field，\n从关联的 task 字段读取。若未预加载 task，则返回默认值。\nprocessing_started_at / processed_at 已移除，可通过 task.started_at / task.completed_at 获取。",
         "properties": {
+          "char_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析全文总字符数；未处理文档为 None",
+            "readOnly": true,
+            "title": "Char Count"
+          },
           "chunk_count": {
             "description": "从最新任务的 pipeline_result 提取分块数量（与 KB 统计同数据源）",
             "readOnly": true,
@@ -2656,6 +2795,32 @@
             "description": "媒体时长（秒），音视频任务完成后写入；文本或未处理文档为 None",
             "readOnly": true,
             "title": "Duration Seconds"
+          },
+          "embedding_dim": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "embedding 向量维度；未配置或未处理文档为 None",
+            "readOnly": true,
+            "title": "Embedding Dim"
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "向量化使用的 embedding 模型名；未配置或未处理文档为 None",
+            "readOnly": true,
+            "title": "Embedding Model"
           },
           "error_message": {
             "anyOf": [
@@ -2714,16 +2879,81 @@
             "title": "Id",
             "type": "integer"
           },
+          "image_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 内嵌图片数；非 DOCX 或未处理文档为 None（0 为真实值保留）",
+            "readOnly": true,
+            "title": "Image Count"
+          },
           "kb_id": {
             "description": "所属知识库ID",
             "title": "Kb Id",
             "type": "integer"
+          },
+          "outline_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF 书签大纲条数；无书签或非 PDF 为 None",
+            "readOnly": true,
+            "title": "Outline Count"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF 页数（full 模式解析产出）；非 PDF 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Page Count"
+          },
+          "parse_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析处理耗时（毫秒，任务 started_at 起算）；缺起点时为 None",
+            "readOnly": true,
+            "title": "Parse Duration Ms"
           },
           "retry_count": {
             "description": "重试次数，从最近一次 DocumentTask 读取",
             "readOnly": true,
             "title": "Retry Count",
             "type": "integer"
+          },
+          "section_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 段落数；非 DOCX 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Section Count"
           },
           "segment_count": {
             "anyOf": [
@@ -2749,8 +2979,21 @@
             "title": "Status",
             "type": "integer"
           },
+          "table_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DOCX 表格数；非 DOCX 或未处理文档为 None",
+            "readOnly": true,
+            "title": "Table Count"
+          },
           "token_count": {
-            "description": "从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）",
+            "description": "空白词计数（管道写 total_tokens 键；旧键 token_count 兜底兼容）",
             "readOnly": true,
             "title": "Token Count",
             "type": "integer"
@@ -2793,6 +3036,15 @@
           "duration_seconds",
           "frame_count",
           "segment_count",
+          "page_count",
+          "outline_count",
+          "char_count",
+          "section_count",
+          "table_count",
+          "image_count",
+          "embedding_model",
+          "embedding_dim",
+          "parse_duration_ms",
           "has_active_task"
         ],
         "title": "DocumentResponse",

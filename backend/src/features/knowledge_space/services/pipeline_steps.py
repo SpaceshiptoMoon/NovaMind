@@ -166,17 +166,29 @@ async def persist_parsed_text(
 
 
 def extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, Any]:
-    """从解析元数据提取轻量摘要（解析器类/模式/区域计数），供任务进度展示。
+    """从解析元数据提取轻量摘要（解析器类/模式/区域与文档结构计数），供任务进度展示。
+
+    结构计数按解析器实际产出探测式提取：键缺失（该文件类型不产此元数据）
+    返回 None，不误报 0；空列表同样视为「无此结构」返回 None。
 
     Args:
         parse_metadata: 解析阶段产出的元数据字典。
 
     Returns:
-        含 parser_class/pdf_mode 与表格/插图/阅读序区域计数的字典。
+        含 parser_class/pdf_mode、表格/插图/阅读序区域计数，以及
+        page_count/outline_count（PDF）与 section_count/table_count/image_count（DOCX）
+        的字典，结构计数键可能为 None。
     """
     table_regions = list(parse_metadata.get("table_regions") or [])
     figure_regions = list(parse_metadata.get("figure_regions") or [])
     reading_order = list(parse_metadata.get("reading_order") or [])
+
+    def _list_count(key: str) -> int | None:
+        value = parse_metadata.get(key)
+        return len(value) if isinstance(value, list) and value else None
+
+    pages = parse_metadata.get("pages")
+    images = parse_metadata.get("images")
     return {
         "parser_class": parse_metadata.get("parser_class", ""),
         "pdf_mode": parse_metadata.get("pdf_mode", ""),
@@ -185,6 +197,11 @@ def extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, 
         "table_region_count": len(table_regions),
         "figure_region_count": len(figure_regions),
         "reading_order_count": len(reading_order),
+        "page_count": int(pages) if pages else None,
+        "outline_count": _list_count("outlines"),
+        "section_count": _list_count("sections"),
+        "table_count": _list_count("tables"),
+        "image_count": int(images) if images is not None else None,
     }
 
 

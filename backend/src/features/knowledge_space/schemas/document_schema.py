@@ -95,10 +95,10 @@ class DocumentResponse(BaseModel):
     @computed_field
     @property
     def token_count(self) -> int:
-        """从最新任务的 pipeline_result 提取 Token 总数（管道尚未写入时为 0）"""
+        """空白词计数（管道写 total_tokens 键；旧键 token_count 兜底兼容）"""
         if self.task:
             result = getattr(self.task, "pipeline_result", None) or {}
-            return int(result.get("token_count", 0) or 0)
+            return int(result.get("total_tokens") or result.get("token_count") or 0)
         return 0
 
     @computed_field
@@ -140,6 +140,76 @@ class DocumentResponse(BaseModel):
             value = result.get("segment_count")
             return int(value) if value else None
         return None
+
+    def _result_value(self, key: str) -> int | str | None:
+        """读最新任务 pipeline_result 的原始值，缺键/无任务返回 None（保留合法 0）。"""
+        if not self.task:
+            return None
+        result = getattr(self.task, "pipeline_result", None) or {}
+        return result.get(key)
+
+    @computed_field
+    @property
+    def page_count(self) -> int | None:
+        """PDF 页数（full 模式解析产出）；非 PDF 或未处理文档为 None"""
+        value = self._result_value("page_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def outline_count(self) -> int | None:
+        """PDF 书签大纲条数；无书签或非 PDF 为 None"""
+        value = self._result_value("outline_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def char_count(self) -> int | None:
+        """解析全文总字符数；未处理文档为 None"""
+        value = self._result_value("char_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def section_count(self) -> int | None:
+        """DOCX 段落数；非 DOCX 或未处理文档为 None"""
+        value = self._result_value("section_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def table_count(self) -> int | None:
+        """DOCX 表格数；非 DOCX 或未处理文档为 None"""
+        value = self._result_value("table_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def image_count(self) -> int | None:
+        """DOCX 内嵌图片数；非 DOCX 或未处理文档为 None（0 为真实值保留）"""
+        value = self._result_value("image_count")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def embedding_model(self) -> str | None:
+        """向量化使用的 embedding 模型名；未配置或未处理文档为 None"""
+        value = self._result_value("embedding_model")
+        return str(value) if value else None
+
+    @computed_field
+    @property
+    def embedding_dim(self) -> int | None:
+        """embedding 向量维度；未配置或未处理文档为 None"""
+        value = self._result_value("embedding_dim")
+        return int(value) if value is not None else None
+
+    @computed_field
+    @property
+    def parse_duration_ms(self) -> int | None:
+        """解析处理耗时（毫秒，任务 started_at 起算）；缺起点时为 None"""
+        value = self._result_value("parse_duration_ms")
+        return int(value) if value is not None else None
 
     @computed_field
     @property

@@ -138,3 +138,76 @@ def test_has_active_task_false_for_terminal_or_no_task():
     doc = _doc_with_task(None)
     doc.task = None
     assert DocumentResponse.model_validate(doc).has_active_task is False
+
+
+def test_document_metadata_fields_exposed_from_pipeline_result():
+    """正向：文档类全键 pipeline_result → 页数/结构计数/embedding 信息/解析耗时全透出。"""
+    doc = _doc_with_task({
+        "chunk_count": 18,
+        "total_tokens": 45230,
+        "page_count": 42,
+        "outline_count": 7,
+        "char_count": 128000,
+        "section_count": 260,
+        "table_count": 4,
+        "image_count": 0,  # DOCX 无内嵌图片，0 是真实值须保留
+        "embedding_model": "text-embedding-v3",
+        "embedding_dim": 1024,
+        "parse_duration_ms": 15230,
+    })
+    resp = DocumentResponse.model_validate(doc)
+    assert resp.page_count == 42
+    assert resp.outline_count == 7
+    assert resp.char_count == 128000
+    assert resp.section_count == 260
+    assert resp.table_count == 4
+    assert resp.image_count == 0
+    assert resp.embedding_model == "text-embedding-v3"
+    assert resp.embedding_dim == 1024
+    assert resp.parse_duration_ms == 15230
+    # token_count 键名修复：管道写 total_tokens，读取方兜底链
+    assert resp.token_count == 45230
+
+
+def test_document_metadata_fields_none_when_absent():
+    """反向：存量 pipeline_result（无新键）/值 None/无任务 → 全 None 不误报。"""
+    # 存量文档：pipeline_result 只有旧键
+    legacy = DocumentResponse.model_validate(_doc_with_task({"chunk_count": 5, "total_tokens": 800}))
+    assert legacy.page_count is None
+    assert legacy.outline_count is None
+    assert legacy.char_count is None
+    assert legacy.section_count is None
+    assert legacy.table_count is None
+    assert legacy.image_count is None
+    assert legacy.embedding_model is None
+    assert legacy.embedding_dim is None
+    assert legacy.parse_duration_ms is None
+
+    # 值为 None（脏数据）不崩、回 None
+    dirty = DocumentResponse.model_validate(_doc_with_task({
+        "page_count": None, "char_count": None, "embedding_model": None,
+    }))
+    assert dirty.page_count is None
+    assert dirty.char_count is None
+    assert dirty.embedding_model is None
+
+    # 无任务
+    doc = _doc_with_task(None)
+    doc.task = None
+    resp = DocumentResponse.model_validate(doc)
+    assert resp.page_count is None
+    assert resp.embedding_dim is None
+    assert resp.parse_duration_ms is None
+
+
+def test_token_count_key_fallback_chain():
+    """token_count 三态回归：新键 total_tokens 优先、旧键 token_count 兜底、双缺回 0。"""
+    # 新键（修前恒 0 的 bug：schema 读 token_count，管道写 total_tokens）
+    assert DocumentResponse.model_validate(_doc_with_task({"total_tokens": 1200})).token_count == 1200
+    # 仅旧键（更早存量）→ fallback 生效
+    assert DocumentResponse.model_validate(_doc_with_task({"token_count": 900})).token_count == 900
+    # 双缺 → 0
+    assert DocumentResponse.model_validate(_doc_with_task({})).token_count == 0
+    # 新键优先于旧键
+    both = DocumentResponse.model_validate(_doc_with_task({"total_tokens": 1200, "token_count": 900}))
+    assert both.token_count == 1200

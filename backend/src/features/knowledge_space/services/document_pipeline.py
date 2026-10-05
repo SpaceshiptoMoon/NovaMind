@@ -375,6 +375,11 @@ async def execute_document_pipeline(
             user_id=document.uploader_id,
         )
         parse_summary = extract_parse_metadata_summary(resume_meta if isinstance(resume_meta, dict) else {})
+        # parse_duration_ms 口径 = 本次续跑尾段耗时（started_at 仍是原任务起点，
+        # 快照命中的解析阶段被跳过，差额即尾段实际开销），与正常路径的全程口径不同源。
+        parse_duration_ms = (
+            int((now_china() - task.started_at).total_seconds() * 1000) if task.started_at else None
+        )
         task.mark_completed(
             result={
                 "chunk_count": _resume_tail_result["chunk_count"],
@@ -390,6 +395,15 @@ async def execute_document_pipeline(
                 "table_region_count": parse_summary["table_region_count"],
                 "figure_region_count": parse_summary["figure_region_count"],
                 "reading_order_count": resume_meta.get("reading_order") and len(resume_meta.get("reading_order") or []) or parse_summary["reading_order_count"],
+                "page_count": parse_summary["page_count"],
+                "outline_count": parse_summary["outline_count"],
+                "section_count": parse_summary["section_count"],
+                "table_count": parse_summary["table_count"],
+                "image_count": parse_summary["image_count"],
+                "char_count": len(full_text),
+                "embedding_model": ctx.embedding_model_name,
+                "embedding_dim": ctx.embedding_dim,
+                "parse_duration_ms": parse_duration_ms,
                 "resumed_from_snapshot": True,
                 "indexed_at": now_china().isoformat(),
             }
@@ -560,6 +574,9 @@ async def execute_document_pipeline(
     parse_summary = extract_parse_metadata_summary(parse_result.metadata)
 
     # 5. 标记任务完成
+    parse_duration_ms = (
+        int((now_china() - task.started_at).total_seconds() * 1000) if task.started_at else None
+    )
     task.mark_completed(
         result={
             "chunk_count": tail_result["chunk_count"],
@@ -575,6 +592,15 @@ async def execute_document_pipeline(
             "table_region_count": parse_summary["table_region_count"],
             "figure_region_count": parse_summary["figure_region_count"],
             "reading_order_count": parse_summary["reading_order_count"],
+            "page_count": parse_summary["page_count"],
+            "outline_count": parse_summary["outline_count"],
+            "section_count": parse_summary["section_count"],
+            "table_count": parse_summary["table_count"],
+            "image_count": parse_summary["image_count"],
+            "char_count": len(full_text),
+            "embedding_model": ctx.embedding_model_name,
+            "embedding_dim": ctx.embedding_dim,
+            "parse_duration_ms": parse_duration_ms,
             "indexed_at": now_china().isoformat(),
         }
     )
