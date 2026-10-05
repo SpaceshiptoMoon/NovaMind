@@ -169,6 +169,8 @@ export interface ModelConfigTestRequest {
   model: string
   base_url?: string
   api_key: string
+  /** 扩展配置（stream_only/force_thinking 等怪癖声明）；测试请求时后端据此选择探针策略 */
+  extra_config?: Record<string, unknown>
 }
 
 export interface ModelConfigTestResponse {

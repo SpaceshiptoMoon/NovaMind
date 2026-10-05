@@ -497,10 +497,22 @@ async function handleSubmit() {
 async function handleTestForm() {
   testLoading.value = true
   try {
+    // 草稿态扩展配置随测试请求上报：stream_only/force_thinking 等怪癖声明
+    // 在「测试连接」时就生效，不用先保存再测
+    let draftExtraConfig: Record<string, unknown> | null = null
+    if (extraConfigStr.value.trim()) {
+      try {
+        draftExtraConfig = JSON.parse(extraConfigStr.value)
+      } catch {
+        ElMessage.error('扩展配置 JSON 格式错误')
+        return
+      }
+    }
     const result = await userApi.testModelConfig({
       model_type: activeTab.value as 'llm' | 'embedding' | 'rerank' | 'vlm' | 'asr',
       ...form.value,
       api_key: form.value.api_key || '',
+      extra_config: draftExtraConfig ?? undefined,
     })
     showTestResult(result)
   } catch (e) {

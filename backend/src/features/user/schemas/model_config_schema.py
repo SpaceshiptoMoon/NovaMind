@@ -131,6 +131,10 @@ class ModelTestRequest(BaseModel):
         ...,
         description="API Key"
     )
+    extra_config: dict[str, Any] | None = Field(
+        None,
+        description="扩展配置（如 stream_only/force_thinking 怪癖声明）；仅后端内部与测试请求使用",
+    )
 
     @field_validator('model_type')
     @classmethod

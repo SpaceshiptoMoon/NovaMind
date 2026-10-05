@@ -4989,6 +4989,16 @@
                 "type": "null"
               }
             ]
+          },
+          "wiki": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WikiGenerationConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "KnowledgeBaseConfigUpdate",
@@ -6760,6 +6770,19 @@
             ],
             "description": "API Base URL",
             "title": "Base Url"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扩展配置（如 stream_only/force_thinking 怪癖声明）；仅后端内部与测试请求使用",
+            "title": "Extra Config"
           },
           "model": {
             "description": "模型名称",
