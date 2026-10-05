@@ -67,6 +67,40 @@
           <span class="meta-label">音频分段数</span>
           <span class="meta-value">{{ document.segment_count }}</span>
         </div>
+        <div v-if="document.page_count != null" class="meta-item">
+          <span class="meta-label">页数</span>
+          <span class="meta-value">{{ document.page_count }}</span>
+        </div>
+        <div v-if="document.char_count != null" class="meta-item">
+          <span class="meta-label">字符数</span>
+          <span class="meta-value">{{ document.char_count.toLocaleString() }}</span>
+        </div>
+        <div v-if="document.outline_count != null" class="meta-item">
+          <span class="meta-label">书签数</span>
+          <span class="meta-value">{{ document.outline_count }}</span>
+        </div>
+        <div v-if="document.section_count != null" class="meta-item">
+          <span class="meta-label">段落数</span>
+          <span class="meta-value">{{ document.section_count }}</span>
+        </div>
+        <div v-if="document.table_count != null" class="meta-item">
+          <span class="meta-label">表格数</span>
+          <span class="meta-value">{{ document.table_count }}</span>
+        </div>
+        <div v-if="document.image_count != null" class="meta-item">
+          <span class="meta-label">图片数</span>
+          <span class="meta-value">{{ document.image_count }}</span>
+        </div>
+        <div v-if="document.embedding_model" class="meta-item">
+          <span class="meta-label">Embedding</span>
+          <span class="meta-value">
+            {{ document.embedding_model }}<template v-if="document.embedding_dim != null"> · {{ document.embedding_dim }} 维</template>
+          </span>
+        </div>
+        <div v-if="document.parse_duration_ms != null" class="meta-item">
+          <span class="meta-label">解析耗时</span>
+          <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
+        </div>
       </div>
 
       <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->

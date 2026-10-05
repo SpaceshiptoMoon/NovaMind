@@ -578,6 +578,16 @@ export interface Document {
   duration_seconds?: number | null
   frame_count?: number | null
   segment_count?: number | null
+  // 以下文档解析元信息同源派生，按解析器实际产出透出（非该类型文档为 null）
+  page_count?: number | null
+  outline_count?: number | null
+  char_count?: number | null
+  section_count?: number | null
+  table_count?: number | null
+  image_count?: number | null
+  embedding_model?: string | null
+  embedding_dim?: number | null
+  parse_duration_ms?: number | null
   created_at: string
   updated_at: string | null
   // 以下字段由后端从 DocumentTask 派生（computed_field），可能为默认值
