@@ -18,7 +18,7 @@ from novamind.engines.search.ports import WebSearchPort, WebSearchResult
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.shared.utils.llm_response import extract_json_str
+from novamind.shared.utils.llm_response import extract_json_obj
 
 
 class ResumeAnalyzer:
@@ -153,7 +153,7 @@ class ResumeAnalyzer:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        data = json.loads(extract_json_str(response))
+        data = extract_json_obj(response)
         return JDAnalysis(**data)
 
     # ==================== S6: 工作-项目上下文合并 ====================
@@ -357,7 +357,7 @@ class ResumeAnalyzer:
             temperature=0.2,
             response_format={"type": "json_object"},
         )
-        data = json.loads(extract_json_str(response))
+        data = extract_json_obj(response)
 
         unit.company_industry = data.get("company_industry", "")
         unit.company_scale = data.get("company_scale", "")
@@ -452,7 +452,7 @@ class ResumeAnalyzer:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        data = json.loads(extract_json_str(response))
+        data = extract_json_obj(response)
 
         unit.complexity_score = data.get("complexity_score", 0.5)
         unit.allocated_rounds = data.get("allocated_rounds", 3)
@@ -782,7 +782,7 @@ class ResumeAnalyzer:
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(extract_json_str(response))
+            data = extract_json_obj(response)
             updated_plans = {p["project_name"]: p.get("probing_chain", []) for p in data.get("probing_plans", [])}
 
             # 将问题链分配给对应的知识点
@@ -854,7 +854,7 @@ class ResumeAnalyzer:
                     temperature=0.2,
                     response_format={"type": "json_object"},
                 )
-                data = json.loads(extract_json_str(response))
+                data = extract_json_obj(response)
                 items = data.get("items", [])
                 if items:
                     results.append(PrefixKnowledge(**items[0]))

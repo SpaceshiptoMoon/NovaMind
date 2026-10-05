@@ -390,22 +390,14 @@ class PlanningFlow:
 
     @staticmethod
     def _parse_plan_json(raw: str) -> dict[str, Any] | None:
-        """从 LLM 输出解析 JSON 计划（容忍前后非 JSON 文本）。"""
-        if not raw:
-            return None
-        # 尝试直接 parse
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            pass
-        # 提取首个 {...} 块
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(0))
-            except json.JSONDecodeError:
-                pass
-        return None
+        """从 LLM 输出解析 JSON 计划（容忍前后非 JSON 文本）。
+
+        委托 shared/utils 的 extract_json_obj（直 parse/围栏/贪婪括号三级），
+        None 语义不变（调用方降级默认 3 步计划）。
+        """
+        from novamind.shared.utils.llm_response import extract_json_obj
+
+        return extract_json_obj(raw)
 
 
 __all__ = ["PlanningFlow"]

@@ -543,6 +543,8 @@ class SkillMarketplaceService:
         )
 
         # 调用 LLM 解析意图
+        from novamind.shared.utils.llm_response import extract_json_obj
+
         try:
             response = await asyncio.wait_for(
                 llm_client.generate_text(
@@ -553,8 +555,10 @@ class SkillMarketplaceService:
                 ),
                 timeout=15,
             )
-            parsed = json.loads(response)
-        except (TimeoutError, json.JSONDecodeError, Exception) as e:
+            parsed = extract_json_obj(response)
+            if parsed is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
+        except Exception as e:
             logger.warning("AI 搜索 LLM 解析失败，降级为关键词搜索", error=str(e))
             return await self._fallback_ai_search(
                 query, limit, offset,

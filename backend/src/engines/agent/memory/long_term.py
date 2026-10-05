@@ -247,6 +247,7 @@ class LongTermMemory(ILongTermMemory):
                 prompt=extraction_prompt,
                 max_tokens=1024,
                 temperature=0.3,
+                response_format={"type": "json_object"},
             )
 
             extracted = self._parse_extraction_result(result)
@@ -495,24 +496,12 @@ class LongTermMemory(ILongTermMemory):
 
     def _parse_extraction_result(self, result: str) -> list[dict]:
         """解析 LLM 提取结果，兼容多种 JSON 格式"""
-        import json
-        import re
+        from novamind.shared.utils.llm_response import extract_json_value
 
         valid_categories = {"preference", "fact", "procedure", "insight"}
 
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", result)
-        if json_match:
-            json_str = json_match.group(1).strip()
-        else:
-            json_str = result.strip()
-
-        array_match = re.search(r"\[[\s\S]*\]", json_str)
-        if array_match:
-            json_str = array_match.group(0)
-
-        try:
-            parsed = json.loads(json_str)
-        except json.JSONDecodeError:
+        parsed = extract_json_value(result)
+        if parsed is None:
             logger.warning("记忆提取结果 JSON 解析失败", result=result[:200])
             return []
 

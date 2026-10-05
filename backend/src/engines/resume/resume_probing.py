@@ -17,7 +17,7 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.shared.utils.llm_response import extract_json_str
+from novamind.shared.utils.llm_response import extract_json_obj
 
 # ==================== 常量 ====================
 
@@ -259,7 +259,7 @@ class AutoProbingEngine:
                 temperature=0.7,
                 response_format={"type": "json_object"},
             )
-            first_data = json.loads(extract_json_str(response))
+            first_data = extract_json_obj(response)
             pair = {
                 "round": 1,
                 "question": first_data.get("question", ""),
@@ -296,7 +296,7 @@ class AutoProbingEngine:
                     temperature=0.7,
                     response_format={"type": "json_object"},
                 )
-                follow_data = json.loads(extract_json_str(response))
+                follow_data = extract_json_obj(response)
                 pair = {
                     "round": round_num,
                     "question": follow_data.get("question", ""),

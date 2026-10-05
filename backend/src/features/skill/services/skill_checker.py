@@ -195,36 +195,23 @@ class SkillSecurityChecker:
 
     def _parse_llm_response(self, response: str) -> LLMCheckResult:
         """解析 LLM 审查响应"""
+        from novamind.shared.utils.llm_response import extract_json_obj
+
         result = LLMCheckResult(raw_response=response)
 
-        try:
-            # response_format=json_object 时 LLM 直接返回 JSON
-            data = json.loads(response)
-            safe = data.get("safe", True)
-            level = data.get("level", "safe")
-            reason = data.get("reason", "")
+        data = extract_json_obj(response)
+        if data is None:
+            result.level = "suspicious"
+            result.reason = "LLM 响应解析失败"
+            return result
 
-            result.level = level if level in ("safe", "suspicious", "dangerous") else "safe"
-            if not safe and result.level == "safe":
-                result.level = "suspicious"
-            result.reason = reason
-        except (json.JSONDecodeError, KeyError):
-            # JSON 解析失败，尝试正则提取
-            json_match = re.search(r'\{[^}]+\}', response, re.DOTALL)
-            if json_match:
-                try:
-                    data = json.loads(json_match.group())
-                    safe = data.get("safe", True)
-                    level = data.get("level", "safe")
-                    result.level = level if level in ("safe", "suspicious", "dangerous") else "safe"
-                    if not safe and result.level == "safe":
-                        result.level = "suspicious"
-                    result.reason = data.get("reason", "")
-                except (json.JSONDecodeError, KeyError):
-                    result.level = "suspicious"
-                    result.reason = "LLM 响应解析失败"
-            else:
-                result.level = "suspicious"
-                result.reason = "LLM 响应解析失败"
+        safe = data.get("safe", True)
+        level = data.get("level", "safe")
+        reason = data.get("reason", "")
+
+        result.level = level if level in ("safe", "suspicious", "dangerous") else "safe"
+        if not safe and result.level == "safe":
+            result.level = "suspicious"
+        result.reason = reason
 
         return result

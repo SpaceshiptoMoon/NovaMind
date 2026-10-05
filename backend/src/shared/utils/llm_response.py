@@ -83,8 +83,17 @@ def extract_json_value(text: str | None) -> Any:
         return json.loads(extract_json_str(text))
     except (ValueError, json.JSONDecodeError):
         pass
-    # 2) 贪婪括号兜底：先对象后数组（吃掉前导文字与后缀）
-    for pattern in (r"\{[\s\S]*\}", r"\[[\s\S]*\]"):
+    # 2) 贪婪括号兜底（吃掉前导文字与后缀）。匹配顺序按首个结构起始符决定：
+    #    LLM 输出的顶层结构由先出现的 { 或 [ 决定（如前导文字 + 数组场景
+    #    必须先试数组正则，否则会误取数组内嵌对象当顶层）。
+    first_obj = text.find("{")
+    first_arr = text.find("[")
+    patterns = (
+        (r"\[[\s\S]*\]", r"\{[\s\S]*\}")
+        if 0 <= first_arr < first_obj or first_obj < 0
+        else (r"\{[\s\S]*\}", r"\[[\s\S]*\]")
+    )
+    for pattern in patterns:
         match = re.search(pattern, text)
         if match:
             try:
