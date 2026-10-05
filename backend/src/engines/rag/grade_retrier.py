@@ -59,6 +59,7 @@ class GradeRetrier:
         try:
             raw = await self._llm.generate_text(
                 prompt=prompt, max_tokens=200, temperature=0.1,
+                response_format={"type": "json_object"},
             )
             data = extract_json_obj(raw)
             if not data:

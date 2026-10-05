@@ -153,8 +153,7 @@ async def _resolve_llm(session: AsyncSession, user_id: int):
 
 async def _llm_check_contradiction(llm_client, text_a: str, text_b: str) -> str | None:
     """LLM 判定两段内容是否语义矛盾。矛盾返回判定理由；非矛盾/失败返回 None（宁漏勿误）。"""
-    import json
-    import re
+    from novamind.shared.utils.llm_response import extract_json_obj
 
     prompt = (
         "判断以下两段知识库内容是否存在语义矛盾（同一事实给出不一致的表述，"
@@ -163,10 +162,12 @@ async def _llm_check_contradiction(llm_client, text_a: str, text_b: str) -> str 
         '只输出 JSON：{"contradiction": true/false, "reason": "简短说明"}'
     )
     try:
-        response = await llm_client.generate_text(prompt=prompt, max_tokens=300)
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip(), flags=re.MULTILINE)
-        data = json.loads(cleaned)
-        if isinstance(data, dict) and data.get("contradiction") is True:
+        response = await llm_client.generate_text(
+            prompt=prompt, max_tokens=300,
+            response_format={"type": "json_object"},
+        )
+        data = extract_json_obj(response)
+        if data is not None and data.get("contradiction") is True:
             return (data.get("reason") or "LLM 判定存在语义矛盾")[:500]
         return None
     except Exception as e:

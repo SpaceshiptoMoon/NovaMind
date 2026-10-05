@@ -13,9 +13,7 @@ chunk 内对应内容的摘录改写——检索命中验证型用例的 ground 
 """
 from __future__ import annotations
 
-import json
 import random
-import re
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -107,13 +105,10 @@ def build_generation_prompt(chunk_texts: list[str]) -> str:
 
 def parse_generation_response(response: str, expected_count: int) -> list[dict[str, str]]:
     """解析 LLM 响应为用例列表（容错：坏 JSON/缺字段跳过，不抛）。"""
-    try:
-        # 容忍 ```json 围栏
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip(), flags=re.MULTILINE)
-        data = json.loads(cleaned)
-        cases_raw = data.get("cases", []) if isinstance(data, dict) else []
-    except (json.JSONDecodeError, AttributeError):
-        return []
+    from novamind.shared.utils.llm_response import extract_json_obj
+
+    data = extract_json_obj(response)
+    cases_raw = data.get("cases", []) if isinstance(data, dict) else []
 
     cases: list[dict[str, str]] = []
     for item in cases_raw:
@@ -164,7 +159,10 @@ async def generate_cases_from_chunks(
         try:
             llm_client = await _resolve_llm_client(session, user_id)
             prompt = build_generation_prompt(batch)
-            response = await llm_client.generate_text(prompt=prompt, max_tokens=2000)
+            response = await llm_client.generate_text(
+                prompt=prompt, max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
             cases.extend(parse_generation_response(response, quota - len(cases)))
         except Exception as e:
             # 单批失败跳过（部分结果优于全无；宁缺勿错不硬凑）
