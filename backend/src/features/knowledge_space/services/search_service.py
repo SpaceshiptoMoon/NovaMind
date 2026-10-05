@@ -659,6 +659,19 @@ class SearchService:
                 self.session, space_id=space_id, user_id=user_id, results=result.results,
             )
 
+        # 7.6 检索期上下文扩展（sentence_window 扩窗 / parent_child 回带父块）：
+        # 只对携带扩展元数据的命中生效，存量 chunk 零成本直通。挂在权限过滤后、
+        # LLM 前——cached/fresh/bypass 三路全覆盖；扩展取同文档内容，与权限
+        # 过滤的命中同文档，无跨文档泄露通路。窗口/父块文本替换 content（下游
+        # QA/agent/MCP 零改动），原子块文本保留进 metadata.expansion.retrieved_content。
+        from novamind.features.knowledge_space.services.chunk_expansion_service import (
+            expand_search_results,
+        )
+
+        result.results = await expand_search_results(
+            self.es_client, space_id, result.results,
+        )
+
         # 8. LLM 回答生成 + elapsed_ms 保真
         # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）
         # 缓存未命中：先 LLM 后 elapsed_ms（对齐旧路径 L981）

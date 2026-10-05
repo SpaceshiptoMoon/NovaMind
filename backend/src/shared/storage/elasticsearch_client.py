@@ -443,6 +443,11 @@ class ElasticsearchClient:
         排除式而非白名单式（must lifecycle_status=active）：存量 chunk 无该字段，
         must_not terms 对 missing 字段不命中 → 自动视为可召回，零回填；
         白名单式会把全部存量 chunk 一刀切出检索（误杀）。
+
+        另排除父块（metadata.chunk_role=parent，parent_child 产物）：父块无
+        embedding 不参与向量召回，但 BM25/全文模式会命中其全文——而父块的
+        定位是检索期回带容器，直接召回来带语义重复（子块已在索引里）。同样
+        排除式：missing 字段不命中 → 存量 chunk 零影响。
         """
         filters: list[dict] = []
         if kb_id is not None:
@@ -450,7 +455,8 @@ class ElasticsearchClient:
         filters.append({
             "bool": {
                 "must_not": [
-                    {"terms": {"lifecycle_status": ["superseded", "archived"]}}
+                    {"terms": {"lifecycle_status": ["superseded", "archived"]}},
+                    {"term": {"metadata.chunk_role": "parent"}},
                 ]
             }
         })
