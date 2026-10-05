@@ -66,26 +66,26 @@
               <el-icon class="el-icon--right"><ArrowDown /></el-icon>
             </el-button>
             <template #dropdown>
-              <el-dropdown-menu>
+              <el-dropdown-menu class="ops-menu">
                 <el-dropdown-item command="insights">
-                  <el-icon><DataLine /></el-icon>
+                  <el-icon class="ops-menu-icon"><DataLine /></el-icon>
                   <div class="ops-menu-item">
                     <span class="ops-menu-title">空间洞察</span>
-                    <span class="ops-menu-desc">问答量 · 点踩 · 零命中趋势</span>
+                    <span class="ops-menu-desc">问答量、点踩与零命中趋势</span>
                   </div>
                 </el-dropdown-item>
                 <el-dropdown-item command="gap-report">
-                  <el-icon><Warning /></el-icon>
+                  <el-icon class="ops-menu-icon"><Warning /></el-icon>
                   <div class="ops-menu-item">
                     <span class="ops-menu-title">知识缺口报告</span>
                     <span class="ops-menu-desc">答不上的问题清单，补内容的依据</span>
                   </div>
                 </el-dropdown-item>
                 <el-dropdown-item command="kb-ops">
-                  <el-icon><Operation /></el-icon>
+                  <el-icon class="ops-menu-icon"><Operation /></el-icon>
                   <div class="ops-menu-item">
                     <span class="ops-menu-title">运营管理</span>
-                    <span class="ops-menu-desc">复审建议 · 重复内容 · 文档价值</span>
+                    <span class="ops-menu-desc">复审建议、重复内容与文档价值</span>
                   </div>
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -1087,12 +1087,30 @@ onMounted(() => {
   background: var(--color-bg-hover);
 }
 
-/* 知识运营下拉菜单项：标题+描述两行式（描述说明每页看什么，降低理解成本） */
+/* 知识运营下拉菜单项：图标与标题行首对齐（align-items:center 会让图标垂直
+   悬在两行文字中缝，shadcn 命令菜单同款 align-start）；描述行与图标左缘对齐 */
+.ops-menu :deep(.el-dropdown-menu__item) {
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.ops-menu-icon {
+  /* 与标题行基线平齐：flex-start 下图标补一行高差 */
+  margin-top: 2px;
+  font-size: 15px;
+  color: var(--color-text-secondary);
+}
+
+.ops-menu :deep(.el-dropdown-menu__item:hover) .ops-menu-icon {
+  color: var(--color-text);
+}
+
 .ops-menu-item {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 2px 0;
+  min-width: 0;
 }
 
 .ops-menu-title {
@@ -1100,12 +1118,16 @@ onMounted(() => {
   font-weight: var(--weight-medium);
   color: var(--color-text);
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .ops-menu-desc {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .content-body {
