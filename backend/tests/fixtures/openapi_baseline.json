@@ -11944,6 +11944,14 @@
             "title": "Min Chunk Size",
             "type": "integer"
           },
+          "parent_chunk_size": {
+            "default": 2000,
+            "description": "父块大小（仅 parent_child 生效），回带上下文单位，不小于 chunk_size。",
+            "maximum": 8000.0,
+            "minimum": 100.0,
+            "title": "Parent Chunk Size",
+            "type": "integer"
+          },
           "separators": {
             "anyOf": [
               {
@@ -11977,10 +11985,20 @@
               "fixed_size",
               "markdown",
               "semantic",
-              "delimiter"
+              "delimiter",
+              "sentence_window",
+              "parent_child"
             ],
             "title": "Strategy",
             "type": "string"
+          },
+          "window_size": {
+            "default": 2,
+            "description": "句窗口每侧句数（仅 sentence_window 生效）；0 = 不扩窗。",
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Window Size",
+            "type": "integer"
           }
         },
         "title": "SplittingConfig",
