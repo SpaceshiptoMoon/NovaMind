@@ -837,7 +837,13 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         async def generate_questions_batch(self, chunks, user_id=None):
             captured["chunk_tuples"] = chunks
             captured["qg_user_id"] = user_id
-            return [[FakeQuestion("q1"), FakeQuestion("q2")]]
+            from novamind.features.knowledge_space.services.question_generation_service import (
+                BatchGenerationStats,
+            )
+
+            return [[FakeQuestion("q1"), FakeQuestion("q2")]], BatchGenerationStats(
+                batches_total=1
+            )
 
     async def fake_generate_embeddings_static(texts, embedding_config, session=None, user_id=None, model_config_port=None):
         captured["question_texts"] = texts
@@ -854,7 +860,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         fake_generate_embeddings_static,
     )
 
-    questions_list, embeddings_list = await generate_questions_for_chunks(
+    questions_list, embeddings_list, qg_stats = await generate_questions_for_chunks(
         chunks=["chunk body"],
         document_title="Demo",
         kb_config={
@@ -886,6 +892,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
     assert captured["question_texts"] == ["q1", "q2"]
     assert questions_list == [["q1", "q2"]]
     assert embeddings_list == [[[0.1], [0.2]]]
+    assert qg_stats.batches_total == 1
 
 
 @pytest.mark.anyio("asyncio")

@@ -165,6 +165,9 @@ def test_pipeline_text_branch_reuses_path_without_copy(monkeypatch):
                 start_step=lambda name: None,
                 finish_step=lambda name, **kw: None,
                 mark_completed=lambda result=None: None,
+                # parse_duration_ms 口径消费 started_at（07dc63d 元数据透出），
+                # None → duration 不计（与 ORM 默认一致）
+                started_at=None,
             )
             session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
             # 文本分支走 DocumentProcessor：mock 掉加载入口，验证收到的是同一路径
@@ -182,7 +185,7 @@ def test_pipeline_text_branch_reuses_path_without_copy(monkeypatch):
             original_ctx = ds_module.load_pipeline_context
             ds_module.load_pipeline_context = AsyncMock(return_value=SimpleNamespace(
                 pipeline_config={}, space_owner_id=1, embedding_model_name="m",
-                embedding_config={},
+                embedding_config={}, embedding_dim=None,
             ))
             original_tail = ds_module.run_post_parse_tail
             ds_module.run_post_parse_tail = AsyncMock(return_value={

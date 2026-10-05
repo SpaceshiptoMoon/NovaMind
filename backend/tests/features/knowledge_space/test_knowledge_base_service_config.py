@@ -237,3 +237,31 @@ def test_update_config_rejects_unknown_delimiter_separator_shape():
                 {"splitting": {"strategy": "delimiter", "separators": [""]}},
             )
         )
+
+
+def test_config_update_schema_accepts_wiki_field():
+    """KnowledgeBaseConfigUpdate 必须声明 wiki 字段（回归锁定）。
+
+    漏声明时 Pydantic 静默丢弃 wiki，PATCH 返回成功但配置未更新——真实案例：
+    wiki.llm.model 改 glm-5.3 假成功，wiki 生成继续用 qwen3.8 thinking 空响应。
+    Update schema 的字段面必须与 KnowledgeBaseConfig 保持对齐。
+    """
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        KnowledgeBaseConfig,
+        KnowledgeBaseConfigUpdate,
+    )
+
+    # 只传 wiki 片段（前端「仅改 wiki 模型」场景）
+    update = KnowledgeBaseConfigUpdate.model_validate({
+        "wiki": {"enabled": True, "llm": {"model": "glm-5.3"}},
+    })
+    dumped = update.model_dump(exclude_unset=True)
+    assert "wiki" in dumped
+    assert dumped["wiki"]["llm"]["model"] == "glm-5.3"
+    assert dumped["wiki"]["enabled"] is True
+
+    # Update schema 与完整 Config 的字段面必须对齐（防未来再漏字段）。
+    # 例外：description 存于 config JSON 但更新走 KB 基础信息通道，不在 PATCH config 面。
+    assert set(KnowledgeBaseConfigUpdate.model_fields.keys()) == (
+        set(KnowledgeBaseConfig.model_fields.keys()) - {"description"}
+    )
