@@ -140,7 +140,11 @@ class BaseLLM(ABC):
             max_tokens: 最大生成 token 数
             temperature: 温度参数
             top_p: top_p 参数
-            response_format: 响应格式约束（如 {"type": "json_object"}），不支持时忽略
+            response_format: 响应格式约束（如 {"type": "json_object"}），不支持时忽略。
+                当前各实现生效情况：openai_compatible 透传给服务商生效；
+                anthropic/ollama/transformers 收参但静默丢弃（约束退化为纯提示词）。
+                调用方不应假设约束一定生效，JSON 输出须配提取容错
+                （见 shared/utils/llm_response 与 shared/ai_models/llm/json_mode）。
 
         Returns:
             生成的文本

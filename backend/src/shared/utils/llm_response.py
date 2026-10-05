@@ -1,10 +1,12 @@
 """
 LLM 响应 JSON 提取工具，从 markdown 代码块或混入文字中提取 JSON。
 
-提供 extract_json_str（失败抛异常）和 extract_json_obj（失败返回 None）两种接口。
+提供 extract_json_str（失败抛异常）、extract_json_obj（对象，失败返回 None）、
+extract_json_value（对象或数组，失败返回 None）三种接口。
 """
 import json
 import re
+from typing import Any
 
 
 def extract_json_str(text: str) -> str:
@@ -56,6 +58,24 @@ def extract_json_obj(text: str | None) -> dict | None:
 
     任一阶段失败均返回 ``None``，不抛异常。供只需拿到 ``dict | None`` 的调用方使用。
     """
+    parsed = extract_json_value(text)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def extract_json_value(text: str | None) -> Any:
+    """从 LLM 输出提取并解析首个 JSON 值（对象或数组），失败返回 ``None``。
+
+    提取策略与 :func:`extract_json_obj` 同源（extract_json_str 两级 + 贪婪括号
+    兜底），区别在于同时接受数组：``{...}`` 与 ``[...]`` 都能兜住，供消费
+    JSON 数组输出（如 deep_research 计划、agent 记忆抽取）的调用方使用。
+
+    Args:
+        text: LLM 原始输出文本，可空。
+
+    Returns:
+        解析出的 dict/list/str/int 等原生 JSON 值；任何阶段失败返回 ``None``，
+        不抛异常。
+    """
     if not text:
         return None
     # 1) 纯 JSON / ```json 围栏
@@ -63,11 +83,12 @@ def extract_json_obj(text: str | None) -> dict | None:
         return json.loads(extract_json_str(text))
     except (ValueError, json.JSONDecodeError):
         pass
-    # 2) 贪婪括号兜底：首个 { 到末个 }（吃掉前导文字与后缀）
-    match = re.search(r"\{[\s\S]*\}", text)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except (ValueError, json.JSONDecodeError):
-            return None
+    # 2) 贪婪括号兜底：先对象后数组（吃掉前导文字与后缀）
+    for pattern in (r"\{[\s\S]*\}", r"\[[\s\S]*\]"):
+        match = re.search(pattern, text)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except (ValueError, json.JSONDecodeError):
+                continue
     return None
