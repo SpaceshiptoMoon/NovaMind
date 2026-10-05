@@ -176,18 +176,29 @@ class ImageParsingConfig(BaseModel):
     strategy:
     - "vlm": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）
     - "deepdoc_ocr": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）
+    - "combined": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/
+      实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。
+      需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号
+      （warning-only，不改写入库文本）。
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["vlm", "deepdoc_ocr"] = Field(
+    strategy: Literal["vlm", "deepdoc_ocr", "combined"] = Field(
         default="vlm",
-        description="图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)",
+        description="图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/"
+        "combined(OCR+VLM 合并，逐字+语义双通道交叉校验)",
     )
     vlm_model: str | None = Field(
         default=None,
         description="VLM 模型名称（strategy=vlm 时必填，留空将抛错要求显式选择，不做默认回退）",
     )
+    # VLM 主模型因配额/鉴权类错误失败时回退的备用 VLM 模型名（与 VideoParsingConfig
+    # 同名参数语义一致；留空不回退）。图片路径是单次调用：主模型失败换备用重试一次。
+    vlm_fallback_model: str | None = Field(default=None)
+    # 主模型与备用模型均因配额/鉴权失败时是否写占位描述继续（文档不失败）。
+    # 默认 False（fail fast，抛业务异常，任务可修复配置后重试）。
+    vlm_skip_on_quota_error: bool = Field(default=False)
 
 
 class VideoParsingConfig(BaseModel):
@@ -637,6 +648,10 @@ class KnowledgeBaseConfigUpdate(BaseModel):
     splitting: SplittingConfig | None = Field(default=None)
     parsing: ParsingConfig | None = Field(default=None)
     question_generation: QuestionGenerationConfig | None = Field(default=None)
+    # wiki 必须与 KnowledgeBaseConfig 的字段面保持对齐：PATCH schema 漏声明时
+    # Pydantic 静默丢弃该字段，前端保存 wiki 配置会假成功（真实案例：wiki.llm.model
+    # 改 glm-5.3 被 schema 丢弃，wiki 生成继续用 qwen3.8 thinking 模型全空响应）
+    wiki: WikiGenerationConfig | None = Field(default=None)
 
 
 class KnowledgeBaseConfigResponse(BaseModel):
@@ -728,7 +743,9 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
 
     if parsed.image:
         result["image_strategy"] = parsed.image.strategy
-        result["vlm_description_enabled"] = parsed.image.strategy == "vlm"
+        # vlm_description_enabled 扁平键是遗留消费面（日志/ORM 兼容属性），
+        # combined 也走 VLM 描述，语义上应置 True
+        result["vlm_description_enabled"] = parsed.image.strategy in ("vlm", "combined")
         if parsed.image.vlm_model:
             result["vlm_model"] = parsed.image.vlm_model
 

@@ -29,6 +29,9 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     PermanentProcessingError,
 )
+from novamind.features.knowledge_space.services.media_processing import (
+    is_vlm_quota_or_auth_error,
+)
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
@@ -777,28 +780,122 @@ async def _process_image_document_static(
     )
     image_strategy = parsing_config.get("image_strategy", "vlm")
 
+    # VLM 模型名只认嵌套 image.vlm_model：扁平 result["vlm_model"] 被 image/video
+    # 共写（video 后写覆盖 image），图片文档解析时 video 留空不覆盖、但 video 配了
+    # 模型时图片会静默串用视频的 VLM（跨模态污染、路径不可追踪）。与视频路径 B10
+    # 修复同款：媒体各模态只读自己的嵌套配置，不读共享扁平键。
+    image_nested_cfg = (ctx.pipeline_config.get("parsing", {}) or {}).get("image", {}) or {}
+    image_vlm_model = str(image_nested_cfg.get("vlm_model") or "")
+    # 备用 VLM 与配额失败跳过（批次2 配置对齐：与视频路径同名参数同语义）。
+    # fallback：主模型配额/鉴权失败换备用重试一次；skip_on_quota：主备均失败时
+    # 写占位描述继续（文档不失败）。默认关闭=fail fast 可修复配置后重试。
+    image_vlm_fallback_model = str(image_nested_cfg.get("vlm_fallback_model") or "") or None
+    image_vlm_skip_on_quota = bool(image_nested_cfg.get("vlm_skip_on_quota_error", False))
+
     # 检查点 0：配置读取后
     await check_document_cancelled(document.id)
+
+    # ===== 断点续跑：解析快照命中即复用描述文本，跳过 VLM/OCR 昂贵调用 =====
+    # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。此前图片路径只写
+    # 快照、从不做命中检查（「只写不读」），RETRY 永远重跑 VLM/OCR——与文本分支
+    # 同型的 P1#2 缺口。命中判定（重算指纹 → DB 指针 → payload 内嵌指纹三重校验）
+    # 与 execute_document_pipeline 文本分支完全同构。
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        SNAPSHOTS_ENABLED as _SNAP_ENABLED,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        build_parse_snapshot_payload as _build_snap_payload,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        compute_parse_fingerprint as _compute_parse_fp,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        load_parse_snapshot as _load_parse_snap,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        payload_fingerprint_matches as _fp_matches,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        save_parse_snapshot as _save_parse_snap,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        snapshot_fingerprint as _snapshot_fp,
+    )
+    from novamind.shared.storage.client_factory import ClientFactory as _SnapCF
+
+    # 图片解析指纹（VLM/OCR 描述昂贵，重试时指纹匹配即免重跑）。指纹入参注入
+    # 策略名+主 VLM 模型+备用 VLM 模型（全部读嵌套 image.*，与消费侧同源——
+    # 扁平 vlm_model 被 video 覆盖后会把指纹也带偏），命中检查与保存侧共用同一次
+    # 计算（单一事实源），指纹形状漂移在结构上不可能发生。skip_on_quota 只影响
+    # 失败时的降级行为不影响成功产物，不进指纹。
+    image_parse_fp = ""
+    snap_minio = None
+    if _SNAP_ENABLED:
+        try:
+            snap_minio = await _SnapCF.get_minio_client()
+            image_fp_cfg = dict(parsing_config)
+            image_fp_cfg["strategy"] = (
+                f"image:{image_strategy}:{image_vlm_model}:{image_vlm_fallback_model or ''}"
+            )
+            image_parse_fp = _compute_parse_fp(document, image_fp_cfg)
+        except Exception as fp_exc:
+            _logger.warning("图片解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+
+    resumed_description = ""
+    if image_parse_fp and snap_minio is not None and _snapshot_fp(document, "parse") == image_parse_fp:
+        snap = await _load_parse_snap(document, snap_minio, _logger)
+        # payload 内嵌指纹校验：防双 worker 交错写同名对象后指针/内容错配（与文本分支一致）
+        if snap and _fp_matches(snap, "parse_fingerprint", image_parse_fp):
+            snap_text = str(snap.get("full_text") or "")
+            if snap_text.strip():
+                resumed_description = snap_text
+                _logger.info(
+                    "图片解析快照命中，复用描述文本（跳过 VLM/OCR）",
+                    document_id=document.id,
+                    description_length=len(resumed_description),
+                )
 
     # 图片「解析」阶段 = VLM/OCR 提取描述文本（等价文本管道的 parsed）。
     # 此前图片路径全程不写 step_progress，导致任务列表流程日志显示「-」。
     await begin_step(session, task, "parsed")
 
-    # 2. 根据策略选择文本提取方式
-    description_text = ""
+    # 2. 根据策略选择文本提取方式（快照命中即复用，跳过 VLM/OCR 调用）
+    description_text = resumed_description
+    resumed = bool(resumed_description)
 
-    if image_strategy == "deepdoc_ocr":
+    if resumed:
+        pass  # 快照命中：描述文本已复用，跳过 VLM/OCR 调用
+    elif image_strategy == "deepdoc_ocr":
         description_text = await _process_image_ocr_static(
             document=document,
             file_content=file_content,
             session=session,
             _logger=_logger,
         )
+    elif image_strategy == "combined":
+        # OCR + VLM caption 合并：逐字层（图中文字/实体）双通道交叉、语义层来自
+        # caption，重叠以 OCR 全文为准去重。VLM 失败时降级纯 OCR（失败方向安全：
+        # 能力缺失而非错误结果），OCR 也失败才让文档失败。
+        description_text = await _process_image_combined_static(
+            document=document,
+            file_content=file_content,
+            session=session,
+            _logger=_logger,
+            model_config_port=model_config_port,
+            vlm_model_name=image_vlm_model,
+            vlm_fallback_model=image_vlm_fallback_model,
+            task=task,
+        )
+        if not description_text:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message="combined 策略下 OCR 与 VLM 均未产出文本",
+            )
     else:
         # VLM 路径（默认）。vlm_model 必须由用户在解析配置中显式选择；
         # 不做"留空回退用户默认 VLM"的兜底——兜底会让解析路径不可追踪
         # （无法从配置看出实际用了哪个模型）。留空即显式抛错。
-        vlm_model_name = parsing_config.get("vlm_model")
+        vlm_model_name = image_vlm_model
 
         if not vlm_model_name:
             raise PermanentProcessingError(
@@ -808,13 +905,31 @@ async def _process_image_document_static(
 
         # 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
         mcs = model_config_port
-        description_text = await _generate_image_description(
-            file_content=file_content,
-            document=document,
-            mcs=mcs,
-            _logger=_logger,
-            vlm_model_name=vlm_model_name,
-        )
+        try:
+            description_text = await _generate_image_description(
+                file_content=file_content,
+                document=document,
+                mcs=mcs,
+                _logger=_logger,
+                vlm_model_name=vlm_model_name,
+                vlm_fallback_model=image_vlm_fallback_model,
+            )
+        except Exception as vlm_exc:
+            # 主备均失败且用户开启跳过：写占位描述继续（文档不失败）。占位文本
+            # 进索引但内容自述无信息量——失败方向安全（用户显式选择了降级），
+            # 任务 metrics 记录供 kb-ops 质量基线统计。未开启则原样上抛 fail fast。
+            if not image_vlm_skip_on_quota or not is_vlm_quota_or_auth_error(vlm_exc):
+                raise
+            _logger.warning(
+                "图片VLM主备模型均配额/鉴权失败，按配置写占位描述继续",
+                error=str(vlm_exc),
+                document_id=document.id,
+            )
+            description_text = (
+                "【主体描述】图片描述生成失败（VLM 配额/鉴权错误），当前为占位内容，"
+                "请重试解析以获取真实描述。\n【图中文字】无\n【图表数据】无\n"
+                "【实体】无\n【视觉特征】无\n【场景类型】照片"
+            )
 
         if not description_text:
             raise PermanentProcessingError(
@@ -830,45 +945,22 @@ async def _process_image_document_static(
                     "description_length": len(description_text),
                 })
 
-    # 断点续跑：图片解析指纹（VLM/OCR 描述昂贵，重试时指纹匹配即免重跑）。
-    # 指纹入参注入策略名，区分 vlm 与 deepdoc_ocr 产出。
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        SNAPSHOTS_ENABLED as _SNAP_ENABLED,
-    )
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        build_parse_snapshot_payload as _build_snap_payload,
-    )
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_parse_fingerprint as _compute_parse_fp,
-    )
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        save_parse_snapshot as _save_parse_snap,
-    )
-    from novamind.shared.storage.client_factory import ClientFactory as _SnapCF
-
-    image_parse_fp = ""
-    if _SNAP_ENABLED:
+    # 断点续跑：快照未命中（全量解析完成）时保存解析快照。命中侧与保存侧共用
+    # 上方同一 image_parse_fp/snap_minio（单一事实源），形状漂移不可能发生。
+    if image_parse_fp and not resumed and snap_minio is not None:
         try:
-            image_fp_cfg = dict(parsing_config)
-            image_fp_cfg["strategy"] = f"image:{image_strategy}:{parsing_config.get('vlm_model') or ''}"
-            image_parse_fp = _compute_parse_fp(document, image_fp_cfg)
-        except Exception as fp_exc:
-            _logger.warning("图片解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
-        if image_parse_fp:
-            try:
-                snap_minio = await _SnapCF.get_minio_client()
-                await _save_parse_snap(
-                    document, session, _logger,
-                    minio_client=snap_minio,
+            await _save_parse_snap(
+                document, session, _logger,
+                minio_client=snap_minio,
+                parse_fingerprint=image_parse_fp,
+                payload=_build_snap_payload(
                     parse_fingerprint=image_parse_fp,
-                    payload=_build_snap_payload(
-                        parse_fingerprint=image_parse_fp,
-                        full_text=description_text,
-                        parse_metadata={"strategy": image_strategy},
-                    ),
-                )
-            except Exception as snap_exc:
-                _logger.warning("图片解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
+                    full_text=description_text,
+                    parse_metadata={"strategy": image_strategy},
+                ),
+            )
+        except Exception as snap_exc:
+            _logger.warning("图片解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     _logger.info(
         "图片文本提取成功",
@@ -992,6 +1084,179 @@ async def _process_image_ocr_static(
     return ocr_text
 
 
+# combined 策略下并入 caption 的 OCR 文本上限（字符）。OCR 全文超过该值时截尾
+# 并入——图片内文字量超过 3000 字符属极端场景（整页文档照片），保护性截断防止
+# caption+OCR 合并文本爆掉切分与 embedding。
+_COMBINED_OCR_MAX_CHARS = 3000
+
+
+async def _process_image_combined_static(
+    document: Document,
+    file_content: bytes,
+    session,
+    _logger,
+    model_config_port,
+    vlm_model_name: str | None = None,
+    vlm_fallback_model: str | None = None,
+    task=None,
+) -> str:
+    """combined 策略：DeepDoc OCR + VLM 结构化 caption 合并入库。
+
+    组合逻辑：
+    - VLM caption 成功：merged = 结构化 caption + OCR 补充段（caption 中
+      【图中文字】已逐字转录的常规场景下 OCR 补充多为空——按重叠词去重）。
+      caption 的【实体】【图表数据】中数字/型号在 OCR 全文完全无踪 → 幻觉
+      信号写日志与任务 metrics（warning-only，不改写入库文本）。
+    - VLM 失败（含配额类全部失败）：降级纯 OCR 继续（能力缺失方向安全）。
+    - OCR 失败：不阻塞——caption 单独可用（与 vlm 策略等价）。
+    - 双双失败：返回空串，由调用方抛错。
+
+    Returns:
+        合并后的入库文本；双失败返回空串。
+    """
+    # 1. OCR 先行（本地推理、无配额；失败不阻塞 caption 通道）
+    ocr_text = ""
+    try:
+        ocr_text = await _process_image_ocr_static(
+            document=document,
+            file_content=file_content,
+            session=session,
+            _logger=_logger,
+        )
+    except Exception as ocr_exc:
+        _logger.warning(
+            "combined 策略 OCR 失败，降级纯 VLM caption",
+            document_id=document.id,
+            error=str(ocr_exc),
+        )
+
+    # 2. VLM caption（与 vlm 策略同一生成函数，fallback/空描述语义一致）
+    caption_text = ""
+    try:
+        if not vlm_model_name:
+            raise ValueError("combined 策略需要 VLM 模型，请在解析配置中选择")
+        caption_text = await _generate_image_description(
+            file_content=file_content,
+            document=document,
+            mcs=model_config_port,
+            _logger=_logger,
+            vlm_model_name=vlm_model_name,
+            vlm_fallback_model=vlm_fallback_model,
+        )
+    except Exception as vlm_exc:
+        _logger.warning(
+            "combined 策略 VLM caption 失败，降级纯 OCR",
+            document_id=document.id,
+            error=str(vlm_exc),
+        )
+        if task is not None and hasattr(task, "metrics") and isinstance(task.metrics, dict):
+            task.metrics["image_combined_vlm_failed"] = True
+
+    # 3. 双失败：空串交由调用方抛错
+    if not caption_text and not ocr_text:
+        return ""
+
+    # 4. 单通道成功：直接用（失败方向安全——有一路真实产物就不丢文档）
+    if not caption_text:
+        return ocr_text
+    if not ocr_text:
+        return caption_text
+
+    # 5. 双通道成功：caption + OCR 补充（重叠去重）+ 幻觉交叉校验
+    caption_body = _extract_caption_text_portion(caption_text)
+    merged_parts = [caption_text]
+    if not _text_subsumed(caption_body, ocr_text):
+        merged_parts.append("【OCR 补充】" + ocr_text[:_COMBINED_OCR_MAX_CHARS])
+
+    hallucination_signals = _check_caption_hallucination(caption_text, ocr_text)
+    if hallucination_signals:
+        _logger.warning(
+            "图片 caption 与 OCR 交叉校验发现幻觉信号（warning-only，不改写入库文本）",
+            document_id=document.id,
+            signals=hallucination_signals,
+        )
+        if task is not None and hasattr(task, "metrics") and isinstance(task.metrics, dict):
+            task.metrics["image_caption_hallucination_signals"] = hallucination_signals
+    return "\n".join(merged_parts)
+
+
+def _extract_caption_text_portion(caption_text: str) -> str:
+    """取 caption 的【图中文字】段体（与 OCR 全文做重叠判定的基准）。无该段返回全文。"""
+    for name, body in _split_image_caption_sections(caption_text):
+        if name == "【图中文字】":
+            return body
+    return caption_text
+
+
+def _text_subsumed(caption_portion: str, ocr_text: str, min_overlap_ratio: float = 0.6) -> bool:
+    """OCR 全文是否已被 caption 基本覆盖（重叠词比例判定）。
+
+    对 OCR 全文按长度 ≥2 的片段抽样（中文 4 字滑窗 + 英数 token），统计出现在
+    caption 中的比例；≥ min_overlap_ratio 视为 caption 已转录了 OCR 内容，
+    不再并入【OCR 补充】（防同内容双份入库稀释 embedding）。纯标点/空白
+    OCR 结果视为已覆盖（无可补充内容）。
+
+    Args:
+        caption_portion: caption 的【图中文字】段体（比对基准）。
+        ocr_text: OCR 全文。
+        min_overlap_ratio: 覆盖率阈值，默认 0.6。
+
+    Returns:
+        True = caption 已基本覆盖 OCR 内容，无需并入补充段。
+    """
+    import re as _re
+
+    cleaned_ocr = ocr_text.strip()
+    if not cleaned_ocr:
+        return True
+    # 归一：去空白后比对（OCR 常见多余空格/换行）
+    caption_norm = _re.sub(r"\s+", "", caption_portion)
+    ocr_norm = _re.sub(r"\s+", "", cleaned_ocr)
+    if not ocr_norm:
+        return True
+
+    # 中文字符滑窗（4 字）+ 英数连续段（≥2 字符）
+    tokens = _re.findall(r"[一-鿿]{4}|[A-Za-z0-9]{2,}", ocr_norm)
+    if not tokens:
+        # 短 OCR（不足一个 4 字窗也无英数 token）：整串包含判定
+        return ocr_norm in caption_norm
+    hits = sum(1 for t in tokens if t in caption_norm)
+    return hits / len(tokens) >= min_overlap_ratio
+
+
+def _check_caption_hallucination(caption_text: str, ocr_text: str) -> list[str]:
+    """caption↔OCR 交叉校验：caption 逐字段中的实体/数字在 OCR 全文无踪 → 幻觉信号。
+
+    只校验「OCR 全文非空且 caption 声称图中文字丰富」的场景——OCR 为空时无
+    反证基准（可能是图片真无文字，也可能 OCR 漏检），不产信号（失败方向安全：
+    宁漏报不误报）。返回信号列表（human-readable），空列表=无信号。
+    """
+    import re as _re
+
+    if not ocr_text.strip():
+        return []
+
+    ocr_norm = _re.sub(r"\s+", "", ocr_text)
+    sections = dict(_split_image_caption_sections(caption_text))
+    entities = sections.get("【实体】", "")
+    # 「无」/空段不是声称，跳过
+    if not entities or entities.strip() in ("无", ""):
+        return []
+
+    # 实体段按顿号/逗号拆项，逐项在 OCR 全文中找踪迹（子串归一匹配）
+    items = [x.strip() for x in _re.split(r"[、，,;；]", entities) if x.strip() and x.strip() != "无"]
+    missing = [
+        item for item in items
+        if len(_re.sub(r"\s+", "", item)) >= 2 and _re.sub(r"\s+", "", item) not in ocr_norm
+    ]
+    if not missing:
+        return []
+    # OCR 全文很短时反证力弱（漏检概率高），只报显著缺失（≥3 项缺失才产信号）
+    if len(items) >= 3 and len(missing) < 3:
+        return []
+    return [f"caption 实体 {len(missing)}/{len(items)} 项在 OCR 全文无踪: {'、'.join(missing[:5])}"]
+
+
 
 
 
@@ -1026,23 +1291,146 @@ async def _get_document_processor_static(
 
 
 
+# 结构化 caption 的分段标题（与 image_description 模板严格对应）。
+# 逐字层段落（图中文字/实体/图表数据）是 BM25 精确命中的来源，截断时必须保留。
+_IMAGE_CAPTION_LITERAL_SECTIONS = ("【图中文字】", "【实体】", "【图表数据】")
+_IMAGE_CAPTION_SECTIONS = ("【主体描述】",) + _IMAGE_CAPTION_LITERAL_SECTIONS + (
+    "【视觉特征】", "【场景类型】",
+)
+
+
+def _truncate_image_description(text: str, _logger) -> str:
+    """结构化 caption 的保护性截断（分段感知，非硬切尾）。
+
+    超限时先砍最长的可牺牲段（主体描述/视觉特征——语义层信息在向量检索里
+    有容错），保逐字层段落（图中文字/实体/图表数据——BM25 精确命中的唯一
+    来源，砍掉即该图的型号/数字永远检索不到）。全部段都在限内时原样返回。
+
+    Args:
+        text: VLM 输出的结构化 caption。
+        _logger: 日志器。
+
+    Returns:
+        截断后的文本；无分段结构时退化为尾部硬切（旧格式兼容）。
+    """
+    max_chars = _image_caption_max_chars()
+    if len(text) <= max_chars:
+        return text
+
+    sections = _split_image_caption_sections(text)
+    # 无分段结构（旧模板产物/模型不守格式）：退化为尾部硬切，不报错
+    if len(sections) <= 1:
+        _logger.warning(
+            "图片描述超限且无分段结构，退化尾部硬切",
+            original_len=len(text),
+            max_chars=max_chars,
+        )
+        return text[:max_chars]
+
+    # 保护性裁剪：逐字层不可动；非逐字段从最长者开始整段丢弃（整段丢弃保持
+    # 段落结构完整——半段比缺段更伤害检索与阅读）
+    dropped: list[str] = []
+    flexible = [
+        name for name, _body in sections if name not in _IMAGE_CAPTION_LITERAL_SECTIONS
+    ]
+    kept = dict(sections)
+    while sum(len(v) for v in kept.values()) > max_chars and flexible:
+        longest = max(flexible, key=lambda n: len(kept[n]))
+        dropped.append(longest)
+        del kept[longest]
+        flexible.remove(longest)
+
+    result = "".join(f"{name}{body}" for name, body in kept.items())
+    if dropped:
+        _logger.warning(
+            "图片描述超限触发保护性截断（丢弃非逐字段）",
+            dropped_sections=dropped,
+            original_len=len(text),
+            truncated_len=len(result),
+            max_chars=max_chars,
+        )
+    # 全部可牺牲段丢光仍超限（逐字段自身巨大）：按段序保前 N 段，尾部硬切兜底
+    if len(result) > max_chars:
+        result = result[:max_chars]
+    return result
+
+
+def _split_image_caption_sections(text: str) -> list[tuple[str, str]]:
+    """把结构化 caption 按【段名】切成 (段名, 段体) 列表（保序）。
+
+    无任何已知段名时返回空列表（调用方退化尾部硬切）。同段名二次出现时，
+    其段体并入**前一个保留段**尾部（就近归属，语义与首段一致）。
+    """
+    positions: list[tuple[int, str]] = []
+    for name in _IMAGE_CAPTION_SECTIONS:
+        idx = 0
+        while True:
+            idx = text.find(name, idx)
+            if idx < 0:
+                break
+            positions.append((idx, name))
+            idx += len(name)
+    if not positions:
+        return []
+    positions.sort()
+    # 同段名只保留首次位置；二次出现位置不作为切段边界（其文本归前一段）
+    seen: set[str] = set()
+    boundaries: list[tuple[int, str]] = []
+    for pos, name in positions:
+        if name not in seen:
+            seen.add(name)
+            boundaries.append((pos, name))
+    if not boundaries:
+        return []
+    sections: list[tuple[str, str]] = []
+    for i, (pos, name) in enumerate(boundaries):
+        end = boundaries[i + 1][0] if i + 1 < len(boundaries) else len(text)
+        body = text[pos + len(name):end]
+        sections.append((name, body))
+    return sections
+
+
+def _image_caption_max_chars() -> int:
+    """图片描述入库文本上限（字符）。YAML knowledge_base.parsing 配置，默认 4000。
+
+    结构化 caption（含图中文字逐字转录）比旧自由文本长，2000 硬顶会把
+    【实体】【图表数据】整段切掉。上限是宿主资源旋钮（embedding token 限制
+    /索引体积），生产可按 embedding 模型上下文调整。
+    """
+    from novamind.setting.yaml_config.loader import get_config
+
+    parsing_cfg = getattr(getattr(get_config(), "knowledge_base", None), "parsing", None)
+    configured = getattr(parsing_cfg, "image_caption_max_chars", None) if parsing_cfg else None
+    if configured and int(configured) > 0:
+        return int(configured)
+    return 4000
+
+
 async def _generate_image_description(
     file_content: bytes,
     document: Document,
     mcs,  # ModelConfigService
     _logger,
     vlm_model_name: str | None = None,
+    vlm_fallback_model: str | None = None,
 ) -> str:
-    """调用 VLM 生成图片描述文本
+    """调用 VLM 生成图片描述文本（结构化 caption，保护性截断，配额失败回退备用模型）
 
     Args:
         file_content: 图片二进制内容
         document: 文档对象
         mcs: ModelConfigService 实例
         _logger: 日志器
+        vlm_model_name: VLM 主模型名（调用方保证非空，不兜底）
+        vlm_fallback_model: 备用 VLM 模型名；主模型因配额/鉴权类错误失败时
+            换该模型重试一次（与视频路径同名参数语义一致）。空/未配置不回退。
 
     Returns:
-        描述文本（截断到 2000 字符），失败抛异常由调用方处理
+        结构化描述文本（经 _truncate_image_description 保护性截断）
+
+    Raises:
+        ValueError: VLM 未配置或返回空描述。
+        Exception: 主/备模型均失败（调用方按 vlm_skip_on_quota_error 决定占位或抛错）。
     """
     from novamind.shared.prompts.templates import PromptManager
 
@@ -1057,36 +1445,61 @@ async def _generate_image_description(
     file_ext = (document.file_type or "png").lower()
     mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
 
-    # 3. 获取描述 Prompt
+    # 2. 获取结构化 caption prompt（固定分段：主体/文字/图表/实体/视觉/场景类型）
     description_prompt = PromptManager.get_template("image_description")
 
-    # 4. 构建多模态消息（OpenAI 兼容格式）
+    # 3. 构建多模态消息（OpenAI 兼容格式）
     messages = build_vlm_image_messages(
         file_bytes=file_content,
         mime_type=mime_type,
         text_prompt=description_prompt,
     )
 
-    # 5. 调用 VLM 生成描述
-    description = await generate_vlm_text_with_fallback(
-        vlm_client=vlm_client,
-        messages=messages,
-        max_tokens=1024,
-        temperature=0.3,
-        logger=_logger,
-        vlm_model=vlm_model_name,
-        log_context={
-            "document_id": document.id,
-            "file_type": document.file_type,
-        },
-    )
+    # 4. 调用 VLM 生成描述。max_tokens 上限给足结构化分段空间
+    #    （主体+逐字文字转录+图表数据+实体，密集表格图可到 2-3k tokens）
+    log_ctx = {
+        "document_id": document.id,
+        "file_type": document.file_type,
+    }
+    try:
+        description = await generate_vlm_text_with_fallback(
+            vlm_client=vlm_client,
+            messages=messages,
+            max_tokens=3072,
+            temperature=0.3,
+            logger=_logger,
+            vlm_model=vlm_model_name,
+            log_context=log_ctx,
+        )
+    except Exception as exc:
+        # 主模型配额/鉴权类失败且配置了备用模型：惰性取备用 client 重试一次
+        # （与视频 describe_single 的 fallback 语义一致；非配额错误不触碰备用
+        # 模型凭证）。其它错误原样上抛。
+        if not (is_vlm_quota_or_auth_error(exc) and vlm_fallback_model):
+            raise
+        _logger.warning(
+            "图片VLM主模型配额/鉴权失败，回退备用模型重试",
+            fallback_model=vlm_fallback_model,
+            error=str(exc),
+            **log_ctx,
+        )
+        vlm_fallback_client = await mcs.get_vlm_client_by_model(
+            document.uploader_id, vlm_fallback_model
+        )
+        description = await generate_vlm_text_with_fallback(
+            vlm_client=vlm_fallback_client,
+            messages=messages,
+            max_tokens=3072,
+            temperature=0.3,
+            logger=_logger,
+            vlm_model=vlm_fallback_model or "",
+            log_context=log_ctx,
+        )
 
     if not description or not description.strip():
         raise ValueError(f"VLM 返回空描述，模型: {vlm_model_name}")
 
-    # 6. 截断到 2000 字符
-    description = description.strip()[:2000]
-
-    return description
+    # 5. 保护性截断（分段感知，非硬切）
+    return _truncate_image_description(description.strip(), _logger)
 
 

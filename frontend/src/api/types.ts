@@ -454,8 +454,12 @@ export interface TextParsingConfig {
 }
 
 export interface ImageParsingConfig {
-  strategy?: 'vlm' | 'deepdoc_ocr'
+  strategy?: 'vlm' | 'deepdoc_ocr' | 'combined'
   vlm_model?: string
+  /** VLM 主模型配额/鉴权失败时回退的备用模型名；空=不回退（与视频同名参数同语义） */
+  vlm_fallback_model?: string
+  /** 主备均配额/鉴权失败时写占位描述继续；默认 false=fail fast */
+  vlm_skip_on_quota_error?: boolean
 }
 
 export interface ParsingConfig {

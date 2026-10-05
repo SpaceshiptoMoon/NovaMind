@@ -27,8 +27,11 @@ export {
   wikiGranularityItems,
   applyTextParsingConfig,
   buildTextParsingConfigFromForm,
+  getAudioSplitModeValue,
   getTextStrategyValue,
   getVideoStrategyValue,
+  audioSplitModeItems,
+  localAsrModelOptions,
   textStrategyItems,
   videoStrategyItems,
 } from './kbConfig'

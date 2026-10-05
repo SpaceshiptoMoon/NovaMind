@@ -4,7 +4,7 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 /** 文本解析策略：default（内置 reader）或 deepdoc */
 export type TextStrategy = 'default' | 'deepdoc'
 /** 图片解析策略：VLM 描述或 DeepDoc OCR */
-export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
+export type ImageStrategy = 'vlm' | 'deepdoc_ocr' | 'combined'
 /** 视频解析策略：7 种抽帧/去重/描述组合预设 */
 export type VideoStrategy =
   | 'simple'
@@ -36,6 +36,27 @@ export const videoStrategyItems: Array<{
     value: 'video_native',
     label: '视频直输',
     desc: '按场景切换切片直输 VLM，慢切换场景（会议/讲座）最优（需 openai_video + minio 公网端点；录屏不推荐）',
+  },
+]
+
+/** 本地 faster-whisper 档位选项（与后端 split_local_whisper_model_name 支持档位一致；
+ * 留空 = 部署默认档，由 YAML knowledge_base.parsing.local_whisper_model 决定）。 */
+export const localAsrModelOptions: Array<{ value: string; label: string }> = [
+  { value: 'faster-whisper-tiny', label: '本地 Whisper tiny（最快，~75MB）' },
+  { value: 'faster-whisper-base', label: '本地 Whisper base（~140MB）' },
+  { value: 'faster-whisper-small', label: '本地 Whisper small（~460MB，CPU 可跑）' },
+  { value: 'faster-whisper-medium', label: '本地 Whisper medium（~1.5GB）' },
+  { value: 'faster-whisper-large-v2', label: '本地 Whisper large-v2（~3GB）' },
+  { value: 'faster-whisper-large-v3', label: '本地 Whisper large-v3（~3GB，中文最准，生产默认）' },
+]
+
+/** 音频切分模式选项（与后端 AudioParsingConfig.split_mode 语义一致）。 */
+export const audioSplitModeItems: Array<{ value: string; label: string; desc: string }> = [
+  { value: '', label: '通用切分', desc: '复用知识库顶层切分配置（递归按行累积）' },
+  {
+    value: 'pause_topic',
+    label: '停顿边界优先',
+    desc: 'ASR segment 停顿间隙强制切边界（硬墙），组内按分块大小封块',
   },
 ]
 
@@ -84,6 +105,11 @@ export const textStrategyItems: Array<{
 /** 校验文本策略枚举，仅接受 deepdoc，其余回退 default */
 export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
+}
+
+/** 校验音频切分模式枚举，仅接受 pause_topic，其余回退空（通用切分）。 */
+export function getAudioSplitModeValue(value: unknown): string {
+  return value === 'pause_topic' ? 'pause_topic' : ''
 }
 
 /** deepdocOnly 类型（Excel/PPT/EPUB）唯一合法策略——后端 schema 为 Literal["deepdoc"]，

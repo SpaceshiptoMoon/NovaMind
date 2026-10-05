@@ -4325,17 +4325,29 @@
         "type": "object"
       },
       "ImageParsingConfig": {
-        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）",
+        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。",
         "properties": {
           "strategy": {
             "default": "vlm",
-            "description": "图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)",
+            "description": "图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/combined(OCR+VLM 合并，逐字+语义双通道交叉校验)",
             "enum": [
               "vlm",
-              "deepdoc_ocr"
+              "deepdoc_ocr",
+              "combined"
             ],
             "title": "Strategy",
             "type": "string"
+          },
+          "vlm_fallback_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vlm Fallback Model"
           },
           "vlm_model": {
             "anyOf": [
@@ -4348,6 +4360,11 @@
             ],
             "description": "VLM 模型名称（strategy=vlm 时必填，留空将抛错要求显式选择，不做默认回退）",
             "title": "Vlm Model"
+          },
+          "vlm_skip_on_quota_error": {
+            "default": false,
+            "title": "Vlm Skip On Quota Error",
+            "type": "boolean"
           }
         },
         "title": "ImageParsingConfig",

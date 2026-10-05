@@ -86,10 +86,18 @@ _VLM_QUOTA_OR_AUTH_MARKERS = (
 _ANCHOR_LINE_RE = re.compile(r"^(\[\d{2}:\d{2}:\d{2}#\d+\])")
 
 
-def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
-    """判断 VLM 调用异常是否属于配额/鉴权类（可降级，无需重试）。"""
+def is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
+    """判断 VLM 调用异常是否属于配额/鉴权类（可降级，无需重试）。
+
+    公共判定器（无下划线前缀）：视频/图片两条媒体路径共用，经 R2 跨 feature
+    公共面规则供同 feature 内 document_pipeline 复用。
+    """
     text = str(exc).lower()
     return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
+
+
+# 兼容别名：media_processing 模块内部既有调用点沿用旧名
+_is_vlm_quota_or_auth_error = is_vlm_quota_or_auth_error
 
 
 async def _snap_minio():
@@ -1507,6 +1515,21 @@ def _audio_asr_fingerprint_params(
     }
 
 
+def _audio_clean_fingerprint_params(audio_config: dict[str, Any]) -> dict[str, Any]:
+    """音频清洗配置指纹块（命中检查与保存侧共用的单一事实源）。
+
+    清洗改变入库文本（clean 检索、raw 溯源），开关/模型任一变化必须使
+    解析快照失效——RETRY 时按新配置重新清洗而非复用旧产物。
+
+    Returns:
+        并入解析指纹 computing dict 的 ``asr_clean`` 键值。
+    """
+    return {
+        "clean_enabled": bool(audio_config.get("clean_enabled")),
+        "clean_llm_model": str(audio_config.get("clean_llm_model") or ""),
+    }
+
+
 async def process_audio_document(
     document: Document,
     file_content: bytes,
@@ -1564,7 +1587,8 @@ async def process_audio_document(
 
     # ===== 解析快照命中检查（审计 P1#2：音频快照此前只写不读，RETRY 时 ASR
     # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名 +
-    # asr_engine 引擎参数块），匹配即复用转写全文与时间线，跳过 ASR。
+    # asr_engine 引擎参数块 + asr_clean 清洗配置块，两侧共用同一构造函数），
+    # 匹配即复用转写全文与时间线，跳过 ASR。
     audio_parse_fp = ""
     if SNAPSHOTS_ENABLED:
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
@@ -1573,6 +1597,7 @@ async def process_audio_document(
             asr_protocol, asr_model, engine_audio_config, asr_hotwords,
             diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
         )
+        audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
         except Exception as fp_exc:
@@ -1826,10 +1851,7 @@ async def process_audio_document(
             asr_protocol, asr_model, engine_audio_config, asr_hotwords,
             diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
         )
-        audio_runtime_parsing["asr_clean"] = {
-            "clean_enabled": clean_enabled,
-            "clean_llm_model": str(audio_config.get("clean_llm_model") or ""),
-        }
+        audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:
             audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
         except Exception as fp_exc:
