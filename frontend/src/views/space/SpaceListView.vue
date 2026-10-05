@@ -54,6 +54,17 @@
           <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
+          <!-- 洞察与运营入口：运营三页（洞察/缺口报告/知识运营）的导航流唯一入口，
+               此前仅通知可直达、正常导航走不到 -->
+          <el-button
+            v-if="selectedSpaceId"
+            size="small"
+            aria-label="空间洞察"
+            title="空间洞察"
+            @click="switchTab('insights')"
+          >
+            <el-icon><TrendCharts /></el-icon>
+          </el-button>
           <el-button
             v-if="selectedSpaceId"
             size="small"
@@ -255,7 +266,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Setting, Collection, Check } from '@element-plus/icons-vue'
+import { Plus, Setting, Collection, Check, TrendCharts } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'

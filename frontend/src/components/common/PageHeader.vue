@@ -9,7 +9,10 @@
       <slot name="title-suffix" />
     </div>
     <div class="page-header-right">
-      <slot />
+      <!-- actions 具名插槽优先（语义化操作区）；未提供时回落默认插槽（旧调用方直传按钮） -->
+      <slot name="actions">
+        <slot />
+      </slot>
     </div>
   </div>
 </template>
