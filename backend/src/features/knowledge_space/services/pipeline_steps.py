@@ -655,9 +655,10 @@ async def generate_questions_for_chunks(
     为所有分块生成假设问题，并生成问题向量
 
     Returns:
-        (questions_list, question_embeddings_list)
+        (questions_list, question_embeddings_list, qg_stats)
         questions_list: List[List[str]] — 每个分块对应的问题文本列表
         question_embeddings_list: List[List[List[float]]] — 每个分块对应的问题向量列表
+        qg_stats: BatchGenerationStats — 批次级统计（含失败/降级批次数），供节点 metrics 透出
     """
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         QuestionGenerationConfig,
@@ -675,7 +676,11 @@ async def generate_questions_for_chunks(
 
     if not qg_config.enabled:
         _logger.info("假设问题生成未启用，跳过")
-        return [], []
+        from novamind.features.knowledge_space.services.question_generation_service import (
+            BatchGenerationStats,
+        )
+
+        return [], [], BatchGenerationStats()
 
     qg_service = QuestionGenerationService(
         session=session, config=qg_config, model_config_service=model_config_port
@@ -683,7 +688,7 @@ async def generate_questions_for_chunks(
 
     # generate_questions_batch 接受 List[Tuple[str, Optional[str]]] 格式
     chunk_tuples = [(chunk, document_title) for chunk in chunks]
-    batch_results = await qg_service.generate_questions_batch(
+    batch_results, qg_stats = await qg_service.generate_questions_batch(
         chunks=chunk_tuples,
         user_id=user_id,
     )
@@ -720,7 +725,7 @@ async def generate_questions_for_chunks(
     else:
         question_embeddings_list = [[] for _ in batch_results]
 
-    return questions_list, question_embeddings_list
+    return questions_list, question_embeddings_list, qg_stats
 
 
 async def run_post_parse_tail(
@@ -777,7 +782,19 @@ async def run_post_parse_tail(
     if SNAPSHOTS_ENABLED and parse_fingerprint:
         try:
             resume_minio = await ClientFactory.get_minio_client()
-            split_mode = "structural" if prechunked_items is not None else str(splitting_config.get("strategy", "recursive"))
+            # 切分模式并入停顿阈值有效值（音频 pause_topic 的边界参数）：
+            # 它决定切分边界却不在顶层 splitting_config 里，不进指纹则改阈值
+            # 后 RETRY 仍命中旧分块（参数静默失效）。触发条件与有效值语义
+            # 镜像 media_processing.process_audio_document（None → 引擎默认 0.8）。
+            split_mode = (
+                "structural" if prechunked_items is not None
+                else str(splitting_config.get("strategy", "recursive"))
+            )
+            audio_cfg = (pipeline_config.get("parsing", {}) or {}).get("audio", {}) or {}
+            if prechunked_items is not None and audio_cfg.get("split_mode") == "pause_topic":
+                pause_gap = audio_cfg.get("pause_gap_seconds")
+                effective_gap = float(pause_gap) if pause_gap is not None else 0.8
+                split_mode = f"pause_topic:{effective_gap}"
             split_fingerprint = compute_split_fingerprint(
                 parse_fingerprint, split_mode, splitting_config,
             )
@@ -929,9 +946,10 @@ async def run_post_parse_tail(
     await begin_step(session, task, "question_generation")
     qg_config = pipeline_config.get("question_generation", {})
     should_generate = qg_config.get("enabled", False) if qg_config else False
+    qg_stats = None
     if should_generate:
         try:
-            questions_list, question_embeddings_list = await generate_questions_for_chunks(
+            questions_list, question_embeddings_list, qg_stats = await generate_questions_for_chunks(
                 chunks=[c["content"] for c in es_chunks],
                 document_title=document.filename,
                 kb_config=pipeline_config,
@@ -958,9 +976,25 @@ async def run_post_parse_tail(
             chunk["questions"] = []
             chunk["question_embeddings"] = []
     total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
-    await finish_step_committed(session, task, "question_generation", metrics={
-        "enabled": should_generate, "total_questions": total_questions,
-    })
+    # 覆盖率透出：指标只报总数会让「部分批次超时留空」伪装成健康完成
+    # （doc787 实例：total=20 看似正常，实际 12/16 分块因批次超时为空）。
+    qg_metrics: dict = {
+        "enabled": should_generate,
+        "total_questions": total_questions,
+        "chunks_total": len(es_chunks),
+        "chunks_with_questions": sum(1 for c in es_chunks if c.get("questions")),
+    }
+    if qg_stats is not None and should_generate:
+        qg_metrics.update(qg_stats.to_metrics())
+    if should_generate and qg_metrics["chunks_with_questions"] < len(es_chunks):
+        logger.warning(
+            "假设问题生成存在缺口",
+            document_id=document.id,
+            chunks_with_questions=qg_metrics["chunks_with_questions"],
+            chunks_total=len(es_chunks),
+            **({"batches_failed": qg_stats.batches_failed} if qg_stats else {}),
+        )
+    await finish_step_committed(session, task, "question_generation", metrics=qg_metrics)
     await check_document_cancelled(document.id)
 
     # 5. 索引到 ES
