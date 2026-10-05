@@ -610,3 +610,60 @@ async def test_ingest_taxonomy_assigns_category_path(wiki_db):
     # 无分配的候选不受影响
     other = await repo.get_by_slug(1, "entity/yi-chan-pin")
     assert other.category_path == []
+
+
+# ========== 空响应加固回归（thinking 模型思考耗尽 max_tokens 场景）==========
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_empty_response_retries_with_shrunk_max_tokens(wiki_db):
+    """空响应触发缩短预算重试并计数；重试成功后管道正常建页。
+
+    对应生产故障：qwen3.8 强制 thinking，思考 token 撞满 4096 后 content 为空，
+    8 连发全空导致 wiki 0 页"健康完成"。修复后：空响应缩短 max_tokens 重试 +
+    empty_llm_responses 计数。
+    """
+    seen_max_tokens = []
+
+    class TrackingLLM(MockLLM):
+        async def generate_text(self, *, prompt, **kwargs):
+            seen_max_tokens.append(kwargs.get("max_tokens"))
+            return await super().generate_text(prompt=prompt, **kwargs)
+
+    # 序列：extract 空 → extract 成功；cite 空 → cite 成功；3 页正文正常
+    llm = TrackingLLM(
+        ["", _cand_json(), "", _CITE_JSON,
+         _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成")],
+        keyword_routes={
+            "You are organizing a wiki knowledge base": _TAXONOMY_JSON,
+            "You are a strict deduplication system": json.dumps({"merges": {}}),
+        },
+    )
+    svc = _make_service(wiki_db, llm)
+    outcome = await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    assert outcome.empty_llm_responses == 2
+    assert outcome.pages_created == 3
+    # 空响应重试轮携带缩短后的预算：4096 → 2048（extract/cite 各缩一次）
+    assert 4096 in seen_max_tokens
+    assert 2048 in seen_max_tokens
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_all_empty_responses_zero_pages_reports_root_cause(wiki_db, caplog):
+    """持续空响应 → 0 页完成 + empty_llm_responses 计数透出（可观测不伪装）。"""
+    llm = MockLLM(
+        ["", "", ""],  # extract 3 轮全空 → 无候选 → 提前 finalize 返回
+        keyword_routes={
+            "You are organizing a wiki knowledge base": _TAXONOMY_JSON,
+            "You are a strict deduplication system": json.dumps({"merges": {}}),
+        },
+    )
+    svc = _make_service(wiki_db, llm)
+    outcome = await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    assert outcome.pages_created == 0
+    assert outcome.empty_llm_responses == 3
+    assert outcome.candidates == 0

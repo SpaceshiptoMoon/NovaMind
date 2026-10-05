@@ -50,6 +50,13 @@ MAX_RUNES_PER_CITATION_BATCH = 12000
 LLM_CONCURRENCY = 4
 # 候选抽取 / 引文标注 JSON 解析失败时的重试次数
 MAX_PARSE_RETRY = 2
+# 空响应重试时压缩 max_tokens 的比例（与 question_generation_service 同语义）。
+# thinking 模型思考 token 计入 max_completion_tokens：预算被思考耗尽后 content
+# 为空；缩短预算对"接近上限才溢出"的场景有效，恢复手段主要靠重试时模型输出
+# 方差。持续为空则由 empty_llm_responses 计数暴露，不在管道内无限重试。
+EMPTY_RESPONSE_MAX_TOKENS_SCALE = 0.5
+# 空响应重试的 max_tokens 下限（防比例压缩趋零）
+EMPTY_RESPONSE_MIN_MAX_TOKENS = 1024
 
 _GRANULARITY_GUIDANCE = {
     "focused": (
@@ -94,6 +101,10 @@ class IngestOutcome:
     skipped_no_citation: int = 0
     merged_into_existing: int = 0
     truncated: bool = False
+    # LLM 返回空内容（content 为空）的调用次数。thinking 模型思考 token 计入
+    # max_completion_tokens，预算被思考耗尽后正文为空——0 页完成的常见根因，
+    # 必须可见而非伪装成健康完成（qwen3.8 实测：8 连发全部空内容撞满 4096）。
+    empty_llm_responses: int = 0
 
 
 
@@ -149,6 +160,8 @@ class WikiIngestService:
             IngestOutcome 统计（新建/更新页数、候选数、截断标记等）。
         """
         outcome = IngestOutcome()
+        # 绑定到实例：_call_llm_json/_call_llm_text 就近累加空响应计数
+        self._outcome = outcome
 
         # 删除竞态守卫（检查点 1，对齐 WeKnora isKnowledgeGone）：
         # 文档在排队/执行窗口被删 → 直接放弃，不留幽灵 source_ref
@@ -338,6 +351,20 @@ class WikiIngestService:
         await self._finalize()
         self._record.finish_step("finalize")
         await self._commit()
+
+        # 0 页完成透出根因：empty_llm_responses>0 说明是 thinking 模型预算被
+        # 思考耗尽（LLM 侧故障），而非"文档确实没内容"——后者正常无需告警。
+        if (
+            outcome.pages_created == 0 and outcome.pages_updated == 0
+            and outcome.empty_llm_responses > 0
+        ):
+            logger.warning(
+                "wiki 生成完成但 0 页：LLM 空响应是疑似根因（thinking 模型思考耗尽 max_tokens）",
+                document_id=self.document_id, kb_id=self.kb_id,
+                empty_llm_responses=outcome.empty_llm_responses,
+                candidates=outcome.candidates,
+                cited_slugs=outcome.cited_slugs,
+            )
 
         return outcome
 
@@ -929,18 +956,39 @@ class WikiIngestService:
     # ========== LLM 与工具方法 ==========
 
     async def _call_llm_json(self, prompt: str) -> dict | None:
-        """JSON mode 调用 + 解析重试"""
+        """JSON mode 调用 + 解析重试。
+
+        空响应（content 为空）单独计数到 outcome.empty_llm_responses 并缩短
+        max_tokens 重试——thinking 模型思考 token 耗尽预算的典型故障面，静默
+        重试会让 0 页完成伪装成健康完成。
+        """
+        max_tokens = 4096
         for attempt in range(MAX_PARSE_RETRY + 1):
             try:
                 async with self._semaphore:
                     response = await self.llm.generate_text(
                         prompt=prompt,
-                        max_tokens=4096,
+                        max_tokens=max_tokens,
                         temperature=0.2,
                         response_format={"type": "json_object"},
                     )
             except Exception as e:
                 raise WikiGenerationError(f"LLM 调用失败: {e}") from e
+            if not response or not response.strip():
+                outcome = getattr(self, "_outcome", None)
+                if outcome is not None:
+                    outcome.empty_llm_responses += 1
+                if attempt < MAX_PARSE_RETRY:
+                    max_tokens = max(
+                        int(max_tokens * EMPTY_RESPONSE_MAX_TOKENS_SCALE),
+                        EMPTY_RESPONSE_MIN_MAX_TOKENS,
+                    )
+                    logger.warning(
+                        "wiki LLM 空响应，缩短 max_tokens 重试",
+                        attempt=attempt + 1, document_id=self.document_id,
+                        max_tokens=max_tokens,
+                    )
+                continue
             parsed = extract_json_obj(response)
             if parsed is not None:
                 return parsed
@@ -953,15 +1001,32 @@ class WikiIngestService:
         return None
 
     async def _call_llm_text(self, system_prompt: str, user_prompt: str) -> str | None:
-        """页面正文生成（非 JSON）"""
+        """页面正文生成（非 JSON）；空响应计数 + 缩短预算重试同 _call_llm_json"""
+        max_tokens = 4096
         try:
-            async with self._semaphore:
-                response = await self.llm.generate_text(
-                    prompt=f"{system_prompt}\n\n---\n\n{user_prompt}",
-                    max_tokens=4096,
-                    temperature=0.3,
-                )
-            return response
+            for attempt in range(MAX_PARSE_RETRY + 1):
+                async with self._semaphore:
+                    response = await self.llm.generate_text(
+                        prompt=f"{system_prompt}\n\n---\n\n{user_prompt}",
+                        max_tokens=max_tokens,
+                        temperature=0.3,
+                    )
+                if response and response.strip():
+                    return response
+                outcome = getattr(self, "_outcome", None)
+                if outcome is not None:
+                    outcome.empty_llm_responses += 1
+                if attempt < MAX_PARSE_RETRY:
+                    max_tokens = max(
+                        int(max_tokens * EMPTY_RESPONSE_MAX_TOKENS_SCALE),
+                        EMPTY_RESPONSE_MIN_MAX_TOKENS,
+                    )
+                    logger.warning(
+                        "wiki 正文空响应，缩短 max_tokens 重试",
+                        attempt=attempt + 1, document_id=self.document_id,
+                        max_tokens=max_tokens,
+                    )
+            return None
         except Exception as e:
             logger.warning("wiki 页面生成 LLM 调用失败", document_id=self.document_id, error=str(e))
             return None

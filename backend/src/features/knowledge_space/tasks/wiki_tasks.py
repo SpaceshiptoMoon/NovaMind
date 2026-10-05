@@ -175,6 +175,7 @@ async def process_wiki_ingest_task(
                 "wiki 生成完成",
                 kb_id=kb_id, document_id=document_id,
                 pages_created=outcome.pages_created, pages_updated=outcome.pages_updated,
+                empty_llm_responses=outcome.empty_llm_responses,
             )
 
             # 7. 终态通知（best-effort，失败不影响结果）
