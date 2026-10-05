@@ -37,6 +37,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = get_logger(__name__)
 
 
+def _is_stream_only_error(error_msg: str) -> bool:
+    """识别「模型仅支持流式调用」类服务端错误（stream-only 探针回退的判据）。
+
+    Args:
+        error_msg: LLM 服务端返回的错误文本。
+
+    Returns:
+        True 表示该错误源于非流式调用被拒（如 DashScope glm-4.5 的
+        "only support stream mode"），应改用流式探针重试。
+    """
+    lowered = error_msg.lower()
+    return "stream" in lowered and (
+        "only support" in lowered or "only_support" in lowered or "stream mode" in lowered
+    )
+
+
+async def _probe_llm_stream(client: BaseLLM) -> str:
+    """用流式调用探测 LLM 连通性，返回收到的内容（可为空串）。
+
+    Args:
+        client: 已构造的 LLM 客户端。
+
+    Returns:
+        流式响应拼接的内容；模型可达但 thinking 耗尽预算时为空串。
+
+    Raises:
+        Exception: 流式请求本身失败（鉴权/网络/参数错误）时原样抛出。
+    """
+    chunks: list[str] = []
+    async for chunk in client.generate_text_stream(
+        prompt="Hello", max_tokens=512, temperature=0.1
+    ):
+        chunks.append(chunk)
+    return "".join(chunks)
+
+
 # ---------------------------------------------------------------------------
 # 模块级客户端缓存
 #
@@ -345,7 +381,7 @@ class ModelConfigService:
                 effective_model = data.model or config.model
                 try:
                     detected_dim = await self._detect_embedding_dimension(
-                        protocol=config.protocol,
+                        protocol=data.protocol or config.protocol,
                         api_key=raw_api_key,
                         base_url=effective_url,
                         model_name=effective_model,
@@ -366,9 +402,15 @@ class ModelConfigService:
                         error=str(e),
                     )
 
-        # AES 加密 API Key（如果更新了 api_key，避免修改原始 Schema 对象）
-        if data.api_key is not None:
+        # AES 加密 API Key（空串与 None 同义：留空 = 沿用原值，绝不覆盖原密文。
+        # 前端编辑态 api_key 初始化为空串原样回传，若把空串当"清空"加密落库，
+        # 用户仅改 base_url/模型名保存就会静默洗掉已存密钥，后续调用全部 401。
+        # 仅改值不够：显式传入的空串仍在 fields_set 里，会被 repo 的
+        # model_dump(exclude_unset=True) setattr 成空串洗掉密文，须一并 discard）
+        if data.api_key:
             data = data.model_copy(update={"api_key": await encrypt_api_key_async(data.api_key)})
+        elif data.api_key is not None:
+            data.__pydantic_fields_set__.discard("api_key")
 
         config = await self.repo.update(config, data)
 
@@ -787,22 +829,42 @@ class ModelConfigService:
             raise ModelConfigTestFailedError(request.model_type, error_msg)
 
     async def _test_llm(self, request: ModelTestRequest) -> None:
-        """测试 LLM 连接"""
+        """测试 LLM 连接
+
+        Raises:
+            ValueError: 请求失败或返回空内容（如 thinking 吃满输出预算）。
+        """
         client = create_llm_client(
             protocol=request.protocol,
             api_key=request.api_key,
             base_url=request.base_url or "",
             model_name=request.model,
         )
-        # 某些模型（如 qwen3）强制要求 enable_thinking=True，测试时默认开启
+        # 某些模型（如 qwen3）强制要求 enable_thinking=True，测试时默认开启。
+        # 探针预算放宽到 512：思考 token 计入 completion 预算（对齐 LiteLLM
+        # health_check_max_tokens_reasoning 的同类问题），10 会被思考吃满导致
+        # 正文恒空、连通性被误判为失败。
         try:
-            await client.generate_text(prompt="Hello", max_tokens=10, temperature=0.1)
+            content = await client.generate_text(prompt="Hello", max_tokens=512, temperature=0.1)
         except Exception as e:
             error_msg = str(e)
             if "enable_thinking" in error_msg.lower():
-                await client.generate_text(prompt="Hello", max_tokens=10, temperature=0.1, enable_thinking=True)
+                content = await client.generate_text(
+                    prompt="Hello", max_tokens=512, temperature=0.1, enable_thinking=True
+                )
+            elif _is_stream_only_error(error_msg):
+                # stream-only 模型（glm-4.5 等在 DashScope 上仅支持流式）非流式探针
+                # 必 400：改用流式探针验连通性，收到任意一个内容块即视为可达
+                content = await _probe_llm_stream(client)
             else:
                 raise
+        # 空 content 视为失败：thinking 强制模型可能把 max_tokens 全部耗在思考上
+        # （generate_text 只打 warning 返回空串），报成功会让用户带着坏配置上线
+        if not (content or "").strip():
+            raise ValueError(
+                "模型返回了空内容——可能启用了 thinking 且思考耗尽了输出预算，"
+                "请在扩展配置中调整或更换非思考模型"
+            )
 
     async def _test_embedding(self, request: ModelTestRequest) -> int:
         """测试 Embedding 连接，返回检测到的维度"""
@@ -876,43 +938,6 @@ class ModelConfigService:
             api_key=request.api_key or "",
             base_url=request.base_url,
         )
-
-    async def _test_asr(self, request: ModelTestRequest) -> None:
-        """测试 ASR 连接（三协议实现下沉 shared/ai_models/connection_testers/asr.py）"""
-        from novamind.shared.ai_models.connection_testers.asr import ASRConnectionTester
-
-        await ASRConnectionTester().test(
-            protocol=request.protocol,
-            model=request.model,
-            api_key=request.api_key or "",
-            base_url=request.base_url,
-        )
-
-    async def _test_asr(self, request: ModelTestRequest) -> None:
-        """测试 ASR 连接（三协议实现下沉 shared/ai_models/connection_testers/asr.py）"""
-        from novamind.shared.ai_models.connection_testers.asr import ASRConnectionTester
-
-        await ASRConnectionTester().test(
-            protocol=request.protocol,
-            model=request.model,
-            api_key=request.api_key or "",
-            base_url=request.base_url,
-        )
-
-            # 2xx 或 4xx（模型不存在等）均视为连接可达
-
-    async def _test_asr(self, request: ModelTestRequest) -> None:
-        """测试 ASR 连接（三协议实现下沉 shared/ai_models/connection_testers/asr.py）"""
-        from novamind.shared.ai_models.connection_testers.asr import ASRConnectionTester
-
-        await ASRConnectionTester().test(
-            protocol=request.protocol,
-            model=request.model,
-            api_key=request.api_key or "",
-            base_url=request.base_url,
-        )
-
-        # 转写成功 = 连接可达
 
     # ========== 辅助方法 ==========
 
@@ -1022,7 +1047,7 @@ class ModelConfigService:
                     SpaceRepository,
                 )
 
-                usages = await SpaceRepository(self.session).find_spaces_using_embedding(
+                usages = await SpaceRepository(self.db).find_spaces_using_embedding(
                     config.model
                 )
                 for usage in usages:
@@ -1033,7 +1058,14 @@ class ModelConfigService:
                         "reason": f"空间 '{usage['space_name']}' 正在使用此 Embedding 模型",
                     })
             except Exception as e:
+                # 查询失败按"能力缺失"处理：不阻止删除，但不谎报无影响
                 logger.error("检查删除影响失败，可能返回不完整结果", error=str(e))
+                impacts.append({
+                    "type": "warning",
+                    "id": None,
+                    "name": None,
+                    "reason": "空间绑定检查失败，无法确认是否有空间正在使用此 Embedding 模型",
+                })
 
         elif model_type == ModelType.LLM:
             # LLM 模型仅警告，不阻止删除（会话使用已缓存客户端）

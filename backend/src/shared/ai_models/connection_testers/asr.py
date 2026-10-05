@@ -4,8 +4,6 @@ local 只验模型目录与文件完整性及可加载性，不实际推理；op
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 # OpenAI 协议缺省 base URL（业务层不再各自硬编码；消 model_config_service 的 :815 旧位置）
 OPENAI_ASR_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 # DashScope 官方示例音频（公开 HTTP URL，与生产转写路径一致）
@@ -31,26 +29,39 @@ class ASRConnectionTester:
         """
         p = protocol or "openai"
         if p == "local":
-            await self._test_local()
+            await self._test_local(model=model)
         elif p == "dashscope":
             await self._test_dashscope(model=model, api_key=api_key, base_url=base_url)
         else:
             await self._test_openai(model=model, api_key=api_key, base_url=base_url)
 
-    async def _test_local(self) -> None:
-        """测试本地 ASR 模型是否可用（检查模型文件完整性）"""
-        # 模型路径与 audio_utils._resolve_local_whisper_model_dir 的最终兜底一致：
-        # backend/.cache/faster-whisper/tiny（与 deepdoc 缓存同约定）
-        # parents: connection_testers → ai_models → shared → src → backend
-        model_dir = (
-            Path(__file__).resolve().parents[4] / ".cache" / "faster-whisper" / "tiny"
+    async def _test_local(self, *, model: str) -> None:
+        """测试本地 ASR 模型是否可用（按 model 字段解析目录并检查文件完整性）
+
+        Args:
+            model: 待测试的本地 ASR 模型名（如 faster-whisper-small）。
+
+        Raises:
+            ValueError: 模型名不是 faster-whisper 家族档位、目录/文件缺失或加载失败。
+        """
+        from novamind.engines.document.media.audio.audio_utils import (
+            default_faster_whisper_cache_dir,
+            split_local_whisper_model_name,
         )
+
+        # 与运行时同一事实源：faster-whisper-* 家族名 → 档位 slug → 缓存目录。
+        # 非 family 名（用户手填裸档位）按裸档位宽容解析；不支持档位直接报错，
+        # 绝不忽略 model 字段——否则配置 large-v3 测试通过、解析时才发现缺模型。
+        slug = split_local_whisper_model_name(model)
+        if slug is None:
+            slug = model
+        model_dir = default_faster_whisper_cache_dir(slug)
 
         if not model_dir.exists():
             raise ValueError(
                 f"本地 ASR 模型目录不存在: {model_dir}，"
                 f"请先运行 backend/scripts/download_faster_whisper_model.py 下载"
-                f"（默认落 backend/.cache/faster-whisper/tiny）"
+                f"（默认落 backend/.cache/faster-whisper/{slug}）"
             )
 
         required_files = ["model.bin", "config.json", "tokenizer.json", "vocabulary.txt"]
@@ -66,14 +77,14 @@ class ASRConnectionTester:
             import asyncio
 
             from faster_whisper import WhisperModel
-            model = await asyncio.to_thread(
+            model_obj = await asyncio.to_thread(
                 WhisperModel,
                 str(model_dir),
                 device="cpu",
                 compute_type="int8",
                 local_files_only=True,
             )
-            del model
+            del model_obj
         except Exception as e:
             raise ValueError(f"本地 ASR 模型加载失败: {e}") from e
 

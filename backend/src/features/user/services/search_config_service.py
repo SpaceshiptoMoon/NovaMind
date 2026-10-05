@@ -250,6 +250,22 @@ class SearchConfigService:
             latency = (time.time() - start) * 1000
             await port.close()
 
+            # 空结果不视为连接成功：部分 provider（如 DuckDuckGo）把超时/解析失败
+            # 降级为空列表返回，若报成功用户会以为配置可用、生产搜索恒空。测试
+            # 场景宁可保守——提示失败方向，让用户检查网络可达性或换 provider。
+            if not results:
+                logger.warning(
+                    "搜索连接测试返回空结果，判定为失败",
+                    user_id=user_id,
+                    provider=provider,
+                    latency_ms=round(latency, 2),
+                )
+                raise SearchConfigTestFailedError(
+                    provider,
+                    "搜索请求完成但未返回任何结果——可能是网络不可达或服务商限流，"
+                    "请检查网络环境后重试",
+                )
+
             logger.info(
                 "搜索连接测试成功",
                 user_id=user_id,
@@ -267,6 +283,9 @@ class SearchConfigService:
             raise SearchConfigTestFailedError(provider, str(e))
         except WebSearchError as e:
             raise SearchConfigTestFailedError(provider, str(e))
+        except SearchConfigTestFailedError:
+            # 空结果主动失败：已带可操作指引，直接透传，不再包一层
+            raise
         except Exception as e:
             raise SearchConfigTestFailedError(provider, str(e))
 

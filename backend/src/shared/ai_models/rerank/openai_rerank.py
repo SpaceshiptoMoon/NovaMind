@@ -24,10 +24,10 @@ class CompatibleRerankClient(BaseRerank):
 
     API 格式: POST {base_url}{endpoint}
     端点按 base_url 自动选择：
-      - DashScope 原生（base_url 含 dashscope.aliyuncs.com 且不含 compatible-api）：
+      - DashScope 原生（base_url 含 dashscope.aliyuncs.com 且不含 compatible-mode/compatible-api）：
         endpoint /rerank/text-rerank/text-rerank，请求体嵌套
         {"model", "input": {"query", "documents"}, "parameters": {"top_n", ...}}
-      - DashScope 兼容（base_url 含 compatible-api）：endpoint /reranks，请求体扁平
+      - DashScope 兼容（base_url 含 compatible-api 或 compatible-mode）：endpoint /reranks，请求体扁平
       - 其它兼容服务商（硅基流动、智谱等）：endpoint /rerank，请求体扁平
 
     请求体（扁平）: {"model", "query", "documents", "top_n"}
@@ -58,10 +58,11 @@ class CompatibleRerankClient(BaseRerank):
             max_concurrent: 最大并发数
             endpoint: 端点路径。留空则按 base_url 自动选择：
                 DashScope 原生（base_url 含 dashscope.aliyuncs.com 但不含
-                ``compatible-api``）用 ``/rerank/text-rerank/text-rerank``，
+                ``compatible-api``/``compatible-mode``）用 ``/rerank/text-rerank/text-rerank``，
                 base_url 配成 ``https://dashscope.aliyuncs.com/api/v1/services``，
                 请求体用嵌套 ``{model, input:{query,documents}, parameters:{top_n}}``；
-                DashScope 兼容（base_url 含 ``compatible-api``）用 ``/reranks``，
+                DashScope 兼容（base_url 含 ``compatible-api`` 或用户误抄的
+                ``compatible-mode``）用 ``/reranks``，
                 base_url 配成 ``https://dashscope.aliyuncs.com/compatible-api/v1``，
                 请求体扁平，与其它兼容服务商一致；
                 其它兼容服务商（硅基流动、智谱等）用默认 ``/rerank``。
@@ -75,9 +76,16 @@ class CompatibleRerankClient(BaseRerank):
             max_concurrent=max_concurrent,
         )
         is_dashscope = bool(base_url) and "dashscope.aliyuncs.com" in base_url
+        # DashScope 域名下的 OpenAI 兼容路径（compatible-mode = LLM/embedding 用的
+        # /compatible-mode/v1，compatible-api = rerank 扁平端点用的）都不是原生端点；
+        # 只排除 compatible-api 会把用户照抄 compatible-mode 的 rerank 配置拼成
+        # /compatible-mode/v1/rerank/text-rerank/text-rerank 恒 404。
+        is_dashscope_compatible = is_dashscope and (
+            "compatible-api" in base_url or "compatible-mode" in base_url
+        )
         # 原生 DashScope rerank：嵌套 body、端点 /rerank/text-rerank/text-rerank
         # （已用 qwen3-vl-rerank 实测 200 验证路径与 body 格式）。
-        self._is_dashscope_native = is_dashscope and "compatible-api" not in base_url
+        self._is_dashscope_native = is_dashscope and not is_dashscope_compatible
         if endpoint:
             self.endpoint = endpoint
         elif self._is_dashscope_native:
