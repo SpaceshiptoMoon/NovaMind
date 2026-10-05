@@ -14038,6 +14038,17 @@
             ],
             "title": "Completed At"
           },
+          "defer_wait": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defer Wait"
+          },
           "error_message": {
             "anyOf": [
               {

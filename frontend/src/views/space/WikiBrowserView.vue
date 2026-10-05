@@ -11,7 +11,7 @@
         <!-- 顶部状态条 -->
         <div v-if="ingestActive" class="ingest-banner">
           <el-icon class="is-loading"><Loading /></el-icon>
-          <span>Wiki 生成中（{{ ingestStatusText }}），页面可能不完整…</span>
+          <span>Wiki 生成中（{{ ingestStatusText }}）{{ ingestStatus?.defer_wait ? `，最新文档${ingestStatus.defer_wait}` : '' }}，页面可能不完整…</span>
         </div>
         <div v-else-if="ingestStatus?.status === 'failed'" class="ingest-banner is-failed">
           <el-icon><WarningFilled /></el-icon>

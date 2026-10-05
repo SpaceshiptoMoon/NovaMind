@@ -2249,6 +2249,8 @@ export interface WikiIngestStatusResponse {
   error_message: string | null
   started_at: string | null
   completed_at: string | null
+  /** 排队等待便签（Redis 瞬态键；最新履历文档在等 per-KB 锁时非空） */
+  defer_wait?: string | null
 }
 
 export interface WikiPageSourceDocument {

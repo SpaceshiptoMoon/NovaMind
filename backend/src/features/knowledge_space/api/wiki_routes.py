@@ -159,6 +159,9 @@ async def get_ingest_status(
     record = await WikiQueryService(db).get_ingest_status(kb_id=kb_id)
     if not record:
         return None
+    # 等待便签：KB 整体在等锁时逐文档的瞬态提示（Redis，无则 None）
+    from novamind.features.knowledge_space.tasks.wiki_tasks import get_defer_wait
+
     return WikiIngestStatusResponse(
         status=status_name(record.status),
         step_progress=record.step_progress,
@@ -167,6 +170,7 @@ async def get_ingest_status(
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
+        defer_wait=await get_defer_wait(kb_id, record.document_id),
     )
 
 

@@ -20,6 +20,7 @@ from novamind.features.knowledge_space.models.wiki import (
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiIngestRecordRepository,
 )
+from novamind.features.knowledge_space.tasks import wiki_tasks
 from novamind.features.knowledge_space.tasks.wiki_tasks import (
     _find_pending_record,
     enqueue_wiki_ingest,
@@ -144,3 +145,31 @@ async def test_enqueue_creates_new_row_after_terminal(db, monkeypatch):
     assert new_row.id != done.id
     assert new_row.status == WikiIngestStatus.PENDING
     assert done.status == WikiIngestStatus.DONE  # 历史行不被改写
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_lock_busy_defer_writes_nothing_to_db(db, monkeypatch):
+    """锁忙碌 defer 零 DB 写：抢锁失败在 KB 校验/履历 mark_running 之前发生，
+    履历行保持原样、不产生新行（defer 等待便签走 Redis，不写 error_message）"""
+    existing = await _add_record(db, 705, WikiIngestStatus.PENDING)
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.tasks.wiki_tasks.acquire_kb_lock",
+        AsyncMock(return_value=None),  # 模拟锁被别人持有
+    )
+    monkeypatch.setattr(
+        "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=AsyncMock(
+            enqueue_job=AsyncMock(return_value=AsyncMock(job_id="job-defer")),
+        )),
+    )
+    # _mark_defer_wait 内部 get_redis_client 失败会被吞（best-effort），无需 mock
+    result = await wiki_tasks.process_wiki_ingest_task(ctx={}, kb_id=11, space_id=6, document_id=705)
+    assert result == {"deferred": True, "defer_seconds": 60}
+
+    rows = list((await db.execute(
+        select(WikiIngestRecord).where(WikiIngestRecord.document_id == 705)
+    )).scalars().all())
+    assert len(rows) == 1  # 无新行
+    assert rows[0].id == existing.id
+    assert rows[0].status == WikiIngestStatus.PENDING  # 未被标 RUNNING
+    assert rows[0].error_message is None  # 未写便签

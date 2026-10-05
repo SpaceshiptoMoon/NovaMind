@@ -97,6 +97,7 @@ class WikiIngestStatusResponse(BaseModel):
     error_message: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    defer_wait: str | None = None
 
 
 class WikiPageSourcesResponse(BaseModel):
