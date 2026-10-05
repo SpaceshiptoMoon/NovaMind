@@ -1,16 +1,17 @@
 """Wiki 生成 arq 任务：单文档四阶段管道宿主与入队（履历行 + arq job 原子提交）。触发点在文档终态落库、ES 可检索之后；并发模型为 per-KB Redis 锁串行化同 KB
- 生成，拿不到锁抛 TransientBusyError 延后重入队。
+ 生成，拿不到锁零 DB 写直接延后重入队（等待便签走 Redis TTL 键）。
 """
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.services.wiki_ingest_service import WikiGenerationError
-from novamind.shared.mq.exceptions import TransientBusyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
 WIKI_KB_LOCK_PREFIX = "wiki:kb_lock:"
 WIKI_KB_LOCK_TTL = 1800  # 30 分钟，防 worker 崩溃后锁死；管道超时由 arq job_timeout 兜底
+
+WIKI_DEFER_WAIT_PREFIX = "wiki:defer_wait:"
 
 WIKI_INGEST_JOB_TIMEOUT = 1800
 
@@ -87,7 +88,34 @@ async def process_wiki_ingest_task(
 
     async with get_db_session() as session:
         try:
-            # 1. KB 与配置校验
+            # 1. per-KB 锁先行（同 KB 串行）——抢锁失败零 DB 写直接 defer。
+            # 拿锁前任何 DB 写都是纯浪费：91 文档排队时约 90 个任务在 60s
+            # defer 循环里，先 mark_running 再回退等于每轮 2 次无效写/任务。
+            lock_token = await acquire_kb_lock(kb_id)
+            if not lock_token:
+                defer_seconds = 60
+                logger.info(
+                    "wiki 生成：同 KB 锁忙碌，任务延后重入队",
+                    kb_id=kb_id, document_id=document_id, defer_seconds=defer_seconds,
+                )
+                await _mark_defer_wait(kb_id, document_id, defer_seconds)
+                try:
+                    from novamind.shared.mq import get_arq_pool
+
+                    pool = await get_arq_pool()
+                    await pool.enqueue_job(
+                        "process_wiki_ingest_task",
+                        kb_id=kb_id, space_id=space_id, document_id=document_id,
+                        _defer_by=defer_seconds,
+                    )
+                except Exception as enq_err:
+                    logger.warning(
+                        "wiki 锁忙碌重入队失败（等待恢复扫描拾起）",
+                        document_id=document_id, error=str(enq_err),
+                    )
+                return {"deferred": True, "defer_seconds": defer_seconds}
+
+            # 2. KB 与配置校验
             kb_repo = KnowledgeBaseRepository(session)
             kb = await kb_repo.get_by_id(kb_id)
             if not kb:
@@ -99,9 +127,9 @@ async def process_wiki_ingest_task(
                 logger.info("wiki 生成：KB 未启用 wiki，跳过", kb_id=kb_id)
                 return {"skipped": "wiki_disabled"}
 
-            # 2. 找到本文档的履历行（入队时已创建）
+            # 3. 找到本文档的履历行（入队时已创建）
             record_repo = WikiIngestRecordRepository(session)
-            record = await _find_pending_record(record_repo, kb_id, document_id)
+            record = await _find_pending_record(record_repo, document_id)
             if record is None:
                 # reparse 清洗的兜底：purge 没赶上、job 已被 worker pop。
                 # 本 job 对应的履历已是 CANCELLED → 直接放弃，不建新行
@@ -126,11 +154,6 @@ async def process_wiki_ingest_task(
             record_id = record.id
             record.mark_running()
             await session.commit()
-
-            # 3. per-KB 锁（同 KB 串行；拿不到 → 延后重入队）
-            lock_token = await acquire_kb_lock(kb_id)
-            if not lock_token:
-                raise TransientBusyError("wiki: 同一知识库的上一轮生成仍在进行", defer_seconds=60)
 
             # 4. 输入收集：parsed_text（MinIO）+ chunks（ES）
             doc_repo = DocumentRepository(session)
@@ -190,45 +213,6 @@ async def process_wiki_ingest_task(
                 "truncated": outcome.truncated,
             }
 
-        except TransientBusyError as busy:
-            # 锁忙碌必须任务内自处理：arq 0.28 只认 Retry/RetryJob 重试，普通异常
-            # 一律终判 FAILED 且无重试，履历会永久卡 RUNNING。抛出点在生成开始前
-            # （无已落库页面、无锁需释放），照 ASR busy 范本回退 PENDING + 延后重入队。
-            defer_seconds = getattr(busy, "defer_seconds", 60)
-            logger.info(
-                "wiki 生成：同 KB 锁忙碌，任务延后重入队",
-                kb_id=kb_id, document_id=document_id, defer_seconds=defer_seconds,
-            )
-            try:
-                await session.rollback()  # mark_running 已 commit 的行需重取后再改
-                record = (
-                    await WikiIngestRecordRepository(session).get_by_id(record_id)
-                    if record_id
-                    else None
-                )
-                if record:
-                    record.mark_pending(f"[wiki 锁忙碌，{defer_seconds}s 后重试] {busy.message}")
-                    await session.commit()
-            except Exception as db_err:
-                logger.warning("wiki 锁忙碌回退履历失败", document_id=document_id, error=str(db_err))
-            try:
-                from novamind.shared.mq import get_arq_pool
-
-                pool = await get_arq_pool()
-                new_job = await pool.enqueue_job(
-                    "process_wiki_ingest_task",
-                    kb_id=kb_id, space_id=space_id, document_id=document_id,
-                    _defer_by=defer_seconds,
-                )
-                if new_job and record:
-                    record.job_id = new_job.job_id
-                    await session.commit()
-            except Exception as enq_err:
-                logger.warning(
-                    "wiki 锁忙碌重入队失败（履历留 PENDING，待恢复扫描拾起）",
-                    document_id=document_id, error=str(enq_err),
-                )
-            return {"deferred": True, "defer_seconds": defer_seconds}
         except WikiGenerationError as e:
             await _fail_record(session, record_id, str(e))
             await _notify_wiki_terminal(
@@ -245,14 +229,56 @@ async def process_wiki_ingest_task(
                 await release_kb_lock(kb_id, lock_token)
 
 
-async def _find_pending_record(record_repo, kb_id: int, document_id: int):
-    """找该文档最近一条未终态的履历（入队时创建的 PENDING 行）"""
+async def _mark_defer_wait(kb_id: int, document_id: int, defer_seconds: int) -> None:
+    """锁忙碌 defer 的瞬态便签：写 Redis TTL 键（等待信息给前端展示用）。
+
+    等待态是瞬态事实，不落 MySQL——defer 循环每 60s 一轮，写库会让
+    等待成本随队列长度线性放大（91 任务 ≈ 3 写/秒的纯轮询写）。
+    键过期即自动消失；MySQL 的 error_message 由此恢复单一语义（终态失败原因）。
+    """
+    try:
+        from novamind.shared.storage.client_factory import get_redis_client
+
+        redis = await get_redis_client()
+        await redis.redis_client.set(
+            f"{WIKI_DEFER_WAIT_PREFIX}{kb_id}:{document_id}",
+            f"锁忙碌，{defer_seconds}s 后重试",
+            ex=defer_seconds * 2 + 30,
+        )
+    except Exception as e:
+        logger.warning("wiki defer 等待便签写入失败", kb_id=kb_id, document_id=document_id, error=str(e))
+
+
+async def get_defer_wait(kb_id: int, document_id: int) -> str | None:
+    """读文档当前的锁等待便签（前端 ingest/status 轮询时补充展示）。
+
+    Returns:
+        等待提示文本；无等待或 Redis 不可用返回 None。
+    """
+    try:
+        from novamind.shared.storage.client_factory import get_redis_client
+
+        redis = await get_redis_client()
+        raw = await redis.redis_client.get(f"{WIKI_DEFER_WAIT_PREFIX}{kb_id}:{document_id}")
+        if raw is None:
+            return None
+        return raw.decode() if isinstance(raw, bytes) else str(raw)
+    except Exception:
+        return None
+
+
+async def _find_pending_record(record_repo, document_id: int):
+    """找该文档最近一条未终态的履历（入队时创建的 PENDING 行）。
+
+    必须按 document_id 定点查——锁忙碌场景下同 KB 每分钟会新增几十条其他
+    文档的重入队履历，list_by_kb 的 ID 倒序窗口很快挤不进本文档的行，
+    复用失败会每轮新建履历（存量曾刷出 1 万+ 冗余 PENDING 行）。
+    """
     from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
 
-    records = await record_repo.list_by_kb(kb_id, limit=10)
-    for r in records:
-        if r.document_id == document_id and r.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
-            return r
+    latest = await record_repo.get_latest_for_document(document_id)
+    if latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
+        return latest
     return None
 
 
@@ -507,7 +533,8 @@ async def enqueue_wiki_ingest(
     """入队 wiki 生成任务。
 
     WikiIngestRecord(PENDING) 行与 arq enqueue 原子提交（失败一起回滚），
-    仿 enqueue_process_document 的原子性论证。
+    仿 enqueue_process_document 的原子性论证。已有非终态履历时复用该行
+    （只换绑 job_id），不新增——反复 rebuild/锁忙碌重入队不再堆积履历行。
     """
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
@@ -520,10 +547,15 @@ async def enqueue_wiki_ingest(
 
     async with get_db_session() as session:
         record_repo = WikiIngestRecordRepository(session)
-        record = await record_repo.create({
-            "space_id": space_id, "kb_id": kb_id, "document_id": document_id,
-            "status": WikiIngestStatus.PENDING,
-        })
+        latest = await record_repo.get_latest_for_document(document_id)
+        if latest and latest.status == WikiIngestStatus.PENDING:
+            record = latest  # 复用 PENDING 行（只换绑 job_id）：反复 rebuild 不再堆积履历
+        else:
+            # 终态或 RUNNING 都新开行：RUNNING 复用会让旧 job 的终态写进新 job 的履历
+            record = await record_repo.create({
+                "space_id": space_id, "kb_id": kb_id, "document_id": document_id,
+                "status": WikiIngestStatus.PENDING,
+            })
         try:
             job = await pool.enqueue_job(
                 "process_wiki_ingest_task",

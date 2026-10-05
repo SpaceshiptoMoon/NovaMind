@@ -225,23 +225,15 @@ class WikiIngestRecord(BaseModel):
     )
 
     def mark_running(self) -> None:
-        """标记生成任务开始并写入开始时间。"""
+        """标记生成任务开始：写开始时间并清上轮遗留的瞬态便签。
+
+        error_message 只保留终态失败原因—— defer 等待便签已迁 Redis TTL 键，
+        历史上 mark_running 不清便签导致 RUNNING 行挂着过期「锁忙碌」提示，
+        看起来像失败。
+        """
         self.status = WikiIngestStatus.RUNNING
         self.started_at = now_china()
-
-    def mark_pending(self, error_message: str | None = None) -> None:
-        """锁冲突延后重试：RUNNING 回退 PENDING 并清开始时间（非终态，可被重新拾起）。
-
-        Args:
-            error_message: 可选提示（如「wiki 锁忙碌，60s 后重试」），写入 error_message 列。
-
-        Returns:
-            无返回；不 flush 不 commit。
-        """
-        self.status = WikiIngestStatus.PENDING
-        self.started_at = None
-        if error_message:
-            self.error_message = error_message
+        self.error_message = None
 
     def mark_done(self, pages_created: int, pages_updated: int) -> None:
         """标记生成完成并记录新建/更新页面数、清空错误信息。

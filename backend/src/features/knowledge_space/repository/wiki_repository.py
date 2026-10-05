@@ -856,6 +856,23 @@ class WikiIngestRecordRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_for_document(self, document_id: int) -> WikiIngestRecord | None:
+        """该文档最新一条履历（增量补算剔除已成功文档用）。
+
+        Args:
+            document_id: 文档 ID。
+
+        Returns:
+            按 ID 倒序的最新履历；从未生成返回 None。
+        """
+        result = await self.session.execute(
+            select(WikiIngestRecord)
+            .where(WikiIngestRecord.document_id == document_id)
+            .order_by(WikiIngestRecord.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def list_by_kb(self, kb_id: int, limit: int = 20) -> list[WikiIngestRecord]:
         """按 ID 降序列出 KB 最近生成履历，默认 20 条。
 

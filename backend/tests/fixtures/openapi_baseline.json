@@ -14038,6 +14038,17 @@
             ],
             "title": "Completed At"
           },
+          "defer_wait": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defer Wait"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -14792,7 +14803,7 @@
         "type": "object"
       },
       "WikiRebuildRequest": {
-        "description": "存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档",
+        "description": "存量文档补算：默认只补最近一次生成失败/未跑的文档，document_ids 显式指定或 full=True 全量",
         "properties": {
           "document_ids": {
             "anyOf": [
@@ -14808,6 +14819,12 @@
               }
             ],
             "title": "Document Ids"
+          },
+          "full": {
+            "default": false,
+            "description": "true=全量重建（忽略失败履历遍历全部文档）；缺省只入队最近一次失败或从未生成的文档",
+            "title": "Full",
+            "type": "boolean"
           }
         },
         "title": "WikiRebuildRequest",
@@ -26472,7 +26489,7 @@
     },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/rebuild": {
       "post": {
-        "description": "对 KB 内已完成解析的文档逐个入队 wiki 生成。\n\ndocument_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。",
+        "description": "对 KB 内已完成解析的文档逐个入队 wiki 生成。\n\n缺省只补「最近一次失败或从未生成」的文档（增量）；document_ids 显式指定；\nfull=true 全量重建（忽略履历遍历全部文档）。",
         "operationId": "rebuild_wiki_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_rebuild_post",
         "parameters": [
           {

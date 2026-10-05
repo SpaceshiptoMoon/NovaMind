@@ -126,11 +126,20 @@ export const wikiApi = {
     )
   },
 
-  /** 触发 Wiki 重建（从文档重新生成全部页面；不传 document_ids 时全量重建） */
-  rebuild(spaceId: number, kbId: number, documentIds?: number[]) {
+  /**
+   * 触发 Wiki 重建入队
+   *
+   * 缺省增量：只入队最近一次失败或从未生成的文档（已成功不重跑，省 token）。
+   * full=true 全量重建；documentIds 显式指定（优先于 full）。
+   */
+  rebuild(spaceId: number, kbId: number, options?: { documentIds?: number[]; full?: boolean }) {
+    const documentIds = options?.documentIds
+    const body: Record<string, unknown> = {}
+    if (documentIds) body.document_ids = documentIds
+    else if (options?.full) body.full = true
     return request.post<{ enqueued: number; candidates: number }>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/rebuild`,
-      documentIds ? { document_ids: documentIds } : {},
+      body,
     )
   },
 

@@ -159,6 +159,9 @@ async def get_ingest_status(
     record = await WikiQueryService(db).get_ingest_status(kb_id=kb_id)
     if not record:
         return None
+    # 等待便签：KB 整体在等锁时逐文档的瞬态提示（Redis，无则 None）
+    from novamind.features.knowledge_space.tasks.wiki_tasks import get_defer_wait
+
     return WikiIngestStatusResponse(
         status=status_name(record.status),
         step_progress=record.step_progress,
@@ -167,6 +170,7 @@ async def get_ingest_status(
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
+        defer_wait=await get_defer_wait(kb_id, record.document_id),
     )
 
 
@@ -320,12 +324,13 @@ async def rebuild_wiki(
 ):
     """对 KB 内已完成解析的文档逐个入队 wiki 生成。
 
-    document_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。
+    缺省只补「最近一次失败或从未生成」的文档（增量）；document_ids 显式指定；
+    full=true 全量重建（忽略履历遍历全部文档）。
     """
     from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
     return await WikiPageService(db).rebuild_wiki(
-        space_id=space_id, kb_id=kb_id, document_ids=body.document_ids
+        space_id=space_id, kb_id=kb_id, document_ids=body.document_ids, full=body.full
     )
 
 # ==================== 图谱 / lint 闭环（P3） ====================
