@@ -54,17 +54,43 @@
           <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
-          <!-- 洞察与运营入口：运营三页（洞察/缺口报告/知识运营）的导航流唯一入口，
-               此前仅通知可直达、正常导航走不到 -->
-          <el-button
+          <!-- 知识运营入口：三页一键直达（洞察/缺口报告/运营管理），不再链式跳转 -->
+          <el-dropdown
             v-if="selectedSpaceId"
-            size="small"
-            aria-label="空间洞察"
-            title="空间洞察"
-            @click="switchTab('insights')"
+            trigger="hover"
+            @command="(name: string) => switchTab(name)"
           >
-            <el-icon><TrendCharts /></el-icon>
-          </el-button>
+            <el-button size="small">
+              <el-icon><TrendCharts /></el-icon>
+              知识运营
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="insights">
+                  <el-icon><DataLine /></el-icon>
+                  <div class="ops-menu-item">
+                    <span class="ops-menu-title">空间洞察</span>
+                    <span class="ops-menu-desc">问答量 · 点踩 · 零命中趋势</span>
+                  </div>
+                </el-dropdown-item>
+                <el-dropdown-item command="gap-report">
+                  <el-icon><Warning /></el-icon>
+                  <div class="ops-menu-item">
+                    <span class="ops-menu-title">知识缺口报告</span>
+                    <span class="ops-menu-desc">答不上的问题清单，补内容的依据</span>
+                  </div>
+                </el-dropdown-item>
+                <el-dropdown-item command="kb-ops">
+                  <el-icon><Operation /></el-icon>
+                  <div class="ops-menu-item">
+                    <span class="ops-menu-title">运营管理</span>
+                    <span class="ops-menu-desc">复审建议 · 重复内容 · 文档价值</span>
+                  </div>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button
             v-if="selectedSpaceId"
             size="small"
@@ -266,7 +292,17 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Setting, Collection, Check, TrendCharts } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Setting,
+  Collection,
+  Check,
+  TrendCharts,
+  ArrowDown,
+  DataLine,
+  Warning,
+  Operation,
+} from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'
@@ -1049,6 +1085,27 @@ onMounted(() => {
 .header-actions :deep(.el-button.is-text:hover) {
   color: var(--color-text);
   background: var(--color-bg-hover);
+}
+
+/* 知识运营下拉菜单项：标题+描述两行式（描述说明每页看什么，降低理解成本） */
+.ops-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0;
+}
+
+.ops-menu-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.ops-menu-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
 .content-body {
