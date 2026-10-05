@@ -46,7 +46,8 @@
       <div class="config-section">
         <div class="section-card">
           <h3>我的配置</h3>
-          <el-table :data="userConfigs" v-loading="loading" stripe>
+          <!-- 不开 stripe：配置类表格行数少，唯一的偶数行条纹反而像误标灰（全站主数据表均无条纹） -->
+          <el-table :data="userConfigs" v-loading="loading">
             <el-table-column prop="model" label="模型名称" min-width="200" show-overflow-tooltip>
               <template #default="{ row }">
                 <span class="mono-text">{{ row.model }}</span>
@@ -161,7 +162,7 @@
             配置联网搜索服务商凭证，工作台 AI 聊天「联网搜索」将按首选 provider
             检索；未配置或失败时回退全局默认。
           </p>
-          <el-table :data="searchConfigs" v-loading="searchLoading" stripe>
+          <el-table :data="searchConfigs" v-loading="searchLoading">
             <el-table-column label="服务商" width="160">
               <template #default="{ row }: { row: SearchEngineConfig }">
                 <el-tag v-if="row.is_primary" type="success" size="small" class="primary-tag"
