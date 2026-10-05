@@ -180,3 +180,60 @@ def test_update_config_denies_without_manage_permission():
 
     with pytest.raises(KnowledgeBaseAccessDeniedError):
         _run(service.update_config(3, 99, {"splitting": {"chunk_size": 500}}))
+
+
+def test_update_config_accepts_delimiter_strategy_with_separators(monkeypatch):
+    """PATCH splitting.strategy=delimiter + separators 走通校验白名单并深合并保存。"""
+    kb = FakeKnowledgeBase(
+        4,
+        {"space_type": ["text"], "splitting": {"strategy": "recursive", "chunk_size": 1000}},
+    )
+    service = object.__new__(KnowledgeBaseService)
+    service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
+    service.session = SimpleNamespace(commit=AsyncMock())
+    member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
+        lambda obj, field: None,
+    )
+
+    _run(
+        service.update_config(
+            4,
+            99,
+            {
+                "splitting": {
+                    "strategy": "delimiter",
+                    "separators": ["\n\n", "---"],
+                }
+            },
+        )
+    )
+
+    assert kb.config["splitting"]["strategy"] == "delimiter"
+    assert kb.config["splitting"]["separators"] == ["\n\n", "---"]
+    # 深合并：未提及的 chunk_size 保留
+    assert kb.config["splitting"]["chunk_size"] == 1000
+
+
+def test_update_config_rejects_unknown_delimiter_separator_shape():
+    """separators 形状校验：空串项/超长项被 Pydantic 拒绝（服务层转 InvalidParameterError）。"""
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+
+    kb = FakeKnowledgeBase(5, {"space_type": ["text"], "splitting": {"strategy": "recursive"}})
+    service = object.__new__(KnowledgeBaseService)
+    service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
+    member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
+
+    with pytest.raises(InvalidParameterError):
+        _run(
+            service.update_config(
+                5,
+                99,
+                {"splitting": {"strategy": "delimiter", "separators": [""]}},
+            )
+        )

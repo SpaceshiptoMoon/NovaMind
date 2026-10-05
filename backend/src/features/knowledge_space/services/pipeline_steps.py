@@ -382,11 +382,11 @@ async def split_md_text(
 
     Args:
         md_text: 待切分的文本内容
-        strategy: 切分策略 (recursive / markdown / fixed_size / semantic)
-        line_aware: 仅 fixed_size / recursive 生效——True 时按行累积切分（音视频带
-            [HH:MM:SS#idx] 锚点文本，避免切进「[锚点] 描述」行内部导致锚点分家）；
-            False 时按字符/分隔符切（图片等无锚点文本）。由调用方据 time_alignment
-            是否非空决定（音视频 True，图片/文本 False）。
+        strategy: 切分策略 (recursive / markdown / fixed_size / semantic / delimiter)
+        line_aware: 仅 fixed_size / recursive / delimiter 生效——True 时按行累积切分
+            （音视频带 [HH:MM:SS#idx] 锚点文本，避免切进「[锚点] 描述」行内部导致
+            锚点分家）；False 时按字符/分隔符切（图片等无锚点文本）。由调用方据
+            time_alignment 是否非空决定（音视频 True，图片/文本 False）。
         **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
 
     Returns:
@@ -468,6 +468,32 @@ async def split_md_text(
             max_chunk_size=max_chunk_size,
             similarity_threshold=similarity_threshold,
             batch_size=batch_size,
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+
+    elif strategy == "delimiter":
+        chunk_size = kwargs.get("chunk_size", 500)
+        chunk_overlap = kwargs.get("chunk_overlap", 50)
+        min_chunk_size = kwargs.get("min_chunk_size", 500)
+        if line_aware:
+            # 音视频带锚点文本：与 recursive/fixed_size 共用行边界切分。分隔符
+            # 边界语义让位于锚点行完整性——硬切路径可能把「[锚点] 描述」行拦腰
+            # 切开导致时间反查错位，锚点完整性优先（与 fixed_size 忽略 overlap
+            # 是同性质取舍）。
+            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
+        splitter = splitter_class(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            min_chunk_size=min_chunk_size,
+            separators=kwargs.get("separators"),  # None → 引擎默认空行切分
         )
         doc_wrapper = [{
             "text": md_text,

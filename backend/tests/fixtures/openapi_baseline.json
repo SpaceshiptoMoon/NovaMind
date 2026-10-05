@@ -11904,6 +11904,24 @@
             "title": "Min Chunk Size",
             "type": "integer"
           },
+          "separators": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "分隔符列表，仅 strategy=delimiter 生效：字面量匹配、按序级联应用、切分后丢弃；None 时按空行（\\n\\n）切分。注意项不做 strip——空白类分隔符（如换行）strip 后即空串",
+            "title": "Separators"
+          },
           "similarity_threshold": {
             "default": 0.7,
             "maximum": 1.0,
@@ -11918,7 +11936,8 @@
               "recursive",
               "fixed_size",
               "markdown",
-              "semantic"
+              "semantic",
+              "delimiter"
             ],
             "title": "Strategy",
             "type": "string"

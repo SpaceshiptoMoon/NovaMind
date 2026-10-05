@@ -12,6 +12,7 @@ from novamind.engines.document.pipeline.tagged_rechunk import (
     rechunk_with_structure,
 )
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
+from novamind.engines.document.splitters.delimiter_splitter import DelimiterSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
 from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
@@ -331,7 +332,7 @@ class DocumentProcessor:
 
         Args:
             text: 要切分的全文文本。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter'）。
             **kwargs: 策略特定参数（chunk_size / similarity_threshold 等），逐策略透传。
 
         Returns:
@@ -381,6 +382,13 @@ class DocumentProcessor:
             splitter = splitter_class(
                 max_chunk_size=max_chunk_size,
                 min_chunk_size=min_chunk_size,
+            )
+        elif strategy == 'delimiter':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 500),
+                chunk_overlap=kwargs.get('chunk_overlap', 50),
+                min_chunk_size=kwargs.get('min_chunk_size', 50),
+                separators=kwargs.get('separators'),  # None → 引擎默认空行切分
             )
         else:
             splitter = splitter_class(**kwargs)
@@ -520,7 +528,7 @@ class DocumentProcessor:
                     filename=Path(file_path).name,
                 )
                 split_strategy = "recursive"
-            if split_strategy not in ("recursive", "fixed_size", "markdown"):
+            if split_strategy not in ("recursive", "fixed_size", "markdown", "delimiter"):
                 split_strategy = "recursive"
             tagged_rechunked = await self.split_text(
                 rechunk_source_text,
@@ -531,6 +539,7 @@ class DocumentProcessor:
                 max_chunk_size=splitting_config.get("max_chunk_size", 2000),
                 similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
                 batch_size=splitting_config.get("batch_size", 20),
+                separators=splitting_config.get("separators"),
             )
             clean_chunks, chunk_structure, structure_source = rechunk_with_structure(
                 tagged_rechunked, sentinel_map
@@ -579,6 +588,7 @@ class DocumentProcessor:
             max_chunk_size=splitting_config.get("max_chunk_size", 2000),
             similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
             batch_size=splitting_config.get("batch_size", 20),
+            separators=splitting_config.get("separators"),
         )
         logger.info(
             "默认解析完成",
@@ -603,7 +613,7 @@ class DocumentProcessor:
 
         Args:
             file_path: 文件路径。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter'）。
             **kwargs: 策略特定参数，逐策略透传。
 
         Returns:
@@ -650,6 +660,13 @@ class DocumentProcessor:
             splitter = splitter_class(
                 max_chunk_size=max_chunk_size,
                 min_chunk_size=min_chunk_size
+            )
+        elif strategy == 'delimiter':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 500),
+                chunk_overlap=kwargs.get('chunk_overlap', 50),
+                min_chunk_size=kwargs.get('min_chunk_size', 50),
+                separators=kwargs.get('separators'),  # None → 引擎默认空行切分
             )
         else:
             # 对于其他可能注册的切分器，尝试通用初始化方法
@@ -706,3 +723,4 @@ DocumentRegistry.register_splitter('recursive', RecursiveCharacterSplitter)
 DocumentRegistry.register_splitter('semantic', SemanticSplitter)
 DocumentRegistry.register_splitter('fixed_size', FixedSizeSplitter)
 DocumentRegistry.register_splitter('markdown', MarkdownSplitter)
+DocumentRegistry.register_splitter('delimiter', DelimiterSplitter)

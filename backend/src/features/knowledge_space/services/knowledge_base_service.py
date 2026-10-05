@@ -449,7 +449,7 @@ class KnowledgeBaseService:
         """校验配置 Patch 合法性（未知键/非法切分策略在此拒绝）。"""
         splitting = config_updates.get("splitting", {})
         if "strategy" in splitting:
-            valid_strategies = {"recursive", "fixed_size", "markdown", "semantic"}
+            valid_strategies = {"recursive", "fixed_size", "markdown", "semantic", "delimiter"}
             if splitting["strategy"] not in valid_strategies:
                 raise InvalidParameterError(f"不支持的切分策略: {splitting['strategy']}")
         if "chunk_size" in splitting:

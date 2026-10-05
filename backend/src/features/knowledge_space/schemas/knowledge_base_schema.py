@@ -1,9 +1,9 @@
 """知识库请求/响应 Schema：切分/解析配置结构（含旧扁平配置的向后兼容迁移）。"""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, model_validator
 
 # ========== Shared default constants ==========
 # Single source of truth for splitting defaults — all consumers should reference these
@@ -58,7 +58,7 @@ class SplittingConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
+    strategy: Literal["recursive", "fixed_size", "markdown", "semantic", "delimiter"] = Field(
         default=DEFAULT_CHUNK_STRATEGY,
         description="Default splitting strategy.",
     )
@@ -68,6 +68,15 @@ class SplittingConfig(BaseModel):
     max_chunk_size: int = Field(default=DEFAULT_MAX_CHUNK_SIZE, ge=100, le=8000)
     similarity_threshold: float = Field(default=DEFAULT_SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     batch_size: int = Field(default=DEFAULT_BATCH_SIZE, ge=1, le=100)
+    separators: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] | None = Field(
+        default=None,
+        max_length=20,
+        description=(
+            "分隔符列表，仅 strategy=delimiter 生效：字面量匹配、按序级联应用、"
+            "切分后丢弃；None 时按空行（\\n\\n）切分。注意项不做 strip——空白类"
+            "分隔符（如换行）strip 后即空串"
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

@@ -9,7 +9,7 @@ History: 23f424d 图片路径接入共享尾 ``run_post_parse_tail`` 时模仿 a
 ``split_md_text`` 拒绝 → ``ValueError``「不支持的切分策略」，图片文档处理整个失败
 （document_id=61, job_id=doc-task-233）。
 
-Fix: 图片描述文本与 MD 文档同构，按顶层通用切分策略（recursive/markdown/fixed_size/semantic）
+Fix: 图片描述文本与 MD 文档同构，按顶层通用切分策略（recursive/markdown/fixed_size/semantic/delimiter）
 切成多块（与文本/音频/视频同路径）。不调 ``apply_modality_splitting_override``（splitting
 无 image 子键 schema），并 pop 掉遗留脏 image 子键，避免覆盖顶层 strategy。
 QG/embedded/indexed 仍走共享尾，保留 23f424d 相似问修复成果。
@@ -166,3 +166,34 @@ async def test_full_text_with_dirty_top_level_strategy_still_raises(monkeypatch)
             full_text="x",
             user_id=1,
         )
+
+@pytest.mark.asyncio
+async def test_image_delimiter_strategy_with_separators_passthrough(monkeypatch):
+    """delimiter 策略经 run_post_parse_tail 全链路：separators 随 **sc 透传生效。
+
+    验证 sc.pop("strategy") 后剩余键（separators/chunk_size/...）原样进入
+    split_md_text 的 delimiter 分支——分隔符切分边界、分隔符不进 chunk。
+    """
+    _patch_tail_deps(monkeypatch)
+
+    result = await pipeline_steps.run_post_parse_tail(
+        document=_make_document(),
+        session=_FakeSession(),
+        task=_make_task(),
+        model_config_port=None,
+        logger=None,
+        chunk_type=ChunkType.IMAGE,
+        embedding_config={"dimension": 4},
+        pipeline_config={"question_generation": {"enabled": False}},
+        splitting_config={
+            "strategy": "delimiter",
+            "chunk_size": 1000,
+            "chunk_overlap": 0,
+            "min_chunk_size": 0,
+            "separators": ["<SEP>"],
+        },
+        full_text="段甲<SEP>段乙<SEP>段丙",
+        user_id=1,
+    )
+    assert result["split_strategy"] == "delimiter"
+    assert result["chunk_count"] == 3
