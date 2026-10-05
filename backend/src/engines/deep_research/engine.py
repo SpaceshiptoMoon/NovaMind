@@ -4,8 +4,6 @@ LLM/prompt/数据源/日志均按调用注入，引擎无状态；search 返回 
 """
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -26,6 +24,7 @@ from novamind.engines.deep_research.types import (
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind.shared.utils.llm_response import extract_json_value
 
 # 结果充分性阈值常量
 SUFFICIENT_RESULT_COUNT = 10  # 结果数量阈值
@@ -208,17 +207,9 @@ def parse_query_decision(raw: str) -> tuple:
     """
     if not raw or not raw.strip():
         return False, "", "LLM 返回为空"
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        # 容忍 LLM 把 JSON 包在代码块或前后文字里：抓第一个 {...}
-        match = re.search(r"\{[\s\S]*\}", raw)
-        if not match:
-            return False, "", "LLM 返回不含 JSON"
-        try:
-            data = json.loads(match.group(0))
-        except (json.JSONDecodeError, ValueError):
-            return False, "", "LLM 返回 JSON 解析失败"
+    data = extract_json_value(raw)
+    if data is None:
+        return False, "", "LLM 返回不含 JSON"
     if not isinstance(data, dict):
         return False, "", "LLM 返回非 JSON 对象"
     sufficient = bool(data.get("sufficient", False))
@@ -233,22 +224,12 @@ def parse_query_decision(raw: str) -> tuple:
 
 
 def _extract_json_block(raw: str):
-    """从 LLM 输出中提取 JSON 对象/数组（容忍代码块包裹与前后杂文字）。"""
-    if not raw or not raw.strip():
-        return None
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        pass
-    # 数组优先（decompose 兼容）再对象
-    for pattern in (r"\[[\s\S]*\]", r"\{[\s\S]*\}"):
-        match = re.search(pattern, raw)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except (json.JSONDecodeError, ValueError):
-                continue
-    return None
+    """从 LLM 输出中提取 JSON 对象/数组（容忍代码块包裹与前后杂文字）。
+
+    委托 shared/utils 的 extract_json_value（对象/数组均兜），本函数保留
+    为调用方别名；None 语义一致（空输入或无法提取）。
+    """
+    return extract_json_value(raw)
 
 
 def parse_plan(raw: str, *, depth: int, topic: str, iteration: int) -> ResearchPlan:
@@ -432,6 +413,7 @@ class DeepResearchEngine:
             max_tokens=2000,
             temperature=0.5,
             enable_thinking=False,
+            response_format={"type": "json_object"},
         )
         return parse_plan(raw, depth=depth, topic=topic, iteration=iteration)
 
@@ -791,6 +773,7 @@ class DeepResearchEngine:
                 max_tokens=200,
                 temperature=0.3,
                 enable_thinking=False,
+                response_format={"type": "json_object"},
             )
             sufficient, next_query, reason = parse_query_decision(raw)
             if sufficient or next_query:
