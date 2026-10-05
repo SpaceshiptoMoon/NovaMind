@@ -227,6 +227,17 @@ def build_es_chunks(
     is_text = chunk_type == ChunkType.TEXT
     parse_summary = extract_parse_metadata_summary(parse_metadata) if is_text else {}
     media_url = storage_info.get("minio_object_name", "")
+
+    # 两遍式 pass 0：父子槽位 → 最终列表位置预解析。parent_chunk_id 的绝对序号
+    # 由下方主循环的 enumerate 生成，切分器只见相对槽位（parent_slot），故先扫
+    # 一遍建「slot → 列表位置」映射，pass 1 据此写绝对指针。预扫描只读新策略
+    # 的 meta 键，存量 chunk_items 无键 → 恒空映射、零开销。
+    slot_to_position: dict[int, int] = {}
+    if is_text:
+        for pos, (_text, meta) in enumerate(chunk_items):
+            if meta.get("chunk_role") == "parent" and isinstance(meta.get("parent_slot"), int):
+                slot_to_position[meta["parent_slot"]] = pos
+
     for i, (text, meta) in enumerate(chunk_items):
         chunk_meta: dict[str, Any] = {"content_hash": document.file_hash}
         if is_text:
@@ -246,6 +257,23 @@ def build_es_chunks(
             chunk_pages = list(meta.get("pages") or [])
             if chunk_pages:
                 chunk_meta["page_number"] = int(chunk_pages[0])
+            # 关系元数据白名单拾取（sentence_window/parent_child 产物）：
+            # chunk_role/parent_chunk_id/expansion_type/expansion_window_size。
+            # parent_slot 是切分期相对槽位（瞬态），解析成绝对 id 后不入 ES；
+            # slot 断链（父块缺失/被上游过滤）→ 不写指针，子块退化为普通块
+            #（检索期不扩展——能力缺失优于错误指针）。
+            chunk_role = meta.get("chunk_role")
+            if chunk_role in ("parent", "child"):
+                chunk_meta["chunk_role"] = chunk_role
+            if chunk_role == "child" and isinstance(meta.get("parent_slot"), int):
+                parent_pos = slot_to_position.get(meta["parent_slot"])
+                if parent_pos is not None:
+                    chunk_meta["parent_chunk_id"] = f"{document.id}_{parent_pos}"
+                    chunk_meta["expansion_type"] = "parent_child"
+            if meta.get("expansion_type") == "sentence_window":
+                chunk_meta["expansion_type"] = "sentence_window"
+                if isinstance(meta.get("expansion_window_size"), int):
+                    chunk_meta["expansion_window_size"] = meta["expansion_window_size"]
             # 文档级 PDF figure 图片链接：每个文本 chunk 的 metadata 都保存该文档全部图片，
             # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
             # image_url 为相对文档 figure 目录的短文件名（figure_xxx.png），渲染方经
@@ -382,15 +410,19 @@ async def split_md_text(
 
     Args:
         md_text: 待切分的文本内容
-        strategy: 切分策略 (recursive / markdown / fixed_size / semantic / delimiter)
-        line_aware: 仅 fixed_size / recursive / delimiter 生效——True 时按行累积切分
-            （音视频带 [HH:MM:SS#idx] 锚点文本，避免切进「[锚点] 描述」行内部导致
-            锚点分家）；False 时按字符/分隔符切（图片等无锚点文本）。由调用方据
+        strategy: 切分策略 (recursive / markdown / fixed_size / semantic / delimiter /
+            sentence_window / parent_child)
+        line_aware: 仅 fixed_size / recursive / delimiter / sentence_window / parent_child
+            生效——True 时按行累积切分（音视频带 [HH:MM:SS#idx] 锚点文本，避免切进
+            「[锚点] 描述」行内部导致锚点分家，窗口/父子元数据随之缺失 → 检索期
+            不扩展）；False 时按句/字符/分隔符切（图片等无锚点文本）。由调用方据
             time_alignment 是否非空决定（音视频 True，图片/文本 False）。
-        **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
+        **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size,
+            window_size, parent_chunk_size 等)
 
     Returns:
-        [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
+        [(text, metadata_dict), ...] — sentence_window/parent_child 的 metadata 携带
+        关系元数据（expansion_type / chunk_role / parent_slot），其余策略为空 dict
     """
     from novamind.engines.document.pipeline import DocumentRegistry
 
@@ -504,6 +536,56 @@ async def split_md_text(
         }]
         results = await splitter.split(doc_wrapper)
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+
+    elif strategy == "sentence_window":
+        chunk_size = kwargs.get("chunk_size", 1000)
+        chunk_overlap = kwargs.get("chunk_overlap", 0)
+        window_size = kwargs.get("window_size", 2)
+        if line_aware:
+            # 音视频带锚点文本：与 recursive/fixed_size/delimiter 共用行边界
+            # 切分，锚点行完整性优先；窗口元数据缺失 → 检索期不扩展（能力
+            # 缺失优于错误结果）。
+            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
+        splitter = splitter_class(
+            window_size=window_size,
+            max_sentence_length=chunk_size,
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [
+            (r["text"], r.get("meta") or {})
+            for r in results if r.get("text", "").strip()
+        ]
+
+    elif strategy == "parent_child":
+        chunk_size = kwargs.get("chunk_size", 1000)
+        chunk_overlap = kwargs.get("chunk_overlap", 100)
+        if line_aware:
+            # 音视频带锚点文本：行边界切分优先，同 sentence_window 的锚点保护
+            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
+        splitter = splitter_class(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            parent_chunk_size=kwargs.get("parent_chunk_size", 2000),
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [
+            (r["text"], r.get("meta") or {})
+            for r in results if r.get("text", "").strip()
+        ]
 
     else:
         # 其他策略兜底：尝试作为文档切分器处理
@@ -919,11 +1001,24 @@ async def run_post_parse_tail(
                     embedding_model=snap.get("embedding_model", ""),
                 )
     if not resumed_embed:
-        embeddings = await generate_embeddings(
-            [c["content"] for c in es_chunks], embedding_config,
-            session=session, user_id=user_id or document.uploader_id,
-            model_config_port=model_config_port,
+        # 父块（parent_child 产物）只作检索期回带容器、不参与召回，跳过
+        # embedding 省成本；槽位留 None 定长占位——快照的 len(es_chunks) 契约
+        # 与下方 `if emb:` 回填守卫均无需改动（ES dense_vector 缺字段合法）。
+        embed_positions = [
+            i for i, c in enumerate(es_chunks)
+            if (c.get("metadata") or {}).get("chunk_role") != "parent"
+        ]
+        embed_results = (
+            await generate_embeddings(
+                [es_chunks[i]["content"] for i in embed_positions], embedding_config,
+                session=session, user_id=user_id or document.uploader_id,
+                model_config_port=model_config_port,
+            )
+            if embed_positions else []
         )
+        embeddings = [None] * len(es_chunks)
+        for pos, emb in zip(embed_positions, embed_results):
+            embeddings[pos] = emb
         if embed_fingerprint and resume_minio is not None:
             await save_embeddings_snapshot(
                 document, session, logger,
@@ -947,10 +1042,19 @@ async def run_post_parse_tail(
     qg_config = pipeline_config.get("question_generation", {})
     should_generate = qg_config.get("enabled", False) if qg_config else False
     qg_stats = None
+    # 父块无 embedding 也不生成假设问题（父块不参与召回，问题向量无意义）——
+    # QG 只覆盖非父块；metrics 分母同口径，否则「缺口告警」在有父块时恒触发。
+    qg_positions = [
+        i for i, c in enumerate(es_chunks)
+        if (c.get("metadata") or {}).get("chunk_role") != "parent"
+    ]
+    for chunk in es_chunks:
+        chunk["questions"] = []
+        chunk["question_embeddings"] = []
     if should_generate:
         try:
             questions_list, question_embeddings_list, qg_stats = await generate_questions_for_chunks(
-                chunks=[c["content"] for c in es_chunks],
+                chunks=[es_chunks[i]["content"] for i in qg_positions],
                 document_title=document.filename,
                 kb_config=pipeline_config,
                 embedding_config=embedding_config,
@@ -958,40 +1062,36 @@ async def run_post_parse_tail(
                 session=session,
                 model_config_port=model_config_port,
             )
-            for i, (questions, q_embeddings) in enumerate(
-                zip(questions_list, question_embeddings_list)
+            for pos, (questions, q_embeddings) in zip(
+                qg_positions, zip(questions_list, question_embeddings_list)
             ):
-                es_chunks[i]["questions"] = questions
-                es_chunks[i]["question_embeddings"] = [{"vector": emb} for emb in q_embeddings]
+                es_chunks[pos]["questions"] = questions
+                es_chunks[pos]["question_embeddings"] = [{"vector": emb} for emb in q_embeddings]
         except Exception as e:
             logger.warning(
                 "假设问题生成失败，跳过继续处理",
                 document_id=document.id, error=str(e),
             )
-            for chunk in es_chunks:
-                chunk["questions"] = []
-                chunk["question_embeddings"] = []
-    else:
-        for chunk in es_chunks:
-            chunk["questions"] = []
-            chunk["question_embeddings"] = []
     total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
     # 覆盖率透出：指标只报总数会让「部分批次超时留空」伪装成健康完成
     # （doc787 实例：total=20 看似正常，实际 12/16 分块因批次超时为空）。
     qg_metrics: dict = {
         "enabled": should_generate,
         "total_questions": total_questions,
-        "chunks_total": len(es_chunks),
-        "chunks_with_questions": sum(1 for c in es_chunks if c.get("questions")),
+        "chunks_total": len(qg_positions),
+        "chunks_with_questions": sum(
+            1 for i in qg_positions if es_chunks[i].get("questions")
+        ),
     }
     if qg_stats is not None and should_generate:
         qg_metrics.update(qg_stats.to_metrics())
-    if should_generate and qg_metrics["chunks_with_questions"] < len(es_chunks):
+    # 缺口判定与分母同口径（非父块）：父块本就无问题，掺进分母会恒触发告警。
+    if should_generate and qg_metrics["chunks_with_questions"] < len(qg_positions):
         logger.warning(
             "假设问题生成存在缺口",
             document_id=document.id,
             chunks_with_questions=qg_metrics["chunks_with_questions"],
-            chunks_total=len(es_chunks),
+            chunks_total=len(qg_positions),
             **({"batches_failed": qg_stats.batches_failed} if qg_stats else {}),
         )
     await finish_step_committed(session, task, "question_generation", metrics=qg_metrics)

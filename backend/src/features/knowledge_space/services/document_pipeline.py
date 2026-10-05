@@ -536,8 +536,28 @@ async def execute_document_pipeline(
                 chunk_count=len(parse_result.chunks),
             )
         chunk_structure = []
+    # 关系元数据（sentence_window/parent_child 的 chunk_role/parent_slot/
+    # expansion_type，由 parse_document_result 按位透出）：与 chunk_structure
+    # 同一防错位逻辑，条数不齐置空。按 index 合并进 prechunked_items 的
+    # per-chunk meta——切分快照原样往返，resume 不丢关系。
+    structure_meta = list((parse_result.metadata or {}).get("chunk_structure_meta") or [])
+    if len(structure_meta) != len(parse_result.chunks):
+        if structure_meta:
+            _logger.info(
+                "chunk_structure_meta 条数与 chunks 不齐，置空防错位",
+                document_id=document_id,
+                meta_count=len(structure_meta),
+                chunk_count=len(parse_result.chunks),
+            )
+        structure_meta = []
     prechunked_items = [
-        (c, chunk_structure[i] if i < len(chunk_structure) else {})
+        (
+            c,
+            {
+                **(chunk_structure[i] if i < len(chunk_structure) else {}),
+                **(structure_meta[i] if i < len(structure_meta) else {}),
+            },
+        )
         for i, c in enumerate(parse_result.chunks)
     ]
 

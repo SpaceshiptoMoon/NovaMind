@@ -172,6 +172,15 @@ class DefaultIndexSchema:
                         },
                     },
                     "figure_image_count": {"type": "integer"},
+                    # 句窗口/父子分块（sentence_window/parent_child 产物）：关系与
+                    # 扩展语义字段。引用型字段显式声明——防动态映射把 keyword 推成
+                    # text（must_not term 过滤退化）、整型推成 text（range 失效）。
+                    # 存量索引不迁移（chunk_pages 同款先例：missing 字段不命中
+                    # 过滤条件，自动视为可召回/不可扩展，零回填）。
+                    "chunk_role": {"type": "keyword"},
+                    "parent_chunk_id": {"type": "keyword"},
+                    "expansion_type": {"type": "keyword"},
+                    "expansion_window_size": {"type": "integer"},
                 }
             },
             "file_info": {
