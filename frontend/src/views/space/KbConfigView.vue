@@ -228,6 +228,8 @@ const configForm = reactive({
   splittingMaxChunkSize: 2000,
   splittingSimilarityThreshold: 0.7,
   splittingBatchSize: 20,
+  // 分隔符切分（strategy=delimiter）的分隔符列表，存真实分隔符串（与后端同形）
+  splittingSeparators: [] as string[],
 
   qgEnabled: false,
   qgLlmModel: '',
@@ -357,6 +359,7 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.splittingMaxChunkSize = splitting?.max_chunk_size ?? 2000
   configForm.splittingSimilarityThreshold = splitting?.similarity_threshold ?? 0.7
   configForm.splittingBatchSize = splitting?.batch_size ?? 20
+  configForm.splittingSeparators = splitting?.separators ? [...splitting.separators] : []
 
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
@@ -470,6 +473,14 @@ function buildSplittingConfig(): SplittingConfig {
     splitting.max_chunk_size = configForm.splittingMaxChunkSize
     splitting.similarity_threshold = configForm.splittingSimilarityThreshold
     splitting.batch_size = configForm.splittingBatchSize
+  } else if (configForm.splittingStrategy === 'delimiter') {
+    splitting.chunk_size = configForm.splittingChunkSize
+    splitting.chunk_overlap = configForm.splittingChunkOverlap
+    splitting.min_chunk_size = configForm.splittingMinChunkSize
+    // 未选择任何分隔符时不提交该键（后端 None → 引擎默认按空行切）
+    if (configForm.splittingSeparators.length > 0) {
+      splitting.separators = configForm.splittingSeparators
+    }
   }
 
   return splitting

@@ -354,25 +354,20 @@ export interface SpaceConfigUpdateRequest {
 // ===================== 知识库相关 =====================
 
 export interface SplittingConfig {
-  strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic'
+  strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic' | 'delimiter'
   chunk_size?: number
   chunk_overlap?: number
   min_chunk_size?: number
   max_chunk_size?: number
   similarity_threshold?: number
   batch_size?: number
+  /** 分隔符列表（仅 delimiter 生效）：字面量匹配、按序级联应用、切分后丢弃；缺省按空行切 */
+  separators?: string[]
 }
 
 export interface VideoParsingConfig {
   /** 视频解析策略：7 预设（抽帧/去重/描述三阶段组合） */
-  strategy?:
-    | 'simple'
-    | 'scene'
-    | 'dedup'
-    | 'grouped'
-    | 'rewrite'
-    | 'frame_seq'
-    | 'video_native'
+  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'frame_seq' | 'video_native'
   /** 抽帧间隔（秒），0.5~60；动作密集视频可调小捕捉短动作 */
   frame_interval?: number
   /** 最大帧数，1~1000；长视频建议调大（如 300）避免尾部截断 */
