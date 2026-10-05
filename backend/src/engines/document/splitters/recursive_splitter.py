@@ -1,4 +1,4 @@
-"""递归切分器：按分隔符优先级分层（段落→句子→词），兜底固定大小。"""
+"""递归切分器：按分隔符优先级分层（段落→句子→词），同级片段贪心聚拢后兜底固定大小。"""
 import re
 
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
@@ -14,16 +14,30 @@ class RecursiveCharacterSplitter(BaseSplitter):
         Args:
             chunk_size: 单块最大字符数（硬上限）。
             chunk_overlap: 相邻块之间的重叠字符数，缓解切分边界处上下文断裂。
-            separators: 分隔符列表，按优先级从粗到细排序；缺省为中文标点优先的通用序列。
-            min_chunk_size: 最小块大小阈值，小于此值的碎块与相邻块合并；0 表示禁用合并。
+                注意：仅在最末级硬切（无分隔符可用）时生效，走分隔符切出的
+                块之间零重叠——与 LangChain 的 overlap 语义不同。
+            separators: 分隔符列表，按优先级从粗到细排序；缺省为中文标点优先的
+                通用序列。带尾随空格的英文句读（``'. '`` 等）排在裸符号之前，
+                避免小数点/缩写被误切。
+            min_chunk_size: 最小块大小阈值，小于此值的碎块与相邻块合并；
+                0 表示禁用合并。上限自动夹取到 ``chunk_size // 2``，防止
+                min > max 的配置矛盾导致合并条件永不满足。
         """
         super().__init__()
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.min_chunk_size = min_chunk_size
+        # min_chunk_size 只用于事后合并的触发阈值，超过 chunk_size 的一半就失去
+        # 意义（合并结果几乎必然超限而跳过）；夹取而非抛错，容忍存量配置漂移。
+        self.min_chunk_size = min(min_chunk_size, chunk_size // 2)
 
         if separators is None:
-            self.separators = ["\n\n", "。", "！", "？", ".", "!", "?", ",", ",", "\n", " ", ""]
+            # 中文句末标点 → 英文句读（带空格）→ 裸符号 → 逗号（中文在前）→
+            # 换行 → 空格 → 空串。换行排在逗号之后：对列表/表格类文本，
+            # 行是比行内标点更强的语义边界，先按行断保住行完整性。
+            self.separators = [
+                "\n\n", "。", "！", "？", ". ", "! ", "? ", ".", "!", "?",
+                "，", ",", "\n", " ", "",
+            ]
         else:
             self.separators = separators
 
@@ -66,7 +80,12 @@ class RecursiveCharacterSplitter(BaseSplitter):
         return split_docs
 
     async def _split_text(self, text: str) -> list[str]:
-        """按分隔符优先级递归切分单篇文本。"""
+        """按分隔符优先级递归切分单篇文本，同级片段贪心聚拢到 chunk_size。
+
+        切分后不直接保留裸片段，而是把同级小片段贪心装填到接近 chunk_size，
+        避免"句长 80 字 × chunk_size 1000"类文本被切成均块仅 ~160 字的
+        系统性欠填充（欠填充导致 embedding 数量膨胀、单块上下文不足）。
+        """
         if len(text) <= self.chunk_size:
             return [text]
 
@@ -78,28 +97,51 @@ class RecursiveCharacterSplitter(BaseSplitter):
                 break
 
         # 使用选定的分隔符分割文本
+        # 自带分隔符路径（捕获组保回标点）：片段含句读符号，聚拢时直接拼接；
+        # 其余路径 split 会丢弃分隔符，聚拢时必须补回，否则词/段落粘连
+        #（如空格路径 "abc def" 会粘成 "abcdefghi"）。
         if separator == "":
             texts = list(text)
+            joiner = ""
+        elif separator in ('. ', '! ', '? ', '。', '！', '？', '，'):
+            raw_parts = re.split(f'({re.escape(separator)})', text)
+            # 捕获组切分总是奇数长度 [seg, sep, seg, ..., seg]；
+            # 按 seg+sep 配对保回标点，尾段（最后一片）不得丢弃
+            texts = [
+                raw_parts[i] + (raw_parts[i + 1] if i + 1 < len(raw_parts) else '')
+                for i in range(0, len(raw_parts), 2)
+            ]
+            joiner = ""
         else:
-            if separator in ['. ', '? ', '! ']:
-                texts = re.split(f'({re.escape(separator)})', text)
-                sentences = []
-                for i in range(0, len(texts) - 1, 2):
-                    if i + 1 < len(texts):
-                        sentences.append(texts[i] + texts[i + 1])
-                    else:
-                        sentences.append(texts[i])
-                texts = sentences
-            else:
-                texts = text.split(separator)
+            texts = text.split(separator)
+            joiner = separator
 
-        # 如果分割后的文本片段仍大于块大小，则使用更细粒度的分隔符继续切分
-        final_texts = []
+        # 超限片段递归下沉到更细分隔符；达标片段贪心装填聚拢
+        final_texts: list[str] = []
+        # 装填缓冲：累积同级片段直到再加一片会超 chunk_size
+        buffer = ""
+
+        def _flush_buffer() -> None:
+            nonlocal buffer
+            if buffer:
+                final_texts.append(buffer)
+                buffer = ""
+
         for t in texts:
             if len(t) <= self.chunk_size:
-                if t.strip():
-                    final_texts.append(t)
+                if not t.strip():
+                    continue
+                # 装得下就并入缓冲（补回被 split 丢弃的分隔符）；装不下先冲刷
+                # 已装内容再开新缓冲。空缓冲 + 单片段超限理论不可达
+                #（len(t) <= chunk_size），此分支保证冲刷逻辑不依赖该假设。
+                joined_len = len(buffer) + len(joiner) + len(t)
+                if joined_len <= self.chunk_size or not buffer:
+                    buffer = t if not buffer else buffer + joiner + t
+                else:
+                    _flush_buffer()
+                    buffer = t
             else:
+                _flush_buffer()
                 next_separators = self.separators[self.separators.index(separator) + 1:]
                 if next_separators:
                     next_splitter = RecursiveCharacterSplitter(
@@ -110,11 +152,13 @@ class RecursiveCharacterSplitter(BaseSplitter):
                     )
                     final_texts.extend(await next_splitter._split_text(t))
                 else:
-                    for i in range(0, len(t), self.chunk_size - self.chunk_overlap):
+                    step = max(self.chunk_size - self.chunk_overlap, 1)
+                    for i in range(0, len(t), step):
                         chunk = t[i:i + self.chunk_size]
                         if chunk.strip():
                             final_texts.append(chunk)
 
+        _flush_buffer()
         return final_texts
 
     def _merge_small_chunks(self, chunks: list[dict[str, str]]) -> list[dict[str, str]]:
