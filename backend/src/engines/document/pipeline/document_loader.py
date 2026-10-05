@@ -15,8 +15,10 @@ from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.engines.document.splitters.delimiter_splitter import DelimiterSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
+from novamind.engines.document.splitters.parent_child_splitter import ParentChildSplitter
 from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
 from novamind.engines.document.splitters.semantic_splitter import SemanticSplitter
+from novamind.engines.document.splitters.sentence_window_splitter import SentenceWindowSplitter
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.docx_reader import DocxReader
@@ -328,15 +330,43 @@ class DocumentProcessor:
     ) -> list[str]:
         """Splitter-only：对纯文本按指定策略切分，返回 chunk 文本列表。
 
-        不读取文件，只做切分。
+        不读取文件，只做切分。需要 per-chunk 元数据（关系指针等）的调用方
+        请用 :meth:`split_text_items`。
 
         Args:
             text: 要切分的全文文本。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child'）。
             **kwargs: 策略特定参数（chunk_size / similarity_threshold 等），逐策略透传。
 
         Returns:
             切分后的文本块列表（纯文本，非 dict）。
+
+        Raises:
+            ValueError: 策略名未注册。
+        """
+        items = await self.split_text_items(text, strategy=strategy, **kwargs)
+        return [t for t, _meta in items]
+
+    async def split_text_items(
+        self,
+        text: str,
+        strategy: str = 'recursive',
+        **kwargs,
+    ) -> list[tuple[str, dict]]:
+        """对纯文本按指定策略切分，返回 (chunk 文本, per-chunk 元数据) 列表。
+
+        ``split_text`` 的孪生方法：与 recursive 等存量策略不同，sentence_window /
+        parent_child 产物携带关系元数据（expansion_type / chunk_role / parent_slot），
+        上游据此写进 ES chunk metadata——检索期扩窗/回带全靠它。存量策略恒空 dict。
+
+        Args:
+            text: 要切分的全文文本。
+            strategy: 切分策略名（须已注册）。
+            **kwargs: 策略特定参数，逐策略透传。
+
+        Returns:
+            ``[(chunk_text, meta_dict), ...]``，meta 为切分器产出的关系元数据
+            （无关系的策略为空 dict）；纯空白块已过滤。
 
         Raises:
             ValueError: 策略名未注册。
@@ -390,27 +420,40 @@ class DocumentProcessor:
                 min_chunk_size=kwargs.get('min_chunk_size', 50),
                 separators=kwargs.get('separators'),  # None → 引擎默认空行切分
             )
+        elif strategy == 'sentence_window':
+            splitter = splitter_class(
+                window_size=kwargs.get('window_size', 2),
+                max_sentence_length=kwargs.get('chunk_size', 1000),
+            )
+        elif strategy == 'parent_child':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 1000),
+                chunk_overlap=kwargs.get('chunk_overlap', 100),
+                parent_chunk_size=kwargs.get('parent_chunk_size', 2000),
+            )
         else:
             splitter = splitter_class(**kwargs)
 
         # 对全文进行切分 — 将文本包装为单页文档
         documents = [{"text": text, "content": text, "source": "", "metadata": {}}]
         chunks = await splitter.split(documents)
-        chunk_texts = [
-            chunk.get("content") or chunk.get("text", "")
+        items = [
+            (
+                chunk.get("content") or chunk.get("text", ""),
+                chunk.get("meta") or {},
+            )
             for chunk in chunks
             if (chunk.get("content") or chunk.get("text", "")).strip()
         ]
-
-        # 提取纯文本内容
 
         logger.info(
             "文本切分完成",
             strategy=strategy,
             char_count=len(text),
-            chunk_count=len(chunk_texts),
+            chunk_count=len(items),
+            meta_carrier_count=sum(1 for _t, m in items if m),
         )
-        return chunk_texts
+        return items
 
     async def parse_document(
         self,
@@ -579,7 +622,7 @@ class DocumentProcessor:
         full_text = await self.read_full_text(
             file_path,
         )
-        chunks = await self.split_text(
+        split_items = await self.split_text_items(
             full_text,
             strategy=str(splitting_config.get("strategy", "recursive")),
             chunk_size=splitting_config.get("chunk_size", 1000),
@@ -589,7 +632,21 @@ class DocumentProcessor:
             similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
             batch_size=splitting_config.get("batch_size", 20),
             separators=splitting_config.get("separators"),
+            window_size=splitting_config.get("window_size", 2),
+            parent_chunk_size=splitting_config.get("parent_chunk_size", 2000),
         )
+        chunks = [t for t, _meta in split_items]
+        # 关系元数据（sentence_window/parent_child 的窗口参数/父子槽位）按位对齐
+        # 透传；仅当存在非空 meta 时才写键——存量策略保持 metadata 形状不变。
+        # document_pipeline 按 index 对齐组装 prechunked_items，条数与 chunks 恒相等。
+        chunk_structure_meta = [m for _t, m in split_items]
+        result_metadata = {
+            "parser": "default",
+            "file_type": file_type,
+            "split_strategy": str(splitting_config.get("strategy", "recursive")),
+        }
+        if any(chunk_structure_meta):
+            result_metadata["chunk_structure_meta"] = chunk_structure_meta
         logger.info(
             "默认解析完成",
             filename=Path(file_path).name,
@@ -600,11 +657,7 @@ class DocumentProcessor:
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
-            metadata={
-                "parser": "default",
-                "file_type": file_type,
-                "split_strategy": str(splitting_config.get("strategy", "recursive")),
-            },
+            metadata=result_metadata,
         )
 
     async def load_with_strategy(self, file_path: str | Path, strategy: str | None = 'recursive',
@@ -724,3 +777,5 @@ DocumentRegistry.register_splitter('semantic', SemanticSplitter)
 DocumentRegistry.register_splitter('fixed_size', FixedSizeSplitter)
 DocumentRegistry.register_splitter('markdown', MarkdownSplitter)
 DocumentRegistry.register_splitter('delimiter', DelimiterSplitter)
+DocumentRegistry.register_splitter('sentence_window', SentenceWindowSplitter)
+DocumentRegistry.register_splitter('parent_child', ParentChildSplitter)
