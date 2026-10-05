@@ -36,6 +36,14 @@ logger = get_logger(__name__)
 _THINKING_RESTRICTED_PATTERN = "enable_thinking"
 _THINKING_RESTRICTED_HINT = "restricted to "
 
+# thinking 模式的默认思考预算系数：thinking_budget = max_tokens * 系数。
+# 依据（2026-10-05 实测 qwen3.8-2.4t-a95b）：thinking 模型的 reasoning 深度
+# 随文档信息密度暴涨（浅文本 400 字符、密集文本 8600+ 字符），reasoning 无界
+# 时会吃满输出预算导致 content 为空（completion_tokens 恰好撞满 max_tokens）。
+# 设 0.5：reasoning 与 content 各占一半预算，正文永远有输出空间；DashScope
+# 对 qwen3 系列支持 extra_body.thinking_budget，实测生效（reasoning 8200→206 字符）。
+_THINKING_BUDGET_RATIO = 0.5
+
 
 def _restricted_thinking_value(exc: BaseException) -> bool | None:
     """从 400 错误信息解析服务商强制要求的 enable_thinking 值。
@@ -140,6 +148,24 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._prompt_cache_key:
             extra_body["prompt_cache_key"] = self._prompt_cache_key
 
+    def _apply_thinking_budget(self, extra_body: dict, max_tokens: int) -> None:
+        """thinking 模式下注入 thinking_budget（已显式配置则不覆盖）。
+
+        仅在 enable_thinking=True 时生效：reasoning 深度随 prompt 信息密度
+        暴涨，无界思考会吃满输出预算使 content 为空。预算按 max_tokens 的
+        一半封顶思考长度，正文永远有输出空间。不支持该字段的服务商通常
+        忽略多余字段，无害。
+
+        Args:
+            extra_body: 请求 extra_body dict，原地追加。
+            max_tokens: 本次请求的输出 token 上限。
+        """
+        if not extra_body.get("enable_thinking"):
+            return
+        if "thinking_budget" in extra_body:
+            return
+        extra_body["thinking_budget"] = max(int(max_tokens * _THINKING_BUDGET_RATIO), 16)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -176,6 +202,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
             self._apply_prompt_cache_key(kwargs["extra_body"])
+            self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
 
             logger.info(
                 "LLM 请求开始",
@@ -198,6 +225,7 @@ class OpenAICompatibleLLM(BaseLLM):
                         model=self.model, forced_value=forced,
                     )
                     kwargs["extra_body"]["enable_thinking"] = forced
+                    self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
                     response = await self.client.chat.completions.create(**kwargs)
                 else:
                     elapsed = time.monotonic() - start_time
@@ -231,6 +259,19 @@ class OpenAICompatibleLLM(BaseLLM):
                 )
 
             content = response.choices[0].message.content
+            if not content:
+                # 非流式调用 content 为空但预算被吃满：thinking 模型（qwen3 系列
+                # 强制 enable_thinking=True）的思考 token 计入 max_completion_tokens，
+                # 思考耗尽预算后正文为空。打 warning 带上用量证据，调用方据此缩短
+                # 预算重试或换非思考模型；不改变返回值语义（返回空串由调用方兜底）。
+                usage = response.usage
+                logger.warning(
+                    "LLM 响应 content 为空（疑似 thinking 耗尽 max_completion_tokens）",
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    completion_tokens=getattr(usage, "completion_tokens", None),
+                    enable_thinking=kwargs.get("extra_body", {}).get("enable_thinking"),
+                )
             return content if content is not None else ""
 
     async def generate_text_stream(
@@ -270,6 +311,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 }
                 create_kwargs["extra_body"] = {"enable_thinking": enable_thinking}
                 self._apply_prompt_cache_key(create_kwargs["extra_body"])
+                self._apply_thinking_budget(create_kwargs["extra_body"], max_tokens)
                 stream = await self.client.chat.completions.create(**create_kwargs)
             except Exception as e:
                 elapsed = time.monotonic() - start_time
@@ -334,6 +376,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["response_format"] = response_format
             kwargs["extra_body"] = {"enable_thinking": enable_thinking}
             self._apply_prompt_cache_key(kwargs["extra_body"])
+            self._apply_thinking_budget(kwargs["extra_body"], max_tokens)
 
             start_time = time.monotonic()
             try:
