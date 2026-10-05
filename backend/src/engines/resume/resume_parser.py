@@ -13,7 +13,7 @@ from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.document.readers import DocxReader, PDFReader
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.shared.utils.llm_response import extract_json_str
+from novamind.shared.utils.llm_response import extract_json_obj, extract_json_str
 
 
 class ResumeParser:
@@ -147,26 +147,45 @@ class ResumeParser:
 
     async def _split_sections(self, raw_text: str) -> dict[str, str]:
         # 生成带行号的文本
-        """调 LLM 对带行号文本做章节切割，返回章节类型到内容片段的映射。"""
+        """调 LLM 对带行号文本做章节切割，返回章节类型到内容片段的映射。
+
+        解析失败复用 _parse_section 的降级样板重试一次（去 response_format +
+        prompt 加显式约束）；两轮仍失败抛出——静默空 sections 是"错误结果"
+        而非"能力缺失"，违反失败方向安全，保持原上抛语义。
+        """
         lines = raw_text.split("\n")
         numbered_text = "\n".join(f"[{i+1}] {lines[i]}" for i in range(len(lines)))
 
         prompt = self._prompt_provider.format("resume_section_split", numbered_text=numbered_text)
-        response = await self.llm.generate_text(
-            prompt=prompt,
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        data = json.loads(extract_json_str(response))
-        sections = {}
-        for sec in data.get("sections", []):
-            sec_type = sec.get("type", "other")
-            start = sec.get("start_line", 1) - 1  # 转为 0-based index
-            end = sec.get("end_line", len(lines))
-            start = max(0, min(start, len(lines)))
-            end = max(start, min(end, len(lines)))
-            sections[sec_type] = "\n".join(lines[start:end])
-        return sections
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = await self.llm.generate_text(
+                    prompt=prompt if attempt == 0 else prompt + "\n\n请只输出合法 JSON，不要包含任何其他内容。",
+                    temperature=0.1,
+                    # 首轮带 SDK 约束；部分网关对 json_object 支持不佳，重试轮去掉
+                    response_format={"type": "json_object"} if attempt == 0 else None,
+                )
+                data = extract_json_obj(response)
+                if data is None:
+                    raise ValueError("LLM 输出 JSON 解析失败")
+                sections = {}
+                for sec in data.get("sections", []):
+                    sec_type = sec.get("type", "other")
+                    start = sec.get("start_line", 1) - 1  # 转为 0-based index
+                    end = sec.get("end_line", len(lines))
+                    start = max(0, min(start, len(lines)))
+                    end = max(start, min(end, len(lines)))
+                    sections[sec_type] = "\n".join(lines[start:end])
+                return sections
+            except (json.JSONDecodeError, ValueError) as e:
+                last_error = e
+                self._logger.warning(
+                    "章节切割 JSON 解析失败，准备重试",
+                    attempt=attempt + 1,
+                    error=str(e),
+                )
+        raise last_error if last_error else ValueError("章节切割两轮均失败")
 
     # ==================== S3: 并行深度解析 ====================
 
