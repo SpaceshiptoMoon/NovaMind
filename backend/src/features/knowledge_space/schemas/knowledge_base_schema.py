@@ -17,6 +17,8 @@ DEFAULT_MAX_CHUNK_SIZE = 2000
 DEFAULT_SIMILARITY_THRESHOLD = 0.7
 DEFAULT_BATCH_SIZE = 20
 DEFAULT_EMBEDDING_BATCH_SIZE = 32
+DEFAULT_WINDOW_SIZE = 2
+DEFAULT_PARENT_CHUNK_SIZE = 2000
 
 
 # ========== Splitting config ==========
@@ -58,7 +60,10 @@ class SplittingConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["recursive", "fixed_size", "markdown", "semantic", "delimiter"] = Field(
+    strategy: Literal[
+        "recursive", "fixed_size", "markdown", "semantic", "delimiter",
+        "sentence_window", "parent_child",
+    ] = Field(
         default=DEFAULT_CHUNK_STRATEGY,
         description="Default splitting strategy.",
     )
@@ -68,6 +73,14 @@ class SplittingConfig(BaseModel):
     max_chunk_size: int = Field(default=DEFAULT_MAX_CHUNK_SIZE, ge=100, le=8000)
     similarity_threshold: float = Field(default=DEFAULT_SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     batch_size: int = Field(default=DEFAULT_BATCH_SIZE, ge=1, le=100)
+    window_size: int = Field(
+        default=DEFAULT_WINDOW_SIZE, ge=0, le=10,
+        description="句窗口每侧句数（仅 sentence_window 生效）；0 = 不扩窗。",
+    )
+    parent_chunk_size: int = Field(
+        default=DEFAULT_PARENT_CHUNK_SIZE, ge=100, le=8000,
+        description="父块大小（仅 parent_child 生效），回带上下文单位，不小于 chunk_size。",
+    )
     separators: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] | None = Field(
         default=None,
         max_length=20,
@@ -83,6 +96,20 @@ class SplittingConfig(BaseModel):
     def _migrate_legacy_strategy(cls, value):
         """迁移旧切分策略别名到现名（before 校验器，就地改写 dict）。"""
         return _migrate_legacy_splitting_strategy(value)
+
+    @model_validator(mode="after")
+    def _validate_window_strategy_params(self):
+        """parent_child 的父子尺寸交叉校验（全量配置路径）。
+
+        父块是子块的回带上下文容器，必须能装下至少一个完整子块。PATCH 部分更新
+        路径在服务层补带回填校验（本校验器在 PATCH 片段上看到的是缺省默认值，
+        非现网值，不可靠）。
+        """
+        if self.strategy == "parent_child" and self.parent_chunk_size < self.chunk_size:
+            raise ValueError(
+                f"parent_chunk_size ({self.parent_chunk_size}) 必须大于等于 chunk_size ({self.chunk_size})"
+            )
+        return self
 
 
 # ========== Parsing config ==========

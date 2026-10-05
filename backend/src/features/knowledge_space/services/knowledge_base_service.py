@@ -449,7 +449,10 @@ class KnowledgeBaseService:
         """校验配置 Patch 合法性（未知键/非法切分策略在此拒绝）。"""
         splitting = config_updates.get("splitting", {})
         if "strategy" in splitting:
-            valid_strategies = {"recursive", "fixed_size", "markdown", "semantic", "delimiter"}
+            valid_strategies = {
+                "recursive", "fixed_size", "markdown", "semantic", "delimiter",
+                "sentence_window", "parent_child",
+            }
             if splitting["strategy"] not in valid_strategies:
                 raise InvalidParameterError(f"不支持的切分策略: {splitting['strategy']}")
         if "chunk_size" in splitting:
@@ -461,6 +464,26 @@ class KnowledgeBaseService:
                 chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 1000)
             if chunk_size is not None and splitting["chunk_overlap"] >= chunk_size:
                 raise InvalidParameterError("chunk_overlap 必须小于 chunk_size")
+        if "window_size" in splitting:
+            if not (0 <= splitting["window_size"] <= 10):
+                raise InvalidParameterError("window_size 必须在 0-10 之间")
+        if "parent_chunk_size" in splitting:
+            if not (100 <= splitting["parent_chunk_size"] <= 8000):
+                raise InvalidParameterError("parent_chunk_size 必须在 100-8000 之间")
+            # PATCH 片段是部分更新，schema after 校验器看到的是缺省默认值而非
+            # 现网值——此处带回填后交叉校验（对齐上方 chunk_overlap 的回填先例）。
+            effective_strategy = splitting.get("strategy")
+            if effective_strategy is None and kb:
+                effective_strategy = (kb.config or {}).get("splitting", {}).get("strategy", "recursive")
+            effective_chunk_size = splitting.get("chunk_size")
+            if effective_chunk_size is None and kb:
+                effective_chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 1000)
+            if (
+                effective_strategy == "parent_child"
+                and effective_chunk_size is not None
+                and splitting["parent_chunk_size"] < effective_chunk_size
+            ):
+                raise InvalidParameterError("parent_chunk_size 必须大于等于 chunk_size")
 
         try:
             KnowledgeBaseConfigUpdate.model_validate(config_updates)

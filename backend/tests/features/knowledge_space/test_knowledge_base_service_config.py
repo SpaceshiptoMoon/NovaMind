@@ -265,3 +265,129 @@ def test_config_update_schema_accepts_wiki_field():
     assert set(KnowledgeBaseConfigUpdate.model_fields.keys()) == (
         set(KnowledgeBaseConfig.model_fields.keys()) - {"description"}
     )
+
+
+def _make_service(kb, monkeypatch):
+    """构造 update_config 可用的 service（FakeKnowledgeBase + mock 鉴权链）。"""
+    service = object.__new__(KnowledgeBaseService)
+    service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
+    service.session = SimpleNamespace(commit=AsyncMock())
+    member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
+        lambda obj, field: None,
+    )
+    return service
+
+
+def test_update_config_accepts_sentence_window_and_parent_child(monkeypatch):
+    """新策略走通 PATCH 白名单：sentence_window 带 window_size、parent_child 带尺寸组。"""
+    kb = FakeKnowledgeBase(
+        6,
+        {"space_type": ["text"], "splitting": {"strategy": "recursive", "chunk_size": 1000}},
+    )
+    service = _make_service(kb, monkeypatch)
+
+    _run(
+        service.update_config(
+            6, 99,
+            {"splitting": {"strategy": "sentence_window", "window_size": 3}},
+        )
+    )
+    assert kb.config["splitting"]["strategy"] == "sentence_window"
+    assert kb.config["splitting"]["window_size"] == 3
+
+    kb2 = FakeKnowledgeBase(
+        7,
+        {"space_type": ["text"], "splitting": {"strategy": "recursive", "chunk_size": 1000}},
+    )
+    service2 = _make_service(kb2, monkeypatch)
+    _run(
+        service2.update_config(
+            7, 99,
+            {"splitting": {
+                "strategy": "parent_child",
+                "chunk_size": 500, "chunk_overlap": 50, "parent_chunk_size": 2000,
+            }},
+        )
+    )
+    assert kb2.config["splitting"]["strategy"] == "parent_child"
+    assert kb2.config["splitting"]["parent_chunk_size"] == 2000
+
+
+def test_patch_parent_child_with_stale_chunk_size_rejected(monkeypatch):
+    """PATCH 只带 parent_chunk_size=500、kb 现值 chunk_size=1000 → 回填交叉校验拒绝。
+
+    schema after 校验器在 PATCH 片段上看到的是缺省默认值（parent_chunk_size 默认
+    2000 >= 默认 chunk_size 1000，通过），服务层带回填校验是唯一防线。
+    """
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+
+    kb = FakeKnowledgeBase(
+        8,
+        {"space_type": ["text"], "splitting": {"strategy": "recursive", "chunk_size": 1000}},
+    )
+    service = _make_service(kb, monkeypatch)
+
+    with pytest.raises(InvalidParameterError, match="parent_chunk_size"):
+        _run(
+            service.update_config(
+                8, 99,
+                {"splitting": {"strategy": "parent_child", "parent_chunk_size": 500}},
+            )
+        )
+
+
+def test_patch_parent_chunk_size_on_non_parent_child_strategy_allowed(monkeypatch):
+    """相邻正常场景：非 parent_child 策略下 PATCH parent_chunk_size 不做交叉校验
+    （先改尺寸后切策略是合法顺序，缺口由切策略时的 PATCH 再校验兜住）。"""
+    kb = FakeKnowledgeBase(
+        9,
+        {"space_type": ["text"], "splitting": {"strategy": "recursive", "chunk_size": 1000}},
+    )
+    service = _make_service(kb, monkeypatch)
+    _run(service.update_config(9, 99, {"splitting": {"parent_chunk_size": 800}}))
+    assert kb.config["splitting"]["parent_chunk_size"] == 800
+
+
+def test_patch_window_size_out_of_range_rejected():
+    """window_size 越界（>10）被服务层拒绝。"""
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+
+    kb = FakeKnowledgeBase(10, {"space_type": ["text"], "splitting": {"strategy": "sentence_window"}})
+    service = object.__new__(KnowledgeBaseService)
+    service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
+    member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
+
+    with pytest.raises(InvalidParameterError, match="window_size"):
+        _run(service.update_config(10, 99, {"splitting": {"window_size": 11}}))
+
+
+def test_splitting_config_schema_accepts_new_strategies():
+    """全量配置路径：新策略经 SplittingConfig 校验通过；交叉校验正向生效。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import SplittingConfig
+
+    cfg = SplittingConfig.model_validate({
+        "strategy": "parent_child", "chunk_size": 500, "parent_chunk_size": 2000,
+    })
+    assert cfg.strategy == "parent_child"
+    assert cfg.window_size == 2  # 缺省默认值照常填充
+
+    sw = SplittingConfig.model_validate({"strategy": "sentence_window", "window_size": 0})
+    assert sw.window_size == 0  # 0 = 不扩窗，合法
+
+
+def test_splitting_config_schema_rejects_parent_smaller_than_chunk():
+    """全量配置路径交叉校验：parent_chunk_size < chunk_size 被 after 校验器拒绝。"""
+    from pydantic import ValidationError
+
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import SplittingConfig
+
+    with pytest.raises(ValidationError, match="parent_chunk_size"):
+        SplittingConfig.model_validate({
+            "strategy": "parent_child", "chunk_size": 1000, "parent_chunk_size": 500,
+        })
