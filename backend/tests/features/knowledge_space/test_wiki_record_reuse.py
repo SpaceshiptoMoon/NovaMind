@@ -71,7 +71,7 @@ async def test_find_pending_record_beyond_window(db):
         await _add_record(db, 900 + i, WikiIngestStatus.PENDING)
 
     record_repo = WikiIngestRecordRepository(db)
-    found = await _find_pending_record(record_repo, kb_id=11, document_id=701)
+    found = await _find_pending_record(record_repo, document_id=701)
     assert found is not None
     assert found.id == target.id
 
@@ -82,7 +82,7 @@ async def test_find_pending_record_ignores_terminal(db):
     """终态履历不复用：latest 是 done/failed 时返回 None（调用方会新建行）"""
     await _add_record(db, 702, WikiIngestStatus.FAILED)
     record_repo = WikiIngestRecordRepository(db)
-    assert await _find_pending_record(record_repo, kb_id=11, document_id=702) is None
+    assert await _find_pending_record(record_repo, document_id=702) is None
 
 
 def _patch_db_session(monkeypatch, db: AsyncSession) -> None:

@@ -101,7 +101,7 @@ async def process_wiki_ingest_task(
 
             # 2. 找到本文档的履历行（入队时已创建）
             record_repo = WikiIngestRecordRepository(session)
-            record = await _find_pending_record(record_repo, kb_id, document_id)
+            record = await _find_pending_record(record_repo, document_id)
             if record is None:
                 # reparse 清洗的兜底：purge 没赶上、job 已被 worker pop。
                 # 本 job 对应的履历已是 CANCELLED → 直接放弃，不建新行
@@ -245,7 +245,7 @@ async def process_wiki_ingest_task(
                 await release_kb_lock(kb_id, lock_token)
 
 
-async def _find_pending_record(record_repo, kb_id: int, document_id: int):
+async def _find_pending_record(record_repo, document_id: int):
     """找该文档最近一条未终态的履历（入队时创建的 PENDING 行）。
 
     必须按 document_id 定点查——锁忙碌场景下同 KB 每分钟会新增几十条其他
