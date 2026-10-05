@@ -240,6 +240,10 @@ const configForm = reactive({
   splittingBatchSize: 20,
   // 分隔符切分（strategy=delimiter）的分隔符列表，存真实分隔符串（与后端同形）
   splittingSeparators: [] as string[],
+  // 句子窗口（strategy=sentence_window）：每侧扩窗句数
+  splittingWindowSize: 2,
+  // 父子分块（strategy=parent_child）：父块大小（回带上下文单位）
+  splittingParentChunkSize: 2000,
 
   qgEnabled: false,
   qgLlmModel: '',
@@ -374,6 +378,8 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.splittingSimilarityThreshold = splitting?.similarity_threshold ?? 0.7
   configForm.splittingBatchSize = splitting?.batch_size ?? 20
   configForm.splittingSeparators = splitting?.separators ? [...splitting.separators] : []
+  configForm.splittingWindowSize = splitting?.window_size ?? 2
+  configForm.splittingParentChunkSize = splitting?.parent_chunk_size ?? 2000
 
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
@@ -507,6 +513,15 @@ function buildSplittingConfig(): SplittingConfig {
     if (configForm.splittingSeparators.length > 0) {
       splitting.separators = configForm.splittingSeparators
     }
+  } else if (configForm.splittingStrategy === 'sentence_window') {
+    // 每句一检索单元；chunk_size 作单句硬切上限随带（引擎复用同键）
+    splitting.chunk_size = configForm.splittingChunkSize
+    splitting.window_size = configForm.splittingWindowSize
+  } else if (configForm.splittingStrategy === 'parent_child') {
+    // 子块=检索单元（chunk_size/chunk_overlap），父块=回带容器（parent_chunk_size）
+    splitting.chunk_size = configForm.splittingChunkSize
+    splitting.chunk_overlap = configForm.splittingChunkOverlap
+    splitting.parent_chunk_size = configForm.splittingParentChunkSize
   }
 
   return splitting

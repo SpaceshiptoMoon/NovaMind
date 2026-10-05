@@ -12,6 +12,8 @@
             <el-option label="Markdown" value="markdown" />
             <el-option label="语义" value="semantic" />
             <el-option label="分隔符" value="delimiter" />
+            <el-option label="句子窗口" value="sentence_window" />
+            <el-option label="父子分块" value="parent_child" />
           </el-select>
         </el-form-item>
 
@@ -24,7 +26,8 @@
           v-if="
             configForm.splittingStrategy === 'recursive' ||
             configForm.splittingStrategy === 'fixed_size' ||
-            configForm.splittingStrategy === 'delimiter'
+            configForm.splittingStrategy === 'delimiter' ||
+            configForm.splittingStrategy === 'parent_child'
           "
         >
           <el-row :gutter="20">
@@ -50,6 +53,36 @@
             </el-col>
           </el-row>
         </template>
+
+        <el-form-item
+          v-if="configForm.splittingStrategy === 'parent_child'"
+          label="父块大小"
+        >
+          <el-input-number
+            v-model="configForm.splittingParentChunkSize"
+            :min="100"
+            :max="8000"
+            style="width: 260px"
+          />
+          <div class="field-hint">
+            须 ≥ 分块大小；父块只作召回后回带的上下文容器，不参与检索召回，也不做向量化。
+          </div>
+        </el-form-item>
+
+        <el-form-item
+          v-if="configForm.splittingStrategy === 'sentence_window'"
+          label="窗口句数（每侧）"
+        >
+          <el-input-number
+            v-model="configForm.splittingWindowSize"
+            :min="0"
+            :max="10"
+            style="width: 260px"
+          />
+          <div class="field-hint">
+            召回命中句后向前/向后各扩展 N 句拼成上下文；0 表示不扩窗。每句一个分块，分块数量与向量化成本随句数增长。
+          </div>
+        </el-form-item>
 
         <el-form-item
           v-if="
@@ -169,6 +202,8 @@ type SplittingFormModel = {
   splittingSimilarityThreshold: number
   splittingBatchSize: number
   splittingSeparators: string[]
+  splittingWindowSize: number
+  splittingParentChunkSize: number
 }
 
 const props = defineProps<{
@@ -227,6 +262,8 @@ const strategyTitle = computed(() => {
     markdown: 'Markdown 结构切分',
     semantic: '语义切分',
     delimiter: '分隔符切分',
+    sentence_window: '句子窗口切分',
+    parent_child: '父子分块',
   }
   return labels[props.configForm.splittingStrategy] || '文本切分'
 })
@@ -239,6 +276,10 @@ const strategyDesc = computed(() => {
     semantic: '基于语义相似度切分，依赖最大分块大小、批次大小、相似度阈值。',
     delimiter:
       '按自定义分隔符切段，分隔符不保留；超长段按分块大小+重叠硬切，碎段按最小分块大小合并。',
+    sentence_window:
+      '每句一个检索单元，召回精度高；检索命中后自动带上下句拼窗口。分块数量随句数增长，向量化成本较高。',
+    parent_child:
+      '小块（分块大小）参与检索召回，命中后自动回带所属大块（父块大小）全文作上下文；父块间不重叠、不做向量化。',
   }
   return descriptions[props.configForm.splittingStrategy] || ''
 })

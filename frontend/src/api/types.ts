@@ -356,7 +356,14 @@ export interface SpaceConfigUpdateRequest {
 // ===================== 知识库相关 =====================
 
 export interface SplittingConfig {
-  strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic' | 'delimiter'
+  strategy?:
+    | 'recursive'
+    | 'fixed_size'
+    | 'markdown'
+    | 'semantic'
+    | 'delimiter'
+    | 'sentence_window'
+    | 'parent_child'
   chunk_size?: number
   chunk_overlap?: number
   min_chunk_size?: number
@@ -365,6 +372,10 @@ export interface SplittingConfig {
   batch_size?: number
   /** 分隔符列表（仅 delimiter 生效）：字面量匹配、按序级联应用、切分后丢弃；缺省按空行切 */
   separators?: string[]
+  /** 句窗口每侧句数（仅 sentence_window 生效）；0 = 不扩窗 */
+  window_size?: number
+  /** 父块大小（仅 parent_child 生效）：回带上下文单位，须 ≥ chunk_size */
+  parent_chunk_size?: number
 }
 
 export interface VideoParsingConfig {

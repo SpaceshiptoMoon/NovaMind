@@ -368,6 +368,27 @@ Recommended to keep:
 
 Current image splitting overrides were previously removed and should not be reintroduced without a concrete runtime need.
 
+### Splitting strategies (2026-10)
+
+`splitting.strategy` supports seven values: `recursive` (default), `fixed_size`,
+`markdown`, `semantic`, `delimiter`, `sentence_window`, `parent_child`.
+
+- `sentence_window` — one sentence per indexed chunk; at retrieval time a hit is
+  expanded with `chunk_index ± window_size` neighbor sentences. Params:
+  `window_size` (0-10, default 2; 0 = no expansion). Cost: chunk count equals
+  sentence count, so embedding cost grows accordingly.
+- `parent_child` — small children (`chunk_size` / `chunk_overlap`) are embedded
+  and retrievable; large parents (`parent_chunk_size`, must be >= `chunk_size`)
+  act as context containers only: excluded from recall
+  (`must_not metadata.chunk_role=parent`), no embedding, no question generation.
+  At retrieval time a child hit returns the parent's full text.
+
+Both strategies mark their chunks with self-describing metadata
+(`expansion_type` / `chunk_role` / `parent_chunk_id` / `expansion_window_size`),
+so retrieval-time behavior follows the indexed chunk, not the (possibly changed)
+KB config. Media transcripts with `[HH:MM:SS#idx]` anchors fall back to
+line-aware splitting (no expansion metadata → no retrieval expansion).
+
 ## Wiki Generation Structure
 
 The `wiki` config section (2026-09) controls post-parse wiki page generation
