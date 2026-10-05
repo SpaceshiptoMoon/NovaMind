@@ -98,10 +98,12 @@
               "
             >
               <el-button
-                v-if="!searchKeyword && statusFilter === undefined"
-                type="primary"
-                @click="showUploadDialog"
+                v-if="searchKeyword || statusFilter !== undefined"
+                @click="handleClearFilters"
               >
+                清除筛选条件
+              </el-button>
+              <el-button v-else type="primary" @click="showUploadDialog">
                 <el-icon><Upload /></el-icon>
                 上传第一个文档
               </el-button>
@@ -135,15 +137,15 @@
                   {{ getStatusConfig(doc.status).text }}
                 </el-tag>
                 <span class="meta-dot">·</span>
-                <span>{{ formatFileSize(doc.file_size) }}</span>
+                <span class="meta-seg">{{ formatFileSize(doc.file_size) }}</span>
                 <template v-if="doc.duration_seconds">
                   <span class="meta-dot">·</span>
-                  <span>{{ formatDuration(doc.duration_seconds) }}</span>
+                  <span class="meta-seg">{{ formatDuration(doc.duration_seconds) }}</span>
                 </template>
                 <span class="meta-dot">·</span>
-                <span>{{ doc.chunk_count ?? 0 }} 分块</span>
+                <span class="meta-seg">{{ doc.chunk_count ?? 0 }} 分块</span>
                 <span class="meta-dot">·</span>
-                <span>{{ formatShortDate(doc.created_at) }}</span>
+                <span class="meta-seg">{{ formatShortDate(doc.created_at) }}</span>
               </div>
             </div>
 
@@ -655,7 +657,9 @@ function hasActiveDocuments(): boolean {
   // has_active_task 覆盖 arq 重试等待期（status=0 但任务仍活跃），轮询不停
   // 以便取消/落定后列表及时刷新；字段缺席时回退状态判断（旧数据兼容）。
   return documents.value.some(
-    (d) => d.has_active_task ?? ((d.status ?? 0) === DOC_STATUS.PENDING || (d.status ?? 0) === DOC_STATUS.PROCESSING),
+    (d) =>
+      d.has_active_task ??
+      ((d.status ?? 0) === DOC_STATUS.PENDING || (d.status ?? 0) === DOC_STATUS.PROCESSING),
   )
 }
 
@@ -687,6 +691,14 @@ function handleStatusFilterChange() {
 
 // 回车或清空时提交搜索，回到第 1 页
 function handleSearch() {
+  currentPage.value = 1
+  fetchDocuments()
+}
+
+/** 空态一键清除搜索词与状态筛选（评审 P3：空态须有行动按钮） */
+function handleClearFilters() {
+  searchKeyword.value = ''
+  statusFilter.value = undefined
   currentPage.value = 1
   fetchDocuments()
 }
@@ -752,7 +764,7 @@ function canReprocess(doc: DocType): boolean {
 function canCancel(doc: DocType): boolean {
   // 与后端 cancel 接口的活跃判定（PENDING/PROCESSING）同源：覆盖处理中
   // 与 arq 自动重试等待期（status 回落 0 但任务仍可取消）
-  return (doc.has_active_task ?? (doc.status ?? 0) === DOC_STATUS.PROCESSING)
+  return doc.has_active_task ?? (doc.status ?? 0) === DOC_STATUS.PROCESSING
 }
 
 function canRetry(doc: DocType): boolean {
@@ -1196,15 +1208,16 @@ onMounted(async () => {
   line-height: 1.45;
 }
 
+/* meta 行：flex 容器内 text-overflow 不生效，省略收敛到文本段自身（.meta-seg）；
+   flex-shrink:0 的 tag 保持完整，文本段收缩出省略号 */
 .doc-card-meta {
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 状态标签内联在 meta 行首，与文件元信息同排（替代旧右侧独立列） */
@@ -1212,8 +1225,29 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
+/* 元信息文本段：允许收缩 + 单行省略（评审 P2：320px 下 flex 容器硬裁剪零可见） */
+.meta-seg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .meta-dot {
   color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+/* 极窄视口：meta 行换行堆叠（tag 行 + 元信息行），日期/大小不再被裁剪归零 */
+@media (max-width: 480px) {
+  .doc-card-meta {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .meta-seg {
+    overflow: visible;
+    text-overflow: unset;
+  }
 }
 
 /* 操作钮组：hover 时绝对定位浮现右上角（白底背板隔离文字），非 hover 不占视觉；
