@@ -2,13 +2,13 @@
 检索质量评估器。评估 Precision@K、Hit Rate、MRR、Recall@K。
 prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
-import json
 from typing import Any
 
 from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind.shared.utils.llm_response import extract_json_obj
 
 
 class RetrievalEvaluator:
@@ -162,7 +162,9 @@ class RetrievalEvaluator:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response)
+            data = extract_json_obj(response)
+            if data is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
             verdict = data.get("verdict", "not_relevant")
             reason = data.get("reason", "")
             return verdict == "relevant", reason, False
@@ -188,7 +190,9 @@ class RetrievalEvaluator:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response)
+            data = extract_json_obj(response)
+            if data is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
             claims = data.get("claims", [])
             supported = sum(1 for c in claims if c.get("supported"))
             total = len(claims)

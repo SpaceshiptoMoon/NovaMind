@@ -2,7 +2,6 @@
 生成质量评估器。LLM-as-Judge 打分、反向问题法等评估策略。
 prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
-import json
 from typing import Any
 
 from novamind.engines.eval.claim_decomposer import ClaimDecomposer
@@ -10,6 +9,7 @@ from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind.shared.utils.llm_response import extract_json_obj
 
 
 class GenerationEvaluator:
@@ -236,7 +236,9 @@ class GenerationEvaluator:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response)
+            data = extract_json_obj(response)
+            if data is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
             score = int(data.get(score_key, 5))
             return max(1, min(10, score))
         except Exception as e:
@@ -256,7 +258,9 @@ class GenerationEvaluator:
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response)
+            data = extract_json_obj(response)
+            if data is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
             return data.get("generated_questions", [])
         except Exception as e:
             self._logger.warning("反向问题生成失败", error=str(e))

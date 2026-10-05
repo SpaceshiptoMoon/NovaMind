@@ -2,12 +2,12 @@
 Claim 拆解与验证器。LLM 将回答拆解为独立 claims 并逐条验证上下文支撑。
 prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
-import json
 from typing import Any
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind.shared.utils.llm_response import extract_json_obj
 
 
 class ClaimDecomposer:
@@ -40,7 +40,9 @@ class ClaimDecomposer:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(response)
+            data = extract_json_obj(response)
+            if data is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
             return data.get("claims", [])
         except Exception as e:
             self._logger.warning("Claim 拆解失败", error=str(e))
@@ -69,7 +71,10 @@ class ClaimDecomposer:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            return json.loads(response)
+            verdict = extract_json_obj(response)
+            if verdict is None:
+                raise ValueError("LLM 输出 JSON 解析失败")
+            return verdict
         except Exception as e:
             self._logger.warning("Claim 验证失败", error=str(e), claim=claim[:50])
             return {"supported": False, "evidence": f"验证失败: {e}"}
