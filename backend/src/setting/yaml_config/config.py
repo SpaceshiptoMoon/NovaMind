@@ -82,6 +82,11 @@ class ParsingConfig:
     preserve_structure: bool = True
     encoding: str = "utf-8"
     vlm_description_enabled: bool = False
+    # 图片 VLM 描述入库文本上限（字符）。结构化 caption 含图中文字逐字转录，
+    # 比旧自由文本长；超限时逐字段（图中文字/实体/图表数据）受保护、非逐字段
+    # 整段丢弃。宿主资源旋钮（embedding 上下文/索引体积），生产按 embedding
+    # 模型上下文调整。
+    image_caption_max_chars: int = 4000
     # 本地 faster-whisper ASR 模型目录（绝对路径）。显式目录最高优先（存量部署
     # 兼容通道）；为空时按 local_whisper_model 档位名解析缓存目录。
     local_whisper_model_dir: str | None = None

@@ -12,14 +12,24 @@
           <el-radio-group v-model="configForm.imageStrategy">
             <el-radio value="vlm">VLM 描述</el-radio>
             <el-radio value="deepdoc_ocr">DeepDoc OCR</el-radio>
+            <el-radio value="combined">OCR + VLM 合并</el-radio>
           </el-radio-group>
+          <div class="field-hint">
+            {{
+              configForm.imageStrategy === 'combined'
+                ? '本地 OCR 提取文字 + VLM 结构化描述合并入库：文字逐字通道与语义通道互补，caption 与 OCR 交叉校验产出幻觉信号；VLM 失败自动降级纯 OCR'
+                : configForm.imageStrategy === 'vlm'
+                  ? 'VLM 生成结构化描述（主体/图中文字/图表数据/实体），语义检索友好'
+                  : '本地 OCR 提取图内文字，无 VLM 成本；仅覆盖文字型图片（图表/照片的视觉信息会丢失）'
+            }}
+          </div>
         </el-form-item>
-        <el-form-item v-if="configForm.imageStrategy === 'vlm'" label="VLM 模型">
+        <el-form-item v-if="configForm.imageStrategy !== 'deepdoc_ocr'" label="VLM 模型">
           <el-select
             v-model="configForm.imageVlmModel"
             clearable
             filterable
-            placeholder="留空时继承空间默认模型"
+            placeholder="必选：留空解析时将报错要求显式选择"
             style="width: 100%"
           >
             <el-option
@@ -29,6 +39,31 @@
               :value="model.model"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.imageStrategy !== 'deepdoc_ocr'" label="备用 VLM">
+          <el-select
+            v-model="configForm.imageVlmFallbackModel"
+            clearable
+            filterable
+            placeholder="留空：主模型配额/鉴权失败时不回退"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in vlmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
+          </el-select>
+          <span class="field-hint">
+            主模型因配额/鉴权失败时，用该备用模型重试一次（建议选不同厂商模型）
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.imageStrategy !== 'deepdoc_ocr'" label="配额失败跳过">
+          <el-switch v-model="configForm.imageVlmSkipOnQuotaError" />
+          <span class="field-hint">
+            主备模型均因配额/鉴权失败时写占位描述继续（文档不失败）；默认关闭=任务失败可修复配置后重试
+          </span>
         </el-form-item>
       </el-form>
     </div>
@@ -54,7 +89,7 @@
             {{ videoStrategyItems.find((i) => i.value === configForm.videoStrategy)?.desc }}
           </div>
         </el-form-item>
-        <el-form-item v-if="configForm.videoStrategy !== 'scene'" label="抽帧间隔">
+        <el-form-item v-if="usesFixedInterval" label="抽帧间隔">
           <el-slider
             v-model="configForm.videoFrameInterval"
             :min="0.5"
@@ -72,9 +107,15 @@
             :max="1000"
             style="width: 100%"
           />
-          <span class="field-hint">默认 60；长视频建议调大（5s 间隔下 60 帧 ≈ 5 分钟）</span>
+          <span v-if="usesSceneDetection" class="field-hint">
+            场景关键帧数上限（也是视频直输的聚片边界数上限），默认 60
+          </span>
+          <span v-else class="field-hint">默认 60；长视频建议调大（5s 间隔下 60 帧 ≈ 5 分钟）</span>
         </el-form-item>
-        <el-form-item v-if="configForm.videoStrategy === 'scene'" label="场景阈值">
+        <el-form-item
+          v-if="usesSceneDetection"
+          label="场景阈值"
+        >
           <el-input-number
             v-model="configForm.videoSceneThreshold"
             :min="0"
@@ -163,7 +204,10 @@
             服务商明确拒收视频输入时自动降级为帧序列策略；关闭则直接失败
           </span>
         </el-form-item>
-        <el-form-item v-if="configForm.videoStrategy === 'scene'" label="最小帧间隔">
+        <el-form-item
+          v-if="usesSceneDetection"
+          label="最小帧间隔"
+        >
           <el-input-number
             v-model="configForm.videoSceneMinInterval"
             :min="0.1"
@@ -177,10 +221,7 @@
             相邻场景帧最小间隔秒数，默认 2（动作密集如下锅/倒料建议调小，防 2-3 秒动作被跳过）
           </span>
         </el-form-item>
-        <el-form-item label="视觉描述">
-          <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
-        </el-form-item>
-        <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 模型">
+        <el-form-item label="VLM 模型">
           <el-select
             v-model="configForm.videoVlmModel"
             clearable
@@ -196,6 +237,31 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="备用 VLM">
+          <el-select
+            v-model="configForm.videoVlmFallbackModel"
+            clearable
+            filterable
+            placeholder="留空：主模型配额/鉴权失败时不回退"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in vlmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
+          </el-select>
+          <span class="field-hint">
+            主模型因配额/鉴权失败时，用该备用模型对失败帧重试一次（建议选不同厂商模型）
+          </span>
+        </el-form-item>
+        <el-form-item label="配额失败跳过">
+          <el-switch v-model="configForm.videoVlmSkipOnQuotaError" />
+          <span class="field-hint">
+            全部帧都因配额/鉴权失败时写占位描述继续（文档不失败）；默认关闭=任务失败可重试
+          </span>
+        </el-form-item>
         <el-form-item label="音轨转写">
           <el-switch v-model="configForm.videoTranscribeAudio" />
           <span class="field-hint">
@@ -207,11 +273,16 @@
             v-model="configForm.videoAsrModel"
             clearable
             filterable
-            placeholder="默认：本地 Whisper（免费）"
+            placeholder="默认：部署配置的本地 Whisper 档位"
             style="width: 100%"
           >
             <el-option-group label="本地">
-              <el-option label="本地 Whisper（免费）" value="faster-whisper-tiny" />
+              <el-option
+                v-for="item in localAsrModelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-option-group>
             <el-option-group v-if="asrModels.length" label="云端模型">
               <el-option
@@ -222,6 +293,14 @@
               />
             </el-option-group>
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoTranscribeAudio" label="旁白热词">
+          <el-input
+            v-model="configForm.videoHotwordsText"
+            type="textarea"
+            :rows="2"
+            placeholder="旁白中的专有名词，用逗号/顿号分隔；仅本地 ASR 生效"
+          />
         </el-form-item>
         <el-form-item v-if="configForm.videoTranscribeAudio" label="旁白语言">
           <el-select
@@ -274,7 +353,7 @@
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频解析</h4>
       <p class="sub-desc">
-        ASR 模型可选本地 Whisper 或已配置的云端模型；默认使用本地 Whisper（免费，无需配置）。
+        ASR 模型可选本地 Whisper 各档位或已配置的云端模型；留空默认使用部署配置的本地档位（生产默认 large-v3）。
       </p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
@@ -283,11 +362,16 @@
             v-model="configForm.audioAsrModel"
             clearable
             filterable
-            placeholder="默认：本地 Whisper（免费）"
+            placeholder="默认：部署配置的本地 Whisper 档位"
             style="width: 100%"
           >
             <el-option-group label="本地">
-              <el-option label="本地 Whisper（免费）" value="faster-whisper-tiny" />
+              <el-option
+                v-for="item in localAsrModelOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
             </el-option-group>
             <el-option-group
               v-if="asrModels.length"
@@ -302,7 +386,7 @@
             </el-option-group>
           </el-select>
           <div v-if="configForm.audioAsrModel" class="field-hint">
-            {{ configForm.audioAsrModel === 'faster-whisper-tiny'
+            {{ isLocalAsrModel(configForm.audioAsrModel)
               ? '使用本地 Whisper 转写，无需 API 配置'
               : '使用该云端模型的 API 凭证转写，请在模型管理中确认已配置' }}
           </div>
@@ -332,6 +416,77 @@
             提升专有名词识别率；仅本地 ASR 生效（云端模型暂不支持，保存后仍会保留配置）。
           </div>
         </el-form-item>
+        <el-form-item label="转写清洗">
+          <el-switch v-model="configForm.audioCleanEnabled" />
+          <span class="field-hint">
+            用 LLM 逐批清洗口播稿（去口水词、口语书面化）：清洗稿入库检索，原始稿存档溯源；清洗失败自动降级用原始稿
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.audioCleanEnabled" label="清洗模型">
+          <el-select
+            v-model="configForm.audioCleanLlmModel"
+            clearable
+            filterable
+            placeholder="留空时使用用户默认 LLM"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in llmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="切分方式">
+          <el-select v-model="configForm.audioSplitMode" style="width: 100%">
+            <el-option
+              v-for="item in audioSplitModeItems"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+          <div class="field-hint">
+            {{ audioSplitModeItems.find((i) => i.value === configForm.audioSplitMode)?.desc }}
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-if="configForm.audioSplitMode === 'pause_topic'"
+          label="停顿阈值"
+        >
+          <el-input-number
+            v-model="configForm.audioPauseGapSeconds"
+            :min="0"
+            :max="10"
+            :step="0.1"
+            :precision="1"
+            placeholder="0.8"
+            style="width: 100%"
+          />
+          <span class="field-hint">
+            相邻语句停顿超过该秒数视为话题边界强制切开，0~10，默认 0.8（说话人换气/换话题的量级）
+          </span>
+        </el-form-item>
+        <el-form-item label="说话人分离">
+          <el-switch v-model="configForm.audioDiarizationEnabled" />
+          <span class="field-hint">
+            每段转写标注说话人（写入 chunk 元数据）；仅 DashScope 云端模型支持，本地 Whisper 配置后忽略
+          </span>
+        </el-form-item>
+        <el-form-item
+          v-if="configForm.audioDiarizationEnabled"
+          label="说话人数量"
+        >
+          <el-input-number
+            v-model="configForm.audioSpeakerCount"
+            :min="2"
+            :max="100"
+            placeholder="自动"
+            style="width: 100%"
+          />
+          <span class="field-hint">参考值 2~100，仅辅助分离算法不保证精确人数，留空自动判断</span>
+        </el-form-item>
       </el-form>
     </div>
   </div>
@@ -339,16 +494,24 @@
 
 <script setup lang="ts">
 /** 知识库配置弹窗的多模态解析分区：图片/视频/音频三块的解析策略与参数表单 */
+import { computed } from 'vue'
 import type { AvailableModelItem } from '@/api/types'
-import { type ImageStrategy, type VideoStrategy, videoStrategyItems } from './kbConfig'
+import {
+  type ImageStrategy,
+  type VideoStrategy,
+  audioSplitModeItems,
+  localAsrModelOptions,
+  videoStrategyItems,
+} from './kbConfig'
 
 type MultimodalParsingFormModel = {
   imageStrategy: ImageStrategy
   imageVlmModel: string
+  imageVlmFallbackModel: string
+  imageVlmSkipOnQuotaError: boolean
   videoStrategy: VideoStrategy
   videoFrameInterval: number
   videoMaxFrames: number
-  videoVlmDescriptionEnabled: boolean
   videoVlmModel: string
   videoSceneThreshold: number | null
   videoDedupSimilarityThreshold: number | null
@@ -362,15 +525,24 @@ type MultimodalParsingFormModel = {
   videoTranscribeAudio: boolean
   videoAsrModel: string
   videoAsrLanguage: string
+  videoHotwordsText: string
+  videoVlmFallbackModel: string
+  videoVlmSkipOnQuotaError: boolean
   videoStepsEnabled: boolean
   videoStepsLlmModel: string
   videoStepsMaxSteps: number
   audioAsrModel: string
   audioAsrLanguage: string
   audioHotwordsText: string
+  audioCleanEnabled: boolean
+  audioCleanLlmModel: string
+  audioSplitMode: string
+  audioPauseGapSeconds: number | null
+  audioDiarizationEnabled: boolean
+  audioSpeakerCount: number | null
 }
 
-defineProps<{
+const props = defineProps<{
   configForm: MultimodalParsingFormModel
   hasImage: boolean
   hasVideo: boolean
@@ -379,6 +551,25 @@ defineProps<{
   asrModels: AvailableModelItem[]
   llmModels: AvailableModelItem[]
 }>()
+
+// ===== 视频策略 → 参数可见性（与后端 process_video_document 消费矩阵一致） =====
+// scene/video_native 抽帧走场景检测（消费场景阈值/最小帧间隔；native 的切换点即聚片边界）；
+// 其余 5 策略走固定间隔抽帧（frame_interval；frame_seq 另以其计算 fps）。
+// max_frames 全部策略都消费，恒显示。
+const usesSceneDetection = computed(
+  () =>
+    props.configForm.videoStrategy === 'scene' ||
+    props.configForm.videoStrategy === 'video_native',
+)
+const usesFixedInterval = computed(
+  () =>
+    props.configForm.videoStrategy !== 'scene' &&
+    props.configForm.videoStrategy !== 'video_native',
+)
+
+function isLocalAsrModel(model: string): boolean {
+  return model.startsWith('faster-whisper-')
+}
 </script>
 
 <style scoped>

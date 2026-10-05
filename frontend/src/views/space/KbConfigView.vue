@@ -140,7 +140,7 @@ import type {
   VideoStrategy,
   WikiGranularity,
 } from '@/components/knowledge'
-import { getVideoStrategyValue } from '@/components/knowledge'
+import { getAudioSplitModeValue, getVideoStrategyValue } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import type {
@@ -194,11 +194,12 @@ const configForm = reactive({
 
   imageStrategy: 'vlm' as ImageStrategy,
   imageVlmModel: '',
+  imageVlmFallbackModel: '',
+  imageVlmSkipOnQuotaError: false,
 
   videoStrategy: 'simple' as VideoStrategy,
   videoFrameInterval: 5,
   videoMaxFrames: 60,
-  videoVlmDescriptionEnabled: false,
   videoVlmModel: '',
   videoSceneThreshold: null as number | null,
   videoDedupSimilarityThreshold: null as number | null,
@@ -212,6 +213,9 @@ const configForm = reactive({
   videoTranscribeAudio: false,
   videoAsrModel: '',
   videoAsrLanguage: '',
+  videoHotwordsText: '',
+  videoVlmFallbackModel: '',
+  videoVlmSkipOnQuotaError: false,
   videoStepsEnabled: false,
   videoStepsLlmModel: '',
   videoStepsMaxSteps: 30,
@@ -220,6 +224,12 @@ const configForm = reactive({
   audioAsrLanguage: '',
   // 热词文本域原始输入（逗号/顿号/换行分隔），提交时切分为 list
   audioHotwordsText: '',
+  audioCleanEnabled: false,
+  audioCleanLlmModel: '',
+  audioSplitMode: '',
+  audioPauseGapSeconds: null as number | null,
+  audioDiarizationEnabled: false,
+  audioSpeakerCount: null as number | null,
 
   splittingStrategy: 'recursive',
   splittingChunkSize: 1000,
@@ -269,13 +279,14 @@ watch(hasImage, (value) => {
   if (!value) {
     configForm.imageStrategy = 'vlm'
     configForm.imageVlmModel = ''
+    configForm.imageVlmFallbackModel = ''
+    configForm.imageVlmSkipOnQuotaError = false
   }
 })
 
 watch(hasVideo, (value) => {
   if (!value) {
     configForm.videoStrategy = 'simple'
-    configForm.videoVlmDescriptionEnabled = false
     configForm.videoVlmModel = ''
     configForm.videoSceneThreshold = null
     configForm.videoDedupSimilarityThreshold = null
@@ -289,6 +300,9 @@ watch(hasVideo, (value) => {
     configForm.videoTranscribeAudio = false
     configForm.videoAsrModel = ''
     configForm.videoAsrLanguage = ''
+    configForm.videoHotwordsText = ''
+    configForm.videoVlmFallbackModel = ''
+    configForm.videoVlmSkipOnQuotaError = false
     configForm.videoStepsEnabled = false
     configForm.videoStepsLlmModel = ''
     configForm.videoStepsMaxSteps = 30
@@ -300,23 +314,23 @@ watch(hasAudio, (value) => {
     configForm.audioAsrModel = ''
     configForm.audioAsrLanguage = ''
     configForm.audioHotwordsText = ''
+    configForm.audioCleanEnabled = false
+    configForm.audioCleanLlmModel = ''
+    configForm.audioSplitMode = ''
+    configForm.audioPauseGapSeconds = null
+    configForm.audioDiarizationEnabled = false
+    configForm.audioSpeakerCount = null
   }
 })
 
 watch(
   () => configForm.imageStrategy,
   (value) => {
-    if (value !== 'vlm') {
+    if (value === 'deepdoc_ocr') {
+      // 纯 OCR 不消费 VLM 相关参数，清空防脏值提交（combined 与 vlm 一样消费）
       configForm.imageVlmModel = ''
-    }
-  },
-)
-
-watch(
-  () => configForm.videoVlmDescriptionEnabled,
-  (value) => {
-    if (!value) {
-      configForm.videoVlmModel = ''
+      configForm.imageVlmFallbackModel = ''
+      configForm.imageVlmSkipOnQuotaError = false
     }
   },
 )
@@ -364,10 +378,11 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
   configForm.imageVlmModel = parsing?.image?.vlm_model || ''
+  configForm.imageVlmFallbackModel = parsing?.image?.vlm_fallback_model || ''
+  configForm.imageVlmSkipOnQuotaError = parsing?.image?.vlm_skip_on_quota_error ?? false
   configForm.videoStrategy = getVideoStrategyValue(parsing?.video?.strategy)
   configForm.videoFrameInterval = parsing?.video?.frame_interval ?? 5
   configForm.videoMaxFrames = parsing?.video?.max_frames ?? 60
-  configForm.videoVlmDescriptionEnabled = parsing?.video?.vlm_description_enabled ?? false
   configForm.videoVlmModel = parsing?.video?.vlm_model || ''
   configForm.videoSceneThreshold =
     parsing?.video?.scene_threshold === undefined ? null : parsing.video.scene_threshold
@@ -400,12 +415,23 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoTranscribeAudio = parsing?.video?.transcribe_audio ?? false
   configForm.videoAsrModel = parsing?.video?.asr_model || ''
   configForm.videoAsrLanguage = parsing?.video?.language || ''
+  configForm.videoHotwordsText = (parsing?.video?.hotwords || []).join('、')
+  configForm.videoVlmFallbackModel = parsing?.video?.vlm_fallback_model || ''
+  configForm.videoVlmSkipOnQuotaError = parsing?.video?.vlm_skip_on_quota_error ?? false
   configForm.videoStepsEnabled = parsing?.video?.steps_enabled ?? false
   configForm.videoStepsLlmModel = parsing?.video?.steps_llm_model || ''
   configForm.videoStepsMaxSteps = parsing?.video?.steps_max_steps ?? 30
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
   configForm.audioAsrLanguage = parsing?.audio?.language || ''
   configForm.audioHotwordsText = (parsing?.audio?.hotwords || []).join('、')
+  configForm.audioCleanEnabled = parsing?.audio?.clean_enabled ?? false
+  configForm.audioCleanLlmModel = parsing?.audio?.clean_llm_model || ''
+  configForm.audioSplitMode = getAudioSplitModeValue(parsing?.audio?.split_mode)
+  configForm.audioPauseGapSeconds =
+    parsing?.audio?.pause_gap_seconds === undefined ? null : parsing.audio.pause_gap_seconds
+  configForm.audioDiarizationEnabled = parsing?.audio?.diarization_enabled ?? false
+  configForm.audioSpeakerCount =
+    parsing?.audio?.speaker_count === undefined ? null : parsing.audio.speaker_count
 
   configForm.qgEnabled = qg?.enabled ?? false
   configForm.qgLlmModel = qg?.llm?.model || ''
@@ -503,10 +529,12 @@ function buildParsingConfig(): ParsingConfig {
   }
 
   if (hasImage.value) {
+    const usesVlm = configForm.imageStrategy !== 'deepdoc_ocr'
     parsing.image = {
       strategy: configForm.imageStrategy,
-      vlm_model:
-        configForm.imageStrategy === 'vlm' ? configForm.imageVlmModel || undefined : undefined,
+      vlm_model: usesVlm ? configForm.imageVlmModel || undefined : undefined,
+      vlm_fallback_model: usesVlm ? configForm.imageVlmFallbackModel || undefined : undefined,
+      vlm_skip_on_quota_error: usesVlm ? configForm.imageVlmSkipOnQuotaError : false,
     }
   }
 
@@ -515,10 +543,9 @@ function buildParsingConfig(): ParsingConfig {
       strategy: configForm.videoStrategy,
       frame_interval: configForm.videoFrameInterval,
       max_frames: configForm.videoMaxFrames,
-      vlm_description_enabled: configForm.videoVlmDescriptionEnabled,
-      vlm_model: configForm.videoVlmDescriptionEnabled
-        ? configForm.videoVlmModel || undefined
-        : undefined,
+      vlm_model: configForm.videoVlmModel || undefined,
+      vlm_fallback_model: configForm.videoVlmFallbackModel || undefined,
+      vlm_skip_on_quota_error: configForm.videoVlmSkipOnQuotaError,
     }
     if (configForm.videoSceneThreshold !== null) {
       video.scene_threshold = configForm.videoSceneThreshold
@@ -552,6 +579,9 @@ function buildParsingConfig(): ParsingConfig {
     video.language = configForm.videoTranscribeAudio
       ? configForm.videoAsrLanguage || undefined
       : undefined
+    video.hotwords = configForm.videoTranscribeAudio
+      ? splitHotwords(configForm.videoHotwordsText)
+      : undefined
     video.steps_enabled = configForm.videoStepsEnabled
     video.steps_llm_model = configForm.videoStepsEnabled
       ? configForm.videoStepsLlmModel || undefined
@@ -565,6 +595,19 @@ function buildParsingConfig(): ParsingConfig {
       asr_model: configForm.audioAsrModel || undefined,
       language: configForm.audioAsrLanguage || undefined,
       hotwords: splitHotwords(configForm.audioHotwordsText),
+      clean_enabled: configForm.audioCleanEnabled,
+      clean_llm_model: configForm.audioCleanEnabled
+        ? configForm.audioCleanLlmModel || undefined
+        : undefined,
+      split_mode: configForm.audioSplitMode === 'pause_topic' ? 'pause_topic' : undefined,
+      pause_gap_seconds:
+        configForm.audioSplitMode === 'pause_topic'
+          ? (configForm.audioPauseGapSeconds ?? undefined)
+          : undefined,
+      diarization_enabled: configForm.audioDiarizationEnabled,
+      speaker_count: configForm.audioDiarizationEnabled
+        ? (configForm.audioSpeakerCount ?? undefined)
+        : undefined,
     }
   }
 

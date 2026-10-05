@@ -120,6 +120,10 @@ knowledge_ops:
 
 knowledge_base:
   parsing:
+    # 图片 VLM 描述入库文本上限（字符，默认 4000）。结构化 caption 含图中文字
+    # 逐字转录；超限时逐字段（图中文字/实体/图表数据）受保护、其余段整段丢弃。
+    # 按 embedding 模型上下文调整（换长文本 embedding 可调大）。
+    image_caption_max_chars: 4000
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。
     # 长视频 60 帧串行易逼近 arq job_timeout，有界并发降时延；
     # 过高可能触发 VLM 配额限流，配合 KB 级 vlm_fallback_model / vlm_skip_on_quota_error 降级。
