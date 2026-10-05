@@ -246,13 +246,17 @@ async def process_wiki_ingest_task(
 
 
 async def _find_pending_record(record_repo, kb_id: int, document_id: int):
-    """找该文档最近一条未终态的履历（入队时创建的 PENDING 行）"""
+    """找该文档最近一条未终态的履历（入队时创建的 PENDING 行）。
+
+    必须按 document_id 定点查——锁忙碌场景下同 KB 每分钟会新增几十条其他
+    文档的重入队履历，list_by_kb 的 ID 倒序窗口很快挤不进本文档的行，
+    复用失败会每轮新建履历（存量曾刷出 1 万+ 冗余 PENDING 行）。
+    """
     from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
 
-    records = await record_repo.list_by_kb(kb_id, limit=10)
-    for r in records:
-        if r.document_id == document_id and r.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
-            return r
+    latest = await record_repo.get_latest_for_document(document_id)
+    if latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
+        return latest
     return None
 
 
@@ -507,7 +511,8 @@ async def enqueue_wiki_ingest(
     """入队 wiki 生成任务。
 
     WikiIngestRecord(PENDING) 行与 arq enqueue 原子提交（失败一起回滚），
-    仿 enqueue_process_document 的原子性论证。
+    仿 enqueue_process_document 的原子性论证。已有非终态履历时复用该行
+    （只换绑 job_id），不新增——反复 rebuild/锁忙碌重入队不再堆积履历行。
     """
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
@@ -520,10 +525,15 @@ async def enqueue_wiki_ingest(
 
     async with get_db_session() as session:
         record_repo = WikiIngestRecordRepository(session)
-        record = await record_repo.create({
-            "space_id": space_id, "kb_id": kb_id, "document_id": document_id,
-            "status": WikiIngestStatus.PENDING,
-        })
+        latest = await record_repo.get_latest_for_document(document_id)
+        if latest and latest.status == WikiIngestStatus.PENDING:
+            record = latest  # 复用 PENDING 行（只换绑 job_id）：反复 rebuild 不再堆积履历
+        else:
+            # 终态或 RUNNING 都新开行：RUNNING 复用会让旧 job 的终态写进新 job 的履历
+            record = await record_repo.create({
+                "space_id": space_id, "kb_id": kb_id, "document_id": document_id,
+                "status": WikiIngestStatus.PENDING,
+            })
         try:
             job = await pool.enqueue_job(
                 "process_wiki_ingest_task",
