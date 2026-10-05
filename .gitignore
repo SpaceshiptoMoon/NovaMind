@@ -131,3 +131,4 @@ backend/original_templates_backup.py
 # 本地手动测试脚本（可能含真实凭证，勿提交）
 # ========================================
 test.http
+.mcp.json
