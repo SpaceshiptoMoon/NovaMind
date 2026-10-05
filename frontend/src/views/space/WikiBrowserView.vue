@@ -661,14 +661,14 @@ function stopPolling() {
   }
 }
 
-// ============ 失败重试（全量重建入队） ============
+// ============ 失败重试（增量补算入队） ============
 const rebuildRunning = ref(false)
 
-/** 失败横幅重试：修复配置（如模型配额）后从全部文档重新入队生成。 */
+/** 失败横幅重试：修复配置（如模型配额/欠费）后只补失败与未跑过的文档，已成功不重跑。 */
 async function retryWikiRebuild() {
   try {
     await ElMessageBox.confirm(
-      '将从知识库全部文档重新入队 Wiki 生成（已生成的页面会被合并更新）。确认继续？',
+      '将重新入队上次失败或未生成过的文档（已成功的页面不重跑、生成内容会合并更新）。确认继续？',
       '重试 Wiki 生成',
       { confirmButtonText: '重试', cancelButtonText: '取消', type: 'warning' },
     )
@@ -678,7 +678,7 @@ async function retryWikiRebuild() {
   rebuildRunning.value = true
   try {
     const result = await wikiApi.rebuild(spaceId.value, kbId.value)
-    ElMessage.success(`已入队 ${result.enqueued} 个文档的 Wiki 生成`)
+    ElMessage.success(`已入队 ${result.enqueued} 个文档的 Wiki 生成（本次跳过已成功的 ${result.candidates - result.enqueued} 个）`)
     ingestStatus.value = await wikiApi.getIngestStatus(spaceId.value, kbId.value)
     if (ingestActive.value) startPolling()
   } catch (error: unknown) {

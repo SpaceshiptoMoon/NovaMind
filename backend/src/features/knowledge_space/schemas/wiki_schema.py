@@ -171,9 +171,13 @@ class WikiRevertResponse(BaseModel):
 
 
 class WikiRebuildRequest(BaseModel):
-    """存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档"""
+    """存量文档补算：默认只补最近一次生成失败/未跑的文档，document_ids 显式指定或 full=True 全量"""
 
     document_ids: list[int] | None = Field(default=None, max_length=500)
+    full: bool = Field(
+        default=False,
+        description="true=全量重建（忽略失败履历遍历全部文档）；缺省只入队最近一次失败或从未生成的文档",
+    )
 
 
 # ==================== 图谱 / lint 闭环（P3） ====================

@@ -221,26 +221,60 @@ class WikiPageService:
         space_id: int,
         kb_id: int,
         document_ids: list[int] | None,
+        full: bool = False,
     ) -> dict:
         """对 KB 内已完成解析的文档逐个入队 wiki 生成。
 
-        document_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。
+        Args:
+            space_id: 空间 ID。
+            kb_id: 知识库 ID。
+            document_ids: 显式指定的文档 ID 列表（须属本 KB）；None 时按 full 决定范围。
+            full: 全量重建（遍历 KB 全部文档）。缺省只入队「最近一次履历失败或从未
+                生成过」的文档——已成功的文档不重跑，避免配额类故障恢复后白烧 token。
+
+        Returns:
+            enqueued: 实际入队数；candidates: 候选文档总数。
         """
         from novamind.features.knowledge_space.models.document import Document
+        from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
+        from novamind.features.knowledge_space.repository.wiki_repository import (
+            WikiIngestRecordRepository,
+        )
         from novamind.features.knowledge_space.tasks.wiki_tasks import enqueue_wiki_ingest
         from sqlalchemy import select
 
         doc_repo = DocumentRepository(self.db)
+        total_candidates = 0
         if document_ids:
             documents = [d for d in await doc_repo.get_by_ids(document_ids)
                          if d and d.kb_id == kb_id]
-        else:
+            total_candidates = len(documents)
+        elif full:
             result = await self.db.execute(
                 select(Document).where(
                     Document.kb_id == kb_id, Document.deleted_at.is_(None)
                 ).limit(500)
             )
             documents = list(result.scalars().all())
+            total_candidates = len(documents)
+        else:
+            # 增量口径：全部候选文档里剔除「最近一次履历已 done」的。
+            # 履历行以 per-document 最新一条为准（锁忙碌重入队会产生多条 PENDING，
+            # 只有终态 done 才视为成功，failed/pending/running 都值得再入队）。
+            result = await self.db.execute(
+                select(Document).where(
+                    Document.kb_id == kb_id, Document.deleted_at.is_(None)
+                ).limit(500)
+            )
+            candidates = list(result.scalars().all())
+            total_candidates = len(candidates)
+            record_repo = WikiIngestRecordRepository(self.db)
+            ok_doc_ids: set[int] = set()
+            for document in candidates:
+                latest = await record_repo.get_latest_for_document(document.id)
+                if latest and latest.status == WikiIngestStatus.DONE:
+                    ok_doc_ids.add(document.id)
+            documents = [d for d in candidates if d.id not in ok_doc_ids]
 
         enqueued = 0
         for document in documents:
@@ -254,7 +288,8 @@ class WikiPageService:
             except Exception as e:
                 logger.warning("wiki 补算入队失败", document_id=document.id, error=str(e))
         await self.db.commit()
-        return {"enqueued": enqueued, "candidates": len(documents)}
+        # candidates 语义 = 全部候选文档数（含增量过滤跳过的），前端据此展示「跳过 N 个」
+        return {"enqueued": enqueued, "candidates": max(len(documents), total_candidates)}
 
     # ==================== issue 域 ====================
 

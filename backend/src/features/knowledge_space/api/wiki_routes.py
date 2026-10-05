@@ -320,12 +320,13 @@ async def rebuild_wiki(
 ):
     """对 KB 内已完成解析的文档逐个入队 wiki 生成。
 
-    document_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。
+    缺省只补「最近一次失败或从未生成」的文档（增量）；document_ids 显式指定；
+    full=true 全量重建（忽略履历遍历全部文档）。
     """
     from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
     return await WikiPageService(db).rebuild_wiki(
-        space_id=space_id, kb_id=kb_id, document_ids=body.document_ids
+        space_id=space_id, kb_id=kb_id, document_ids=body.document_ids, full=body.full
     )
 
 # ==================== 图谱 / lint 闭环（P3） ====================
