@@ -16,6 +16,14 @@
         <div v-else-if="ingestStatus?.status === 'failed'" class="ingest-banner is-failed">
           <el-icon><WarningFilled /></el-icon>
           <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
+          <el-button
+            class="banner-retry-btn"
+            size="small"
+            :loading="rebuildRunning"
+            @click="retryWikiRebuild"
+          >
+            重试生成
+          </el-button>
         </div>
 
         <!-- 视图切换：浏览 / 图谱 / 问题。三个视图的内容直接放进对应 tab-pane，
@@ -650,6 +658,34 @@ function stopPolling() {
   if (pollTimer !== null) {
     window.clearInterval(pollTimer)
     pollTimer = null
+  }
+}
+
+// ============ 失败重试（全量重建入队） ============
+const rebuildRunning = ref(false)
+
+/** 失败横幅重试：修复配置（如模型配额）后从全部文档重新入队生成。 */
+async function retryWikiRebuild() {
+  try {
+    await ElMessageBox.confirm(
+      '将从知识库全部文档重新入队 Wiki 生成（已生成的页面会被合并更新）。确认继续？',
+      '重试 Wiki 生成',
+      { confirmButtonText: '重试', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  rebuildRunning.value = true
+  try {
+    const result = await wikiApi.rebuild(spaceId.value, kbId.value)
+    ElMessage.success(`已入队 ${result.enqueued} 个文档的 Wiki 生成`)
+    ingestStatus.value = await wikiApi.getIngestStatus(spaceId.value, kbId.value)
+    if (ingestActive.value) startPolling()
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '重试入队失败')
+  } finally {
+    rebuildRunning.value = false
   }
 }
 
@@ -1426,6 +1462,17 @@ onBeforeUnmount(() => {
   color: var(--color-danger);
   background: var(--color-danger-subtle);
   border-color: var(--color-danger-subtle);
+}
+
+/* 失败横幅内的重试按钮：固定在行尾不被长错误文本挤压；文本列允许换行不截断 */
+.ingest-banner.is-failed > span {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.banner-retry-btn {
+  flex-shrink: 0;
 }
 
 .wiki-layout {
