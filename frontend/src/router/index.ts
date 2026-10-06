@@ -110,6 +110,12 @@ const router = createRouter({
           meta: { title: '模型配置' },
         },
         {
+          path: 'settings/api-keys',
+          name: 'ApiKeyManage',
+          component: () => import('@/views/user/ApiKeyView.vue'),
+          meta: { title: 'API 密钥' },
+        },
+        {
           path: 'admin/users',
           name: 'UserManage',
           component: () => import('@/views/user/UserManageView.vue'),

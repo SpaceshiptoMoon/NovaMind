@@ -1929,6 +1929,41 @@ export interface CreateMcpServerRequest {
 
 export type UpdateMcpServerRequest = Partial<CreateMcpServerRequest>
 
+// ===================== Agent API 密钥（MCP 访问凭证） =====================
+
+export interface ApiKeyItem {
+  id: number
+  name: string
+  /** 脱敏前缀（nvm_xxxxxxxx****），明文只在创建响应出现一次 */
+  key_prefix: string
+  status: 'active' | 'revoked'
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface ApiKeyListResponse {
+  keys: ApiKeyItem[]
+  total: number
+}
+
+/** 创建响应：明文 key 仅此一次返回，前端须提示用户立即保存 */
+export interface ApiKeyCreatedResponse {
+  id: number
+  name: string
+  key_prefix: string
+  api_key: string
+  status: 'active' | 'revoked'
+  created_at: string
+}
+
+export interface ApiKeyRevokeResponse {
+  id: number
+  status: 'active' | 'revoked'
+  revoked_at: string | null
+}
+
+
 export interface ToolFunction {
   name: string
   description: string

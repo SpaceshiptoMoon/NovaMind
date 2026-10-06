@@ -26,6 +26,10 @@
                 <el-icon><Cpu /></el-icon>
                 模型配置
               </el-dropdown-item>
+              <el-dropdown-item command="settings/api-keys">
+                <el-icon><Key /></el-icon>
+                API 密钥
+              </el-dropdown-item>
               <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
                 <el-icon><User /></el-icon>
                 用户管理
@@ -124,6 +128,10 @@
               <el-icon><Cpu /></el-icon>
               模型配置
             </el-dropdown-item>
+            <el-dropdown-item command="settings/api-keys">
+              <el-icon><Key /></el-icon>
+              API 密钥
+            </el-dropdown-item>
             <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
               <el-icon><User /></el-icon>
               用户管理
@@ -162,6 +170,7 @@ import {
   Sunny,
   DArrowLeft,
   DArrowRight,
+  Key,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
@@ -261,6 +270,9 @@ const handleCommand = async (command: string) => {
       break
     case 'settings/models':
       router.push('/home/settings/models')
+      break
+    case 'settings/api-keys':
+      router.push('/home/settings/api-keys')
       break
     case 'admin/users':
       router.push('/home/admin/users')

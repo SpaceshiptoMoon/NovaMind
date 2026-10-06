@@ -19,6 +19,9 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
   ToolProvider,
+  ApiKeyListResponse,
+  ApiKeyCreatedResponse,
+  ApiKeyRevokeResponse,
 } from './types'
 
 // ===================== Agent 管理 =====================
@@ -282,5 +285,31 @@ export const agentApi = {
     a.download = filename
     a.click()
     URL.revokeObjectURL(url)
+  },
+}
+
+// ===================== Agent API 密钥（MCP 访问凭证） =====================
+
+/**
+ * API 密钥管理
+ *
+ * 外部 agent（Claude Code MCP 等）访问 NovaMind 的凭证生命周期：
+ * 创建（明文仅此一次返回）/ 列表（脱敏）/ 吊销（即时失效）。
+ * 后端契约：backend/src/features/agent_api/api/key_routes.py
+ */
+export const apiKeyApi = {
+  /** 我的 key 列表（含已吊销历史，无明文字段） */
+  listKeys() {
+    return request.get<ApiKeyListResponse>('/agent-api/keys')
+  },
+
+  /** 创建 key——响应里的 api_key 明文仅此一次，展示后不可再查 */
+  createKey(name: string) {
+    return request.post<ApiKeyCreatedResponse>('/agent-api/keys', { name })
+  },
+
+  /** 吊销 key（即时失效；幂等，已吊销再次吊销返回原状态） */
+  revokeKey(keyId: number) {
+    return request.delete<ApiKeyRevokeResponse>(`/agent-api/keys/${keyId}`)
   },
 }
