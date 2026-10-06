@@ -173,6 +173,7 @@ class AnthropicLLM(BaseLLM):
         pending_results: list[dict] = []
 
         def flush_results() -> None:
+            """把累积的连续 tool_result 块落成一条 user 消息（Anthropic 硬约束）。"""
             if pending_results:
                 converted.append({"role": "user", "content": list(pending_results)})
                 pending_results.clear()
