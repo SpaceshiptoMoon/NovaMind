@@ -66,6 +66,12 @@ class TestHierarchicalChunkMeta:
         chunks = _build(_sample_items())
         assert [c["metadata"]["content_type"] for c in chunks] == ["text", "text", "code"]
 
+    def test_expansion_type_written_for_all_hierarchical_chunks(self):
+        """expansion_type=hierarchical 必须写入每块 metadata：检索期
+        _expand_inner 按它分流，缺失会让双向扩展静默直通（曾漏写）。"""
+        chunks = _build(_sample_items())
+        assert all(c["metadata"].get("expansion_type") == "hierarchical" for c in chunks)
+
     def test_broken_slot_no_pointer(self):
         """反例：锚点缺失（slot 断链）→ 特殊对象不写指针，退化为普通块。"""
         items = [

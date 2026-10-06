@@ -324,11 +324,13 @@ def build_es_chunks(
             chunk_meta["expansion_type"] = "sentence_window"
             if isinstance(meta.get("expansion_window_size"), int):
                 chunk_meta["expansion_window_size"] = meta["expansion_window_size"]
-        # hierarchical：content_type 全块透传（检索过滤/前端徽标用）；特殊对象
-        # 块补章节锚点指针（正文锚点块自身无需指针——它是被指向的一方）。
-        # slot 断链（锚点缺失/被上游过滤）→ 不写指针，特殊对象退化为普通块
-        #（检索期不扩展——能力缺失优于错误指针）。
+        # hierarchical：expansion_type 恒写（检索期 _expand_inner 按它分流，
+        # 缺失会让双向扩展静默直通）；content_type 全块透传（检索过滤/前端
+        # 徽标用）；特殊对象块补章节锚点指针（正文锚点块自身无需指针——它是
+        # 被指向的一方）。slot 断链（锚点缺失/被上游过滤）→ 不写指针，特殊
+        # 对象退化为普通块（检索期不扩展——能力缺失优于错误指针）。
         if meta.get("expansion_type") == "hierarchical" and meta.get("content_type") in ("text", "table", "code"):
+            chunk_meta["expansion_type"] = "hierarchical"
             chunk_meta["content_type"] = meta["content_type"]
             if meta["content_type"] != "text" and isinstance(meta.get("section_slot"), int):
                 anchor_pos = slot_to_anchor_position.get(meta["section_slot"])

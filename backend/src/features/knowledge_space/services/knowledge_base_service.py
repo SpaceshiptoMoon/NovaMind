@@ -451,7 +451,7 @@ class KnowledgeBaseService:
         if "strategy" in splitting:
             valid_strategies = {
                 "recursive", "fixed_size", "markdown", "semantic", "delimiter",
-                "sentence_window", "parent_child",
+                "sentence_window", "parent_child", "hierarchical",
             }
             if splitting["strategy"] not in valid_strategies:
                 raise InvalidParameterError(f"不支持的切分策略: {splitting['strategy']}")

@@ -45,12 +45,41 @@
                 </span>
               </div>
 
-              <!-- 查询改写 -->
-              <div v-if="rewrittenQueries?.length" class="rewritten-section">
-                <span class="rewritten-label">查询改写:</span>
-                <el-tag v-for="q in rewrittenQueries" :key="q" size="small" type="primary" effect="plain">
-                  {{ q }}
-                </el-tag>
+              <!-- 查询改写：hyde 返回单条假设文档（限高可展开），sub_query 返回多条子问题（序号 chip 行） -->
+              <div v-if="rewrittenQueries?.length" class="rewrite-panel">
+                <div class="rewrite-header">
+                  <span class="rewrite-label">
+                    {{ rewriteIsDocument ? '查询改写 · 假设文档（HyDE）' : `查询改写 · 子问题（${rewrittenQueries.length}）` }}
+                  </span>
+                  <button
+                    v-if="rewriteTruncated"
+                    type="button"
+                    class="rewrite-toggle"
+                    :class="{ 'is-expanded': rewriteExpanded }"
+                    :aria-expanded="rewriteExpanded"
+                    @click="rewriteExpanded = !rewriteExpanded"
+                  >
+                    {{ rewriteExpanded ? '收起' : '展开全文' }}
+                    <el-icon><ArrowDown /></el-icon>
+                  </button>
+                </div>
+                <p
+                  v-if="rewriteIsDocument"
+                  ref="rewriteTextEl"
+                  class="rewrite-doc"
+                  :class="{ 'is-clamped': !rewriteExpanded }"
+                >{{ rewrittenQueries[0] }}</p>
+                <div v-else class="rewrite-queries">
+                  <span
+                    v-for="(q, i) in rewrittenQueries"
+                    :key="`${i}-${q}`"
+                    class="rewrite-query-chip"
+                    :title="q"
+                  >
+                    <span class="rewrite-query-index">{{ i + 1 }}</span>
+                    <span class="rewrite-query-text">{{ q }}</span>
+                  </span>
+                </div>
               </div>
 
               <!-- AI 回答 -->
@@ -85,17 +114,47 @@
                       size="small"
                       effect="plain"
                     >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
+                    <el-tag
+                      v-if="result.content_type === 'table'"
+                      type="warning"
+                      size="small"
+                      effect="plain"
+                    >表格</el-tag>
+                    <el-tag
+                      v-else-if="result.content_type === 'code'"
+                      type="info"
+                      size="small"
+                      effect="plain"
+                    >代码</el-tag>
                     <span v-if="isWikiResult(result)" class="wiki-hit-title">
                       {{ (result.metadata as Record<string, unknown>)?.wiki_title || 'Wiki 条目' }}
                     </span>
-                    <span v-else class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
+                    <template v-else>
+                      <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
+                      <span class="result-chunk-pos">分块{{ result.chunk_index + 1 }}</span>
+                    </template>
                     <span class="result-score" :class="getScoreClass(result.score)">
                       {{ (result.score * 100).toFixed(1) }}%
                     </span>
                   </div>
-                  <div class="result-content">
+                  <div
+                    class="result-content"
+                    :class="{ 'is-expanded': expandedChunks.has(result.chunk_id) }"
+                    :data-chunk-id="result.chunk_id"
+                  >
                     {{ result.content }}
                   </div>
+                  <button
+                    v-if="truncatedChunks.has(result.chunk_id)"
+                    type="button"
+                    class="result-expand-toggle"
+                    :class="{ 'is-expanded': expandedChunks.has(result.chunk_id) }"
+                    :aria-expanded="expandedChunks.has(result.chunk_id)"
+                    @click="toggleChunkExpand(result.chunk_id)"
+                  >
+                    {{ expandedChunks.has(result.chunk_id) ? '收起' : '展开全文' }}
+                    <el-icon><ArrowDown /></el-icon>
+                  </button>
                   <div class="result-footer">
                     <!-- wiki 命中：来源是 LLM 综合条目（带加权说明），非原文档分块 -->
                     <template v-if="isWikiResult(result)">
@@ -126,7 +185,6 @@
                         v-if="(result.metadata as Record<string, unknown>)?.speaker_id"
                         class="speaker-tag"
                       >说话人 {{ (result.metadata as Record<string, unknown>).speaker_id }}</span>
-                      <span>分块 #{{ result.chunk_index + 1 }}</span>
                     </template>
                   </div>
                   <audio
@@ -283,6 +341,32 @@
                   </div>
                 </div>
 
+                <!-- 上下文扩展：sentence_window 扩窗 / parent_child 回带父块 / hierarchical 双向追加 -->
+                <div class="advanced-section">
+                  <div class="section-title">上下文扩展</div>
+                  <div class="adv-row">
+                    <span class="adv-label">启用扩展</span>
+                    <el-switch v-model="searchForm.expansion_enabled" size="small" />
+                  </div>
+                  <div class="expansion-hint">
+                    命中带扩展元数据的分块时自动拼接上下文；关闭后恒返回原始检索单元。
+                  </div>
+                  <template v-if="searchForm.expansion_enabled">
+                    <div class="adv-row">
+                      <span class="adv-label">窗口扩窗</span>
+                      <el-switch v-model="searchForm.expansion_include_window" size="small" />
+                    </div>
+                    <div class="adv-row">
+                      <span class="adv-label">父子回带</span>
+                      <el-switch v-model="searchForm.expansion_include_parent" size="small" />
+                    </div>
+                    <div class="adv-row">
+                      <span class="adv-label">层级双向</span>
+                      <el-switch v-model="searchForm.expansion_include_hierarchical" size="small" />
+                    </div>
+                  </template>
+                </div>
+
                 <!-- Rerank -->
                 <div class="advanced-section">
                   <div class="section-title">重排序</div>
@@ -367,10 +451,10 @@
  * 降级标记；wiki_page 命中卡片可点击直达对应 Wiki 页面。
  */
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, ArrowDown } from '@element-plus/icons-vue'
 import { knowledgeBaseApi, searchApi, documentApi } from '@/api/knowledge'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
@@ -467,6 +551,46 @@ const availableRerankModels = ref<string[]>([])
 const defaultLlmModel = ref('')
 const defaultRerankModel = ref('')
 const rewrittenQueries = ref<string[] | null>(null)
+
+// 结果分块展开状态：truncated 实测截断（决定按钮显隐），expanded 记录用户展开的卡片。
+// 一次检索内的 Set，键用 chunk_id；新检索自然重置。
+const truncatedChunks = ref(new Set<string>())
+const expandedChunks = ref(new Set<string>())
+
+/** 渲染后逐卡实测 2 行截断（scrollHeight > clientHeight），只有真被截断的卡片出展开按钮。 */
+async function measureChunkTruncation() {
+  truncatedChunks.value = new Set()
+  await nextTick()
+  const els = document.querySelectorAll<HTMLElement>('.result-content[data-chunk-id]')
+  const next = new Set<string>()
+  for (const el of els) {
+    if (el.scrollHeight > el.clientHeight + 1) next.add(el.dataset.chunkId!)
+  }
+  truncatedChunks.value = next
+}
+
+function toggleChunkExpand(chunkId: string) {
+  const next = new Set(expandedChunks.value)
+  if (next.has(chunkId)) next.delete(chunkId)
+  else next.add(chunkId)
+  expandedChunks.value = next
+}
+
+// 查询改写两种形态：单条 = HyDE 假设文档（整段长文本，限高可展开）；
+// 多条 = 子问题拆分（短句列表）。无改写时后端返回 null。
+const rewriteExpanded = ref(false)
+const rewriteTruncated = ref(false)
+const rewriteTextEl = ref<HTMLElement | null>(null)
+const rewriteIsDocument = computed(() => (rewrittenQueries.value?.length ?? 0) === 1)
+
+/** 实测假设文档是否被 3 行截断（scrollHeight > clientHeight），截断才显示展开按钮。 */
+async function measureRewriteTruncation() {
+  rewriteTruncated.value = false
+  await nextTick()
+  const el = rewriteTextEl.value
+  if (!el) return
+  rewriteTruncated.value = el.scrollHeight > el.clientHeight + 1
+}
 const llmAnswer = ref<string | null>(null)
 const answerModel = ref<string | null>(null)
 const answerElapsedMs = ref<number | null>(null)
@@ -497,6 +621,10 @@ const defaultSearchForm = {
   qrw_llm_model: '',
   use_cache: true,
   fallback_on_unavailable: true,
+  expansion_enabled: true,
+  expansion_include_window: true,
+  expansion_include_parent: true,
+  expansion_include_hierarchical: true,
 }
 
 const searchForm = reactive({ ...defaultSearchForm })
@@ -606,6 +734,12 @@ async function handleSearch() {
       query_rewrite: queryRewrite,
       use_cache: searchForm.use_cache,
       fallback_on_unavailable: searchForm.fallback_on_unavailable,
+      expansion: {
+        enabled: searchForm.expansion_enabled,
+        include_window: searchForm.expansion_include_window,
+        include_parent: searchForm.expansion_include_parent,
+        include_hierarchical: searchForm.expansion_include_hierarchical,
+      },
     })
 
     searchResults.value = data.results || []
@@ -614,6 +748,10 @@ async function handleSearch() {
     cached.value = data.cached || false
     modeFallback.value = data.mode_fallback || false
     rewrittenQueries.value = data.rewritten_queries || null
+    rewriteExpanded.value = false
+    if (rewrittenQueries.value) void measureRewriteTruncation()
+    expandedChunks.value = new Set()
+    if (searchResults.value.length) void measureChunkTruncation()
     llmAnswer.value = data.answer || null
     answerModel.value = data.answer_model || null
     answerElapsedMs.value = data.answer_elapsed_ms || null
@@ -811,6 +949,16 @@ onMounted(() => {
   flex: 1;
 }
 
+/* 扩展开关下的小字说明：与 adv-row 同缩进，两行内自动换行 */
+.expansion-hint {
+  margin: 0 0 var(--space-2);
+  padding-left: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 /* Results header */
 .results-header {
   display: flex;
@@ -834,22 +982,120 @@ onMounted(() => {
   gap: var(--space-2);
 }
 
-/* Rewritten queries */
-.rewritten-section {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+/* Query rewrite panel：白卡浅边中性面——紧邻的 AI 回答已用 primary 左边框，
+   这里若再用蓝 tint 面积过半；accent 留给展开按钮与序号 */
+.rewrite-panel {
   margin-bottom: var(--space-4);
-  padding: var(--space-3);
-  background: var(--color-primary-subtle);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
 
-.rewritten-label {
-  font-size: var(--text-sm);
-  color: var(--color-primary);
+.rewrite-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.rewrite-label {
+  font-size: var(--text-xs);
+  /* muted 档而非 faint：12px 小字须过 4.5:1（faint light 下仅 3.36:1，评审 P2） */
+  color: var(--color-text-muted);
   font-weight: var(--weight-medium);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rewrite-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.rewrite-toggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.rewrite-toggle .el-icon {
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+
+.rewrite-toggle.is-expanded .el-icon {
+  transform: rotate(180deg);
+}
+
+/* HyDE 假设文档：3 行截断，展开后不限高 */
+.rewrite-doc {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.rewrite-doc.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Sub query：序号 chip 行，中性边框，压缩时折行且单条内部不换行 */
+.rewrite-queries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rewrite-query-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 3px 10px 3px 4px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.rewrite-query-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+}
+
+.rewrite-query-text {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* LLM Answer */
@@ -1000,10 +1246,54 @@ onMounted(() => {
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* 默认 2 行截断，展开态不限高 */
+.result-content:not(.is-expanded) {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* 展开/收起按钮：与查询改写面板同族（muted 小字 + 主题色文本 + 120ms 箭头旋转） */
+.result-expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.result-expand-toggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.result-expand-toggle .el-icon {
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+
+.result-expand-toggle.is-expanded .el-icon {
+  transform: rotate(180deg);
+}
+
+/* 分块位置：header 行内文件名后的中性小标签 */
+.result-chunk-pos {
+  flex-shrink: 0;
+  font-size: 11px;
+  /* muted 档而非 faint：11px 小字须过 4.5:1（faint light 下仅 3.36:1） */
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .result-footer {
