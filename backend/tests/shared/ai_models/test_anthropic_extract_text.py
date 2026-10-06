@@ -90,3 +90,63 @@ class TestExtractTextBlocks:
             )
         )
         assert await client.generate_text(prompt="hi") == "第一段第二段"
+
+
+class TestHostEnvInsulation:
+    """宿主环境 ANTHROPIC_* 绝缘：凭据与端点只认显式配置。
+
+    背景（2026-10-06 用户实测 401）：宿主 shell 设有 ANTHROPIC_AUTH_TOKEN
+    （本地代理工具注入）时，SDK 构造不传 auth_token 会自动读环境拼
+    Authorization 头，与显式 api_key 的 x-api-key 双头并发；智谱优先校验
+    Authorization，用环境里的无关 token 鉴权而 401「令牌已过期或验证不正确」。
+    """
+
+    def test_env_auth_token_not_leaked_into_headers(self):
+        """污染环境下构造：实发请求只带 x-api-key，无 Authorization 头。"""
+        import asyncio
+
+        import httpx
+
+        with patch.dict(
+            "os.environ",
+            {
+                "ANTHROPIC_AUTH_TOKEN": "PROXY_MATIC_JUNK",
+                "ANTHROPIC_BASE_URL": "http://127.0.0.1:99999",
+            },
+        ):
+            client = AnthropicLLM(
+                api_key="zhipu-token", base_url="", model_name="test-model",
+            )
+            captured: dict = {}
+
+            def handler(request: httpx.Request) -> httpx.Response:
+                captured.update({k.lower(): v for k, v in request.headers.items()})
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "x", "type": "message", "role": "assistant",
+                        "model": "m", "content": [{"type": "text", "text": "ok"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                )
+
+            client.client._client = httpx.AsyncClient(
+                transport=httpx.MockTransport(handler),
+                base_url=client.client.base_url,
+            )
+            asyncio.run(client.generate_text(prompt="hi", max_tokens=10))
+
+            assert captured.get("x-api-key") == "zhipu-token"
+            assert "authorization" not in captured
+
+    def test_empty_base_url_falls_to_official_not_env(self):
+        """base_url 空串：落官方默认，不读宿主环境 ANTHROPIC_BASE_URL。"""
+        with patch.dict(
+            "os.environ",
+            {"ANTHROPIC_BASE_URL": "http://127.0.0.1:99999"},
+        ):
+            client = AnthropicLLM(
+                api_key="k", base_url="", model_name="m",
+            )
+            assert str(client.client.base_url) == "https://api.anthropic.com"

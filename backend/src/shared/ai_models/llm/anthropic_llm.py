@@ -62,6 +62,7 @@ class AnthropicLLM(BaseLLM):
         # 延迟导入 anthropic，避免未安装时报错
         try:
             from anthropic import AsyncAnthropic
+            from anthropic._types import Omit
         except ImportError:
             raise ImportError(
                 "使用 Anthropic 协议需要安装 anthropic 库: pip install anthropic"
@@ -69,9 +70,16 @@ class AnthropicLLM(BaseLLM):
 
         self.client = AsyncAnthropic(
             api_key=self.api_key,
-            base_url=self.base_url,
+            # 空串/None 一律落官方默认：传 None 时 SDK 会回读宿主环境
+            # ANTHROPIC_BASE_URL，把请求劫持到无关端点
+            base_url=self.base_url or "https://api.anthropic.com",
             timeout=timeout,
             max_retries=max_retries,
+            # 凭据只认显式传入的 api_key（x-api-key 头）。不传 auth_token 时
+            # SDK 会自动读宿主环境 ANTHROPIC_AUTH_TOKEN 拼成 Authorization 头，
+            # 与 x-api-key 双头并发；优先校验 Authorization 的网关（如智谱）
+            # 会用环境里的无关 token 鉴权而 401。Omit 显式压制该头。
+            default_headers={"Authorization": Omit()},
         )
 
     def _build_messages(self, prompt: str | list) -> tuple:
