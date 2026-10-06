@@ -2,7 +2,7 @@
 
 覆盖：
 - McpKbService._resolve_target：单空间自动选/多空间列候选/无空间报错/kb 缺省取第一个 ACTIVE
-- search 输出结构（rank/snippet 截断/with_answer 的 answer 通道与降级提示）
+- search 输出结构（rank/snippet 截断/检索参数透传/无 answer 通道）
 - require_api_key：header 提取、无效转 ToolError、成功返回上下文
 - McpAsgiEndpoint：无钥 401（不进 MCP 协议层）、有效放行（handle_request 被调）
 
@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger, select
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
@@ -55,7 +55,6 @@ async def mcp_db():
 
 
 async def _seed_space_with_kb(factory, *, space_id: int, name: str, kb_id: int = None):
-    from datetime import datetime
 
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
     from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
@@ -136,25 +135,24 @@ async def test_resolve_no_active_kb_errors(mcp_db):
 
 @pytest.mark.asyncio
 async def test_search_output_structure(mcp_db):
-    """search 输出：rank 对齐/snippet 截断/with_answer 的 answer 与降级提示。"""
-    from novamind.features.agent_api.services.mcp_kb_service import McpKbService
+    """search 输出：rank 对齐/snippet 截断/检索参数透传/无 answer 通道。"""
     import json
+
+    from novamind.features.agent_api.services.mcp_kb_service import McpKbService
 
     factory, _ = mcp_db
     await _seed_space_with_kb(factory, space_id=10, name="空间", kb_id=100)
 
-    captured = []
+    captured: list = []
 
     async def _fake_search(self, space_id, kb_id, user_id, request, **kw):
-        captured.append(request.llm.enabled if request.llm else False)
+        captured.append(request)
         return {
             "results": [
                 {"document_id": 1, "chunk_id": "1_0", "score": 0.9,
                  "content": "x" * 500, "kb_id": kb_id, "space_id": space_id,
                  "file_info": {"filename": "a.pdf"}, "chunk_type": "text"},
             ],
-            "answer": "答案 [Source 1]" if (request.llm and request.llm.enabled) else None,
-            "answer_model": "m1" if (request.llm and request.llm.enabled) else None,
         }
 
     with patch(
@@ -166,36 +164,42 @@ async def test_search_output_structure(mcp_db):
     ):
         async with factory() as session:
             svc = McpKbService(session)
-            out_search = json.loads(await svc.search(1, "q", space_id=10, kb_id=100))
-            out_ask = json.loads(await svc.search(1, "q", space_id=10, kb_id=100, with_answer=True))
+            out_search = json.loads(await svc.search(
+                1, "q", space_id=10, kb_id=100,
+                search_mode="content_bm25", score_threshold=0.5,
+                vector_weight=0.6, bm25_weight=0.4, use_cache=False,
+            ))
 
-    # kb_search：无 answer 通道（第一次调用 llm=None）
-    assert captured == [False, True]  # 两次调用的 llm 开关按序记录
+    # 检索参数透传 SearchRequest（MCP 只检索不生成，llm 通道恒关闭）
+    req = captured[0]
+    assert req.llm is None
+    assert req.search_mode.value == "content_bm25"
+    assert req.score_threshold == 0.5
+    assert req.weights.vector_weight == 0.6
+    assert req.weights.bm25_weight == 0.4
+    assert req.use_cache is False
+
+    # 输出结构：rank 对齐/snippet 截断/无 answer 通道
     assert out_search["total"] == 1
     assert out_search["results"][0]["rank"] == 1
     assert len(out_search["results"][0]["snippet"]) == 300  # 截断
     assert "answer" not in out_search
+    assert "answer_error" not in out_search
 
-    # kb_ask：answer 通道开启（第二次调用）且有降级提示路径
-    assert out_ask["answer"] == "答案 [Source 1]"
-    assert out_ask["answer_model"] == "m1"
 
-    # 降级：answer=None 时带 answer_error 提示
-    async def _no_answer(self, space_id, kb_id, user_id, request, **kw):
-        return {"results": [], "answer": None, "answer_model": None}
+@pytest.mark.asyncio
+async def test_search_invalid_search_mode_friendly_error(mcp_db):
+    """非法 search_mode → ToolTextError 且消息列出全部可选值。"""
+    from novamind.features.agent_api.services.mcp_kb_service import McpKbService, ToolTextError
 
-    with patch(
-        "novamind.features.knowledge_space.services.search_service.SearchService.search",
-        new=_no_answer,
-    ), patch(
-        "novamind.features.agent_api.services.mcp_kb_service.McpKbService._get_es_client",
-        new=AsyncMock(return_value=AsyncMock()),
-    ):
-        async with factory() as session:
-            svc = McpKbService(session)
-            out_degraded = json.loads(await svc.search(1, "q", space_id=10, kb_id=100, with_answer=True))
-    assert out_degraded["answer"] is None
-    assert "answer_error" in out_degraded
+    factory, _ = mcp_db
+    await _seed_space_with_kb(factory, space_id=10, name="空间", kb_id=100)
+
+    async with factory() as session:
+        svc = McpKbService(session)
+        with pytest.raises(ToolTextError) as exc_info:
+            await svc.search(1, "q", space_id=10, kb_id=100, search_mode="nope")
+    assert "content_hybrid" in str(exc_info.value)
 
 
 # ========== require_api_key ==========

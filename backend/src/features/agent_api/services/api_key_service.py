@@ -9,7 +9,6 @@ JWT 的用户禁用/删除语义永远一致。
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent_api.exceptions import (
@@ -121,8 +120,8 @@ class ApiKeyService:
         # get_auth_status 返回 dict（id/username/email/role_code/is_admin/
         # status/is_active/is_deleted/must_change_password）——同时作为
         # 兼容 user dict 的字段源，省二次查库。
-        from novamind.features.user.services.user_service import UserService
         from novamind.features.user.repository.user_repository import UserRepository
+        from novamind.features.user.services.user_service import UserService
 
         user_service = UserService(UserRepository(self.session))
         user = await user_service.get_auth_status(record.user_id)

@@ -14,7 +14,6 @@ import json
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
-
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,8 +33,11 @@ def build_mcp_server() -> FastMCP:
         name="kb_search",
         description=(
             "在 NovaMind 知识库中检索与 query 相关的内容片段。"
-            "返回带 rank/score/snippet 的片段列表（snippet 序号即引用编号）。"
+            "返回带 rank/score/snippet 的片段列表（snippet 序号即引用编号），"
+            "由调用方自行综合答案。"
             "space_id/kb_id 缺省时自动解析（多空间会返回候选清单）。"
+            "search_mode 控制检索方式，score_threshold 过滤低相关噪声，"
+            "vector_weight/bm25_weight 调整混合检索权重。"
         ),
     )
     async def kb_search(
@@ -43,6 +45,11 @@ def build_mcp_server() -> FastMCP:
         space_id: int | None = None,
         kb_id: int | None = None,
         top_k: int = 5,
+        search_mode: str = "content_hybrid",
+        score_threshold: float | None = None,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
+        use_cache: bool = True,
         ctx: Context = None,
     ) -> str:
         from novamind.features.agent_api.mcp.auth import require_api_key
@@ -54,34 +61,11 @@ def build_mcp_server() -> FastMCP:
             return await service.search(
                 user_id=auth.user_id, query=query,
                 space_id=space_id, kb_id=kb_id, top_k=top_k,
-                with_answer=False,
-            )
-
-    @mcp.tool(
-        name="kb_ask",
-        description=(
-            "基于 NovaMind 知识库回答问题：检索相关片段并生成带 [Source N] 引用的答案"
-            "（N 与输出 results 的 rank 对齐，可回溯原文）。适合事实型问题；"
-            "检索无结果时 answer 为 null。"
-        ),
-    )
-    async def kb_ask(
-        query: str,
-        space_id: int | None = None,
-        kb_id: int | None = None,
-        top_k: int = 5,
-        ctx: Context = None,
-    ) -> str:
-        from novamind.features.agent_api.mcp.auth import require_api_key
-        from novamind.features.agent_api.services.mcp_kb_service import McpKbService
-
-        auth = await require_api_key(ctx)
-        async with _new_session() as session:
-            service = McpKbService(session)
-            return await service.search(
-                user_id=auth.user_id, query=query,
-                space_id=space_id, kb_id=kb_id, top_k=top_k,
-                with_answer=True,
+                search_mode=search_mode,
+                score_threshold=score_threshold,
+                vector_weight=vector_weight,
+                bm25_weight=bm25_weight,
+                use_cache=use_cache,
             )
 
     return mcp
@@ -89,7 +73,6 @@ def build_mcp_server() -> FastMCP:
 
 def _new_session():
     """tool 内独立短会话（每次调用独立，鉴权与检索各自开——互不绑事务命运）。"""
-    from contextlib import asynccontextmanager
 
     from novamind.core.database.database import get_db_session
 
@@ -122,9 +105,9 @@ class McpAsgiEndpoint:
             await self._send_json(send, 401, "缺少 X-API-Key header", code="INVALID_API_KEY")
             return
 
+        from novamind.core.database.database import get_db_session
         from novamind.features.agent_api.exceptions import InvalidApiKeyError
         from novamind.features.agent_api.services.api_key_service import ApiKeyService
-        from novamind.core.database.database import get_db_session
 
         try:
             async with get_db_session() as session:

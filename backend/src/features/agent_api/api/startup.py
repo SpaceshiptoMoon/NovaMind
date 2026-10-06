@@ -16,7 +16,11 @@ logger = get_logger(__name__)
 
 async def init_agent_api_components(app: FastAPI) -> None:
     """装配 MCP server：进入 session_manager 生命周期 + 挂 /mcp ASGI 端点。"""
-    from novamind.features.agent_api.mcp.server import MCP_SERVER_NAME, McpAsgiEndpoint, build_mcp_server
+    from novamind.features.agent_api.mcp.server import (
+        MCP_SERVER_NAME,
+        McpAsgiEndpoint,
+        build_mcp_server,
+    )
 
     mcp = build_mcp_server()
     # session_manager 懒创建——必须先调 streamable_http_app() 触发初始化
@@ -39,7 +43,7 @@ async def init_agent_api_components(app: FastAPI) -> None:
     logger.info(
         "MCP server 已挂载",
         name=MCP_SERVER_NAME, path="/mcp", transport="streamable_http",
-        tools=["kb_search", "kb_ask"],
+        tools=["kb_search"],
     )
 
 

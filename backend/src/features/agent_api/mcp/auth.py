@@ -8,7 +8,6 @@ request_context 传递是唯一可靠通道（已核实 StreamableHTTPServerTran
 from __future__ import annotations
 
 from mcp.server.fastmcp import Context
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent_api.exceptions import InvalidApiKeyError
 from novamind.features.agent_api.services.api_key_service import ApiKeyAuthContext

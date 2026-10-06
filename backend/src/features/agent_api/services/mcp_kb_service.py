@@ -1,9 +1,9 @@
 """MCP tool 编排服务（agent_api 批次 2）：目标解析 → SearchService → 输出组装。
 
-kb_search / kb_ask 两个 MCP tool 的内核。复用 SearchService 公共面（R2）：
+kb_search MCP tool 的内核。复用 SearchService 公共面（R2）：
 - 权限链完整继承（空间成员 + 文档级 hidden_doc_ids 过滤在服务内生效）；
-- kb_ask 复用 SearchRequest.llm 的 answer 通道（`[Source N]` 引用格式，
-  LLM 失败时 answer=None 但检索结果照常返回——降级不阻断）；
+- 只做检索不做回答生成——调用 MCP 的是 LLM，答案由其自行综合，
+  MCP 层再套一层 LLM 生成既慢又费钱（思考型模型吃满预算返回空答案）；
 - MCP tool 错误是给 LLM 消费的字符串：域异常转友好文本，不走 BaseAPIError 管道。
 """
 from __future__ import annotations
@@ -33,29 +33,54 @@ class McpKbService:
         space_id: int | None = None,
         kb_id: int | None = None,
         top_k: int = 5,
-        with_answer: bool = False,
+        search_mode: str = "content_hybrid",
+        score_threshold: float | None = None,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
+        use_cache: bool = True,
     ) -> str:
-        """检索（with_answer=True 时附带 LLM 引用回答），返回 JSON 文本给 LLM。
+        """检索相关片段，返回 JSON 文本给 LLM（答案由调用方自行综合，MCP 不做生成）。
+
+        Args:
+            search_mode: 统一检索模式 {content|question|all}_{bm25|vector|hybrid}。
+            score_threshold: 相关度下限过滤，None 不过滤。
+            vector_weight/bm25_weight: hybrid 模式的算法权重。
+            use_cache: 是否使用检索缓存。
 
         Raises:
-            ToolTextError: 目标解析失败/无权限等——消息已面向 LLM 友好。
+            ToolTextError: 目标解析失败/无权限/非法参数——消息已面向 LLM 友好。
         """
         from novamind.features.knowledge_space.schemas.search_schema import (
-            SearchLLMConfig,
+            SearchMode,
             SearchRequest,
+            WeightConfig,
         )
         from novamind.features.knowledge_space.services.instrumented_search_service import (
             InstrumentedSearchService,
         )
         from novamind.features.user.services.model_config_service import ModelConfigService
 
+        try:
+            mode = SearchMode(search_mode)
+        except ValueError:
+            valid = "/".join(m.value for m in SearchMode)
+            raise ToolTextError(
+                f"search_mode 无效：{search_mode}。可选值：{valid}"
+            )
+
         space_id, kb_id = await self._resolve_target(user_id, space_id, kb_id)
 
-        search_request = SearchRequest(
-            query=query,
-            top_k=top_k,
-            llm=SearchLLMConfig(enabled=with_answer, temperature=0.3) if with_answer else None,
-        )
+        search_request_kwargs: dict[str, Any] = {
+            "query": query,
+            "top_k": top_k,
+            "search_mode": mode,
+            "weights": WeightConfig(vector_weight=vector_weight, bm25_weight=bm25_weight),
+            "use_cache": use_cache,
+        }
+        # score_threshold schema 是硬 float（默认 0.0=不过滤），None 需省略而非显式传
+        if score_threshold is not None:
+            search_request_kwargs["score_threshold"] = score_threshold
+        search_request = SearchRequest(**search_request_kwargs)
         search_service = InstrumentedSearchService(
             session=self.session,
             es_client=await self._get_es_client(),
@@ -65,7 +90,7 @@ class McpKbService:
             space_id=space_id, kb_id=kb_id, user_id=user_id, request=search_request,
         )
 
-        return self._format_output(result, with_answer=with_answer)
+        return self._format_output(result)
 
     # ========== 内部 ==========
 
@@ -80,8 +105,6 @@ class McpKbService:
         Raises:
             ToolTextError: 面向 LLM 的目标解析失败说明。
         """
-        from sqlalchemy import select
-
         from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBase,
             KnowledgeBaseStatus,
@@ -89,6 +112,7 @@ class McpKbService:
         from novamind.features.knowledge_space.models.knowledge_space import (
             KnowledgeSpace,
         )
+        from sqlalchemy import select
 
         if space_id is None:
             # 用户所属空间（成员表 join 空间表，只看未删空间）
@@ -136,8 +160,8 @@ class McpKbService:
 
         return await get_elasticsearch_client()
 
-    def _format_output(self, result: dict[str, Any], *, with_answer: bool) -> str:
-        """组装 MCP 输出（JSON 文本）：snippet 序号与 answer 的 [Source N] 对齐。"""
+    def _format_output(self, result: dict[str, Any]) -> str:
+        """组装 MCP 输出（JSON 文本）：snippet 序号即引用编号，答案由调用方综合。"""
         sources = result.get("results", [])
         formatted = []
         for i, r in enumerate(sources, start=1):
@@ -153,18 +177,10 @@ class McpKbService:
                 "snippet": (r.get("content") or "")[:SNIPPET_LIMIT],
             })
 
-        output: dict[str, Any] = {
-            "total": len(formatted),
-            "results": formatted,
-        }
-        if with_answer:
-            answer = result.get("answer")
-            output["answer"] = answer
-            output["answer_model"] = result.get("answer_model")
-            if answer is None:
-                # LLM 失败降级：检索结果照常返回，附提示让 agent 自行综合
-                output["answer_error"] = "回答生成失败，请基于 results 自行综合"
-        return json.dumps(output, ensure_ascii=False, indent=2)
+        return json.dumps(
+            {"total": len(formatted), "results": formatted},
+            ensure_ascii=False, indent=2,
+        )
 
 
 class ToolTextError(Exception):
