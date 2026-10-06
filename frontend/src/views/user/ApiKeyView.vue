@@ -1,103 +1,110 @@
 <template>
   <div class="api-key-view">
-    <!-- 页头：eyebrow + 标题 + 描述（左）与操作（右），对齐 DocumentView page-head 语言 -->
-    <section class="page-head">
-      <div class="page-head__main">
-        <p class="page-head__eyebrow">系统设置</p>
-        <h1 class="page-head__title">API 密钥</h1>
-        <p class="page-head__desc">
-          外部 Agent（Claude Code、MCP 客户端等）访问 NovaMind 知识库的凭证——密钥继承您的完整权限链，吊销即时生效。
-        </p>
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Agent Access</p>
+        <h2>API 密钥</h2>
+        <p class="desc">外部 Agent（Claude Code、MCP 客户端等）访问知识库的凭证——继承您的完整权限链，吊销即时生效</p>
       </div>
-      <div class="page-head__actions">
-        <el-button @click="loadKeys" :loading="loading">
-          <el-icon class="btn-icon"><Refresh /></el-icon>
-          刷新
-        </el-button>
+      <div class="header-actions">
         <el-button type="primary" @click="openCreateDialog">
           <el-icon class="btn-icon"><Plus /></el-icon>
           创建密钥
         </el-button>
-      </div>
-    </section>
-
-    <!-- 单行统计条：有效 / 已吊销 / 总数 -->
-    <div class="list-toolbar">
-      <div class="stats-inline">
-        <div class="stats-item">
-          <span class="stats-label">有效</span>
-          <strong class="stats-value is-success">{{ activeCount }}</strong>
-        </div>
-        <span class="stats-divider"></span>
-        <div class="stats-item">
-          <span class="stats-label">已吊销</span>
-          <strong class="stats-value">{{ revokedCount }}</strong>
-        </div>
-        <span class="stats-divider"></span>
-        <div class="stats-item">
-          <span class="stats-label">全部</span>
-          <strong class="stats-value">{{ keys.length }}</strong>
-        </div>
-      </div>
-      <div class="right-actions">
-        <el-checkbox v-model="showRevoked" size="small">显示已吊销</el-checkbox>
+        <el-button @click="loadKeys" :loading="loading">
+          <el-icon class="btn-icon"><Refresh /></el-icon>
+          刷新
+        </el-button>
       </div>
     </div>
 
-    <div class="section-card">
-      <el-table :data="visibleKeys" v-loading="loading">
-        <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span class="key-name" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="key_prefix" label="密钥前缀" min-width="150">
-          <template #default="{ row }">
-            <span class="mono-text" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.key_prefix }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'" effect="plain">
-              {{ row.status === 'active' ? '有效' : '已吊销' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" min-width="140">
-          <template #default="{ row }">
-            <span class="time-text">{{ formatDate(row.created_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_used_at" label="最后使用" min-width="140">
-          <template #default="{ row }">
-            <span v-if="row.last_used_at" class="time-text">{{ formatDate(row.last_used_at) }}</span>
-            <span v-else class="time-text is-never">从未使用</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'active'"
-              size="small"
-              type="danger"
-              plain
-              :loading="revokingId === row.id"
-              @click="confirmRevoke(row)"
-            >
-              吊销
-            </el-button>
-            <span v-else class="time-text">—</span>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <div class="empty-state">
-            <el-empty description="还没有 API 密钥">
-              <el-button type="primary" @click="openCreateDialog">创建第一个密钥</el-button>
+    <!-- 数量统计卡：点击切换过滤（有效/已吊销/全部） -->
+    <div class="stat-grid">
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': filter === 'active' }"
+        @click="filter = 'active'"
+      >
+        <span class="stat-value">{{ activeCount }}</span>
+        <span class="stat-label">有效</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': filter === 'revoked' }"
+        @click="filter = 'revoked'"
+      >
+        <span class="stat-value">{{ revokedCount }}</span>
+        <span class="stat-label">已吊销</span>
+      </button>
+      <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': filter === 'all' }"
+        @click="filter = 'all'"
+      >
+        <span class="stat-value">{{ keys.length }}</span>
+        <span class="stat-label">全部</span>
+      </button>
+    </div>
+
+    <div class="config-section">
+      <div class="section-card">
+        <h3>{{ sectionTitle }}</h3>
+        <el-table :data="visibleKeys" v-loading="loading">
+          <el-table-column prop="name" label="名称" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="key-name" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="key_prefix" label="密钥前缀" min-width="150">
+            <template #default="{ row }">
+              <span class="mono-text" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.key_prefix }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'" effect="plain">
+                {{ row.status === 'active' ? '有效' : '已吊销' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" min-width="150">
+            <template #default="{ row }">
+              <span class="time-text">{{ formatDate(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="last_used_at" label="最后使用" min-width="150">
+            <template #default="{ row }">
+              <span v-if="row.last_used_at" class="time-text">{{ formatDate(row.last_used_at) }}</span>
+              <span v-else class="time-text is-never">从未使用</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="130" fixed="right">
+            <template #default="{ row }">
+              <template v-if="row.status === 'active'">
+                <el-button link type="primary" size="small" @click="copyPrefix(row.key_prefix)">复制前缀</el-button>
+                <el-button
+                  link
+                  type="danger"
+                  size="small"
+                  :loading="revokingId === row.id"
+                  @click="confirmRevoke(row)"
+                >
+                  吊销
+                </el-button>
+              </template>
+              <span v-else class="time-text">—</span>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <el-empty :description="emptyText">
+              <el-button v-if="filter === 'all'" type="primary" @click="openCreateDialog">创建第一个密钥</el-button>
             </el-empty>
-            <p class="empty-hint">创建后配置到 Claude Code / MCP 客户端，即可让 Agent 检索您的知识库。</p>
-          </div>
-        </template>
-      </el-table>
+          </template>
+        </el-table>
+      </div>
     </div>
 
     <!-- 创建对话框 -->
@@ -157,7 +164,7 @@ import type { ApiKeyItem } from '@/api/types'
 const keys = ref<ApiKeyItem[]>([])
 const loading = ref(false)
 const revokingId = ref<number | null>(null)
-const showRevoked = ref(true)
+const filter = ref<'active' | 'revoked' | 'all'>('all')
 
 const createVisible = ref(false)
 const creating = ref(false)
@@ -168,9 +175,21 @@ const createdPlainKey = ref('')
 
 const activeCount = computed(() => keys.value.filter((k) => k.status === 'active').length)
 const revokedCount = computed(() => keys.value.length - activeCount.value)
-const visibleKeys = computed(() =>
-  showRevoked.value ? keys.value : keys.value.filter((k) => k.status === 'active'),
-)
+const visibleKeys = computed(() => {
+  if (filter.value === 'active') return keys.value.filter((k) => k.status === 'active')
+  if (filter.value === 'revoked') return keys.value.filter((k) => k.status !== 'active')
+  return keys.value
+})
+const sectionTitle = computed(() => {
+  if (filter.value === 'active') return `有效密钥（${activeCount.value}）`
+  if (filter.value === 'revoked') return `已吊销密钥（${revokedCount.value}）`
+  return `全部密钥（${keys.value.length}）`
+})
+const emptyText = computed(() => {
+  if (filter.value === 'active') return '没有有效密钥——点击「已吊销」或「全部」查看其余密钥'
+  if (filter.value === 'revoked') return '没有已吊销的密钥'
+  return '还没有 API 密钥。创建一个，让 Claude Code 等 Agent 检索您的知识库。'
+})
 
 async function loadKeys() {
   loading.value = true
@@ -216,6 +235,15 @@ async function copyPlainKey() {
   }
 }
 
+async function copyPrefix(prefix: string) {
+  try {
+    await navigator.clipboard.writeText(prefix)
+    ElMessage.success('前缀已复制（完整密钥仅在创建时展示一次）')
+  } catch {
+    ElMessage.error('复制失败，请手动选择复制')
+  }
+}
+
 async function confirmRevoke(key: ApiKeyItem) {
   try {
     await ElMessageBox.confirm(
@@ -247,51 +275,44 @@ onMounted(loadKeys)
 </script>
 
 <style scoped>
-.api-key-view {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-/* ===== 页头（对齐 DocumentView page-head 设计语言） ===== */
-.page-head {
+/* ===== 页头卡片（对齐 ModelConfigView 三件套） ===== */
+.page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-4);
   flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
-.page-head__main {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.page-head__eyebrow {
-  margin: 0 0 2px;
+.eyebrow {
+  margin: 0 0 var(--space-1);
   font-size: 12px;
   font-weight: var(--weight-semibold);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--color-text-faint);
 }
 
-.page-head__title {
-  margin: 0;
-  font-size: var(--text-2xl);
-  letter-spacing: var(--tracking-tight);
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
 }
 
-.page-head__desc {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
   max-width: 560px;
 }
 
-.page-head__actions {
+.header-actions {
   display: flex;
-  align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
 }
@@ -300,64 +321,68 @@ onMounted(loadKeys)
   margin-right: 4px;
 }
 
-/* ===== 单行统计条 ===== */
-.list-toolbar {
+/* ===== 三档统计卡（有效/已吊销/全部，点击即过滤） ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.stats-inline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.stats-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.stats-label {
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-}
-
-.stats-value {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-
-.stats-value.is-success {
-  color: var(--color-success);
-}
-
-.stats-divider {
-  align-self: stretch;
-  width: 1px;
-  background: var(--color-border-light);
-}
-
-.right-actions {
-  display: flex;
-  align-items: center;
-}
-
-/* ===== 列表卡片 ===== */
-.section-card {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
   padding: var(--space-4);
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  min-width: 0;
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-xs);
+}
+
+.stat-card.is-active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ===== 表格区卡片 ===== */
+.config-section {
+  margin-bottom: var(--space-6);
+}
+
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+}
+
+.config-section h3 {
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-secondary);
 }
 
 .key-name {
@@ -371,34 +396,23 @@ onMounted(loadKeys)
 }
 
 .mono-text {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-sm);
+  font-family: var(--font-mono, Menlo, Consolas, monospace);
+  font-size: 12.5px;
 }
 
 .time-text {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .time-text.is-never {
-  color: var(--color-text-faint);
-}
-
-/* ===== 空态 ===== */
-.empty-state {
-  padding: var(--space-4) 0;
-}
-
-.empty-hint {
-  margin: 0;
-  text-align: center;
-  font-size: var(--text-xs);
+  /* 占位信息性文本用 muted 不用 faint（评审实测 faint 档 3.36:1 < WCAG AA 4.5:1） */
   color: var(--color-text-muted);
 }
 
-/* ===== 创建/明文对话框 ===== */
+/* ===== 对话框 ===== */
 .form-hint {
   margin: 0;
   color: var(--color-text-muted);
@@ -425,7 +439,7 @@ onMounted(loadKeys)
   background: var(--color-bg-subtle, var(--color-bg));
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, Menlo, Consolas, monospace);
   font-size: var(--text-sm);
   word-break: break-all;
   white-space: nowrap;
@@ -450,20 +464,22 @@ onMounted(loadKeys)
 }
 
 .next-steps__code {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, Menlo, Consolas, monospace);
   font-size: var(--text-xs);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   word-break: break-all;
   line-height: 1.6;
 }
 
+/* ===== 窄屏降级 ===== */
 @media (max-width: 720px) {
-  .page-head {
+  .page-header {
     flex-direction: column;
     align-items: stretch;
+    padding: var(--space-4);
   }
 
-  .page-head__actions {
+  .header-actions {
     justify-content: flex-end;
   }
 
