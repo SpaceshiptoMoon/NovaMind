@@ -21,6 +21,7 @@ from novamind.shared.ai_models.base_model import (
 )
 from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
 from novamind.shared.ai_models.errors import translate_provider_error
+from novamind.shared.ai_models.base_model import LLMCapabilities
 from novamind.shared.ai_models.llm.quirks import LLMQuirks, is_stream_only_error, resolve_quirks
 from novamind.shared.logging import get_logger
 from openai import AsyncOpenAI
@@ -78,6 +79,10 @@ class OpenAICompatibleLLM(BaseLLM):
     # 类级兜底：测试常用 __new__ 绕过 __init__ 构造桩实例，实例属性缺失时
     # 落到全默认怪癖（零行为差异）。
     quirks: LLMQuirks = LLMQuirks()
+
+    # OpenAI 兼容协议：全实现类（工具调用 + thinking 经 extra_body 透传，
+    # 不支持的服务商由 reactive 重试兜底）。
+    capabilities = LLMCapabilities(tools=True, thinking=True)
 
     def __init__(
         self,

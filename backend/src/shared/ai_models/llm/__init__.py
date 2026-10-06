@@ -3,7 +3,7 @@
 R5 工厂自注册：client 类挂 _FACTORY_PROTOCOL 属性入注册表，create_llm_client 查表构造，新增协议不改分支链。
 """
 
-from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.base_model import BaseLLM, LLMCapabilities, resolve_capabilities
 from novamind.shared.ai_models.llm.anthropic_llm import AnthropicLLM
 from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
@@ -72,7 +72,13 @@ def create_llm_client(
     cls = _LLM_REGISTRY.get(protocol or "")
     if cls is None:
         raise ValueError(f"不支持的 LLM 协议: {protocol}")
-    return cls(**common_kwargs, **kwargs)
+    client = cls(**common_kwargs, **kwargs)
+    # 兜底补设 quirks：Ollama/Transformers 构造器不透传 quirks（**kwargs 吞掉），
+    # 用户 extra_config 声明（stream_only/supports_tools 等）在这两个协议上会
+    # 静默失效；已自行设置实例属性的类（OpenAI/Anthropic）不覆盖。
+    if quirks is not None and not hasattr(client, "quirks"):
+        client.quirks = quirks
+    return client
 
 
 __all__ = [
@@ -84,6 +90,8 @@ __all__ = [
     "OllamaLLM",
     "TransformersLLM",
     "LLMQuirks",
+    "LLMCapabilities",
     "resolve_quirks",
+    "resolve_capabilities",
     "create_llm_client",
 ]

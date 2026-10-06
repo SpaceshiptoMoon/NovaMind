@@ -23,12 +23,18 @@ class LLMQuirks:
             x-api-key 头（官方 Anthropic）；"bearer" 发 Authorization: Bearer
             头（兼容网关的 coding-plan token）。凭据签发方声明的属性，
             仅经用户 extra_config 声明，注册表不做 URL 猜测。
+        supports_tools: 用户显式声明的工具调用能力（True/False），None=未声明。
+            声明后覆盖客户端类默认能力（base_model.resolve_capabilities）。
+        supports_thinking: 用户显式声明的思考模式能力（True/False），None=未声明。
+            语义同 supports_tools。
     """
 
     stream_only: bool = False
     force_thinking: bool = False
     thinking_budget_ratio: float = 0.5
     auth_type: str = "api_key"
+    supports_tools: bool | None = None
+    supports_thinking: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +74,7 @@ _QUIRK_RULES: tuple[_QuirkRule, ...] = (
 )
 
 # extra_config → LLMQuirks 字段的白名单（布尔字段），防任意键注入
-_OVERRIDE_KEYS = {"stream_only", "force_thinking"}
+_OVERRIDE_KEYS = {"stream_only", "force_thinking", "supports_tools", "supports_thinking"}
 # 字符串枚举类覆盖键：值必须落在合法集合内才生效。
 # auth_type 是凭据签发方声明的语义（API Key vs Bearer token），代码无从推断，
 # 只能由用户经 extra_config.auth_type 声明——不做 URL 猜测，不内置特定厂商规则。

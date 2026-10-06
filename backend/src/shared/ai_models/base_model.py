@@ -8,6 +8,53 @@ from typing import Any
 import httpx
 
 
+@dataclass(frozen=True)
+class LLMCapabilities:
+    """LLM 客户端生效能力集——调用侧协商的唯一依据。
+
+    Attributes:
+        tools: 是否支持工具调用（generate_with_tools 可用）。
+        thinking: 是否支持思考模式（enable_thinking 参数有意义）。
+    """
+
+    tools: bool = False
+    thinking: bool = False
+
+
+def resolve_capabilities(llm: object) -> LLMCapabilities:
+    """解析 LLM 实例的生效能力：客户端类默认 ← quirks 用户声明覆盖。
+
+    duck-typing：不约束入参类型，任何带 capabilities/quirks 属性的对象均可
+    （含测试桩）。quirks 中 supports_tools/supports_thinking 为 None（未声明）
+    时不覆盖；显式声明（含 False）优先于类默认——声明 False 的语义是
+    「该端点实测不支持」，即使协议本身支持。
+
+    本函数放 base_model 而非 llm/quirks：base_model 引用 llm 包会经包初始化
+    与 llm/__init__ 的 base_model import 撞环（LLMCapabilities 属接口层概念，
+    归属基类模块；LLMQuirks 经 getattr 访问，无需 import）。
+
+    Args:
+        llm: LLM 客户端实例（BaseLLM 子类或行为兼容的测试桩）。
+
+    Returns:
+        生效能力集；实例缺 capabilities/quirks 属性时落全 False 兜底。
+    """
+    caps = getattr(llm, "capabilities", None)
+    base = caps if isinstance(caps, LLMCapabilities) else LLMCapabilities()
+    quirks = getattr(llm, "quirks", None)
+    if quirks is None:
+        return base
+    overrides = {
+        "tools": getattr(quirks, "supports_tools", None),
+        "thinking": getattr(quirks, "supports_thinking", None),
+    }
+    resolved = {
+        name: value if value is not None else getattr(base, name)
+        for name, value in overrides.items()
+    }
+    return LLMCapabilities(**resolved)
+
+
 def build_openai_http_client(
     timeout: int,
     max_connections: int,
@@ -96,6 +143,11 @@ class BaseLLM(ABC):
     约束所有 LLM 协议实现的统一接口规范。
     每种协议（OpenAI/Anthropic/Transformers）独立实现此类。
     """
+
+    # 协议能力默认值：声明该协议实现类原生支持的能力面，调用侧经
+    # resolve_capabilities 协商（quirks 用户声明可覆盖）。默认全 False，
+    # 支持的子类覆写——新能力上线前保持保守声明，避免运行时炸 NotImplementedError。
+    capabilities: LLMCapabilities = LLMCapabilities(tools=False, thinking=False)
 
     def __init__(
         self,
@@ -192,8 +244,7 @@ class BaseLLM(ABC):
         tool_choice: str = "auto",
         enable_thinking: bool = False,
     ) -> "LLMResponseWithTools":
-        """
-        支持工具调用的文本生成
+        """支持工具调用的文本生成
 
         Args:
             prompt: 提示词（字符串或消息列表）
@@ -205,7 +256,22 @@ class BaseLLM(ABC):
 
         Returns:
             LLMResponseWithTools: 包含 content、tool_calls、finish_reason
+
+        Raises:
+            NotImplementedError: 传入非空工具但后端未实现工具调用。
         """
+        if not tools:
+            # 纯文本路径委托 generate_text：无工具时任何协议都应可用，
+            # 上层（agent_engine 无工具路径）统一走本方法，不因协议缺工具
+            # 实现而炸（历史：Transformers/Ollama 纯文本对话报「不支持工具调用」）。
+            content = await self.generate_text(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                enable_thinking=enable_thinking,
+            )
+            return LLMResponseWithTools(content=content, tool_calls=None, finish_reason="stop")
         raise NotImplementedError("此 LLM 后端不支持工具调用")
 
     async def generate_with_tools_stream(
@@ -220,14 +286,23 @@ class BaseLLM(ABC):
     ) -> AsyncGenerator[ToolStreamEvent, None]:
         """支持工具调用的流式生成。
 
-        默认实现不支持（抛 NotImplementedError）；支持原生流式工具调用的
-        后端（如 OpenAICompatibleLLM）覆盖此方法，把 content/tool_call/usage
-        增量以 ToolStreamEvent 形式 yield。上层（AgentLLM）捕获
+        无工具时委托 generate_text_stream（任何协议都应可用的纯文本流式路径）；
+        有工具时默认不支持（抛 NotImplementedError），支持原生流式工具调用的
+        后端（如 OpenAICompatibleLLM）覆盖此方法。上层（AgentLLM）捕获
         NotImplementedError 后降级为非流式。
         """
+        if not tools:
+            async for chunk in self.generate_text_stream(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                enable_thinking=enable_thinking,
+            ):
+                yield ToolStreamEvent(type="content", content=chunk)
+            yield ToolStreamEvent(type="done", finish_reason="stop")
+            return
         raise NotImplementedError("此 LLM 后端不支持流式工具调用")
-        if False:  # pragma: no cover - 保持生成器签名
-            yield ToolStreamEvent(type="done")
 
     # ==================== Thinking 模式适配层（中转站） ====================
 
