@@ -414,7 +414,7 @@ class DeepResearchService:
         """延迟获取检索服务（批次 3.4：直持 SearchService，不再包 RetrievalPort）。
 
         构造函数中不调用异步工厂；若调用方传入 SearchService 则直接复用，
-        否则按需构造 SearchService(self.session, es_client, model_config_service)。
+        否则按需构造 InstrumentedSearchService（用户触发的深研检索进运营账本）。
         """
         if self._search_service_lazy is None:
             if self._search_service is not None:
@@ -425,7 +425,11 @@ class DeepResearchService:
                         "DeepResearchService 需要通过 es_client 参数传入 Elasticsearch 客户端，"
                         "请使用依赖注入方式创建实例"
                     )
-                self._search_service_lazy = SearchService(
+                from novamind.features.knowledge_space.services.instrumented_search_service import (
+                    InstrumentedSearchService,
+                )
+
+                self._search_service_lazy = InstrumentedSearchService(
                     self.session,
                     es_client=self._es_client,
                     model_config_service=self._model_config_service,

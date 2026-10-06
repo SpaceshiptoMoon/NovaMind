@@ -1,8 +1,14 @@
 """知识运营事件模型：跨会话/用户行为的运营信号账本。
 
-批次 O1 范围：query_reformulate（会话内改写）。citation_click（O2）、
-attribution（A1 归因写回）后续批次加入。查询侧信号（问答量/零命中/低分）
-不进本表——由 qa 的 extra + knowledge_space 看板承担，避免双事实源。
+事件类型（新增在此登记）：
+- query_reformulate：会话内提问改写（O1）
+- citation_click：用户点击回答引用（O2）
+- query：检索发生（InstrumentedSearchService 总线级埋点；含 results_count/
+  max_score 载荷，零命中/低分是归因流水线核心信号）
+- attribution：归因写回（A1）
+
+系统内部检索重放（kb-ops 归因 worker、evaluation 重放）不产生 query 事件
+——它们直接用 SearchService，只有用户触发的检索走 InstrumentedSearchService。
 """
 from novamind.core.database.base import BaseModel
 from sqlalchemy import JSON, BigInteger, Column, Index, String

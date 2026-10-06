@@ -44,7 +44,9 @@ class McpKbService:
             SearchLLMConfig,
             SearchRequest,
         )
-        from novamind.features.knowledge_space.services.search_service import SearchService
+        from novamind.features.knowledge_space.services.instrumented_search_service import (
+            InstrumentedSearchService,
+        )
         from novamind.features.user.services.model_config_service import ModelConfigService
 
         space_id, kb_id = await self._resolve_target(user_id, space_id, kb_id)
@@ -54,7 +56,7 @@ class McpKbService:
             top_k=top_k,
             llm=SearchLLMConfig(enabled=with_answer, temperature=0.3) if with_answer else None,
         )
-        search_service = SearchService(
+        search_service = InstrumentedSearchService(
             session=self.session,
             es_client=await self._get_es_client(),
             model_config_service=ModelConfigService(self.session),

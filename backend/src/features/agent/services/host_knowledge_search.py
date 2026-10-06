@@ -37,13 +37,17 @@ class HostKnowledgeSearchPort:
         return self._es_client
 
     async def _build_search_service(self) -> Any:
-        """组装 knowledge_space 的 SearchService（db + ES + 模型配置）。"""
-        from novamind.features.knowledge_space.services.search_service import (
-            SearchService,
+        """组装带运营埋点的检索服务（db + ES + 模型配置）。
+
+        Agent 知识工具是用户触发的检索消费方，用 InstrumentedSearchService
+        让 query 进 kb-ops 事件账本。
+        """
+        from novamind.features.knowledge_space.services.instrumented_search_service import (
+            InstrumentedSearchService,
         )
 
         es_client = await self._get_es_client()
-        return SearchService(self._db, es_client, self._mcs)
+        return InstrumentedSearchService(self._db, es_client, self._mcs)
 
     def _space_service(self) -> Any:
         """构造 SpaceService（跨 feature 只走公共面，函数内懒 import 防环）。"""

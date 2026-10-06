@@ -3,7 +3,9 @@ from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.pipeline import DocumentProcessor
-from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.instrumented_search_service import (
+    InstrumentedSearchService as SearchService,
+)
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
