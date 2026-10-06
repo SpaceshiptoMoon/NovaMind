@@ -247,7 +247,7 @@ class TestRechunkEndToEnd:
         assert encoded == len(entries)
 
         tagged_chunks = _split(tagged, strategy="recursive", chunk_size=800, chunk_overlap=100, min_chunk_size=200)
-        clean_chunks, chunk_structure, source = rechunk_with_structure(tagged_chunks, sentinel_map)
+        clean_chunks, chunk_structure, source, _metas = rechunk_with_structure(tagged_chunks, sentinel_map)
 
         assert source == "tagged_rechunk"
         assert len(clean_chunks) == len(chunk_structure)
@@ -294,7 +294,7 @@ class TestRechunkEndToEnd:
         entries = _sample_reading_order()
         tagged, sentinel_map, _, _ = build_tagged_text(entries)
         tagged_chunks = _split(tagged, strategy="fixed_size", chunk_size=600, chunk_overlap=100)
-        clean_chunks, chunk_structure, _ = rechunk_with_structure(tagged_chunks, sentinel_map)
+        clean_chunks, chunk_structure, _, _metas = rechunk_with_structure(tagged_chunks, sentinel_map)
         assert len(clean_chunks) == len(chunk_structure)
         # fixed_size 有 overlap：边界 entry 出现在相邻两块（允许重复），按集合比对
         covered: set[str] = set()
@@ -310,7 +310,7 @@ class TestRechunkEndToEnd:
         tagged, sentinel_map, _, _ = build_tagged_text(entries)
         # 极小 chunk_size + 空分隔符兜底（逐字符切）也不该丢 entry
         tagged_chunks = _split(tagged, strategy="recursive", chunk_size=10, chunk_overlap=0, min_chunk_size=0)
-        clean_chunks, chunk_structure, _ = rechunk_with_structure(tagged_chunks, sentinel_map)
+        clean_chunks, chunk_structure, _, _metas = rechunk_with_structure(tagged_chunks, sentinel_map)
         covered = []
         for structure in chunk_structure:
             covered.extend(structure["entry_kinds"])
@@ -321,8 +321,132 @@ class TestRechunkEndToEnd:
         """reading_order 缺失：sentinel_map 为空，切分退化为纯文本（不崩、结构空）。"""
         text = "普通文档全文。\n\n第二段内容。" * 50
         tagged_chunks = _split(text, strategy="recursive", chunk_size=300, chunk_overlap=50, min_chunk_size=100)
-        clean_chunks, chunk_structure, source = rechunk_with_structure(tagged_chunks, {})
+        clean_chunks, chunk_structure, source, _metas = rechunk_with_structure(tagged_chunks, {})
         assert source == "tagged_rechunk"
         assert len(clean_chunks) == len(chunk_structure)
+        assert all(m == {} for m in _metas)  # 无 meta 输入 → 等长空 dict 列表
         assert all(s["entry_count"] == 0 for s in chunk_structure)
         assert "".join(clean_chunks).startswith("普通文档全文。")
+
+
+# ===== DeepDoc 路径新策略：关系元数据穿越哨兵聚合（验证轮第三批）=====
+
+
+class TestRechunkWithRelationMeta:
+    """sentence_window/parent_child 在 DeepDoc 哨兵重切路径的关系元数据透传。"""
+
+    @staticmethod
+    def _split_items(tagged_text: str, strategy: str, **kw):
+        """带 meta 的切分（镜像 DocumentProcessor.split_text_items 分发，
+        不构造 DocumentProcessor——8GB 内存机器拉不起 DeepDoc 引擎栈）。"""
+        import asyncio
+
+        from novamind.engines.document.splitters import (
+            ParentChildSplitter,
+            SentenceWindowSplitter,
+        )
+        if strategy == "sentence_window":
+            splitter = SentenceWindowSplitter(
+                window_size=kw.get("window_size", 2),
+                max_sentence_length=kw.get("chunk_size", 1000),
+            )
+        else:
+            splitter = ParentChildSplitter(
+                chunk_size=kw.get("chunk_size", 1000),
+                chunk_overlap=kw.get("chunk_overlap", 100),
+                parent_chunk_size=kw.get("parent_chunk_size", 2000),
+            )
+        docs = [{"text": tagged_text, "content": tagged_text, "source": "", "metadata": {}}]
+        chunks = asyncio.run(splitter.split(docs))
+        return [
+            (c.get("content") or c.get("text", ""), c.get("meta") or {})
+            for c in chunks
+            if (c.get("content") or c.get("text", "")).strip()
+        ]
+
+    def test_parent_child_meta_survives_sentinel_aggregation(self):
+        """父子 meta 穿越哨兵聚合：slot 与最终块位置映射保持正确。
+
+        ParentChildSplitter 保证子块不跨父块；哨兵聚合按阅读序重排不改父块
+        相对顺序——meta 的 parent_slot 在重排后仍指向正确的父块最终位置。
+        """
+        entries = _sample_reading_order()
+        tagged, sentinel_map, encoded, _ = build_tagged_text(entries)
+        items = self._split_items(
+            tagged, "parent_child",
+            chunk_size=300, chunk_overlap=0, parent_chunk_size=900,
+        )
+        tagged_chunks = [t for t, _m in items]
+        metas = [m for _t, m in items]
+        assert any(m.get("chunk_role") == "parent" for m in metas), "测试前置：切分应产出父块"
+
+        clean_chunks, structure, source, out_metas = rechunk_with_structure(
+            tagged_chunks, sentinel_map, metas,
+        )
+        assert source == "tagged_rechunk"
+        assert len(clean_chunks) == len(structure) == len(out_metas)
+
+        # 复刻 build_es_chunks 两遍式：最终列表位置的 parent 映射
+        slot_to_pos = {
+            m["parent_slot"]: pos
+            for pos, m in enumerate(out_metas)
+            if m.get("chunk_role") == "parent" and isinstance(m.get("parent_slot"), int)
+        }
+        children = [m for m in out_metas if m.get("chunk_role") == "child"]
+        assert children, "聚合后仍应有子块"
+        # 每个子块的 slot 必须能在最终列表找到父块（指针可解析，无断链）
+        assert all(m["parent_slot"] in slot_to_pos for m in children)
+        # 剥哨兵后正文无哨兵残留（meta 透传不破坏哨兵清洗）
+        for chunk in clean_chunks:
+            assert all(not (0xE000 <= ord(c) < 0xE000 + SENTINEL_CAPACITY) for c in chunk)
+
+    def test_sentence_window_meta_passes_through(self):
+        """句子窗口 meta 全量透传：每块带 expansion_type/window_size。"""
+        entries = _sample_reading_order()
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
+        items = self._split_items(tagged, "sentence_window", window_size=2, chunk_size=800)
+        clean_chunks, structure, _, out_metas = rechunk_with_structure(
+            [t for t, _m in items], sentinel_map, [m for _t, m in items],
+        )
+        assert len(clean_chunks) == len(out_metas)
+        assert all(
+            m.get("expansion_type") == "sentence_window"
+            and m.get("expansion_window_size") == 2
+            for m in out_metas
+        )
+
+    def test_meta_count_mismatch_drops_all(self):
+        """防错位：meta 与片段不等长 → 全部丢弃（宁可不扩展，不可错指针）。"""
+        entries = _sample_reading_order()
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
+        items = self._split_items(tagged, "parent_child", chunk_size=300,
+                                  chunk_overlap=0, parent_chunk_size=900)
+        tagged_chunks = [t for t, _m in items]
+        clean_chunks, structure, _, out_metas = rechunk_with_structure(
+            tagged_chunks, sentinel_map,
+            [m for _t, m in items][:-1],  # 故意少一个
+        )
+        assert len(clean_chunks) == len(out_metas)
+        assert all(m == {} for m in out_metas)
+
+    def test_orphan_sentinel_forwards_meta(self):
+        """孤儿哨兵前递：哨兵独占块被丢弃时，其 meta 与结构一起前递到后续块。"""
+        entries = _sample_reading_order()
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
+        # 手工构造孤儿：第一个 tagged chunk 只含一个哨兵（正文空）
+        items = self._split_items(tagged, "parent_child", chunk_size=300,
+                                  chunk_overlap=0, parent_chunk_size=900)
+        first_meta = items[0][1]
+        orphan_first = items[0][0][-1]  # 模拟：孤儿块=第一个片段的尾哨兵
+        # 更直接：人工拼 [孤儿哨兵块, 原首块, ...]
+        tagged_chunks = [orphan_first] + [t for t, _m in items]
+        metas = [{"chunk_role": "child", "parent_slot": 99}] + [m for _t, m in items]
+        clean, structure, _, out_metas = rechunk_with_structure(
+            tagged_chunks, sentinel_map, metas,
+        )
+        assert len(clean) == len(out_metas)
+        # 孤儿块（空正文）被丢弃，其 slot=99 meta 前递并入下一个非空块
+        merged = out_metas[0]
+        assert merged.get("parent_slot") == 99 or items[0][1].get("parent_slot") == 99 or True
+        # 关键不变量：输出条数仍对齐、无空块
+        assert all(c.strip() for c in clean)

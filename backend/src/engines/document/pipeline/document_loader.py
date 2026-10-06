@@ -571,17 +571,11 @@ class DocumentProcessor:
                     filename=Path(file_path).name,
                 )
                 split_strategy = "recursive"
-            # 新窗口策略依赖关系元数据（chunk_role/parent_slot/expansion_type），
-            # 而本路径经哨兵重切产不出这些 meta——回退 recursive 而非静默吞掉
-            #（用户在 KB 配置页选了新策略时，此处是唯一的可观测点）。
-            if split_strategy not in ("recursive", "fixed_size", "markdown", "delimiter"):
-                logger.warning(
-                    "DeepDoc 路径暂不支持该切分策略（哨兵重切无关系元数据），回退到 recursive",
-                    filename=Path(file_path).name,
-                    requested_strategy=split_strategy,
-                )
-                split_strategy = "recursive"
-            tagged_rechunked = await self.split_text(
+            # 哨兵替身按 \n\n 连接 entry 文本，与 full_text 同构——split_text_items
+            # 产出的关系元数据（parent_slot/expansion_type）随替身片段穿越哨兵
+            # 聚合，由 rechunk_with_structure 按最终块透传（孤儿前递/尾部挂靠同
+            # chunk_structure 规则），DeepDoc 路径与新策略不再互斥。
+            tagged_split_items = await self.split_text_items(
                 rechunk_source_text,
                 strategy=split_strategy,
                 chunk_size=splitting_config.get("chunk_size", 1000),
@@ -591,22 +585,31 @@ class DocumentProcessor:
                 similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
                 batch_size=splitting_config.get("batch_size", 20),
                 separators=splitting_config.get("separators"),
+                window_size=splitting_config.get("window_size", 2),
+                parent_chunk_size=splitting_config.get("parent_chunk_size", 2000),
             )
-            clean_chunks, chunk_structure, structure_source = rechunk_with_structure(
-                tagged_rechunked, sentinel_map
+            tagged_rechunked = [t for t, _meta in tagged_split_items]
+            tagged_chunk_metas = [meta for _t, meta in tagged_split_items]
+            clean_chunks, chunk_structure, structure_source, chunk_structure_meta = (
+                rechunk_with_structure(tagged_rechunked, sentinel_map, tagged_chunk_metas)
             )
+            result_metadata = {
+                **parse_result.metadata,
+                "split_strategy": split_strategy,
+                "deepdoc_rechunked": True,
+                "chunk_structure": chunk_structure,
+                "chunk_structure_source": structure_source,
+                "tagged_rechunk_encoded_entries": encoded_count,
+                "tagged_rechunk_degraded_entries": degraded_count,
+            }
+            # 关系元数据按位对齐透出（默认分支同名键）；仅存在非空 meta 时写键，
+            # 存量策略保持 metadata 形状不变。
+            if any(chunk_structure_meta):
+                result_metadata["chunk_structure_meta"] = chunk_structure_meta
             parse_result = DeepDocParseResult(
                 full_text=strip_position_tags(parse_result.full_text),
                 chunks=clean_chunks,
-                metadata={
-                    **parse_result.metadata,
-                    "split_strategy": split_strategy,
-                    "deepdoc_rechunked": True,
-                    "chunk_structure": chunk_structure,
-                    "chunk_structure_source": structure_source,
-                    "tagged_rechunk_encoded_entries": encoded_count,
-                    "tagged_rechunk_degraded_entries": degraded_count,
-                },
+                metadata=result_metadata,
             )
             logger.info(
                 "DeepDoc 哨兵重切完成",

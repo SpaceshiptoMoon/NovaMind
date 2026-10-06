@@ -222,42 +222,73 @@ def extract_chunk_structure(
 def rechunk_with_structure(
     tagged_chunks: list[str],
     sentinel_map: dict[int, dict[str, Any]],
-) -> tuple[list[str], list[dict[str, Any]], str]:
-    """对切分器产出的带哨兵 chunks 剥哨兵并聚合结构。
+    chunk_metas: list[dict[str, Any]] | None = None,
+) -> tuple[list[str], list[dict[str, Any]], str, list[dict[str, Any]]]:
+    """对切分器产出的带哨兵 chunks 剥哨兵并聚合结构，关系元数据随块透传。
+
+    Args:
+        tagged_chunks: 切分器产出的带哨兵片段列表（与 split_text_items 文本列同序）。
+        sentinel_map: build_tagged_text 产出的 ``{entry_index: entry}``。
+        chunk_metas: 与 tagged_chunks 等长的关系元数据列表
+            （sentence_window/parent_child 产物；None = 存量调用，恒返回空 dict 列表）。
+            空 chunk 被丢弃时其 meta 与孤儿结构同规则前递/挂靠，保证输出与
+            clean_chunks 一一对应。
 
     Returns:
-        (clean_chunks, chunk_structure, source)
+        (clean_chunks, chunk_structure, source, chunk_structure_meta)
 
         - clean_chunks: 剥哨兵后的干净正文（进 embedding / ES content）
         - chunk_structure: 与 clean_chunks 一一对应（含 entry_bboxes 扩展键；
           完全无哨兵的 chunk 也会产出 entry_count=0 占位结构，保证条数对齐）
         - source: 恒 ``tagged_rechunk``，写入 parse metadata 供下游甄别
+        - chunk_structure_meta: 与 clean_chunks 一一对应的关系元数据
+          （无 meta 输入时为等长空 dict 列表）
     """
+    has_metas = chunk_metas is not None
+    if has_metas and len(chunk_metas) != len(tagged_chunks):
+        # 防错位：meta 与片段不等长时宁可全丢（退化为无关系元数据），
+        # 也不能张冠李戴把子块挂到错误父块（错误指针 > 无扩展）。
+        logger.warning(
+            "chunk_metas 与 tagged_chunks 条数不齐，关系元数据全部丢弃",
+            meta_count=len(chunk_metas), chunk_count=len(tagged_chunks),
+        )
+        has_metas = False
+
     clean_chunks: list[str] = []
     chunk_structure: list[dict[str, Any]] = []
+    chunk_structure_meta: list[dict[str, Any]] = []
     # 孤儿哨兵前递：哨兵是 entry 文本的前缀。极端切分参数（字符级兜底）会把
     # 哨兵与其正文切成两个 chunk——孤儿哨兵 chunk 剥哨兵后正文为空被丢弃时，
     # 其 entry 结构必须前递给下一个非空 chunk（正文在后续 chunk 里），否则
-    # 该 entry 的页码坐标永久丢失。
+    # 该 entry 的页码坐标永久丢失。关系元数据同规则前递（孤儿块多为单哨兵
+    # 片段，其 meta 取「最后一个非空 meta」——同父块子块前递语义正确）。
     pending: dict[str, Any] | None = None
-    for tagged in tagged_chunks:
+    pending_meta: dict[str, Any] = {}
+    for pos, tagged in enumerate(tagged_chunks):
         clean = strip_sentinels(tagged).strip()
         structure = extract_chunk_structure(tagged, sentinel_map)
+        meta = dict(chunk_metas[pos]) if has_metas else {}
         if pending is not None:
             # 前递结构按序并入当前 chunk（保持阅读序，去重防 overlap 双计）
             structure = _merge_structures(pending, structure)
+            meta = {**pending_meta, **meta} or meta
             pending = None
+            pending_meta = {}
         if not clean:
             if structure["entry_count"]:
                 pending = structure
+                pending_meta = meta
             continue
         structure["chunk_index"] = len(clean_chunks)
         clean_chunks.append(clean)
         chunk_structure.append(structure)
+        chunk_structure_meta.append(meta)
     # 尾部孤儿：哨兵在最后一块且其后无非空 chunk——挂到上一块（若有）
     if pending is not None and chunk_structure:
         chunk_structure[-1] = _merge_structures(chunk_structure[-1], pending)
-    return clean_chunks, chunk_structure, CHUNK_STRUCTURE_SOURCE
+        if pending_meta:
+            chunk_structure_meta[-1] = {**chunk_structure_meta[-1], **pending_meta}
+    return clean_chunks, chunk_structure, CHUNK_STRUCTURE_SOURCE, chunk_structure_meta
 
 
 def _merge_structures(
