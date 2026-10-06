@@ -4,6 +4,7 @@ from typing import Any
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.exceptions import (
     AuthenticationError,
+    PasswordSameAsOldError,
     PermissionDeniedError,
     UserAlreadyExistsError,
     UserCreationError,
@@ -726,8 +727,12 @@ class UserService:
         Raises:
             AuthenticationError: 当前密码错误
             UserNotFoundError: 用户不存在
+            PasswordSameAsOldError: 新密码与当前密码相同
         """
         from novamind.core.auth.hashing import get_password_hash_async, verify_password_async
+
+        if new_password == old_password:
+            raise PasswordSameAsOldError()
 
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
         if not user:

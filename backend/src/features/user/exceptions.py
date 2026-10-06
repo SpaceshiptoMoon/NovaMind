@@ -98,6 +98,15 @@ class InvalidCredentialsError(UserError):
         super().__init__(message=message, code="INVALID_CREDENTIALS")
 
 
+class PasswordSameAsOldError(UserError):
+    """新密码与当前密码相同错误（改密无进展，拒绝而非静默接受）"""
+
+    http_status_code: ClassVar[int] = 400
+
+    def __init__(self, message: str = "新密码不能与当前密码相同"):
+        super().__init__(message=message, code="PASSWORD_SAME_AS_OLD")
+
+
 class TokenExpiredError(UserError):
     """Token 已过期错误"""
 
@@ -235,6 +244,7 @@ __all__ = [
     "AuthenticationError",
     "PermissionDeniedError",
     "InvalidCredentialsError",
+    "PasswordSameAsOldError",
     "TokenExpiredError",
     "TokenInvalidError",
     # 模型配置异常

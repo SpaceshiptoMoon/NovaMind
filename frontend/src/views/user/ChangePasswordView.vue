@@ -90,6 +90,16 @@ const rules: FormRules = {
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 8, max: 30, message: '密码长度为8-30位', trigger: 'blur' },
+    {
+      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+        if (value && value === form.oldPassword) {
+          callback(new Error('新密码不能与当前密码相同'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
   ],
   confirmPassword: [
     { required: true, message: '请确认新密码', trigger: 'blur' },

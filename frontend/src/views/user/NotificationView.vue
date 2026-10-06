@@ -317,6 +317,18 @@ onMounted(() => {
 watch(settingsOpen, (open) => {
   if (open && !prefsLoading.value) fetchPrefs()
 })
+
+// 停留未读 tab 期间外部把通知标已读（如点开跳转页、别的标签页操作）：
+// store 轮询只收敛计数不刷本页列表，会呈现「未读 0 + 列表仍带未读高亮」的自相矛盾态
+// （评审 P3-3）——监听计数下降且当前停在未读过滤时同步重拉列表。
+watch(
+  () => notifStore.unreadCount,
+  (next, prev) => {
+    if (filter.value === 'unread' && next < prev) {
+      void fetchNotifications()
+    }
+  },
+)
 </script>
 
 <style scoped>
