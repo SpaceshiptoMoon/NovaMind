@@ -34,10 +34,12 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 
 @pytest_asyncio.fixture
 async def gov_db():
-    """SQLite 内存库：documents + question_answers。"""
+    """SQLite 内存库：documents + question_answers + kb_events + qa_session_configs。"""
     from novamind.core.database.base import Base
+    from novamind.features.knowledge_ops.models.kb_event import KbEvent
     from novamind.features.knowledge_space.models.document import Document
     from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.qa.models.session_config import SessionConfig
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool
@@ -45,7 +47,12 @@ async def gov_db():
     async with engine.begin() as conn:
         await conn.run_sync(
             lambda sync_conn: Base.metadata.create_all(
-                sync_conn, tables=[Document.__table__, QuestionAnswer.__table__]
+                sync_conn, tables=[
+                    Document.__table__,
+                    QuestionAnswer.__table__,
+                    KbEvent.__table__,
+                    SessionConfig.__table__,
+                ]
             )
         )
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -173,6 +180,86 @@ async def test_support_stats_aggregation(gov_db):
     assert by_doc[1] == 2  # 两条消息各支撑 1 次
     assert by_doc[2] == 1
     assert all(k != "http://x" for k in by_doc)  # web 不进
+
+
+# ========== 点击核验统计（citation_click 聚合 + 存量空间归属兜底） ==========
+
+
+@pytest.mark.asyncio
+async def test_citation_stats_with_session_fallback(gov_db):
+    """点击统计双通道：space_id 直配命中 + NULL 存量经会话 RAG 绑定兜底找回。"""
+    from novamind.features.knowledge_ops.models.kb_event import KbEvent
+    from novamind.features.knowledge_ops.repository.governance_repository import (
+        GovernanceRepository,
+    )
+    from novamind.features.qa.models.session_config import SessionConfig
+
+    factory, _ = gov_db
+    async with factory() as session:
+        # 会话配置：s-bound 绑定空间 10（新链路场景），s-legacy 绑定空间 10（存量 NULL 事件）
+        session.add(SessionConfig(
+            session_id="s-bound", user_id=1,
+            kb_bindings={"space_id": 10, "kb_ids": [1], "auto_rag": True},
+        ))
+        session.add(SessionConfig(
+            session_id="s-legacy", user_id=1,
+            kb_bindings={"space_id": 10, "kb_ids": [1], "auto_rag": True},
+        ))
+        # 直接归属空间 10 的事件（新链路）
+        session.add(KbEvent(
+            event_type="citation_click", user_id=1, session_id="s-bound",
+            space_id=10, kb_id=1, extra={"document_id": 1},
+        ))
+        # 存量 NULL space 事件（写侧收口前），经 s-legacy 兜底找回
+        session.add(KbEvent(
+            event_type="citation_click", user_id=1, session_id="s-legacy",
+            space_id=None, kb_id=1, extra={"document_id": 2},
+        ))
+        session.add(KbEvent(
+            event_type="citation_click", user_id=1, session_id="s-legacy",
+            space_id=None, kb_id=1, extra={"document_id": 2},
+        ))
+        await session.commit()
+
+    async with factory() as session:
+        repo = GovernanceRepository(session)
+        stats = await repo.citation_stats_by_document(10)
+
+    by_doc = {s["document_id"]: s["click_count"] for s in stats}
+    assert by_doc == {1: 1, 2: 2}  # 兜底找回 doc2 的两次点击
+
+
+@pytest.mark.asyncio
+async def test_citation_stats_excludes_unresolvable_and_other_space(gov_db):
+    """反例：兜底后仍无法判定归属（无会话配置/配置绑别空间）的事件不计入。"""
+    from novamind.features.knowledge_ops.models.kb_event import KbEvent
+    from novamind.features.knowledge_ops.repository.governance_repository import (
+        GovernanceRepository,
+    )
+    from novamind.features.qa.models.session_config import SessionConfig
+
+    factory, _ = gov_db
+    async with factory() as session:
+        # no-cfg 无会话配置（无从兜底）；other 绑定空间 99
+        session.add(SessionConfig(
+            session_id="other", user_id=1,
+            kb_bindings={"space_id": 99, "kb_ids": [1], "auto_rag": True},
+        ))
+        session.add(KbEvent(
+            event_type="citation_click", user_id=1, session_id="no-cfg",
+            space_id=None, kb_id=1, extra={"document_id": 1},
+        ))
+        session.add(KbEvent(
+            event_type="citation_click", user_id=1, session_id="other",
+            space_id=None, kb_id=1, extra={"document_id": 2},
+        ))
+        await session.commit()
+
+    async with factory() as session:
+        repo = GovernanceRepository(session)
+        stats = await repo.citation_stats_by_document(10)
+
+    assert stats == []  # 两类都不可归到空间 10
 
 
 # ========== 矛盾候选带 ==========

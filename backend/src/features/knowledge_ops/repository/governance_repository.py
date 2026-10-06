@@ -101,28 +101,50 @@ class GovernanceRepository:
     ) -> list[dict[str, Any]]:
         """文档被点击核验统计：kb_events.citation_click 按 extra.document_id 聚合。
 
+        空间归属走「事件行 space_id OR 会话 RAG 绑定兜底」双通道：写侧收口
+        （735c7d5）前的存量点击事件 space_id 为 NULL，经产生它的会话配置找回
+        （与 support_stats/归因/gap 同款兜底链）；两通道皆不可判定的行不计入。
+
         Returns:
             [{document_id, kb_id, click_count}] 按点击降序。
         """
         from novamind.features.knowledge_ops.models.kb_event import KbEvent
+        from novamind.features.qa.models.session_config import SessionConfig
 
         rows = (await self.session.execute(
             select(
+                KbEvent.session_id,
+                KbEvent.space_id,
                 KbEvent.extra["document_id"].as_integer().label("document_id"),
-                func.count(KbEvent.id).label("click_count"),
             )
             .where(
-                KbEvent.space_id == space_id,
                 KbEvent.event_type == "citation_click",
                 KbEvent.extra["document_id"].as_integer().isnot(None),
             )
-            .group_by(KbEvent.extra["document_id"].as_integer())
-            .order_by(func.count(KbEvent.id).desc())
-            .limit(limit)
         )).all()
+
+        null_space_sessions = {r.session_id for r in rows if r.space_id is None and r.session_id}
+        session_space: dict[str, int | None] = {}
+        if null_space_sessions:
+            cfg_rows = (await self.session.execute(
+                select(
+                    SessionConfig.session_id,
+                    SessionConfig.kb_bindings["space_id"].as_integer(),
+                ).where(SessionConfig.session_id.in_(null_space_sessions))
+            )).all()
+            session_space = {r.session_id: r[1] for r in cfg_rows}
+
+        counts: dict[int, int] = {}
+        for r in rows:
+            effective_space = r.space_id if r.space_id is not None else session_space.get(r.session_id)
+            if effective_space != space_id:
+                continue  # 兜底后仍不属于该空间（或无从判定）→ 不计入
+            counts[r.document_id] = counts.get(r.document_id, 0) + 1
+
+        ranked = sorted(counts.items(), key=lambda x: -x[1])[:limit]
         return [
-            {"document_id": r.document_id, "click_count": int(r.click_count)}
-            for r in rows
+            {"document_id": doc_id, "click_count": count}
+            for doc_id, count in ranked
         ]
 
     async def support_stats_by_document(
