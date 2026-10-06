@@ -8,6 +8,7 @@ import type {
   KbOpsDuplicates,
   KbOpsCitationStats,
   KbOpsContradictionScan,
+  KbOpsEventList,
 } from '../types'
 
 /**
@@ -69,5 +70,13 @@ export const spaceStatsApi = {
     return request.post<KbOpsContradictionScan>(
       `/kb-ops/spaces/${spaceId}/contradiction-scan?kb_id=${kbId}`,
     )
+  },
+
+  /** kb-ops 运营事件账本（只追加：检索/改写/引用点击/归因，created_at 倒序分页） */
+  getEvents(
+    spaceId: number,
+    params?: { event_type?: string; start?: string; end?: string; limit?: number; offset?: number },
+  ) {
+    return request.get<KbOpsEventList>(`/kb-ops/spaces/${spaceId}/events`, params)
   },
 }

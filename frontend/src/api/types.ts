@@ -1150,6 +1150,26 @@ export interface KbOpsCitationStats {
   total: number
 }
 
+/** kb-ops 运营事件账本条目（只追加：query=检索 / query_reformulate=提问改写 / citation_click=引用点击 / attribution=归因写回） */
+export interface KbOpsEvent {
+  id: number
+  event_type: string
+  user_id: number
+  session_id: string | null
+  space_id: number | null
+  kb_id: number | null
+  query_text: string | null
+  extra: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface KbOpsEventList {
+  items: KbOpsEvent[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface KbOpsContradictionScan {
   kb_id: number
   suggestions_created: number

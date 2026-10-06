@@ -2,7 +2,7 @@
   <div class="kbops-page">
     <PageHeader
       title="知识运营"
-      description="复审建议处置 · 重复内容治理 · 文档价值洞察"
+      description="事件账本 · 复审建议处置 · 重复内容治理 · 文档价值洞察"
     >
       <template #actions>
         <el-select v-model="kbFilter" placeholder="矛盾扫描知识库" style="width: 190px" clearable>
@@ -21,6 +21,57 @@
     </PageHeader>
 
     <el-tabs v-model="activeTab" class="kbops-tabs">
+      <!-- ===== Tab 0：事件账本（O2：检索/改写/引用点击/归因 只追加流水） ===== -->
+      <el-tab-pane :label="`事件账本 (${eventsTotal})`" name="events">
+        <div class="events-toolbar">
+          <el-select v-model="eventTypeFilter" style="width: 160px" @change="loadEvents(1)">
+            <el-option label="全部事件" value="" />
+            <el-option v-for="(label, type) in EVENT_TYPE_LABELS" :key="type" :label="label" :value="type" />
+          </el-select>
+          <span class="events-hint">所有入口（Web 问答 / API / MCP / skill）的用户触发检索都会记录在此</span>
+        </div>
+        <el-table
+          v-loading="loadingEvents"
+          :data="events"
+          class="kbops-table"
+          empty-text="暂无事件——触发一次检索（问答或 MCP/skill 调用）后会出现"
+        >
+          <el-table-column label="时间" width="150">
+            <template #default="{ row }">
+              <span class="event-time">{{ formatDate(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="110">
+            <template #default="{ row }">
+              <el-tag :type="eventTypeTag(row.event_type)" size="small">
+                {{ eventTypeLabel(row.event_type) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="查询 / 信号" min-width="260">
+            <template #default="{ row }">
+              <span v-if="row.query_text" class="query-text" :title="row.query_text">{{ row.query_text }}</span>
+              <span v-else class="event-muted">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="检索明细" min-width="220">
+            <template #default="{ row }">
+              <span v-if="eventSearchSummary(row)" class="event-muted">{{ eventSearchSummary(row) }}</span>
+              <span v-else class="event-muted">—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="events-pager">
+          <el-pagination
+            layout="prev, pager, next, total"
+            :total="eventsTotal"
+            :page-size="EVENTS_PAGE_SIZE"
+            :current-page="eventsPage"
+            @current-change="loadEvents"
+          />
+        </div>
+      </el-tab-pane>
+
       <!-- ===== Tab 1：复审建议（B2/D 人工裁决队列） ===== -->
       <el-tab-pane :label="`复审建议 (${suggestions.length})`" name="suggestions">
         <el-table
@@ -161,15 +212,17 @@
 </template>
 
 <script setup lang="ts">
-/** 知识运营管理页（kb-ops 前端批次）：建议处置/重复治理/文档价值三面合一 */
+/** 知识运营管理页（kb-ops 前端批次）：事件账本/建议处置/重复治理/文档价值四面合一 */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { spaceApi } from '@/api/space'
 import { knowledgeBaseApi, spaceStatsApi } from '@/api/knowledge'
 import { documentApi } from '@/api/knowledge/document'
+import { formatDate } from '@/utils/format'
 import type {
   KbOpsDuplicateGroup,
+  KbOpsEvent,
   KbOpsSuggestion,
 } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -177,9 +230,63 @@ import PageHeader from '@/components/common/PageHeader.vue'
 const route = useRoute()
 const spaceId = computed(() => parseInt(String(route.params.id), 10))
 
-const activeTab = ref('suggestions')
+const activeTab = ref('events')
 const resolvingId = ref<number | null>(null)
 const scanning = ref(false)
+
+// ===== 事件账本 =====
+const EVENTS_PAGE_SIZE = 20
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  query: '检索',
+  query_reformulate: '提问改写',
+  citation_click: '引用点击',
+  attribution: '归因写回',
+}
+const events = ref<KbOpsEvent[]>([])
+const eventsTotal = ref(0)
+const eventsPage = ref(1)
+const eventTypeFilter = ref('')
+const loadingEvents = ref(false)
+
+function eventTypeLabel(type: string): string {
+  return EVENT_TYPE_LABELS[type] ?? type
+}
+
+function eventTypeTag(type: string): 'success' | 'primary' | 'warning' | 'info' {
+  if (type === 'query') return 'success'
+  if (type === 'query_reformulate') return 'primary'
+  if (type === 'citation_click') return 'warning'
+  return 'info'
+}
+
+/** query 事件的检索载荷摘要（结果数/最高分/模式），其他事件类型无此载荷 */
+function eventSearchSummary(row: KbOpsEvent): string {
+  if (row.event_type !== 'query' || !row.extra) return ''
+  const parts: string[] = []
+  if (typeof row.extra.results_count === 'number') parts.push(`${row.extra.results_count} 条结果`)
+  if (typeof row.extra.max_score === 'number') parts.push(`最高分 ${row.extra.max_score.toFixed(2)}`)
+  if (typeof row.extra.search_mode === 'string') parts.push(row.extra.search_mode)
+  return parts.join(' · ')
+}
+
+async function loadEvents(page = 1) {
+  loadingEvents.value = true
+  eventsPage.value = page
+  try {
+    const data = await spaceStatsApi.getEvents(spaceId.value, {
+      event_type: eventTypeFilter.value || undefined,
+      limit: EVENTS_PAGE_SIZE,
+      offset: (page - 1) * EVENTS_PAGE_SIZE,
+    })
+    events.value = data.items
+    eventsTotal.value = data.total
+  } catch {
+    events.value = []
+    eventsTotal.value = 0
+  } finally {
+    loadingEvents.value = false
+  }
+}
 
 // ===== 复审建议 =====
 const suggestions = ref<KbOpsSuggestion[]>([])
@@ -324,7 +431,7 @@ onMounted(async () => {
     kbOptions.value = []
   }
   void spaceApi.getSpaces().catch(() => null) // 预热空间权限（401 会在全局拦截器处理）
-  await Promise.all([loadSuggestions(), loadDuplicates(), loadValueStats()])
+  await Promise.all([loadEvents(), loadSuggestions(), loadDuplicates(), loadValueStats()])
   await resolveDocNames()
 })
 </script>
@@ -347,6 +454,62 @@ onMounted(async () => {
 
 .tab-note {
   margin-bottom: 12px;
+}
+
+.events-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.events-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.events-pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.event-time {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.query-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.event-muted {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .events-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .events-hint {
+    white-space: normal;
+  }
 }
 
 .reason-text {
