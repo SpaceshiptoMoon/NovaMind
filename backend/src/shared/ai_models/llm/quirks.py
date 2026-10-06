@@ -21,7 +21,8 @@ class LLMQuirks:
             收编自 openai_compatible._THINKING_BUDGET_RATIO。
         auth_type: Anthropic 协议凭据的鉴权头语义。"api_key"（默认）发
             x-api-key 头（官方 Anthropic）；"bearer" 发 Authorization: Bearer
-            头（智谱等兼容网关的 coding-plan token 语义）。
+            头（兼容网关的 coding-plan token）。凭据签发方声明的属性，
+            仅经用户 extra_config 声明，注册表不做 URL 猜测。
     """
 
     stream_only: bool = False
@@ -64,19 +65,13 @@ _QUIRK_RULES: tuple[_QuirkRule, ...] = (
         model_pattern=r"^qwen3",
         quirks=LLMQuirks(force_thinking=True),
     ),
-    # 智谱 Anthropic 兼容端点（coding plan）：凭据语义是 Bearer token
-    # （官方文档指定 ANTHROPIC_AUTH_TOKEN）。2026-10-06 实测两种头都放行，
-    # 但 Bearer 是其正规语义；且该网关优先校验 Authorization 头。
-    _QuirkRule(
-        base_url_pattern="open.bigmodel.cn/api/anthropic",
-        model_pattern=r".*",
-        quirks=LLMQuirks(auth_type="bearer"),
-    ),
 )
 
 # extra_config → LLMQuirks 字段的白名单（布尔字段），防任意键注入
 _OVERRIDE_KEYS = {"stream_only", "force_thinking"}
-# 字符串枚举类覆盖键：值必须落在合法集合内才生效
+# 字符串枚举类覆盖键：值必须落在合法集合内才生效。
+# auth_type 是凭据签发方声明的语义（API Key vs Bearer token），代码无从推断，
+# 只能由用户经 extra_config.auth_type 声明——不做 URL 猜测，不内置特定厂商规则。
 _OVERRIDE_ENUM_KEYS: dict[str, frozenset[str]] = {"auth_type": frozenset({"api_key", "bearer"})}
 
 

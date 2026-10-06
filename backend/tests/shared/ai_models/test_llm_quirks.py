@@ -97,14 +97,14 @@ def testis_stream_only_error_rejects_auth_and_timeout():
 # ========== auth_type 鉴权头语义 ==========
 
 
-def test_zhipu_anthropic_endpoint_resolves_bearer():
-    """智谱 Anthropic 兼容端点命中 bearer（coding-plan token 语义）。"""
+def test_any_endpoint_defaults_to_api_key():
+    """任何端点都不做 URL 猜测：缺省一律 x-api-key 官方语义。"""
     quirks = resolve_quirks("https://open.bigmodel.cn/api/anthropic", "glm-5.3-flash")
-    assert quirks.auth_type == "bearer"
+    assert quirks.auth_type == "api_key"
 
 
 def test_official_anthropic_stays_api_key():
-    """官方 Anthropic 端点不命中，保持 x-api-key 语义。"""
+    """官方 Anthropic 端点保持 x-api-key 语义。"""
     quirks = resolve_quirks("https://api.anthropic.com", "claude-sonnet-4-5")
     assert quirks.auth_type == "api_key"
 

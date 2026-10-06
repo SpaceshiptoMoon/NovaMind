@@ -123,7 +123,7 @@
               v-model="extraConfigStr"
               type="textarea"
               :rows="3"
-              placeholder='{"dimension": 1024}'
+              placeholder='{"dimension": 1024} ；anthropic 协议凭据为 token 时声明 {"auth_type": "bearer"}'
             />
           </el-form-item>
         </el-form>

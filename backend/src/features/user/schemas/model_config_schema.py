@@ -39,8 +39,16 @@ class ModelConfigBase(BaseModel):
     )
     extra_config: dict[str, Any] | None = Field(
         None,
-        description="扩展配置（如 dimension、endpoint 等）",
-        examples=[{"dimension": 1024, "endpoint": "https://custom.api"}]
+        description=(
+            "扩展配置（如 dimension、timeout、stream_only/force_thinking/"
+            "auth_type 怪癖声明）；anthropic 协议下 auth_type 指定凭据头语义："
+            "api_key=x-api-key 头（默认），bearer=Authorization Bearer 头"
+            "（coding-plan token 类凭据需显式声明）"
+        ),
+        examples=[
+            {"dimension": 1024, "endpoint": "https://custom.api"},
+            {"auth_type": "bearer"},
+        ],
     )
 
     @field_validator('model_type')
