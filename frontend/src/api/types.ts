@@ -850,6 +850,17 @@ export interface SearchQueryRewrite {
   llm_model?: string
 }
 
+/** 检索期上下文扩展配置：关闭后恒返回原始检索单元，不拼邻居/父块/章节内容 */
+export interface SearchExpansion {
+  enabled?: boolean
+  /** 允许句子窗口扩窗（仅 strategy=sentence_window 的文档产出该元数据） */
+  include_window?: boolean
+  /** 允许父子分块回带父块（仅 strategy=parent_child 的文档产出该元数据） */
+  include_parent?: boolean
+  /** 允许层级切分双向扩展（仅 strategy=hierarchical 的文档产出该元数据） */
+  include_hierarchical?: boolean
+}
+
 export interface SearchRequest {
   query: string
   search_mode?: string
@@ -861,6 +872,7 @@ export interface SearchRequest {
   score_threshold?: number
   fallback_on_unavailable?: boolean
   use_cache?: boolean
+  expansion?: SearchExpansion
 }
 
 export interface SearchResultItem {
@@ -876,6 +888,10 @@ export interface SearchResultItem {
   image_url?: string
   media_url?: string
   chunk_type?: string
+  /** 父子分块角色：parent/child（仅 strategy=parent_child）；其余 null */
+  chunk_role?: string | null
+  /** 层级切分内容类型：text/table/code（仅 strategy=hierarchical）；其余 null */
+  content_type?: string | null
 }
 
 export interface SearchResponse {

@@ -4210,6 +4210,37 @@
         "title": "EvaluationTaskProgressResponse",
         "type": "object"
       },
+      "ExpansionConfig": {
+        "description": "检索期上下文扩展配置。\n\n扩展是元数据驱动的后处理：命中块携带扩展元数据（sentence_window 扩窗 /\nparent_child 回带父块 / hierarchical 双向追加）时自动拼上下文；关闭后\n返回的恒是原始检索单元（原子块/子块），不拼接任何邻居/父块/章节内容。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "description": "是否启用检索期上下文扩展（默认启用——与存量行为一致）",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "include_hierarchical": {
+            "default": true,
+            "description": "允许层级切分双向扩展（仅 strategy=hierarchical 的文档产出该元数据）",
+            "title": "Include Hierarchical",
+            "type": "boolean"
+          },
+          "include_parent": {
+            "default": true,
+            "description": "允许父子分块回带父块（仅 strategy=parent_child 的文档产出该元数据）",
+            "title": "Include Parent",
+            "type": "boolean"
+          },
+          "include_window": {
+            "default": true,
+            "description": "允许句子窗口扩窗（仅 strategy=sentence_window 的文档产出该元数据）",
+            "title": "Include Window",
+            "type": "boolean"
+          }
+        },
+        "title": "ExpansionConfig",
+        "type": "object"
+      },
       "ExternalSearchConfig": {
         "description": "外部 Web 搜索配置\n\n控制外部搜索引擎的行为",
         "properties": {
@@ -9562,6 +9593,17 @@
       "SearchRequest": {
         "description": "统一检索请求\n\n支持多种检索策略和检索目标的灵活组合。\n\n组合示例：\n- content_hybrid: 内容混合检索（默认）\n- all_hybrid: 全字段全算法融合（最强召回）\n- question_hybrid: 问题混合检索（需启用问题生成）",
         "properties": {
+          "expansion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpansionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "检索期上下文扩展配置（None = 全部启用，等价 ExpansionConfig()）"
+          },
           "fallback_on_unavailable": {
             "default": true,
             "description": "检索模式不可用时是否自动降级",
@@ -9877,6 +9919,18 @@
             "description": "分块索引",
             "title": "Chunk Index"
           },
+          "chunk_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "父子分块角色：parent（父块，理论不可召回）/child（子块）；其余 None",
+            "title": "Chunk Role"
+          },
           "chunk_type": {
             "anyOf": [
               {
@@ -9893,6 +9947,18 @@
             "description": "检索到的内容",
             "title": "Content",
             "type": "string"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "层级切分内容类型：text（正文锚点/正文）/table（表格）/code（代码块）；其余 None",
+            "title": "Content Type"
           },
           "document_id": {
             "description": "文档 ID",
@@ -12169,7 +12235,8 @@
               "semantic",
               "delimiter",
               "sentence_window",
-              "parent_child"
+              "parent_child",
+              "hierarchical"
             ],
             "title": "Strategy",
             "type": "string"

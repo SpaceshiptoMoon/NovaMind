@@ -592,6 +592,10 @@ class RetrievalEngine:
                 "questions": source.get("questions"),
                 # chunk_type 透传（wiki_page 类型的结果供加权/前端分支展示）
                 "chunk_type": source.get("chunk_type"),
+                # 切分结构区分提升为一级字段（parent_child 的父子角色 /
+                # hierarchical 的内容类型），前端免挖 metadata；存量 chunk 无键为 None
+                "chunk_role": (source.get("metadata") or {}).get("chunk_role"),
+                "content_type": (source.get("metadata") or {}).get("content_type"),
             }
 
             enriched_results.append(enriched)

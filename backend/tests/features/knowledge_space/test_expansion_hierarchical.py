@@ -22,6 +22,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
     expand_search_results,
 )
+from novamind.features.knowledge_space.schemas.search_schema import ExpansionConfig
 
 pytestmark = pytest.mark.unit
 
@@ -120,3 +121,54 @@ class TestPassthrough:
         })
         out = asyncio.run(expand_search_results(es, 1, [hit]))
         assert out[0]["content"] == "```py\nx=1\n```"
+
+
+class TestExpansionConfig:
+    def test_enabled_false_global_short_circuit(self):
+        """enabled=False 整体短路：不调 ES、命中原样返回。"""
+        es = _FakeESClient({"42_0": {"content": "# A 章节正文"}})
+        hit = _hit("42_2", "```py\nx=1\n```", {
+            "expansion_type": "hierarchical", "content_type": "code",
+            "section_anchor_chunk_id": "42_0",
+        })
+        cfg = ExpansionConfig(enabled=False)
+        out = asyncio.run(expand_search_results(es, 1, [hit], expansion_config=cfg))
+        assert out[0]["content"] == "```py\nx=1\n```"
+        assert "expansion" not in out[0]["metadata"]
+
+    def test_none_config_expands(self):
+        """None 配置（存量调用形态）= 全部启用，正常扩展。"""
+        es = _FakeESClient({"42_0": {"content": "# A 章节正文"}})
+        hit = _hit("42_2", "```py\nx=1\n```", {
+            "expansion_type": "hierarchical", "content_type": "code",
+            "section_anchor_chunk_id": "42_0",
+        })
+        out = asyncio.run(expand_search_results(es, 1, [hit], expansion_config=None))
+        assert "# A 章节正文" in out[0]["content"]
+
+    def test_include_hierarchical_false_skips_only_hierarchical(self):
+        """include_hierarchical=False 只关 hierarchical：该类命中直通，不影响其他类型。"""
+        es = _FakeESClient({"42_0": {"content": "# A 章节正文"}})
+        hier_hit = _hit("42_2", "```py\nx=1\n```", {
+            "expansion_type": "hierarchical", "content_type": "code",
+            "section_anchor_chunk_id": "42_0",
+        })
+        pc_hit = _hit("42_5", "子块内容", {
+            "chunk_role": "child", "parent_chunk_id": "42_4",
+        })
+        es.chunks["42_4"] = {"content": "父块全文"}
+        cfg = ExpansionConfig(include_hierarchical=False)
+        out = asyncio.run(expand_search_results(es, 1, [hier_hit, pc_hit], expansion_config=cfg))
+        assert out[0]["content"] == "```py\nx=1\n```"  # hierarchical 被关，直通
+        assert out[1]["content"] == "父块全文"  # parent_child 仍启用，回带生效
+
+    def test_include_hierarchical_true_expands(self):
+        """相邻正常场景：include_hierarchical=True（默认）双向扩展生效。"""
+        es = _FakeESClient({"42_0": {"content": "# A 章节正文"}})
+        hit = _hit("42_2", "```py\nx=1\n```", {
+            "expansion_type": "hierarchical", "content_type": "code",
+            "section_anchor_chunk_id": "42_0",
+        })
+        cfg = ExpansionConfig()
+        out = asyncio.run(expand_search_results(es, 1, [hit], expansion_config=cfg))
+        assert "# A 章节正文" in out[0]["content"]

@@ -175,6 +175,32 @@ class SearchLLMConfig(BaseModel):
     )
 
 
+class ExpansionConfig(BaseModel):
+    """检索期上下文扩展配置。
+
+    扩展是元数据驱动的后处理：命中块携带扩展元数据（sentence_window 扩窗 /
+    parent_child 回带父块 / hierarchical 双向追加）时自动拼上下文；关闭后
+    返回的恒是原始检索单元（原子块/子块），不拼接任何邻居/父块/章节内容。
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="是否启用检索期上下文扩展（默认启用——与存量行为一致）",
+    )
+    include_window: bool = Field(
+        default=True,
+        description="允许句子窗口扩窗（仅 strategy=sentence_window 的文档产出该元数据）",
+    )
+    include_parent: bool = Field(
+        default=True,
+        description="允许父子分块回带父块（仅 strategy=parent_child 的文档产出该元数据）",
+    )
+    include_hierarchical: bool = Field(
+        default=True,
+        description="允许层级切分双向扩展（仅 strategy=hierarchical 的文档产出该元数据）",
+    )
+
+
 class SearchRequest(BaseModel):
     """
     统一检索请求
@@ -259,6 +285,12 @@ class SearchRequest(BaseModel):
         description="是否使用检索缓存"
     )
 
+    # 检索期上下文扩展
+    expansion: ExpansionConfig | None = Field(
+        default=None,
+        description="检索期上下文扩展配置（None = 全部启用，等价 ExpansionConfig()）",
+    )
+
 
 
 
@@ -281,6 +313,16 @@ class SearchResult(BaseModel):
 
     # 索引
     chunk_index: int | None = Field(None, description="分块索引")
+
+    # 切分结构区分（一级字段，源自切分策略元数据；存量/无结构 chunk 为 None）
+    chunk_role: str | None = Field(
+        None,
+        description="父子分块角色：parent（父块，理论不可召回）/child（子块）；其余 None",
+    )
+    content_type: str | None = Field(
+        None,
+        description="层级切分内容类型：text（正文锚点/正文）/table（表格）/code（代码块）；其余 None",
+    )
 
     # 问题信息（question_*/all_* 模式下有值）
     questions: list[str] | None = Field(None, description="该分块预生成的假设性问题列表")

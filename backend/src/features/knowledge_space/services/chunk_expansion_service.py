@@ -20,19 +20,26 @@ MAX_WINDOW_SIZE = 10
 logger = get_logger(__name__)
 
 
-async def expand_search_results(es_client, space_id: int, results: list[dict]) -> list[dict]:
+async def expand_search_results(
+    es_client, space_id: int, results: list[dict],
+    *, expansion_config=None,
+) -> list[dict]:
     """按命中 chunk 的扩展元数据做检索期上下文扩展，原列表就地替换 content。
 
     句子窗口：命中子块 content 替换为 chunk_index±window 邻居拼接文本；
-    父子分块：命中子块 content 替换为父块全文。两种扩展都把原子块文本保留进
+    父子分块：命中子块 content 替换为父块全文；层级切分：双向追加（特殊
+    对象补章节正文、正文锚点补关联特殊对象）。扩展把原子块文本保留进
     ``metadata.expansion.retrieved_content`` 供溯源，并打 ``metadata.expansion``
     幂等标记（重复进入跳过）。同文档多命中的重叠窗口合并为一个区间并剔除
     被吞并的低分命中（结果数不膨胀）。
 
     Args:
-        es_client: ElasticsearchClient 实例（get_document_chunks / get_chunk）。
+        es_client: ElasticsearchClient 实例（get_document_chunks / get_chunk /
+            get_children_chunks）。
         space_id: 空间 ID（决定目标索引）。
         results: 检索结果 dict 列表（引擎 enrich 后形状），就地修改并返回。
+        expansion_config: ExpansionConfig 或 None（None = 全部启用）。enabled=False
+            整体短路原样返回；include_* 按扩展类型过滤（被排除类型的命中原样直通）。
 
     Returns:
         扩展后的结果列表；无扩展元数据/全部失败时原样返回。整体兜底：扩展
@@ -40,8 +47,13 @@ async def expand_search_results(es_client, space_id: int, results: list[dict]) -
     """
     if not results:
         return results
+    enabled = expansion_config is None or bool(
+        getattr(expansion_config, "enabled", True)
+    )
+    if not enabled:
+        return results
     try:
-        return await _expand_inner(es_client, space_id, results)
+        return await _expand_inner(es_client, space_id, results, expansion_config)
     except Exception as exc:
         logger.warning(
             "检索期上下文扩展失败，保留原始命中返回",
@@ -50,8 +62,19 @@ async def expand_search_results(es_client, space_id: int, results: list[dict]) -
         return results
 
 
-async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[dict]:
+def _type_allowed(expansion_config, attr: str, default: bool = True) -> bool:
+    """读 expansion_config 的 include_* 开关；config 为 None 视为全部允许。"""
+    if expansion_config is None:
+        return default
+    return bool(getattr(expansion_config, attr, default))
+
+
+async def _expand_inner(es_client, space_id: int, results: list[dict],
+                        expansion_config=None) -> list[dict]:
     """扩展主逻辑（expand_search_results 的兜底内层）。"""
+    allow_window = _type_allowed(expansion_config, "include_window")
+    allow_parent = _type_allowed(expansion_config, "include_parent")
+    allow_hier = _type_allowed(expansion_config, "include_hierarchical")
     window_hits: dict[int, list[dict]] = {}
     parent_hits: list[dict] = []
     special_hits: list[dict] = []
@@ -69,12 +92,16 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
         if cid:
             seen_chunk_ids.add(cid)
         if meta.get("expansion_type") == "sentence_window":
-            window_hits.setdefault(r.get("document_id"), []).append(r)
+            if allow_window:
+                window_hits.setdefault(r.get("document_id"), []).append(r)
         elif meta.get("chunk_role") == "child" and meta.get("parent_chunk_id"):
-            parent_hits.append(r)
+            if allow_parent:
+                parent_hits.append(r)
         elif meta.get("expansion_type") == "hierarchical":
             # hierarchical 双方向：特殊对象命中回带章节锚点；正文锚点命中
             # 拉取本章节特殊对象。锚点缺失/指针断链的块自然落空（降级直通）。
+            if not allow_hier:
+                continue
             if meta.get("content_type") in ("table", "code"):
                 special_hits.append(r)
             elif meta.get("content_type") == "text":
