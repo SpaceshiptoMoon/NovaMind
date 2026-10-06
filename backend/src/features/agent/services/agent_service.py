@@ -202,6 +202,57 @@ class AgentService:
         """
         await self.agent_repo.update(agent_id, enabled_tools=enabled_tools)
 
+    async def ensure_default_agent(self, user_id: int) -> AgentDetailResponse:
+        """确保用户拥有默认助手（幂等），无则创建并返回详情。
+
+        默认助手是普通私有 agent（user_id=user_id），extra_config.is_default=true 标记；
+        用户删除后再次调用会重建。私有行而非系统级：系统级会出现在所有用户的列表且
+        仅管理员可编辑，语义不对。
+
+        Args:
+            user_id: 归属用户 ID。
+
+        Returns:
+            默认助手的详情响应。
+
+        Raises:
+            McpServerError: 理论不可达（默认助手不挂 MCP），保留以对齐创建路径契约。
+        """
+        # SQL 层 JSON 精确匹配（MySQL/SQLite JSON_EXTRACT），不依赖分页窗口
+        existing = await self.db.execute(
+            select(AgentDefinition).where(
+                AgentDefinition.user_id == user_id,
+                AgentDefinition.extra_config["is_default"].as_boolean().is_(True),
+            )
+        )
+        agent = existing.scalar_one_or_none()
+        if agent is not None:
+            return AgentDetailResponse.model_validate(agent)
+
+        await self._validate_mcp_ids(user_id, None)
+        async with self.db.begin_nested():
+            agent = await self.agent_repo.create(
+                user_id=user_id,
+                name="个人助手",
+                description="内置助手：可检索知识库、联网搜索、读取附件",
+                system_prompt=(
+                    "你是用户的个人助手。回答知识性、时效性问题或需要查资料时，"
+                    "优先调用 knowledge_search 或 web_search 工具获取依据后再作答；"
+                    "寒暄、改写、简单解释等无需外部信息的请求直接回答，不调用工具。"
+                    "回答基于检索结果时注明来源。"
+                ),
+                enabled_tools=[
+                    "knowledge_search",
+                    "web_search",
+                    "memory",
+                    "todo",
+                    "task",
+                    "read_attachment",
+                ],
+                extra_config={"is_default": True},
+            )
+        return AgentDetailResponse.model_validate(agent)
+
     async def list_agents(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> AgentListResponse:
@@ -279,8 +330,9 @@ class AgentService:
         Raises:
             AgentNotFoundError: 不存在、系统级 Agent 非管理员或私有 Agent 非属主。
         """
-        from novamind.features.agent.models.agent import AgentMessage, AgentSession
         from novamind.features.agent.models.memory import AgentMemory
+        from novamind.features.agent.models.message import AgentMessage
+        from novamind.features.agent.models.session import AgentSession
         from novamind.features.agent.models.tool_call import AgentToolCall
 
         agent = await self.agent_repo.get_by_id(agent_id)

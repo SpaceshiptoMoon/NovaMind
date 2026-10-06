@@ -85,6 +85,19 @@ async def create_agent(
 
 
 @router.get(
+    "/agents/default",
+    response_model=AgentDetailResponse,
+    summary="获取默认助手",
+    description="获取当前用户的默认助手，不存在时自动创建（幂等）",
+)
+async def get_default_agent(
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.ensure_default_agent(user_id)
+
+
+@router.get(
     "/agents",
     response_model=AgentListResponse,
     summary="列出 Agent",
