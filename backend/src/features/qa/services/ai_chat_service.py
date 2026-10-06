@@ -1104,6 +1104,12 @@ class AIChatService:
             # 清理已提交的用户消息作为安全网
             await self._cleanup_user_message(user_message)
             raise
+        except QAError:
+            # 客户端语义异常（空消息/无权限/会话不存在等，自带 400/404 状态码）：
+            # 原样上抛走各自注册的 handler，不得裹进 LLMServiceError（恒 500，
+            # 会把用户输入错误伪装成服务器故障）
+            await self._cleanup_user_message(user_message)
+            raise
         except Exception as e:
             # 其他异常：savepoint 已回滚 AI 消息部分
             # 同样清理已提交的用户消息作为安全网
