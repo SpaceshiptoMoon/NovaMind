@@ -48,16 +48,37 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="查询 / 信号" min-width="260">
+          <el-table-column label="查询 / 信号" min-width="240">
             <template #default="{ row }">
               <span v-if="row.query_text" class="query-text" :title="row.query_text">{{ row.query_text }}</span>
               <span v-else class="event-muted">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="检索明细" min-width="220">
+          <el-table-column label="检索人" width="130">
+            <template #default="{ row }">
+              <span class="event-time">#{{ row.user_id }}</span>
+              <el-tag v-if="row.extra?.user_role" size="small" type="info" effect="plain" class="role-tag">
+                {{ row.extra.user_role }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="检索明细" min-width="200">
             <template #default="{ row }">
               <span v-if="eventSearchSummary(row)" class="event-muted">{{ eventSearchSummary(row) }}</span>
               <span v-else class="event-muted">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div v-if="row.extra?.hits?.length" class="hits-panel">
+                <div v-for="(hit, i) in row.extra.hits" :key="i" class="hit-row">
+                  <span class="hit-rank">#{{ i + 1 }}</span>
+                  <span class="hit-doc">{{ hit.document_name ?? `文档 ${hit.document_id ?? '?'}` }}</span>
+                  <el-tag size="small" effect="plain">{{ hit.score != null ? hit.score.toFixed(2) : '—' }}</el-tag>
+                  <span class="hit-snippet">{{ hit.snippet }}</span>
+                </div>
+              </div>
+              <div v-else class="hits-empty">该事件无命中明细载荷（零命中或早于埋点扩展的存量事件）</div>
             </template>
           </el-table-column>
         </el-table>
@@ -499,6 +520,58 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+
+.role-tag {
+  margin-left: 4px;
+}
+
+.hits-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.hit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hit-rank {
+  flex-shrink: 0;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.hit-doc {
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.hit-snippet {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hits-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 700px) {

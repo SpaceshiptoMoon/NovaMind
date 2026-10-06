@@ -68,6 +68,78 @@ async def test_search_records_query_event_with_payload():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_extra_carries_hit_details_and_role():
+    """extra 携带每条命中明细（定位键+200 字符摘要）与调用方透传的 user_role"""
+    svc = _make_service()
+    fake_result = {
+        "results": [
+            {
+                "document_id": 9, "chunk_id": "c-1", "score": 0.87,
+                "content": "长" * 500,
+                "file_info": {"filename": "规格说明.pdf"},
+            },
+            {"document_id": 10, "chunk_id": "c-2", "score": 0.4, "content": "短内容"},
+        ],
+    }
+    recorded = {}
+
+    class _FakeRecorder:
+        async def record(self, **kw):
+            recorded.update(kw)
+
+    with (
+        patch.object(SearchService, "search", AsyncMock(return_value=fake_result)),
+        patch(
+            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            _FakeRecorder,
+        ),
+    ):
+        await svc.search(
+            space_id=6, kb_id=11, user_id=1, request=_make_request(),
+            user_role="admin",
+        )
+
+    hits = recorded["extra"]["hits"]
+    assert len(hits) == 2
+    assert hits[0]["document_id"] == 9
+    assert hits[0]["chunk_id"] == "c-1"
+    assert hits[0]["score"] == 0.87
+    assert hits[0]["document_name"] == "规格说明.pdf"
+    assert len(hits[0]["snippet"]) == 200  # 长内容截前 200 字符
+    assert hits[1]["snippet"] == "短内容"
+    assert recorded["extra"]["user_role"] == "admin"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_hit_malformed_entry_does_not_break_recording():
+    """异形结果条目（缺字段/非数值分数）→ 命中载荷兜底缺省，埋点不中断"""
+    svc = _make_service()
+    fake_result = {"results": [{"score": "not-a-number", "content": None}]}
+    recorded = {}
+
+    class _FakeRecorder:
+        async def record(self, **kw):
+            recorded.update(kw)
+
+    with (
+        patch.object(SearchService, "search", AsyncMock(return_value=fake_result)),
+        patch(
+            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            _FakeRecorder,
+        ),
+    ):
+        await svc.search(space_id=6, kb_id=11, user_id=1, request=_make_request())
+
+    hit = recorded["extra"]["hits"][0]
+    assert hit["document_id"] is None
+    assert hit["score"] is None
+    assert hit["snippet"] == ""
+    assert "user_role" not in recorded["extra"]  # 未透传时不写该字段
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_search_zero_results_still_records():
     """零命中也记录：results_count=0 + max_score=0 是归因的核心信号"""
     svc = _make_service()

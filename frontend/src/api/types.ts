@@ -1151,6 +1151,14 @@ export interface KbOpsCitationStats {
 }
 
 /** kb-ops 运营事件账本条目（只追加：query=检索 / query_reformulate=提问改写 / citation_click=引用点击 / attribution=归因写回） */
+export interface KbOpsEventHit {
+  document_id: number | null
+  chunk_id: string | null
+  score: number | null
+  document_name: string | null
+  snippet: string
+}
+
 export interface KbOpsEvent {
   id: number
   event_type: string
@@ -1159,7 +1167,15 @@ export interface KbOpsEvent {
   space_id: number | null
   kb_id: number | null
   query_text: string | null
-  extra: Record<string, unknown> | null
+  extra: {
+    user_role?: string
+    hits?: KbOpsEventHit[]
+    results_count?: number
+    max_score?: number
+    search_mode?: string
+    top_k?: number
+    bypass_document_permission?: boolean
+  } | null
   created_at: string
 }
 

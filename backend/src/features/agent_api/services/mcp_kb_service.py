@@ -38,6 +38,7 @@ class McpKbService:
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
         use_cache: bool = True,
+        user_role: str | None = None,
     ) -> str:
         """检索相关片段，返回 JSON 文本给 LLM（答案由调用方自行综合，MCP 不做生成）。
 
@@ -46,6 +47,7 @@ class McpKbService:
             score_threshold: 相关度下限过滤，None 不过滤。
             vector_weight/bm25_weight: hybrid 模式的算法权重。
             use_cache: 是否使用检索缓存。
+            user_role: key 归属人角色标识（鉴权上下文自带，透传进运营埋点）。
 
         Raises:
             ToolTextError: 目标解析失败/无权限/非法参数——消息已面向 LLM 友好。
@@ -88,6 +90,7 @@ class McpKbService:
         )
         result = await search_service.search(
             space_id=space_id, kb_id=kb_id, user_id=user_id, request=search_request,
+            user_role=user_role,
         )
 
         return self._format_output(result)

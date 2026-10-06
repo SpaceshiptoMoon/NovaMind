@@ -66,6 +66,7 @@ def build_mcp_server() -> FastMCP:
                 vector_weight=vector_weight,
                 bm25_weight=bm25_weight,
                 use_cache=use_cache,
+                user_role=auth.user.get("role_code"),
             )
 
     return mcp
