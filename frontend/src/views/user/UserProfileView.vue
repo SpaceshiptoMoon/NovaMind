@@ -128,7 +128,7 @@
  * 提供编辑资料（用户名/邮箱/手机号）与修改密码两个入口弹窗，改密成功后延迟自动登出。
  */
 
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Edit, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -150,6 +150,20 @@ const statusMap: Record<number, { text: string; type: string }> = {
 const statusTag = computed(() => {
   const status = userStore.user?.status ?? 1
   return statusMap[status] || { text: '未知', type: 'info' }
+})
+
+// 页面完全依赖 store 渲染，而 store 只在登录瞬间填充；缓存缺失（如他处清理了
+// localStorage）时会整页「-」——挂载时缺失则拉一次自愈（评审 P3）
+onMounted(() => {
+  if (!userStore.user) {
+    loading.value = true
+    userStore
+      .fetchProfile()
+      .catch(() => {})
+      .finally(() => {
+        loading.value = false
+      })
+  }
 })
 
 // 格式化日期
@@ -208,7 +222,9 @@ async function handleEditSubmit() {
       await userStore.updateProfile({
         username: editForm.username,
         email: editForm.email,
-        phone: editForm.phone || undefined,
+        // 空串必须显式提交 null 而非吞成 undefined：undefined 会被后端
+        // exclude_unset 丢弃成「未提交」，用户显式清空却得到假成功（评审 P3）
+        phone: editForm.phone.trim() === '' ? null : editForm.phone,
       })
       ElMessage.success('信息更新成功')
       editDialogVisible.value = false
@@ -232,6 +248,14 @@ const passwordForm = reactive({
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,30}$/
 
+const validateNewPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+  if (value && value === passwordForm.old_password) {
+    callback(new Error('新密码不能与当前密码相同'))
+  } else {
+    callback()
+  }
+}
+
 const validateConfirmPassword = (
   _rule: unknown,
   value: string,
@@ -253,6 +277,7 @@ const passwordRules: FormRules = {
       message: '密码需8-30字符，含大小写字母、数字和特殊字符',
       trigger: 'blur',
     },
+    { validator: validateNewPassword, trigger: 'blur' },
   ],
   confirm_password: [
     { required: true, message: '请再次输入新密码', trigger: 'blur' },
@@ -267,7 +292,12 @@ function showPasswordDialog() {
   passwordDialogVisible.value = true
 }
 
-/** 提交新密码；成功后提示并延时 1.5s 登出，让用户重新以新密码登录。 */
+/**
+ * 提交新密码；成功后提示并延时 1.5s 登出，让用户重新以新密码登录。
+ *
+ * 必须走 change-password（验旧密）而非管理端 updateUser 通道：后者对超管
+ * 一刀切 403，且不验证旧密码——任何人拿到已登录会话即可改密（评审 P1）。
+ */
 async function handlePasswordSubmit() {
   if (!passwordFormRef.value) return
 
@@ -276,9 +306,7 @@ async function handlePasswordSubmit() {
 
     submitLoading.value = true
     try {
-      await userApi.updateUser(userStore.user!.id, {
-        password: passwordForm.new_password,
-      })
+      await userApi.changePassword(passwordForm.old_password, passwordForm.new_password)
       ElMessage.success('密码修改成功，请重新登录')
       passwordDialogVisible.value = false
       // 修改密码后自动登出
@@ -401,5 +429,11 @@ async function handlePasswordSubmit() {
   .info-label {
     width: 84px;
   }
+}
+
+/* 弹窗固定 440px 在 320px 视口下页脚按钮会裁到视口外（评审三轮 P3）：
+   scoped 内 :global 收口两个 el-dialog 的宽度上限 */
+.user-profile-view :global(.el-dialog) {
+  max-width: calc(100vw - 24px);
 }
 </style>
