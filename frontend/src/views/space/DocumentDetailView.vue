@@ -159,6 +159,8 @@
               <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
                 <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
                 <div class="chunk-meta">
+                  <span v-if="(chunk.metadata as Record<string, unknown>)?.chunk_role === 'parent'" class="meta-tag chunk-role-tag parent">父块</span>
+                  <span v-else-if="(chunk.metadata as Record<string, unknown>)?.chunk_role === 'child'" class="meta-tag chunk-role-tag child">子块</span>
                   <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
                   <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
                   <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
@@ -728,6 +730,19 @@ function maybeAutoExpandTimeline() {
 .meta-tag.chunk-type-tag {
   color: var(--color-primary);
   background: var(--color-primary-subtle);
+  font-weight: var(--weight-medium);
+}
+
+/* 父子分块角色徽标：父块=回带容器（无向量不召回），子块=检索单元 */
+.meta-tag.chunk-role-tag.parent {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+  font-weight: var(--weight-medium);
+}
+
+.meta-tag.chunk-role-tag.child {
+  color: var(--color-info);
+  background: var(--color-info-subtle);
   font-weight: var(--weight-medium);
 }
 
