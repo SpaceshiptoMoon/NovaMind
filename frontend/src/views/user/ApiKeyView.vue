@@ -4,7 +4,9 @@
       <div>
         <p class="eyebrow">Agent Access</p>
         <h2>API 密钥</h2>
-        <p class="desc">外部 Agent（Claude Code、MCP 客户端等）访问知识库的凭证——继承您的完整权限链，吊销即时生效</p>
+        <p class="desc">
+          外部 Agent（Claude Code、MCP 客户端等）访问知识库的凭证——继承您的完整权限链，吊销即时生效
+        </p>
       </div>
       <div class="header-actions">
         <el-button type="primary" @click="openCreateDialog">
@@ -55,17 +57,25 @@
         <el-table :data="visibleKeys" v-loading="loading">
           <el-table-column prop="name" label="名称" min-width="170" show-overflow-tooltip>
             <template #default="{ row }">
-              <span class="key-name" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.name }}</span>
+              <span class="key-name" :class="{ 'is-revoked': row.status !== 'active' }">{{
+                row.name
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="key_prefix" label="密钥前缀" min-width="150">
             <template #default="{ row }">
-              <span class="mono-text" :class="{ 'is-revoked': row.status !== 'active' }">{{ row.key_prefix }}</span>
+              <span class="mono-text" :class="{ 'is-revoked': row.status !== 'active' }">{{
+                row.key_prefix
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="status" label="状态" width="90" align="center">
             <template #default="{ row }">
-              <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'" effect="plain">
+              <el-tag
+                size="small"
+                :type="row.status === 'active' ? 'success' : 'info'"
+                effect="plain"
+              >
                 {{ row.status === 'active' ? '有效' : '已吊销' }}
               </el-tag>
             </template>
@@ -77,14 +87,18 @@
           </el-table-column>
           <el-table-column prop="last_used_at" label="最后使用" min-width="150">
             <template #default="{ row }">
-              <span v-if="row.last_used_at" class="time-text">{{ formatDate(row.last_used_at) }}</span>
+              <span v-if="row.last_used_at" class="time-text">{{
+                formatDate(row.last_used_at)
+              }}</span>
               <span v-else class="time-text is-never">从未使用</span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="130" fixed="right">
             <template #default="{ row }">
               <template v-if="row.status === 'active'">
-                <el-button link type="primary" size="small" @click="copyPrefix(row.key_prefix)">复制前缀</el-button>
+                <el-button link type="primary" size="small" @click="copyPrefix(row.key_prefix)"
+                  >复制前缀</el-button
+                >
                 <el-button
                   link
                   type="danger"
@@ -100,7 +114,9 @@
           </el-table-column>
           <template #empty>
             <el-empty :description="emptyText">
-              <el-button v-if="filter === 'all'" type="primary" @click="openCreateDialog">创建第一个密钥</el-button>
+              <el-button v-if="filter === 'all'" type="primary" @click="openCreateDialog"
+                >创建第一个密钥</el-button
+              >
             </el-empty>
           </template>
         </el-table>
@@ -123,14 +139,24 @@
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" :disabled="!createName.trim()" @click="createKey">
+        <el-button
+          type="primary"
+          :loading="creating"
+          :disabled="!createName.trim()"
+          @click="createKey"
+        >
           创建
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 明文一次性展示对话框 -->
-    <el-dialog v-model="plaintextVisible" title="密钥已创建" width="560px" :close-on-click-modal="false">
+    <el-dialog
+      v-model="plaintextVisible"
+      title="密钥已创建"
+      width="560px"
+      :close-on-click-modal="false"
+    >
       <el-alert type="warning" :closable="false" show-icon class="plaintext-warning">
         <p>这是密钥明文的<b>唯一一次展示</b>，关闭后不可再查询。请立即复制保存。</p>
       </el-alert>
@@ -143,8 +169,10 @@
       </div>
       <div class="next-steps">
         <p class="next-steps__title">接下来把它配置到客户端：</p>
-        <code class="next-steps__code">claude mcp add --transport http novamind-kb http://&lt;host&gt;:8100/mcp \</code>
-        <code class="next-steps__code">  --header "X-API-Key: &lt;刚复制的密钥&gt;"</code>
+        <code class="next-steps__code"
+          >claude mcp add --transport http novamind-kb http://&lt;host&gt;:8100/mcp \</code
+        >
+        <code class="next-steps__code"> --header "X-API-Key: &lt;刚复制的密钥&gt;"</code>
       </div>
       <template #footer>
         <el-button type="primary" @click="plaintextVisible = false">我已保存</el-button>
@@ -275,6 +303,13 @@ onMounted(loadKeys)
 </script>
 
 <style scoped>
+/* 根容器：与 UserManageView 等系统页统一（width:100% 必须显式声明——本页处于
+   flex column 容器，cross-axis 的 margin:auto 会让子项退化为 fit-content 宽） */
+.api-key-view {
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
+}
+
 /* ===== 页头卡片（对齐 ModelConfigView 三件套） ===== */
 .page-header {
   display: flex;
@@ -313,6 +348,7 @@ onMounted(loadKeys)
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   flex-shrink: 0;
 }

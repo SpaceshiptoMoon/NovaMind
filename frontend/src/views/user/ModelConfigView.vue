@@ -747,9 +747,7 @@ onMounted(() => {
    切 Tab 时整页宽度跳动、前后不对齐） */
 .model-config-view {
   width: 100%;
-  max-width: 1200px;
-  padding: var(--space-6) var(--space-6) var(--space-8);
-  margin: 0 auto;
+  padding: var(--space-5) var(--space-6);
 }
 
 /* ===== 页头 panel：左文右操作，对齐任务列表页的 dashboard 风格 ===== */

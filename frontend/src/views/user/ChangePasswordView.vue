@@ -1,8 +1,15 @@
 <template>
   <div class="change-password-view">
-    <PageHeader title="修改密码" />
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Security</p>
+        <h2>修改密码</h2>
+        <p class="desc">修改成功后将自动登出，请使用新密码重新登录</p>
+      </div>
+    </div>
+
     <div class="change-password-content">
-      <el-card shadow="never" class="change-card">
+      <div class="section-card">
         <el-alert
           v-if="isForced"
           title="管理员已重置您的密码，请修改密码后继续使用"
@@ -44,7 +51,7 @@
           </el-form-item>
           <el-button type="primary" :loading="loading" @click="handleSubmit"> 确认修改 </el-button>
         </el-form>
-      </el-card>
+      </div>
     </div>
   </div>
 </template>
@@ -63,7 +70,6 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import { useUserStore } from '@/stores/user'
-import PageHeader from '@/components/common/PageHeader.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -120,19 +126,66 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
+/* 根容器：与 UserManageView 等系统页统一 */
 .change-password-view {
-  padding: var(--space-6);
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
 }
 
+/* ===== 页头卡片（对齐 ModelConfigView 三件套） ===== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+  max-width: 560px;
+}
+
+/* ===== 表单卡片 ===== */
 .change-password-content {
-  max-width: 500px;
+  max-width: 560px;
 }
-
-.change-card {
-  padding: var(--space-4);
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
 }
 
 .force-alert {
   margin-bottom: var(--space-4);
+}
+
+@media (max-width: 720px) {
+  .page-header {
+    padding: var(--space-4);
+  }
 }
 </style>

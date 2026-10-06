@@ -1,17 +1,24 @@
 <template>
   <div class="notification-view">
-    <PageHeader title="通知中心">
-      <el-button :disabled="notifStore.unreadCount === 0" @click="handleMarkAllRead">
-        全部标记为已读
-      </el-button>
-      <el-button @click="settingsOpen = !settingsOpen">
-        <el-icon><Setting /></el-icon>
-        通知偏好
-      </el-button>
-    </PageHeader>
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Notifications</p>
+        <h2>通知中心</h2>
+        <p class="desc">站内通知与邮件的接收记录；点击通知行可跳转到对应页面</p>
+      </div>
+      <div class="header-actions">
+        <el-button :disabled="notifStore.unreadCount === 0" @click="handleMarkAllRead">
+          全部标记为已读
+        </el-button>
+        <el-button @click="settingsOpen = !settingsOpen">
+          <el-icon><Setting /></el-icon>
+          通知偏好
+        </el-button>
+      </div>
+    </div>
 
     <!-- 通知偏好设置 -->
-    <div v-if="settingsOpen" v-loading="prefsLoading" class="prefs-card">
+    <div v-if="settingsOpen" v-loading="prefsLoading" class="prefs-card section-card">
       <div class="prefs-row">
         <div class="prefs-label">
           <span class="prefs-title">站内通知</span>
@@ -43,29 +50,33 @@
       </div>
     </div>
 
-    <!-- 全部 / 未读 筛选 -->
-    <div class="filter-tabs" role="tablist">
+    <!-- 全部 / 未读 筛选（stat-card 模式，点击切换过滤） -->
+    <div class="stat-grid">
       <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': filter === 'all' }"
         role="tab"
         :aria-selected="filter === 'all'"
-        :class="['filter-tab', { active: filter === 'all' }]"
         @click="setFilter('all')"
       >
-        全部
-        <span class="tab-count">{{ allTotal }}</span>
+        <span class="stat-value">{{ allTotal }}</span>
+        <span class="stat-label">全部</span>
       </button>
       <button
+        type="button"
+        class="stat-card"
+        :class="{ 'is-active': filter === 'unread' }"
         role="tab"
         :aria-selected="filter === 'unread'"
-        :class="['filter-tab', { active: filter === 'unread' }]"
         @click="setFilter('unread')"
       >
-        未读
-        <span class="tab-count">{{ notifStore.unreadCount }}</span>
+        <span class="stat-value">{{ notifStore.unreadCount }}</span>
+        <span class="stat-label">未读</span>
       </button>
     </div>
 
-    <div v-loading="loading" class="notification-content">
+    <div v-loading="loading" class="notification-content section-card">
       <EmptyState
         v-if="!loading && items.length === 0"
         :headline="emptyHeadline"
@@ -141,7 +152,6 @@ import { notificationApi } from '@/api/notification'
 import { useNotificationStore } from '@/stores/notification'
 import { formatDate, formatRelativeTime } from '@/utils/format'
 import type { Notification } from '@/api/types'
-import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
 
@@ -310,19 +320,111 @@ watch(settingsOpen, (open) => {
 </script>
 
 <style scoped>
+/* 根容器：与 UserManageView 等系统页统一（width:100% 必须显式声明——本页处于
+   flex column 容器，cross-axis 的 margin:auto 会让子项退化为 fit-content 宽） */
 .notification-view {
-  /* flex column 容器内 margin:auto 会吞掉 stretch 致整页退化 fit-content 宽（实测坑），显式撑满 */
   width: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  padding: var(--space-5) var(--space-6);
+}
+
+/* ===== 页头卡片（对齐 ModelConfigView 三件套） ===== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+  max-width: 560px;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap; /* 窄屏按钮区换行防溢出裁切（评审 P2-1：320px 下右缘 333>320 被裁） */
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ===== 双档统计卡（全部/未读，点击即过滤） ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-xs);
+}
+
+.stat-card.is-active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ===== 卡片容器（偏好设置 / 通知列表共用） ===== */
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
 }
 
 .prefs-card {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
   margin-bottom: var(--space-4);
 }
 
@@ -356,58 +458,6 @@ watch(settingsOpen, (open) => {
   color: var(--color-text-muted);
 }
 
-/* 全部/未读 分段筛选（shadcn segmented 味：灰槽 + 白卡活动态） */
-.filter-tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--color-bg-input);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-4);
-}
-
-.filter-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 5px var(--space-3);
-  border: none;
-  border-radius: calc(var(--radius-md) - 2px);
-  background: transparent;
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.filter-tab:hover {
-  color: var(--color-text);
-}
-
-.filter-tab.active {
-  background: var(--color-bg-card);
-  color: var(--color-text);
-  font-weight: var(--weight-medium);
-  box-shadow: var(--shadow-xs);
-}
-
-.tab-count {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: 1;
-  padding: 3px 6px;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-hover);
-  color: var(--color-text-muted);
-}
-
-.filter-tab.active .tab-count {
-  background: var(--color-primary-subtle);
-  color: var(--color-text-secondary);
-}
-
 .notification-content {
   min-height: 200px;
 }
@@ -417,8 +467,6 @@ watch(settingsOpen, (open) => {
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -513,10 +561,20 @@ watch(settingsOpen, (open) => {
   background: var(--color-info);
 }
 
-/* 窄屏：图标列收窄、侧栏时间保持，文本列自然收缩 */
+/* 窄屏：页头纵向堆叠、图标列收窄、侧栏时间保持，文本列自然收缩 */
 @media (max-width: 640px) {
   .notification-view {
     padding: var(--space-4);
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-4);
+  }
+
+  .header-actions {
+    justify-content: flex-end;
   }
 
   .notification-item {

@@ -1,12 +1,26 @@
 <template>
   <div class="user-profile-view">
-    <el-card class="profile-card">
-      <template #header>
-        <span>个人信息</span>
-      </template>
+    <div class="page-header">
+      <div>
+        <p class="eyebrow">Account Profile</p>
+        <h2>个人信息</h2>
+        <p class="desc">查看账号基本信息与状态；编辑资料与修改密码入口在右上角</p>
+      </div>
+      <div class="header-actions">
+        <el-button type="primary" @click="showEditDialog">
+          <el-icon><Edit /></el-icon>
+          编辑信息
+        </el-button>
+        <el-button @click="showPasswordDialog">
+          <el-icon><Lock /></el-icon>
+          修改密码
+        </el-button>
+      </div>
+    </div>
 
-      <div class="profile-content" v-loading="loading">
-        <!-- 基本信息 -->
+    <div class="config-section">
+      <div class="section-card" v-loading="loading">
+        <h3>基本信息</h3>
         <div class="info-section">
           <div class="info-row">
             <span class="info-label">用户名</span>
@@ -39,20 +53,8 @@
             <span class="info-value">{{ formatDate(userStore.user?.last_login_at) }}</span>
           </div>
         </div>
-
-        <!-- 操作按钮 -->
-        <div class="action-buttons">
-          <el-button type="primary" @click="showEditDialog">
-            <el-icon><Edit /></el-icon>
-            编辑信息
-          </el-button>
-          <el-button @click="showPasswordDialog">
-            <el-icon><Lock /></el-icon>
-            修改密码
-          </el-button>
-        </div>
       </div>
-    </el-card>
+    </div>
 
     <!-- 编辑信息弹窗 -->
     <el-dialog v-model="editDialogVisible" title="编辑信息" width="440px">
@@ -294,22 +296,72 @@ async function handlePasswordSubmit() {
 </script>
 
 <style scoped>
+/* 根容器：与 UserManageView 等系统页统一（width:100% 必须显式声明——本页处于
+   flex column 容器，cross-axis 的 margin:auto 会让子项退化为 fit-content 宽） */
 .user-profile-view {
-  padding: var(--space-5);
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%;
+  padding: var(--space-5) var(--space-6);
 }
 
-.profile-card {
+/* ===== 页头卡片（对齐 ModelConfigView 三件套） ===== */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
-.profile-content {
-  padding: var(--space-3) 0;
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
-.info-section {
+.page-header h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 22px;
+  font-weight: var(--weight-bold);
+}
+
+.page-header .desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: 0;
+  max-width: 560px;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ===== 信息区卡片 ===== */
+.config-section {
   margin-bottom: var(--space-6);
+}
+
+.section-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+}
+
+.config-section h3 {
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-secondary);
 }
 
 .info-row {
@@ -335,10 +387,19 @@ async function handlePasswordSubmit() {
   font-size: var(--text-base);
 }
 
-.action-buttons {
-  display: flex;
-  gap: var(--space-3);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border-light);
+@media (max-width: 720px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--space-4);
+  }
+
+  .header-actions {
+    justify-content: flex-end;
+  }
+
+  .info-label {
+    width: 84px;
+  }
 }
 </style>
