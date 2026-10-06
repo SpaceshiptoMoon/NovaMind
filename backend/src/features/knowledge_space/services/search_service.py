@@ -21,8 +21,8 @@ from novamind.features.knowledge_space.exceptions import (
     EmbeddingError,
     InvalidSearchModeError,
     InvalidSearchWeightError,
-    KnowledgeBaseArchivedError,
     KnowledgeBaseAccessDeniedError,
+    KnowledgeBaseArchivedError,
     KnowledgeBaseNotFoundError,
     SearchError,
     SpaceAccessDeniedError,
@@ -250,18 +250,36 @@ class SearchService:
             # 调用 LLM 生成回答
             answer = await llm_client.generate_text(
                 prompt=prompt,
-                max_tokens=1024,
+                max_tokens=llm_config.max_tokens,
                 temperature=llm_config.temperature,
                 top_p=llm_config.top_p,
             )
 
             elapsed_ms = (time.time() - start_time) * 1000
 
+            if not answer:
+                # 思考型模型（如 glm-5.3-flash 经 Anthropic 端点，思考不可关）可能把
+                # max_tokens 预算全部花在思考上，正文 0 字符。空串按失败降级而非
+                # 静默当成功——调用方（API/MCP）据此返回 answer_error 提示。
+                self.logger.warning(
+                    "LLM 回答为空（疑似思考 token 耗尽 max_tokens 预算）",
+                    model=llm_config.model,
+                    max_tokens=llm_config.max_tokens,
+                    elapsed_ms=round(elapsed_ms, 2),
+                )
+                return {
+                    "answer": None,
+                    "answer_error": "回答生成为空（可能思考预算耗尽），请调大 max_tokens 或换非思考模型",
+                    "model": llm_config.model,
+                    "elapsed_ms": elapsed_ms,
+                    "error": "empty answer",
+                }
+
             self.logger.info(
                 "LLM 回答生成成功",
                 model=llm_config.model,
                 elapsed_ms=round(elapsed_ms, 2),
-                answer_length=len(answer) if answer else 0,
+                answer_length=len(answer),
             )
 
             return {

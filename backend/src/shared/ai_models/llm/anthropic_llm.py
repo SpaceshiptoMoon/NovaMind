@@ -168,9 +168,22 @@ class AnthropicLLM(BaseLLM):
             # 提取文本内容：只取 text 块。思考型模型（如智谱 glm-5.3-flash 经
             # Anthropic 兼容端点）content 首块恒为 thinking 块且不可关闭，取
             # content[0].text 会在 ThinkingBlock 上抛 AttributeError
-            return "".join(
+            text = "".join(
                 block.text for block in response.content if getattr(block, "type", None) == "text"
             )
+            if not text:
+                # 空正文告警：stop_reason=max_tokens 时通常是思考 token 耗尽预算
+                # （思考不可关的模型），对齐 openai_compatible 空 content 告警先例，
+                # 调用方据此调大预算或换非思考模型。
+                usage = response.usage
+                logger.warning(
+                    "Anthropic 响应无 text 块（疑似思考 token 耗尽 max_tokens）",
+                    model=self.model,
+                    max_tokens=kwargs["max_tokens"],
+                    output_tokens=getattr(usage, "output_tokens", None),
+                    stop_reason=response.stop_reason,
+                )
+            return text
 
     async def generate_text_stream(
         self,

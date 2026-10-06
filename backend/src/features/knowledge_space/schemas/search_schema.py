@@ -167,6 +167,12 @@ class SearchLLMConfig(BaseModel):
         le=1.0,
         description="核采样参数（0-1，越高越多样）",
     )
+    max_tokens: int = Field(
+        default=4096,
+        ge=128,
+        le=32768,
+        description="回答生成的最大 token 数（含思考型模型的思考 token）",
+    )
 
 
 class SearchRequest(BaseModel):
