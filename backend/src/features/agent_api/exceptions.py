@@ -39,3 +39,12 @@ class ApiKeyLimitExceededError(AgentApiError):
 
     def __init__(self, message: str = "API key 数量已达上限"):
         super().__init__(message=message, code="API_KEY_LIMIT_EXCEEDED")
+
+
+class GatewayAuthError(AgentApiError):
+    """OpenAI 网关鉴权失败——独立于管理端点异常，经专属 handler 输出 OpenAI 错误格式"""
+
+    http_status_code: ClassVar[int] = 401
+
+    def __init__(self, message: str = "Incorrect API key provided"):
+        super().__init__(message=message, code="GATEWAY_AUTH_ERROR")

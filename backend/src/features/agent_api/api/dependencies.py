@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, Request
 from novamind.core.database.database import get_db
-from novamind.features.agent_api.exceptions import InvalidApiKeyError
+from novamind.features.agent_api.exceptions import GatewayAuthError, InvalidApiKeyError
 from novamind.features.agent_api.services.api_key_service import ApiKeyService
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,15 @@ _API_KEY_USER_DEFAULTS = {"jti": None, "must_change_password": False}
 async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> ApiKeyService:
     """装配 key 服务（请求级会话）。"""
     return ApiKeyService(db)
+
+
+async def get_gateway_service(
+    db: AsyncSession = Depends(get_db),
+) -> "OpenAiGatewayService":
+    """装配 OpenAI 网关服务（请求级会话）。"""
+    from novamind.features.agent_api.services.openai_gateway_service import OpenAiGatewayService
+
+    return OpenAiGatewayService(db)
 
 
 async def get_api_key_user(
@@ -38,6 +47,36 @@ async def get_api_key_user(
         raise InvalidApiKeyError("缺少 X-API-Key header")
 
     auth = await service.authenticate(x_api_key)
+    user = {**auth.user, **_API_KEY_USER_DEFAULTS}
+    request.state.user_id = auth.user_id
+    return user
+
+
+async def get_gateway_user(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+    service: ApiKeyService = Depends(get_api_key_service),
+) -> dict:
+    """网关鉴权：Authorization: Bearer 优先（OpenAI SDK 惯例），回落 X-API-Key。
+
+    失败抛 GatewayAuthError（经专属 handler 输出 OpenAI 错误格式，区别于
+    管理端点的统一信封）；成功写 request.state.user_id（限流键对齐）。
+    """
+    plain_key: str | None = None
+    if authorization and authorization.lower().startswith("bearer "):
+        plain_key = authorization[7:].strip()
+    if not plain_key:
+        plain_key = x_api_key
+    if not plain_key:
+        raise GatewayAuthError(
+            "缺失鉴权凭证：请在 Authorization: Bearer <key> 或 X-API-Key header 提供 API key"
+        )
+
+    try:
+        auth = await service.authenticate(plain_key)
+    except InvalidApiKeyError as e:
+        raise GatewayAuthError() from e
     user = {**auth.user, **_API_KEY_USER_DEFAULTS}
     request.state.user_id = auth.user_id
     return user

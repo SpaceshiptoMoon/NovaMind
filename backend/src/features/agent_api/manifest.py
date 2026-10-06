@@ -1,4 +1,4 @@
-"""agent_api feature manifest：API key 管理 + MCP server（外部 agent 工具面）。"""
+"""agent_api feature manifest：API key 管理 + MCP server + OpenAI 兼容网关。"""
 from __future__ import annotations
 
 from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, RouterSpec
@@ -15,6 +15,7 @@ async def _init(app) -> None:
 
 
 def manifest() -> FeatureManifest:
+    from novamind.features.agent_api.api.gateway_routes import router as gateway_router
     from novamind.features.agent_api.api.key_routes import router as key_router
 
     return FeatureManifest(
@@ -25,6 +26,12 @@ def manifest() -> FeatureManifest:
                 key_router,
                 f"{API_V1_PREFIX}/agent-api",
                 "Agent API 密钥",
+            ),
+            RouterSpec(
+                "openai_gateway",
+                gateway_router,
+                "/v1",
+                "OpenAI 兼容网关",
             ),
         ],
         depends_on=["user", "knowledge_space"],
