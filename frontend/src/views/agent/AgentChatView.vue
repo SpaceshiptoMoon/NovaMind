@@ -1,8 +1,19 @@
 <template>
   <div class="agent-chat-view">
     <!-- 左侧：会话列表 -->
-    <div class="chat-sidebar" :class="{ compact: isInWorkspace }">
+    <div class="chat-sidebar" :class="{ compact: isInWorkspace, 'mobile-open': mobileSidebarOpen }">
       <div class="sidebar-top">
+        <button
+          v-if="isNarrowViewport"
+          class="sidebar-toggle-btn"
+          :title="mobileSidebarOpen ? '收起会话列表' : '展开会话列表'"
+          @click="mobileSidebarOpen = !mobileSidebarOpen"
+        >
+          <el-icon :size="16">
+            <Expand v-if="!mobileSidebarOpen" />
+            <Close v-else />
+          </el-icon>
+        </button>
         <button class="back-btn" @click="goBack">
           <el-icon :size="14"><ArrowLeft /></el-icon>
           <span>返回</span>
@@ -523,6 +534,14 @@ const isWelcomeMode = computed(
   () => agentStore.messages.length === 0 && !agentStore.messagesLoading,
 )
 
+// 窄屏（≤720px）页内会话侧栏改为悬浮抽屉，默认收起；选中会话后自动收起让位主区
+const isNarrowViewport = ref(window.innerWidth <= 720)
+const mobileSidebarOpen = ref(false)
+window.addEventListener('resize', () => {
+  isNarrowViewport.value = window.innerWidth <= 720
+  if (!isNarrowViewport.value) mobileSidebarOpen.value = false
+})
+
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
@@ -986,6 +1005,7 @@ async function handleSelectConversation(sessionId: string) {
   // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
   workbench.resetSelection()
   scrollToBottom()
+  if (isNarrowViewport.value) mobileSidebarOpen.value = false
 }
 
 // 在右侧抽屉打开该工具调用的结果详情（chat 模式工具卡片用）
@@ -1209,12 +1229,49 @@ onBeforeUnmount(() => {
   width: 220px;
 }
 
+/* 窄屏断点：固定 220px 侧栏不收缩，会把聊天主区挤到不可用（320px 下仅剩 ~50px）；
+   断点内改绝对定位悬浮，主区占满全宽，经顶栏按钮开合 */
+@media (max-width: 720px) {
+  .chat-sidebar {
+    position: absolute;
+    z-index: 30;
+    height: 100%;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+
+  .chat-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+}
+
 .sidebar-top {
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-divider);
   display: flex;
   gap: var(--space-2);
   align-items: center;
+}
+
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .back-btn {
@@ -2263,6 +2320,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 2px 4px 0;
+  /* 窄屏工具行放不下时整体换行，而不是内部元素互相叠压 */
+  flex-wrap: wrap;
 }
 
 .input-tools,
@@ -2317,6 +2376,9 @@ onBeforeUnmount(() => {
   gap: 6px;
   height: 28px;
   padding: 0 10px;
+  /* 窄屏被 flex 压缩时叠字（四字标签塞进 54px），宁可换行不可收缩 */
+  flex-shrink: 0;
+  white-space: nowrap;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
   background: transparent;
