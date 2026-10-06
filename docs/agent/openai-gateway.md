@@ -89,6 +89,7 @@ curl http://localhost:8100/v1/chat/completions \
 |---|---|---|
 | `invalid_api_key` | 401 | key 缺失/无效/已吊销/用户禁用 |
 | `model_not_found` | 404 | 模型未在 NovaMind 配置 |
+| `invalid_request_error`（code 与 type 同值） | 400 | 请求体校验失败（缺 model/messages 为空等），`param` 指向字段 |
 | `tools_not_supported` | 400 | 模型不支持工具调用 |
 | `streaming_tools_not_supported` | 400 | 协议无流式工具实现 |
 | `insufficient_quota` | 400/403 | 上游欠费/免费额度耗尽 |
@@ -100,3 +101,24 @@ curl http://localhost:8100/v1/chat/completions \
 - 无跨模型 failover / 熔断 / 供应商健康探活（规划中，后续批次补）。
 - 不支持 `/v1/embeddings`、`/v1/completions`（legacy）等其余端点。
 - usage 字段在上游未返回时为空对象 `{}`（官方 SDK 容忍）。
+
+## 参数透传口径（兼容性取舍声明）
+
+以下参数网关接受但不透传上游（静默忽略，均返回 200）——OpenAI 生态客户端
+不会因多传字段报错，但对应功能不生效：
+
+| 参数 | 行为 |
+|---|---|
+| `n` > 1 | 忽略，恒返回 1 个 choice |
+| `stop` / `presence_penalty` / `frequency_penalty` / `seed` / `logit_bias` | 忽略，不透传 |
+| `logprobs` / `top_logprobs` | 忽略，响应无 logprobs 字段 |
+| `max_completion_tokens`（新参数名） | 忽略；输出上限请用 `max_tokens` |
+| `stream_options.include_usage` | 忽略；流式末帧恒尽力附带 usage |
+| `tool_choice: "required"` / 具名强制 | 透传但部分上游（DashScope 兼容层）不强制执行，行为同 `auto` |
+| `temperature: 2.0` | OpenAI 官方含 2.0，部分上游为 `[0.0, 2.0)` 左闭右开，越界由上游拒绝并转译回传 |
+
+`/v1/models` 列出用户配置的全部 LLM，不做可用性/额度过滤——欠费模型调用时
+经 `insufficient_quota` 显式报错。
+
+流式工具调用末帧 `finish_reason` 由网关归一化：产出过 tool_call 增量即强制
+`tool_calls`（部分上游误回 `stop`），上游显式给出其他值（如 `length`）则尊重上游。
