@@ -5,9 +5,66 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# ========== 凭据/端点通用格式守卫（mixin） ==========
+
+# 声明类枚举键 → 合法值集合。与 quirks 层的覆盖白名单保持同源语义：
+# 边界显式拒绝非法值（fail fast），不再静默吞掉让错误漏到厂商侧变成神秘 401。
+_DECLARED_ENUM_KEYS: dict[str, frozenset[str]] = {
+    "auth_type": frozenset({"api_key", "bearer"}),
+}
+
+
+class _CredentialGuards(BaseModel):
+    """凭据/端点/声明字段的通用格式守卫（厂商无关）。
+
+    拦截「字段互串」类输入错误（如把 Base URL 粘进 API Key 框）与非法声明值，
+    在系统边界 fail fast 并给出可读报错，而不是放行到厂商侧变成鉴权失败。
+
+    note: 字段在子类上定义，校验器用 ``check_fields=False`` 声明后由子类自动接入。
+    """
+
+    @field_validator('api_key', check_fields=False)
+    @classmethod
+    def _guard_api_key_not_url(cls, v: str | None) -> str | None:
+        """API Key 槽位拒绝 URL 形状的值：凭据不会以 http(s):// 开头。"""
+        if v and v.strip().lower().startswith(("http://", "https://")):
+            raise ValueError(
+                "API Key 字段填入了 URL——请填凭据本体（API Key 或 token），"
+                "Base URL 请填到 Base URL 字段"
+            )
+        return v
+
+    @field_validator('base_url', check_fields=False)
+    @classmethod
+    def _guard_base_url_scheme(cls, v: str | None) -> str | None:
+        """Base URL 必须是 http(s) 地址：拦截把 URL 粘进其他字段后的连锁互串。"""
+        if v and not v.strip().lower().startswith(("http://", "https://")):
+            raise ValueError(
+                f"Base URL 须以 http:// 或 https:// 开头，收到: {v[:50]!r}"
+            )
+        return v
+
+    @field_validator('extra_config', check_fields=False)
+    @classmethod
+    def _guard_declared_enum_values(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """声明类枚举键（auth_type 等）值必须在合法集合内，否则显式报错。
+
+        与 quirks.resolve_quirks 的静默忽略不同：用户显式填了键就是明确的
+        意图表达，拼错值应立刻报错而非静默落默认（那是排查地狱的源头）。
+        """
+        if not v:
+            return v
+        for key, allowed in _DECLARED_ENUM_KEYS.items():
+            if key in v and v[key] not in allowed:
+                raise ValueError(
+                    f"扩展配置 {key}={v[key]!r} 非法，合法值: {sorted(allowed)}"
+                )
+        return v
+
+
 # ========== 请求/响应模型 ==========
 
-class ModelConfigBase(BaseModel):
+class ModelConfigBase(_CredentialGuards, BaseModel):
     """模型配置基础字段"""
 
     model_type: str = Field(
@@ -75,7 +132,7 @@ class ModelConfigCreate(ModelConfigBase):
     """创建模型配置请求"""
 
 
-class ModelConfigUpdate(BaseModel):
+class ModelConfigUpdate(_CredentialGuards, BaseModel):
     """更新模型配置请求"""
 
     protocol: str | None = Field(
@@ -116,7 +173,7 @@ class ModelConfigListResponse(BaseModel):
 
 # ========== 连接测试 ==========
 
-class ModelTestRequest(BaseModel):
+class ModelTestRequest(_CredentialGuards, BaseModel):
     """模型连接测试请求"""
 
     model_type: str = Field(
