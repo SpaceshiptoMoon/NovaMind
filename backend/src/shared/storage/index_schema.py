@@ -181,6 +181,8 @@ class DefaultIndexSchema:
                     "parent_chunk_id": {"type": "keyword"},
                     "expansion_type": {"type": "keyword"},
                     "expansion_window_size": {"type": "integer"},
+                    "content_type": {"type": "keyword"},
+                    "section_anchor_chunk_id": {"type": "keyword"},
                 }
             },
             "file_info": {

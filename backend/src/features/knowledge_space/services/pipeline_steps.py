@@ -233,10 +233,21 @@ def build_es_chunks(
     # 一遍建「slot → 列表位置」映射，pass 1 据此写绝对指针。预扫描只读新策略
     # 的 meta 键，存量 chunk_items 无键 → 恒空映射、零开销。
     slot_to_position: dict[int, int] = {}
+    # hierarchical 章节锚点解析：锚点块（content_type=text 且带 section_slot 且
+    # 是该 slot 首个出现的块）→ 绝对 chunk_id。锚点即章节首个块，与 parent_slot
+    # 不同的是它本身参与召回，指针只服务检索期「拉取关联特殊对象」方向。
+    slot_to_anchor_position: dict[int, int] = {}
     if is_text:
         for pos, (_text, meta) in enumerate(chunk_items):
             if meta.get("chunk_role") == "parent" and isinstance(meta.get("parent_slot"), int):
                 slot_to_position[meta["parent_slot"]] = pos
+            if (
+                meta.get("expansion_type") == "hierarchical"
+                and meta.get("content_type") == "text"
+                and isinstance(meta.get("section_slot"), int)
+                and meta["section_slot"] not in slot_to_anchor_position
+            ):
+                slot_to_anchor_position[meta["section_slot"]] = pos
 
     for i, (text, meta) in enumerate(chunk_items):
         chunk_meta: dict[str, Any] = {"content_hash": document.file_hash}
@@ -313,6 +324,16 @@ def build_es_chunks(
             chunk_meta["expansion_type"] = "sentence_window"
             if isinstance(meta.get("expansion_window_size"), int):
                 chunk_meta["expansion_window_size"] = meta["expansion_window_size"]
+        # hierarchical：content_type 全块透传（检索过滤/前端徽标用）；特殊对象
+        # 块补章节锚点指针（正文锚点块自身无需指针——它是被指向的一方）。
+        # slot 断链（锚点缺失/被上游过滤）→ 不写指针，特殊对象退化为普通块
+        #（检索期不扩展——能力缺失优于错误指针）。
+        if meta.get("expansion_type") == "hierarchical" and meta.get("content_type") in ("text", "table", "code"):
+            chunk_meta["content_type"] = meta["content_type"]
+            if meta["content_type"] != "text" and isinstance(meta.get("section_slot"), int):
+                anchor_pos = slot_to_anchor_position.get(meta["section_slot"])
+                if anchor_pos is not None:
+                    chunk_meta["section_anchor_chunk_id"] = f"{document.id}_{anchor_pos}"
         chunk_data = {
             "space_id": document.space_id,
             "kb_id": document.kb_id,
@@ -413,7 +434,7 @@ async def split_md_text(
     Args:
         md_text: 待切分的文本内容
         strategy: 切分策略 (recursive / markdown / fixed_size / semantic / delimiter /
-            sentence_window / parent_child)
+            sentence_window / parent_child / hierarchical)
         line_aware: 仅 fixed_size / recursive / delimiter / sentence_window / parent_child
             生效——True 时按行累积切分（音视频带 [HH:MM:SS#idx] 锚点文本，避免切进
             「[锚点] 描述」行内部导致锚点分家，窗口/父子元数据随之缺失 → 检索期
@@ -423,8 +444,9 @@ async def split_md_text(
             window_size, parent_chunk_size 等)
 
     Returns:
-        [(text, metadata_dict), ...] — sentence_window/parent_child 的 metadata 携带
-        关系元数据（expansion_type / chunk_role / parent_slot），其余策略为空 dict
+        [(text, metadata_dict), ...] — sentence_window/parent_child/hierarchical 的
+        metadata 携带关系元数据（expansion_type / chunk_role / parent_slot /
+        content_type / section_slot），其余策略为空 dict
     """
     from novamind.engines.document.pipeline import DocumentRegistry
 
@@ -575,6 +597,31 @@ async def split_md_text(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             parent_chunk_size=kwargs.get("parent_chunk_size", 2000),
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [
+            (r["text"], r.get("meta") or {})
+            for r in results if r.get("text", "").strip()
+        ]
+
+    elif strategy == "hierarchical":
+        chunk_size = kwargs.get("chunk_size", 1000)
+        chunk_overlap = kwargs.get("chunk_overlap", 100)
+        if line_aware:
+            # 音视频带锚点文本：行边界切分优先，同 sentence_window/parent_child
+            # 的锚点保护；章节/特殊对象元数据缺失 → 检索期不扩展
+            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
+        splitter = splitter_class(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            min_chunk_size=kwargs.get("min_chunk_size", 200),
         )
         doc_wrapper = [{
             "text": md_text,

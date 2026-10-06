@@ -522,6 +522,11 @@ function buildSplittingConfig(): SplittingConfig {
     splitting.chunk_size = configForm.splittingChunkSize
     splitting.chunk_overlap = configForm.splittingChunkOverlap
     splitting.parent_chunk_size = configForm.splittingParentChunkSize
+  } else if (configForm.splittingStrategy === 'hierarchical') {
+    // 章节→特殊对象→正文三级；正文块受 chunk_size 约束，特殊对象整块保留
+    splitting.chunk_size = configForm.splittingChunkSize
+    splitting.chunk_overlap = configForm.splittingChunkOverlap
+    splitting.min_chunk_size = configForm.splittingMinChunkSize
   }
 
   return splitting

@@ -14,6 +14,7 @@ from novamind.engines.document.pipeline.tagged_rechunk import (
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.engines.document.splitters.delimiter_splitter import DelimiterSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
+from novamind.engines.document.splitters.hierarchical_splitter import HierarchicalSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
 from novamind.engines.document.splitters.parent_child_splitter import ParentChildSplitter
 from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
@@ -335,7 +336,7 @@ class DocumentProcessor:
 
         Args:
             text: 要切分的全文文本。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child' / 'hierarchical'）。
             **kwargs: 策略特定参数（chunk_size / similarity_threshold 等），逐策略透传。
 
         Returns:
@@ -430,6 +431,12 @@ class DocumentProcessor:
                 chunk_size=kwargs.get('chunk_size', 1000),
                 chunk_overlap=kwargs.get('chunk_overlap', 100),
                 parent_chunk_size=kwargs.get('parent_chunk_size', 2000),
+            )
+        elif strategy == 'hierarchical':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 1000),
+                chunk_overlap=kwargs.get('chunk_overlap', 100),
+                min_chunk_size=kwargs.get('min_chunk_size', 200),
             )
         else:
             splitter = splitter_class(**kwargs)
@@ -677,7 +684,7 @@ class DocumentProcessor:
 
         Args:
             file_path: 文件路径。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child' / 'hierarchical'）。
             **kwargs: 策略特定参数，逐策略透传。
 
         Returns:
@@ -743,6 +750,12 @@ class DocumentProcessor:
                 chunk_overlap=kwargs.get('chunk_overlap', 100),
                 parent_chunk_size=kwargs.get('parent_chunk_size', 2000),
             )
+        elif strategy == 'hierarchical':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 1000),
+                chunk_overlap=kwargs.get('chunk_overlap', 100),
+                min_chunk_size=kwargs.get('min_chunk_size', 200),
+            )
         else:
             # 对于其他可能注册的切分器，尝试通用初始化方法
             splitter = splitter_class(**kwargs)
@@ -801,3 +814,4 @@ DocumentRegistry.register_splitter('markdown', MarkdownSplitter)
 DocumentRegistry.register_splitter('delimiter', DelimiterSplitter)
 DocumentRegistry.register_splitter('sentence_window', SentenceWindowSplitter)
 DocumentRegistry.register_splitter('parent_child', ParentChildSplitter)
+DocumentRegistry.register_splitter('hierarchical', HierarchicalSplitter)

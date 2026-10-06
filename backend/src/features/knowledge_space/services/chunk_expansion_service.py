@@ -54,6 +54,8 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
     """扩展主逻辑（expand_search_results 的兜底内层）。"""
     window_hits: dict[int, list[dict]] = {}
     parent_hits: list[dict] = []
+    special_hits: list[dict] = []
+    anchor_hits: list[dict] = []
     seen_chunk_ids: set[str] = set()
     for r in results:
         meta = r.get("metadata") or {}
@@ -70,7 +72,14 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
             window_hits.setdefault(r.get("document_id"), []).append(r)
         elif meta.get("chunk_role") == "child" and meta.get("parent_chunk_id"):
             parent_hits.append(r)
-    if not window_hits and not parent_hits:
+        elif meta.get("expansion_type") == "hierarchical":
+            # hierarchical 双方向：特殊对象命中回带章节锚点；正文锚点命中
+            # 拉取本章节特殊对象。锚点缺失/指针断链的块自然落空（降级直通）。
+            if meta.get("content_type") in ("table", "code"):
+                special_hits.append(r)
+            elif meta.get("content_type") == "text":
+                anchor_hits.append(r)
+    if not window_hits and not parent_hits and not special_hits and not anchor_hits:
         return results  # 存量 chunk 零成本直通
 
     # —— 句子窗口：按文档分组，区间并集合并，单次拉邻居 ——
@@ -150,6 +159,46 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
             "parent_chunk_id": hit["metadata"]["parent_chunk_id"],
         }
         hit["content"] = parent["content"]
+
+    # —— hierarchical：双向追加，不改写命中 content ——
+    # 与 parent_child 的「content 替换」不同：正文块与特殊对象都是合法检索
+    # 结果，扩展只做增强——特殊对象命中追加其所属章节的正文锚点文本；正文
+    # 锚点命中追加本章节的特殊对象列表。原文恒在 content，扩展物进
+    # expansion.hierarchical_*，下游（QA/agent/MCP）零改动即可读原文。
+    for hit in special_hits:
+        anchor_id = hit["metadata"].get("section_anchor_chunk_id")
+        if not anchor_id:
+            continue
+        anchor = await es_client.get_chunk(space_id, anchor_id)
+        if not anchor or not (anchor.get("content") or "").strip():
+            continue  # 锚点缺失（文档重析/旧索引）→ 保留对象原文
+        hit["metadata"]["expansion"] = {
+            "type": "hierarchical",
+            "retrieved_content": hit.get("content") or "",
+            "section_anchor_chunk_id": anchor_id,
+            "section_context": anchor["content"],
+        }
+        hit["content"] = f"{hit.get('content') or ''}\n\n{anchor['content']}"
+
+    for hit in anchor_hits:
+        children = await es_client.get_children_chunks(space_id, hit.get("chunk_id") or "")
+        related = [
+            {"chunk_id": c["chunk_id"], "content_type": (c.get("metadata") or {}).get("content_type", ""),
+             "content": c.get("content") or ""}
+            for c in children
+            if (c.get("content") or "").strip() and c["chunk_id"] != hit.get("chunk_id")
+        ]
+        if not related:
+            continue  # 章节无特殊对象（纯正文）→ 直通
+        hit["metadata"]["expansion"] = {
+            "type": "hierarchical",
+            "retrieved_content": hit.get("content") or "",
+            "related_objects": related,
+        }
+        related_text = "\n\n".join(
+            f"[{r['content_type']}]\n{r['content']}" for r in related
+        )
+        hit["content"] = f"{hit.get('content') or ''}\n\n{related_text}"
 
     return results
 

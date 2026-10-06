@@ -403,6 +403,39 @@ class ElasticsearchClient:
             logger.error("检查 chunk 存在性失败", chunk_id=chunk_id, error=str(e))
             return False
 
+    async def get_children_chunks(
+        self, space_id: int, anchor_chunk_id: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """按章节锚点指针拉取关联的特殊对象块（hierarchical 检索期扩展）。
+
+        Args:
+            space_id: 空间 ID（决定目标索引）。
+            anchor_chunk_id: 章节锚点块的 chunk_id（metadata.section_anchor_chunk_id 值）。
+            limit: 返回上限（防御历史脏指针触发全索引扫描；单章节特殊对象
+                正常远小于此）。
+
+        Returns:
+            关联块列表（chunk_index 升序即阅读序）；无关联或查询失败（降级）
+            返回空列表。
+        """
+        index_name = self.generate_index_name(space_id)
+        try:
+            result = await self.es_client.search(
+                index=index_name,
+                query={"term": {"metadata.section_anchor_chunk_id": anchor_chunk_id}},
+                size=limit,
+                sort=[{self._schema.field_names.chunk_index: {"order": "asc"}}],
+            )
+            return [
+                {"chunk_id": hit["_id"], **hit["_source"]}
+                for hit in result.get("hits", {}).get("hits", [])
+            ]
+        except Exception as e:
+            logger.error(
+                "拉取章节关联块失败", anchor_chunk_id=anchor_chunk_id, error=str(e)
+            )
+            return []
+
     async def get_document_chunks(
         self, space_id: int, document_id: int, skip: int = 0, limit: int = 100
     ) -> dict[str, Any]:

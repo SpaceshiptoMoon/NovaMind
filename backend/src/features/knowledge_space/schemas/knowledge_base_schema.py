@@ -62,7 +62,7 @@ class SplittingConfig(BaseModel):
 
     strategy: Literal[
         "recursive", "fixed_size", "markdown", "semantic", "delimiter",
-        "sentence_window", "parent_child",
+        "sentence_window", "parent_child", "hierarchical",
     ] = Field(
         default=DEFAULT_CHUNK_STRATEGY,
         description="Default splitting strategy.",

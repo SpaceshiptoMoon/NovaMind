@@ -364,6 +364,7 @@ export interface SplittingConfig {
     | 'delimiter'
     | 'sentence_window'
     | 'parent_child'
+    | 'hierarchical'
   chunk_size?: number
   chunk_overlap?: number
   min_chunk_size?: number

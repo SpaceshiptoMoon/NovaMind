@@ -14,6 +14,7 @@
             <el-option label="分隔符" value="delimiter" />
             <el-option label="句子窗口" value="sentence_window" />
             <el-option label="父子分块" value="parent_child" />
+            <el-option label="层级（混合文档）" value="hierarchical" />
           </el-select>
         </el-form-item>
 
@@ -27,7 +28,8 @@
             configForm.splittingStrategy === 'recursive' ||
             configForm.splittingStrategy === 'fixed_size' ||
             configForm.splittingStrategy === 'delimiter' ||
-            configForm.splittingStrategy === 'parent_child'
+            configForm.splittingStrategy === 'parent_child' ||
+            configForm.splittingStrategy === 'hierarchical'
           "
         >
           <el-row :gutter="20">
@@ -97,6 +99,23 @@
             :max="2000"
             style="width: 260px"
           />
+        </el-form-item>
+
+        <el-form-item
+          v-if="
+            configForm.splittingStrategy === 'hierarchical'
+          "
+          label="最小分块大小"
+        >
+          <el-input-number
+            v-model="configForm.splittingMinChunkSize"
+            :min="0"
+            :max="2000"
+            style="width: 260px"
+          />
+          <div class="field-hint">
+            正文碎块合并阈值，仅在章节内部生效；表格与代码块整块保留，不受此限制。
+          </div>
         </el-form-item>
 
         <template v-if="configForm.splittingStrategy === 'delimiter'">
@@ -264,6 +283,7 @@ const strategyTitle = computed(() => {
     delimiter: '分隔符切分',
     sentence_window: '句子窗口切分',
     parent_child: '父子分块',
+    hierarchical: '层级切分（混合文档）',
   }
   return labels[props.configForm.splittingStrategy] || '文本切分'
 })
@@ -280,6 +300,8 @@ const strategyDesc = computed(() => {
       '每句一个检索单元，召回精度高；检索命中后自动带上下句拼窗口。分块数量随句数增长，向量化成本较高。',
     parent_child:
       '小块（分块大小）参与检索召回，命中后自动回带所属大块（父块大小）全文作上下文；父块间不重叠、不做向量化。',
+    hierarchical:
+      '按标题（H1/H2）切章节，章节内表格与代码块独立成块不二次切分；检索命中特殊对象自动补充所属章节正文，命中正文自动关联章节内表格/代码。',
   }
   return descriptions[props.configForm.splittingStrategy] || ''
 })
