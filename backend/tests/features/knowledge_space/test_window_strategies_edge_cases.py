@@ -34,7 +34,6 @@ from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import SplittingConfig
 from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
-    _merge_ranges,
     expand_search_results,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks
@@ -245,13 +244,6 @@ class TestExpansionEdgeCases:
         out = await expand_search_results(_Es(), 1, [hit])
         assert out[0]["content"] == "子块。"
         assert "expansion" not in out[0]["metadata"]
-
-    def test_merge_ranges_unit(self):
-        """区间合并纯函数：重叠/相邻/分离三态。"""
-        assert _merge_ranges([(0, 2), (2, 4)]) == [(0, 4)]       # 相邻
-        assert _merge_ranges([(0, 3), (2, 4)]) == [(0, 4)]       # 重叠
-        assert _merge_ranges([(0, 1), (5, 6)]) == [(0, 1), (5, 6)]  # 分离
-        assert _merge_ranges([]) == []
 
 
 # ===== 5. 配置漂移与指纹 =====

@@ -20,17 +20,6 @@ MAX_WINDOW_SIZE = 10
 logger = get_logger(__name__)
 
 
-def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """合并重叠或相邻的索引区间（含端点闭区间）。"""
-    merged: list[tuple[int, int]] = []
-    for lo, hi in sorted(ranges):
-        if merged and lo <= merged[-1][1] + 1:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
-        else:
-            merged.append((lo, hi))
-    return merged
-
-
 async def expand_search_results(es_client, space_id: int, results: list[dict]) -> list[dict]:
     """按命中 chunk 的扩展元数据做检索期上下文扩展，原列表就地替换 content。
 
