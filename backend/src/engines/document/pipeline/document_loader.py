@@ -571,7 +571,15 @@ class DocumentProcessor:
                     filename=Path(file_path).name,
                 )
                 split_strategy = "recursive"
+            # 新窗口策略依赖关系元数据（chunk_role/parent_slot/expansion_type），
+            # 而本路径经哨兵重切产不出这些 meta——回退 recursive 而非静默吞掉
+            #（用户在 KB 配置页选了新策略时，此处是唯一的可观测点）。
             if split_strategy not in ("recursive", "fixed_size", "markdown", "delimiter"):
+                logger.warning(
+                    "DeepDoc 路径暂不支持该切分策略（哨兵重切无关系元数据），回退到 recursive",
+                    filename=Path(file_path).name,
+                    requested_strategy=split_strategy,
+                )
                 split_strategy = "recursive"
             tagged_rechunked = await self.split_text(
                 rechunk_source_text,
@@ -666,7 +674,7 @@ class DocumentProcessor:
 
         Args:
             file_path: 文件路径。
-            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter'）。
+            strategy: 切分策略（'recursive' / 'semantic' / 'fixed_size' / 'markdown' / 'delimiter' / 'sentence_window' / 'parent_child'）。
             **kwargs: 策略特定参数，逐策略透传。
 
         Returns:
@@ -721,10 +729,21 @@ class DocumentProcessor:
                 min_chunk_size=kwargs.get('min_chunk_size', 50),
                 separators=kwargs.get('separators'),  # None → 引擎默认空行切分
             )
+        elif strategy == 'sentence_window':
+            splitter = splitter_class(
+                window_size=kwargs.get('window_size', 2),
+                max_sentence_length=kwargs.get('chunk_size', 1000),
+            )
+        elif strategy == 'parent_child':
+            splitter = splitter_class(
+                chunk_size=kwargs.get('chunk_size', 1000),
+                chunk_overlap=kwargs.get('chunk_overlap', 100),
+                parent_chunk_size=kwargs.get('parent_chunk_size', 2000),
+            )
         else:
             # 对于其他可能注册的切分器，尝试通用初始化方法
             splitter = splitter_class(**kwargs)
-        
+
         loader = DocumentLoader(splitter=splitter, embedding_client=self.embedding_client)  # 使用共享的客户端实例
         return await loader.load_and_split(file_path)
 

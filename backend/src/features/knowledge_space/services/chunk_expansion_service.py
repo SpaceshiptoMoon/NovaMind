@@ -91,8 +91,9 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
         chunks_by_index = await _fetch_doc_chunks_by_index(es_client, space_id, doc_id)
         if not chunks_by_index:
             continue  # 拉取失败/文档已清 → 保留原子块文本
-        # 每个命中独立计算窗口；重叠命中合并为一个结果（保留最高分），其余
-        # 从结果列表剔除（不剔除会以未扩展形态重复出现在检索结果里）。
+        # 每个命中独立计算窗口；窗口重叠/相邻的命中合并为一个结果（保留最高
+        # 分），被吞并命中的窗口区间**并入**保留命中的区间——低分命中周围
+        # 的邻居同样是高分命中上下文的一部分，丢弃会造成窗口缺口。
         hits_sorted = sorted(hits, key=lambda h: h.get("score") or 0.0, reverse=True)
         merged_ranges: list[tuple[int, int]] = []
         surviving: list[dict] = []
@@ -102,30 +103,43 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
             if not isinstance(idx, int):
                 continue
             lo, hi = idx - window_size, idx + window_size
-            if any(lo <= merged_hi + 1 and merged_lo - 1 <= hi for merged_lo, merged_hi in merged_ranges):
+            touching = [
+                (mlo, mhi) for mlo, mhi in merged_ranges
+                if lo <= mhi + 1 and mlo - 1 <= hi
+            ]
+            if touching:
                 merged_out.add(id(hit))  # 窗口与已保留命中重叠 → 被吞并
+                for mlo, mhi in touching:
+                    merged_ranges.remove((mlo, mhi))
+                merged_ranges.append(
+                    (min(lo, *(mlo for mlo, _ in touching)),
+                     max(hi, *(mhi for _, mhi in touching)))
+                )
+                merged_ranges.sort()
                 continue
             merged_ranges.append((lo, hi))
             surviving.append(hit)
         if merged_out:
             results[:] = [r for r in results if id(r) not in merged_out]
+        # 命中句融入窗口区间的阅读序（chunk_index 升序拼接），命中句不是
+        # 「窗口头部」——前邻居排在命中句之前，否则窗口跨命中两侧时阅读序断裂。
         for hit in surviving:
             idx = hit["chunk_index"]
+            lo, hi = _hit_range(hit, merged_ranges)
             window_text = "\n".join(
                 chunks_by_index[i]["content"]
                 for i in sorted(chunks_by_index)
-                if any(lo <= i <= hi for lo, hi in merged_ranges) and i != idx
+                if lo <= i <= hi
             )
             original = hit.get("content") or ""
-            expanded = f"{original}\n{window_text}".strip() if window_text.strip() else original
-            if expanded == original:
+            if not window_text.strip():
                 continue  # 邻居全缺 → 无扩展价值，保留原样
             hit["metadata"]["expansion"] = {
                 "type": "sentence_window",
                 "retrieved_content": original,
-                "window_chunk_range": _hit_range(hit, merged_ranges),
+                "window_chunk_range": [lo, hi],
             }
-            hit["content"] = expanded
+            hit["content"] = window_text
 
     # —— 父子分块：按 parent_chunk_id 回带父块全文 ——
     for hit in parent_hits:

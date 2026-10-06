@@ -63,7 +63,7 @@ def _hit(chunk_index: int, content: str, score: float = 0.9, **meta_extra) -> di
 
 @pytest.mark.asyncio
 async def test_window_hit_expands_with_neighbors():
-    """正例：命中 content 变为「原子块 + 前后邻居」拼接，原文进 expansion。"""
+    """正例：content 变为窗口区间纯阅读序拼接（命中句融入其中），原文进 expansion。"""
     es = _FakeEsClient(doc_chunks=[
         {"chunk_index": 0, "content": "前句。"},
         {"chunk_index": 1, "content": "命中句。"},
@@ -71,10 +71,27 @@ async def test_window_hit_expands_with_neighbors():
     ])
     results = [_hit(1, "命中句。")]
     out = await expand_search_results(es, 1, results)
-    assert out[0]["content"] == "命中句。\n前句。\n后句。"
+    # 阅读序：前句 → 命中句 → 后句（命中句在中间而非头部）
+    assert out[0]["content"] == "前句。\n命中句。\n后句。"
     assert out[0]["metadata"]["expansion"]["retrieved_content"] == "命中句。"
     assert out[0]["metadata"]["expansion"]["type"] == "sentence_window"
     assert out[0]["metadata"]["expansion"]["window_chunk_range"] == [0, 2]
+
+
+@pytest.mark.asyncio
+async def test_window_reading_order_hit_in_middle():
+    """阅读序专项：命中句两侧都有邻居时，前邻居必须在命中句之前（B7 边界用例）。"""
+    es = _FakeEsClient(doc_chunks=[
+        {"chunk_index": 0, "content": "A前。"},
+        {"chunk_index": 1, "content": "B前。"},
+        {"chunk_index": 2, "content": "命中。"},
+        {"chunk_index": 3, "content": "C后。"},
+        {"chunk_index": 4, "content": "D后。"},
+    ])
+    results = [_hit(2, "命中。", expansion_window_size=2)]
+    out = await expand_search_results(es, 1, results)
+    assert out[0]["content"] == "A前。\nB前。\n命中。\nC后。\nD后。"
+    assert out[0]["metadata"]["expansion"]["retrieved_content"] == "命中。"
 
 
 @pytest.mark.asyncio
@@ -89,7 +106,9 @@ async def test_overlapping_windows_merge_keep_higher_score():
     results = [_hit(1, "高分句。", score=0.9), _hit(2, "低分句。", score=0.5)]
     out = await expand_search_results(es, 1, results)
     assert len(out) == 1
-    assert out[0]["content"].startswith("高分句。")
+    # 合并区间 [0,3] 纯阅读序；低分命中句（句二）也在窗口里，但其结果被剔除
+    assert out[0]["content"] == "句零。\n句一。\n句二。\n句三。"
+    assert out[0]["metadata"]["expansion"]["retrieved_content"] == "高分句。"
 
 
 @pytest.mark.asyncio
