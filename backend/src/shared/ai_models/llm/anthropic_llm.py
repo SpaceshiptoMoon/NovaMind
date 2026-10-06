@@ -569,7 +569,19 @@ class AnthropicLLM(BaseLLM):
                     text_parts.append(block.text)
                 elif block_type == "thinking":
                     reasoning_parts.append(getattr(block, "thinking", ""))
-            return LLMResponse(content="".join(text_parts), reasoning="".join(reasoning_parts) or None)
+            usage = None
+            if getattr(response, "usage", None):
+                usage = {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                }
+            return LLMResponse(
+                content="".join(text_parts),
+                reasoning="".join(reasoning_parts) or None,
+                usage=usage,
+                finish_reason=getattr(response, "stop_reason", None),
+            )
 
     async def generate_text_stream_structured(
         self,

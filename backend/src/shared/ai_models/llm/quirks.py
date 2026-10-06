@@ -27,6 +27,11 @@ class LLMQuirks:
             声明后覆盖客户端类默认能力（base_model.resolve_capabilities）。
         supports_thinking: 用户显式声明的思考模式能力（True/False），None=未声明。
             语义同 supports_tools。
+        use_max_completion_tokens: 输出上限参数名用 OpenAI 新参数
+            max_completion_tokens（True）还是通用的 max_tokens（False，默认）。
+            OpenAI 官方 reasoning 系新模型已弃用 max_tokens（请求会被 400 拒绝），
+            而多数第三方兼容层（DashScope/Moonshot 等）只认 max_tokens——
+            参数名是兼容性地雷，只能按端点声明。
     """
 
     stream_only: bool = False
@@ -35,6 +40,7 @@ class LLMQuirks:
     auth_type: str = "api_key"
     supports_tools: bool | None = None
     supports_thinking: bool | None = None
+    use_max_completion_tokens: bool = False
 
 
 @dataclass(frozen=True)
@@ -71,10 +77,24 @@ _QUIRK_RULES: tuple[_QuirkRule, ...] = (
         model_pattern=r"^qwen3",
         quirks=LLMQuirks(force_thinking=True),
     ),
+    # OpenAI 官方端点：reasoning 系新模型弃用 max_tokens 参数名，只认
+    # max_completion_tokens（官方 API 文档口径）。第三方兼容层恰恰相反——
+    # 多数只认 max_tokens，故默认 False，仅对官方端点声明 True。
+    _QuirkRule(
+        base_url_pattern="api.openai.com",
+        model_pattern=r".",
+        quirks=LLMQuirks(use_max_completion_tokens=True),
+    ),
 )
 
 # extra_config → LLMQuirks 字段的白名单（布尔字段），防任意键注入
-_OVERRIDE_KEYS = {"stream_only", "force_thinking", "supports_tools", "supports_thinking"}
+_OVERRIDE_KEYS = {
+    "stream_only",
+    "force_thinking",
+    "supports_tools",
+    "supports_thinking",
+    "use_max_completion_tokens",
+}
 # 字符串枚举类覆盖键：值必须落在合法集合内才生效。
 # auth_type 是凭据签发方声明的语义（API Key vs Bearer token），代码无从推断，
 # 只能由用户经 extra_config.auth_type 声明——不做 URL 猜测，不内置特定厂商规则。

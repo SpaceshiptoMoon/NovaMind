@@ -88,9 +88,16 @@ class StreamChunk:
 
 @dataclass
 class LLMResponse:
-    """非流式 LLM 结构化响应"""
+    """非流式 LLM 结构化响应
+
+    usage/finish_reason 为可选项：上游返回时填充（OpenAI 兼容非流式路径），
+    纯文本委托路径（generate_text 只回 str）保持缺省——消费方按「缺失=上游
+    未提供」处理，不猜值。
+    """
     content: str
     reasoning: str | None = None
+    usage: dict[str, int] | None = None
+    finish_reason: str | None = None
 
 
 @dataclass

@@ -160,6 +160,17 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._prompt_cache_key:
             extra_body["prompt_cache_key"] = self._prompt_cache_key
 
+    def _max_tokens_kwarg(self, max_tokens: int) -> dict:
+        """输出上限参数按 quirks 选名：官方端点 max_completion_tokens，其余 max_tokens。
+
+        两参数名互斥：OpenAI 官方 reasoning 系拒绝 max_tokens（400 Unsupported
+        parameter），多数第三方兼容层只认 max_tokens 并静默忽略新参数名（输出
+        上限失效、按全量计费）。参数名错误的一方要么报错要么静默失效，不能双发。
+        """
+        if self.quirks.use_max_completion_tokens:
+            return {"max_completion_tokens": max_tokens}
+        return {"max_tokens": max_tokens}
+
     def _apply_thinking_budget(self, extra_body: dict, max_tokens: int) -> None:
         """thinking 模式下注入 thinking_budget（已显式配置则不覆盖）。
 
@@ -256,7 +267,7 @@ class OpenAICompatibleLLM(BaseLLM):
             kwargs = {
                 "model": self.model,
                 "messages": messages,
-                "max_completion_tokens": max_tokens,
+                **self._max_tokens_kwarg(max_tokens),
                 "temperature": temperature,
                 "top_p": top_p,
             }
@@ -382,7 +393,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 create_kwargs = {
                     "model": self.model,
                     "messages": messages,
-                    "max_completion_tokens": max_tokens,
+                    **self._max_tokens_kwarg(max_tokens),
                     "temperature": temperature,
                     "top_p": top_p,
                     "stream": True,
@@ -445,7 +456,7 @@ class OpenAICompatibleLLM(BaseLLM):
             kwargs = {
                 "model": self.model,
                 "messages": messages,
-                "max_completion_tokens": max_tokens,
+                **self._max_tokens_kwarg(max_tokens),
                 "temperature": temperature,
                 "top_p": top_p,
             }
@@ -476,7 +487,21 @@ class OpenAICompatibleLLM(BaseLLM):
                     has_reasoning=reasoning is not None,
                 )
 
-            return LLMResponse(content=content, reasoning=reasoning)
+            # usage/finish_reason 如实透传（消费方：网关计费口径、截断语义）；
+            # 上游未返回 usage 时保持 None（缺失=未提供，不猜 0）
+            usage = None
+            if response.usage:
+                usage = {
+                    "input_tokens": response.usage.prompt_tokens or 0,
+                    "output_tokens": response.usage.completion_tokens or 0,
+                    "total_tokens": response.usage.total_tokens or 0,
+                }
+            return LLMResponse(
+                content=content,
+                reasoning=reasoning,
+                usage=usage,
+                finish_reason=response.choices[0].finish_reason,
+            )
 
     async def generate_text_stream_structured(
         self,
@@ -511,7 +536,7 @@ class OpenAICompatibleLLM(BaseLLM):
             create_kwargs = {
                 "model": self.model,
                 "messages": messages,
-                "max_completion_tokens": max_tokens,
+                **self._max_tokens_kwarg(max_tokens),
                 "temperature": temperature,
                 "top_p": top_p,
                 "stream": True,
@@ -586,7 +611,7 @@ class OpenAICompatibleLLM(BaseLLM):
             kwargs = {
                 "model": self.model,
                 "messages": messages,
-                "max_completion_tokens": max_tokens,
+                **self._max_tokens_kwarg(max_tokens),
                 "temperature": temperature,
                 "top_p": top_p,
             }
@@ -666,7 +691,7 @@ class OpenAICompatibleLLM(BaseLLM):
             kwargs: dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,
-                "max_completion_tokens": max_tokens,
+                **self._max_tokens_kwarg(max_tokens),
                 "temperature": temperature,
                 "top_p": top_p,
                 "stream": True,

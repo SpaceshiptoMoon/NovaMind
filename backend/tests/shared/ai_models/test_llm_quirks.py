@@ -24,8 +24,8 @@ def test_dashscope_qwen3_resolves_force_thinking():
 
 
 def test_non_dashscope_same_model_no_quirks():
-    """同模型名非 DashScope 端点不命中（怪癖绑定端点，不绑定模型名）。"""
-    quirks = resolve_quirks("https://api.openai.com/v1", "glm-4.5")
+    """同模型名非 DashScope 端点不命中 DashScope 规则（怪癖绑定端点，不绑定模型名）。"""
+    quirks = resolve_quirks("https://api.siliconflow.cn/v1", "glm-4.5")
     assert quirks == LLMQuirks()
 
 
@@ -123,3 +123,45 @@ def test_invalid_auth_type_override_silently_ignored():
         "https://my-gateway.example.com", "any-model", {"auth_type": "digest"}
     )
     assert quirks == LLMQuirks()
+
+
+# ========== use_max_completion_tokens 输出上限参数名 ==========
+
+
+def test_third_party_endpoints_default_to_max_tokens():
+    """第三方兼容层（DashScope/Moonshot/自建网关）默认发 max_tokens——它们只认旧参数名。"""
+    for url, model in [
+        ("https://dashscope.aliyuncs.com/compatible-mode/v1", "Moonshot-Kimi-K2-Instruct"),
+        ("https://api.moonshot.cn/v1", "deepseek-v4-flash-0731"),
+        ("https://my-gateway.example.com/v1", "gpt-5"),
+    ]:
+        assert resolve_quirks(url, model).use_max_completion_tokens is False, url
+
+
+def test_official_openai_endpoint_declares_max_completion_tokens():
+    """官方 api.openai.com 端点声明新参数名（reasoning 系已弃用 max_tokens）。"""
+    quirks = resolve_quirks("https://api.openai.com/v1", "gpt-5")
+    assert quirks.use_max_completion_tokens is True
+
+
+def test_user_override_max_completion_tokens_for_any_endpoint():
+    """自建官方代理（URL 非 api.openai.com）可经 extra_config 显式声明。"""
+    quirks = resolve_quirks(
+        "https://my-openai-proxy.example.com/v1",
+        "gpt-5",
+        {"use_max_completion_tokens": True},
+    )
+    assert quirks.use_max_completion_tokens is True
+
+
+def test_max_tokens_kwarg_follows_quirks():
+    """_max_tokens_kwarg 按 quirks 选参数名，值原样透传。"""
+    from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
+
+    legacy = OpenAICompatibleLLM.__new__(OpenAICompatibleLLM)
+    legacy.quirks = LLMQuirks()
+    assert legacy._max_tokens_kwarg(512) == {"max_tokens": 512}
+
+    official = OpenAICompatibleLLM.__new__(OpenAICompatibleLLM)
+    official.quirks = LLMQuirks(use_max_completion_tokens=True)
+    assert official._max_tokens_kwarg(512) == {"max_completion_tokens": 512}

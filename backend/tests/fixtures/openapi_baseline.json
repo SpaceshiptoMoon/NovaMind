@@ -1450,10 +1450,12 @@
             "items": {
               "$ref": "#/components/schemas/ChatMessage"
             },
+            "minItems": 1,
             "title": "Messages",
             "type": "array"
           },
           "model": {
+            "minLength": 1,
             "title": "Model",
             "type": "string"
           },
