@@ -70,13 +70,14 @@ def setup_exception_handlers(app: FastAPI):
     # Agent 模块异常处理器
     setup_agent_exception_handlers(app)
 
-    # Agent API（key 管理）异常处理器
-    setup_agent_api_exception_handlers(app)
-
     # 通知模块异常处理器
     setup_notification_exception_handlers(app)
 
     # 注册全局异常处理器（包含 Exception 兜底和 RequestValidationError）
     setup_global_exception_handlers(app)
+
+    # Agent API 网关的 RequestValidationError 分流 handler（/v1/* 转 OpenAI
+    # 信封）需覆盖全局注册——Starlette 同类后注册生效，故置于全局之后
+    setup_agent_api_exception_handlers(app)
 
     logger.info("异常处理器设置完成")

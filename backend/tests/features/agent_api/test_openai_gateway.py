@@ -868,3 +868,282 @@ async def test_chat_completion_stream_prepcheck_with_real_base_llm_semantics(gat
         type(_OllamaLike(api_key="", base_url="", model_name="m")).generate_with_tools_stream
         is BaseLLM.generate_with_tools_stream
     )
+
+
+# ========== 验收修复回归：422 分流 / SSE 同流 id / finish_reason 归一化 / usage 双键 ==========
+
+
+@pytest.mark.asyncio
+async def test_validation_error_openai_envelope(gateway_app, seeded_key):
+    """缺 model 的请求体校验失败 → 400 OpenAI 信封（param 指向字段），非统一信封。"""
+    plain, _ = seeded_key
+    with _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "hi"}]},
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert set(body.keys()) == {"error"}
+    assert body["error"]["code"] == "invalid_request_error"
+    assert body["error"]["type"] == "invalid_request_error"
+    assert body["error"]["param"] == "model"
+
+
+@pytest.mark.asyncio
+async def test_empty_messages_rejected_at_schema(gateway_app, seeded_key):
+    """messages=[] 空数组在 schema 层拦截 → 400 OpenAI 信封，不漏到上游吃原文报错。"""
+    plain, _ = seeded_key
+    with _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(messages=[]),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error"]["code"] == "invalid_request_error"
+    assert body["error"]["param"] == "messages"
+
+
+@pytest.mark.asyncio
+async def test_stream_chunks_share_one_id(gateway_app, seeded_key):
+    """OpenAI 官方语义：同一流内所有 chunk 共享同一 id。"""
+    from novamind.shared.ai_models.base_model import StreamChunk
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, **kwargs):
+        yield StreamChunk(type="content", text="你")
+        yield StreamChunk(type="content", text="好")
+
+    async def _fake(self, user_id, model):
+        from unittest.mock import MagicMock
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_stream_structured = MagicMock(side_effect=_stream)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(stream=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    ids = {c["id"] for c in chunks}
+    assert len(ids) == 1
+    assert ids.pop().startswith("chatcmpl-")
+
+
+@pytest.mark.asyncio
+async def test_stream_tools_finish_reason_normalized_when_upstream_says_stop(gateway_app, seeded_key):
+    """上游工具场景误回 stop（DashScope 兼容层实测行为）→ 网关归一化为 tool_calls。"""
+    from novamind.shared.ai_models.base_model import ToolStreamEvent
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, tools=None, tool_choice="auto", **kwargs):
+        yield ToolStreamEvent(type="tool_call_start", tool_call_id="c1", tool_name="get_weather")
+        yield ToolStreamEvent(type="tool_call_args", tool_call_id="c1", tool_arguments_delta='{"city":"北京"}')
+        # 上游给 stop——网关必须纠正，否则 agent 框架误判为普通结束
+        yield ToolStreamEvent(type="done", finish_reason="stop", usage=None)
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_with_tools_stream = _stream
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(
+                    stream=True,
+                    tools=[{"type": "function", "function": {"name": "get_weather"}}],
+                ),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_stream_tools_finish_reason_respects_upstream_length(gateway_app, seeded_key):
+    """相邻正常场景不误伤：上游显式给 length（截断）时不被归一化覆盖。"""
+    from novamind.shared.ai_models.base_model import ToolStreamEvent
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, tools=None, tool_choice="auto", **kwargs):
+        yield ToolStreamEvent(type="tool_call_start", tool_call_id="c1", tool_name="get_weather")
+        yield ToolStreamEvent(type="done", finish_reason="length", usage=None)
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_with_tools_stream = _stream
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(
+                    stream=True,
+                    tools=[{"type": "function", "function": {"name": "get_weather"}}],
+                ),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    assert chunks[-1]["choices"][0]["finish_reason"] == "length"
+
+
+@pytest.mark.asyncio
+async def test_stream_tools_no_tool_call_keeps_stop(gateway_app, seeded_key):
+    """相邻正常场景不误伤：带 tools 请求但模型纯文本回答（无 tool_call 帧）→ 保持 stop。"""
+    from novamind.shared.ai_models.base_model import ToolStreamEvent
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, tools=None, tool_choice="auto", **kwargs):
+        yield ToolStreamEvent(type="content", content="今天天气不错")
+        yield ToolStreamEvent(type="done", finish_reason="stop", usage=None)
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_with_tools_stream = _stream
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(
+                    stream=True,
+                    tools=[{"type": "function", "function": {"name": "get_weather"}}],
+                ),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+def test_normalize_usage_accepts_both_key_families():
+    """usage 双键兼容：OpenAI 惯例键（prompt_tokens）与内部键（input_tokens）都读得出。"""
+    from novamind.features.agent_api.services.openai_gateway_service import _normalize_usage
+
+    openai_style = _normalize_usage({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+    assert openai_style == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+    internal_style = _normalize_usage({"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+    assert internal_style == {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+    assert _normalize_usage(None) == {}
+    assert _normalize_usage({}) == {}
+
+
+@pytest.mark.asyncio
+async def test_non_stream_usage_passthrough_from_llm_response(gateway_app, seeded_key):
+    """非流式 usage/finish_reason 透传：LLMResponse 携带时网关如实回显（验收 P1-2①）。"""
+    from novamind.shared.ai_models.base_model import LLMResponse
+
+    plain, _ = seeded_key
+    resp_obj = LLMResponse(
+        content="你好！",
+        reasoning=None,
+        usage={"input_tokens": 12, "output_tokens": 6, "total_tokens": 18},
+        finish_reason="stop",
+    )
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_structured = AsyncMock(return_value=resp_obj)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["usage"] == {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}
+    assert body["choices"][0]["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_non_stream_finish_reason_length_passthrough(gateway_app, seeded_key):
+    """上游截断（length）如实透传——验收 P1-2：max_tokens 语义对客户端可见。"""
+    from novamind.shared.ai_models.base_model import LLMResponse
+
+    plain, _ = seeded_key
+    resp_obj = LLMResponse(content="只", usage=None, finish_reason="length")
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_structured = AsyncMock(return_value=resp_obj)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(max_tokens=1),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["choices"][0]["finish_reason"] == "length"
+    assert body["usage"] == {}

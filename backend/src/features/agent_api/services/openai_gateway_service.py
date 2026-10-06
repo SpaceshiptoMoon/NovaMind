@@ -63,12 +63,21 @@ def provider_error_to_openai(exc: ModelProviderError) -> tuple[int, dict]:
 
 
 def _normalize_usage(usage: dict[str, int] | None) -> dict[str, int]:
-    """内部 usage 键 → OpenAI usage 键（prompt/completion/total_tokens）。"""
+    """内部 usage 键 → OpenAI usage 键（prompt/completion/total_tokens）。
+
+    上游键名两套并存：内部客户端装 input_tokens/output_tokens（Anthropic
+    惯例），OpenAICompatibleLLM 部分路径装 prompt_tokens/completion_tokens
+    （OpenAI 惯例）——两套都认，缺省补 0。
+    """
     if not usage:
         return {}
     return {
-        "prompt_tokens": usage.get("input_tokens", 0),
-        "completion_tokens": usage.get("output_tokens", 0),
+        "prompt_tokens": usage.get(
+            "input_tokens", usage.get("prompt_tokens", 0)
+        ),
+        "completion_tokens": usage.get(
+            "output_tokens", usage.get("completion_tokens", 0)
+        ),
         "total_tokens": usage.get("total_tokens", 0),
     }
 
@@ -227,8 +236,10 @@ class OpenAiGatewayService:
                 message = {"role": "assistant", "content": response.content}
                 if response.reasoning:
                     message["reasoning_content"] = response.reasoning
-                finish_reason = "stop"
-                usage = {}
+                # usage/finish_reason 如实透传（LLMResponse 可选携带，纯文本
+                # 委托路径缺失时保持 OpenAI 惯例缺省）
+                finish_reason = response.finish_reason or "stop"
+                usage = _normalize_usage(response.usage)
         except ModelProviderError:
             raise
         except NotImplementedError as e:
@@ -320,10 +331,15 @@ class OpenAiGatewayService:
         delta: dict,
         finish_reason: str | None = None,
         usage: dict | None = None,
+        chunk_id: str | None = None,
     ) -> dict:
-        """构造 OpenAI chat.completion.chunk 形状。"""
+        """构造 OpenAI chat.completion.chunk 形状。
+
+        chunk_id：OpenAI 官方语义同一流内所有 chunk 共享同一 id，缺失时退化为
+        每帧新 id（兼容旧调用方）。
+        """
         chunk: dict[str, Any] = {
-            "id": f"chatcmpl-{uuid.uuid4().hex}",
+            "id": chunk_id or f"chatcmpl-{uuid.uuid4().hex}",
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": model,
@@ -343,6 +359,8 @@ class OpenAiGatewayService:
         """
         client = ctx["client"]
         model = ctx["model"]
+        # OpenAI 官方语义：同一流内所有 chunk 共享同一 id
+        stream_id = f"chatcmpl-{uuid.uuid4().hex}"
         call_kwargs: dict[str, Any] = {
             "max_tokens": ctx["max_tokens"],
             "temperature": ctx["temperature"],
@@ -350,9 +368,10 @@ class OpenAiGatewayService:
             "enable_thinking": ctx["enable_thinking"],
         }
         try:
-            yield self._sse(self._chunk(model, {"role": "assistant", "content": ""}))
+            yield self._sse(self._chunk(model, {"role": "assistant", "content": ""}, chunk_id=stream_id))
             finish_reason = "stop"
             final_usage: dict = {}
+            emitted_tool_calls = False
             if ctx["tools"]:
                 async for event in client.generate_with_tools_stream(
                     ctx["messages"], tools=ctx["tools"],
@@ -360,34 +379,42 @@ class OpenAiGatewayService:
                 ):
                     if event.type == "content":
                         if event.content:
-                            yield self._sse(self._chunk(model, {"content": event.content}))
+                            yield self._sse(self._chunk(model, {"content": event.content}, chunk_id=stream_id))
                     elif event.type == "reasoning":
                         if event.content:
                             yield self._sse(
-                                self._chunk(model, {"reasoning_content": event.content})
+                                self._chunk(model, {"reasoning_content": event.content}, chunk_id=stream_id)
                             )
                     elif event.type == "tool_call_start":
+                        emitted_tool_calls = True
                         yield self._sse(self._chunk(model, {"tool_calls": [{
                             "index": 0, "id": event.tool_call_id, "type": "function",
                             "function": {"name": event.tool_name, "arguments": ""},
-                        }]}))
+                        }]}, chunk_id=stream_id))
                     elif event.type == "tool_call_args":
                         yield self._sse(self._chunk(model, {"tool_calls": [{
                             "index": 0, "id": event.tool_call_id, "type": "function",
                             "function": {"arguments": event.tool_arguments_delta},
-                        }]}))
+                        }]}, chunk_id=stream_id))
                     elif event.type == "done":
                         finish_reason = event.finish_reason or "stop"
                         if event.usage:
                             final_usage = _normalize_usage(event.usage)
+                # OpenAI 语义：流末帧 finish_reason=tool_calls 表示"执行工具后
+                # 回传结果"。部分上游（DashScope 兼容层）在工具场景也回 stop，
+                # agent 框架据 finish_reason 判断是否执行工具——产出过 tool_call
+                # 增量即归一化为 tool_calls；上游显式给出其他值（如 length 截断）
+                # 则尊重上游。
+                if emitted_tool_calls and finish_reason == "stop":
+                    finish_reason = "tool_calls"
             else:
                 async for chunk in client.generate_text_stream_structured(
                     ctx["messages"], **call_kwargs
                 ):
                     if chunk.type == "reasoning" and chunk.text:
-                        yield self._sse(self._chunk(model, {"reasoning_content": chunk.text}))
+                        yield self._sse(self._chunk(model, {"reasoning_content": chunk.text}, chunk_id=stream_id))
                     elif chunk.type == "content" and chunk.text:
-                        yield self._sse(self._chunk(model, {"content": chunk.text}))
+                        yield self._sse(self._chunk(model, {"content": chunk.text}, chunk_id=stream_id))
         except ModelProviderError as e:
             _, body = provider_error_to_openai(e)
             yield self._sse(body)
@@ -410,5 +437,5 @@ class OpenAiGatewayService:
             })
             yield "data: [DONE]\n\n"
             return
-        yield self._sse(self._chunk(model, {}, finish_reason=finish_reason, usage=final_usage))
+        yield self._sse(self._chunk(model, {}, finish_reason=finish_reason, usage=final_usage, chunk_id=stream_id))
         yield "data: [DONE]\n\n"

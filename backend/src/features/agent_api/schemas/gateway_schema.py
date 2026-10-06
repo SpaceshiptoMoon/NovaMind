@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatMessage(BaseModel):
@@ -50,8 +50,8 @@ class ChatCompletionRequest(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    model: str
-    messages: list[ChatMessage]
+    model: str = Field(min_length=1)
+    messages: list[ChatMessage] = Field(min_length=1)
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
