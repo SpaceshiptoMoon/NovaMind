@@ -60,137 +60,67 @@
         <!-- 展开模式：上下文列表（抽屉态始终渲染展开内容——overlay 悬浮时即全宽侧栏，
              无 48px 图标列形态；collapsed 时整体滑出屏幕不可见，无需切换内容） -->
         <template v-if="!sidebarCollapsed || sidebarAsDrawer">
-          <!-- Chat: session list（可折叠） -->
+          <!-- Chat(对话): agent list（统一对话面——侧栏承担 agent 切换，页面内承担会话切换） -->
           <div class="sidebar-body">
-            <template v-if="activeChannelKey === 'chat'">
-              <div class="list-section">
-                <button class="list-section-header" @click="toggleSection('chat')">
-                  <span class="list-section-title">最近对话</span>
-                  <span class="list-section-count">{{ chatStore.sessions.length }}</span>
-                  <el-icon
-                    :size="12"
-                    class="list-section-chevron"
-                    :class="{ collapsed: sectionCollapsed.chat }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-                <button class="section-new-btn" @click="handleNewChatSession">
-                  <el-icon :size="14"><Plus /></el-icon>
-                  <span>新对话</span>
-                </button>
-                <div v-show="!sectionCollapsed.chat" class="list-area">
-                  <div
-                    v-for="session in chatStore.sessions"
-                    :key="session.session_id"
-                    class="list-item"
-                    :class="{ active: chatStore.currentSessionId === session.session_id }"
-                    @click="handleSelectChatSession(session.session_id)"
-                  >
-                    <span class="item-title">{{ session.preview || '新对话' }}</span>
+            <div class="list-section">
+              <button class="list-section-header" @click="toggleSection('chat')">
+                <span class="list-section-title">我的智能体</span>
+                <span class="list-section-count">{{ agentStore.agents.length }}</span>
+                <el-icon
+                  :size="12"
+                  class="list-section-chevron"
+                  :class="{ collapsed: sectionCollapsed.chat }"
+                >
+                  <ArrowDown />
+                </el-icon>
+              </button>
+              <button class="section-new-btn" @click="openAgentDialog()">
+                <el-icon :size="14"><Plus /></el-icon>
+                <span>创建智能体</span>
+              </button>
+              <div v-show="!sectionCollapsed.chat" class="list-area">
+                <div
+                  v-for="agent in agentStore.agents"
+                  :key="agent.id"
+                  class="list-item"
+                  :class="{ active: isAgentChatRoute(agent.id) }"
+                  @click="handleSelectAgent(agent)"
+                >
+                  <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
+                  <div class="item-info">
+                    <span class="item-title">{{ agent.name }}</span>
+                    <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+                  </div>
+                  <div class="item-actions">
                     <button
-                      class="item-delete"
-                      @click.stop="handleDeleteChatSession(session.session_id)"
+                      class="item-action-btn"
+                      title="配置"
+                      @click.stop="openAgentConfig(agent)"
+                    >
+                      <el-icon :size="12"><Setting /></el-icon>
+                    </button>
+                    <button
+                      class="item-action-btn"
+                      title="编辑"
+                      @click.stop="openAgentDialog(agent)"
+                    >
+                      <el-icon :size="12"><EditPen /></el-icon>
+                    </button>
+                    <button
+                      class="item-action-btn item-action-btn--danger"
+                      title="删除"
+                      @click.stop="handleDeleteAgent(agent)"
                     >
                       <el-icon :size="12"><Delete /></el-icon>
                     </button>
                   </div>
-                  <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
                 </div>
+                <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
               </div>
-            </template>
-
-            <!-- Agents: agent list（可折叠；点条目进对话，hover 出配置/编辑/删除动作） -->
-            <template v-else-if="isWorkspaceRoute && activeChannelKey === 'agents'">
-              <div class="list-section">
-                <button class="list-section-header" @click="toggleSection('agents')">
-                  <span class="list-section-title">我的智能体</span>
-                  <span class="list-section-count">{{ agentStore.agents.length }}</span>
-                  <el-icon
-                    :size="12"
-                    class="list-section-chevron"
-                    :class="{ collapsed: sectionCollapsed.agents }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-                <button class="section-new-btn" @click="openAgentDialog()">
-                  <el-icon :size="14"><Plus /></el-icon>
-                  <span>创建智能体</span>
-                </button>
-                <div v-show="!sectionCollapsed.agents" class="list-area">
-                  <div
-                    v-for="agent in agentStore.agents"
-                    :key="agent.id"
-                    class="list-item"
-                    :class="{ active: isAgentChatRoute(agent.id) }"
-                    @click="handleSelectAgent(agent)"
-                  >
-                    <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
-                    <div class="item-info">
-                      <span class="item-title">{{ agent.name }}</span>
-                      <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
-                    </div>
-                    <div class="item-actions">
-                      <button
-                        class="item-action-btn"
-                        title="配置"
-                        @click.stop="openAgentConfig(agent)"
-                      >
-                        <el-icon :size="12"><Setting /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn"
-                        title="编辑"
-                        @click.stop="openAgentDialog(agent)"
-                      >
-                        <el-icon :size="12"><EditPen /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn item-action-btn--danger"
-                        title="删除"
-                        @click.stop="handleDeleteAgent(agent)"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
-                  </div>
-                  <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
-                </div>
-              </div>
-            </template>
-
-            <!-- Research: space list（可折叠） -->
-            <template v-else-if="activeChannelKey === 'research'">
-              <div class="list-section">
-                <button class="list-section-header" @click="toggleSection('research')">
-                  <span class="list-section-title">知识空间</span>
-                  <span class="list-section-count">{{ researchSpaces.length }}</span>
-                  <el-icon
-                    :size="12"
-                    class="list-section-chevron"
-                    :class="{ collapsed: sectionCollapsed.research }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-                <div v-show="!sectionCollapsed.research" class="list-area">
-                  <div
-                    v-for="space in researchSpaces"
-                    :key="space.id"
-                    class="list-item"
-                    :class="{ active: currentResearchSpaceId === String(space.id) }"
-                    @click="handleSelectResearchSpace(space.id)"
-                  >
-                    <span class="item-title">{{ space.name }}</span>
-                  </div>
-                  <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
-                </div>
-              </div>
-            </template>
+            </div>
 
             <!-- Skills -->
-            <template v-else-if="activeChannelKey === 'skills'">
+            <template v-if="activeChannelKey === 'skills'">
               <div class="sidebar-info">
                 <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
               </div>
@@ -556,8 +486,6 @@ import {
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
-import { useSpaceStore } from '@/stores/space'
-import { useChatStore } from '@/stores/chat'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { usePermissionStore } from '@/stores/permission'
 import { chatApi } from '@/api/chat'
@@ -566,7 +494,6 @@ import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import type {
   Agent,
-  ChatSource,
   SourceRef,
   ToolCallRecord,
   CreateAgentRequest,
@@ -576,8 +503,6 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
-const spaceStore = useSpaceStore()
-const chatStore = useChatStore()
 const workbench = useWorkbenchStore()
 
 provide('isInWorkspace', true)
@@ -606,11 +531,10 @@ watch(
   },
 )
 
-// 频道清单：app 键对应应用门禁代码（AppCode）；research 属空间功能不进门禁（常驻）
+// 频道清单：app 键对应应用门禁代码（AppCode）；统一对话面后 chat 即 agent 聊天（含默认助手），
+// 智能体管理与深度研究不再是频道（agent 列表收进 chat 侧栏，research 保留路由经设置区进入）
 const allChannels = [
-  { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary', app: 'qa' },
-  { key: 'agents', label: '智能体', icon: 'agents', group: 'primary', app: 'agent' },
-  { key: 'research', label: '深度研究', icon: 'research', group: 'more', app: null },
+  { key: 'chat', label: '对话', icon: 'chat', group: 'primary', app: 'agent' },
   { key: 'skills', label: '技能广场', icon: 'skill', group: 'more', app: 'skill' },
 ] as const
 
@@ -624,59 +548,28 @@ const activeChannelKey = ref('chat')
 // 下方列表的折叠态：每个频道独立记忆
 const sectionCollapsed = reactive({
   chat: false,
-  agents: false,
-  research: false,
 })
 
-function toggleSection(key: 'chat' | 'agents' | 'research') {
+function toggleSection(key: 'chat') {
   sectionCollapsed[key] = !sectionCollapsed[key]
 }
 
-const currentResearchSpaceId = computed(() => String(route.params.spaceId ?? ''))
-const researchSpaces = computed(() => spaceStore.spaces)
-
 // ===================== 右抽屉数据聚合 =====================
-// 按当前频道从对应 store 聚合 sources / toolCalls 喂给抽屉。
-// chat: 来源在 chatStore.messages[].extra.sources（ChatSource[]）
-// agents: 来源在 agentStore.messages[].sources（SourceRef[]），工具记录在 agentStore.toolCalls
-// 其它频道暂无数据，抽屉显示空态。
-function toSourceRef(s: ChatSource): SourceRef {
-  return {
-    index: s.index,
-    kind: s.kind ?? 'kb',
-    document_id: s.document_id ?? null,
-    document_name: s.document_name ?? null,
-    kb_id: s.kb_id ?? null,
-    chunk_id: s.chunk_id ?? null,
-    chunk_type: s.chunk_type ?? null,
-    score: s.score ?? null,
-    snippet: s.snippet ?? null,
-    page: s.page ?? null,
-    url: s.url ?? null,
-  }
-}
-
+// 统一对话面后所有聊天数据都在 agentStore：来源在 messages[].sources（SourceRef[]），
+// 工具记录在 toolCalls。chat 频道（即 agent 聊天）与 agents 频道共用同一份数据。
 const drawerSources = computed<SourceRef[]>(() => {
-  if (activeChannelKey.value === 'chat') {
-    const out: SourceRef[] = []
-    for (const m of chatStore.messages) {
-      const raw = (m.extra?.sources as ChatSource[] | undefined) ?? undefined
-      if (raw) out.push(...raw.map(toSourceRef))
-    }
-    return out
+  if (activeChannelKey.value !== 'chat' && activeChannelKey.value !== 'agents') return []
+  const out: SourceRef[] = []
+  for (const m of agentStore.messages) {
+    if (m.sources) out.push(...m.sources)
   }
-  if (activeChannelKey.value === 'agents') {
-    const out: SourceRef[] = []
-    for (const m of agentStore.messages) {
-      if (m.sources) out.push(...m.sources)
-    }
-    return out
-  }
-  return []
+  return out
 })
 
 const drawerToolCalls = computed<ToolCallRecord[]>(() => {
-  if (activeChannelKey.value === 'agents') return agentStore.toolCalls
+  if (activeChannelKey.value === 'chat' || activeChannelKey.value === 'agents') {
+    return agentStore.toolCalls
+  }
   return []
 })
 
@@ -693,54 +586,19 @@ watch(activeChannelKey, () => workbench.resetSelection())
 function syncChannelFromRoute() {
   const path = route.path
   if (path.includes('/workspace/chat')) activeChannelKey.value = 'chat'
-  else if (path.includes('/workspace/agents')) activeChannelKey.value = 'agents'
-  else if (path.includes('/workspace/research')) activeChannelKey.value = 'research'
+  else if (path.includes('/workspace/agents')) activeChannelKey.value = 'chat'
   else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
 }
 
-// 按频道执行「新建/开启」动作。chat=开启新对话；agents=进入智能体页（添加入口在页面内）；其余=跳转
+// 按频道执行「新建/开启」动作：对话经入口页解析默认助手；skills 跳广场；research 无频道入口
 function handleNew(key: string = activeChannelKey.value) {
   switch (key) {
     case 'chat':
-      startNewChatSession()
-      break
-    case 'agents':
-      router.push('/home/workspace/agents')
-      break
-    case 'research':
-      router.push('/home/workspace/research')
+      router.push('/home/workspace/chat')
       break
     case 'skills':
       router.push('/home/workspace/skills')
       break
-  }
-}
-
-// ===================== Chat =====================
-
-// 开新对话：流式中先取消 SSE（否则回调会写入新会话的消息造成污染），再清空当前上下文
-function startNewChatSession() {
-  if (chatStore.isStreaming) chatStore.cancelStream()
-  chatStore.clearMessages()
-  router.push('/home/workspace/chat')
-}
-
-// 侧栏「新对话」按钮（+）：与点 chat 频道 tab 同一动作
-function handleNewChatSession() {
-  startNewChatSession()
-}
-
-async function handleSelectChatSession(sessionId: string) {
-  await chatStore.fetchMessages(sessionId)
-  chatStore.fetchSessionConfig(sessionId)
-  router.push('/home/workspace/chat')
-}
-
-async function handleDeleteChatSession(sessionId: string) {
-  try {
-    await chatStore.deleteSession(sessionId)
-  } catch {
-    ElMessage.error('删除对话失败')
   }
 }
 
@@ -947,12 +805,6 @@ const orderedTools = computed(() => {
   })
 })
 
-// ===================== Research =====================
-
-function handleSelectResearchSpace(spaceId: number) {
-  router.push(`/home/workspace/research/${spaceId}`)
-}
-
 // ===================== Init =====================
 
 onMounted(async () => {
@@ -964,8 +816,6 @@ onMounted(async () => {
     agentStore.fetchTools(),
     agentStore.fetchMcpServers(),
     fetchModels(),
-    spaceStore.spaces.length === 0 ? spaceStore.fetchSpaces() : Promise.resolve(),
-    chatStore.fetchSessions(),
   ])
 })
 </script>

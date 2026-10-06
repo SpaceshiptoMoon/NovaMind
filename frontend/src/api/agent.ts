@@ -32,6 +32,11 @@ import type {
  * Agent CRUD、WebSocket 流式对话与会话历史、MCP 服务器管理、内置工具查询
  */
 export const agentApi = {
+  /** 默认助手（不存在时后端自动创建，幂等） */
+  getDefaultAgent() {
+    return request.get<Agent>('/agent/agents/default')
+  },
+
   /** Agent 列表（分页） */
   listAgents(params?: { limit?: number; offset?: number }) {
     return request.get<AgentListResponse>('/agent/agents', params as Record<string, unknown>)

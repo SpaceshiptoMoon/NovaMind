@@ -267,8 +267,14 @@ const router = createRouter({
             {
               path: 'chat',
               name: 'WorkspaceChat',
-              component: () => import('@/views/chat/ChatView.vue'),
-              meta: { title: 'AI 对话', requiresApp: 'qa' },
+              component: () => import('@/views/chat/ChatEntryView.vue'),
+              meta: { title: '对话' },
+            },
+            {
+              path: 'chat/archive',
+              name: 'WorkspaceChatArchive',
+              component: () => import('@/views/chat/ChatArchiveView.vue'),
+              meta: { title: 'QA 历史归档', requiresApp: 'qa' },
             },
             {
               path: 'agents',
