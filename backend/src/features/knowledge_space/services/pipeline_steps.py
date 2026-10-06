@@ -257,23 +257,6 @@ def build_es_chunks(
             chunk_pages = list(meta.get("pages") or [])
             if chunk_pages:
                 chunk_meta["page_number"] = int(chunk_pages[0])
-            # 关系元数据白名单拾取（sentence_window/parent_child 产物）：
-            # chunk_role/parent_chunk_id/expansion_type/expansion_window_size。
-            # parent_slot 是切分期相对槽位（瞬态），解析成绝对 id 后不入 ES；
-            # slot 断链（父块缺失/被上游过滤）→ 不写指针，子块退化为普通块
-            #（检索期不扩展——能力缺失优于错误指针）。
-            chunk_role = meta.get("chunk_role")
-            if chunk_role in ("parent", "child"):
-                chunk_meta["chunk_role"] = chunk_role
-            if chunk_role == "child" and isinstance(meta.get("parent_slot"), int):
-                parent_pos = slot_to_position.get(meta["parent_slot"])
-                if parent_pos is not None:
-                    chunk_meta["parent_chunk_id"] = f"{document.id}_{parent_pos}"
-                    chunk_meta["expansion_type"] = "parent_child"
-            if meta.get("expansion_type") == "sentence_window":
-                chunk_meta["expansion_type"] = "sentence_window"
-                if isinstance(meta.get("expansion_window_size"), int):
-                    chunk_meta["expansion_window_size"] = meta["expansion_window_size"]
             # 文档级 PDF figure 图片链接：每个文本 chunk 的 metadata 都保存该文档全部图片，
             # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
             # image_url 为相对文档 figure 目录的短文件名（figure_xxx.png），渲染方经
@@ -311,6 +294,25 @@ def build_es_chunks(
                     frame_paths[idx] for idx in meta["frame_indices"]
                     if frame_paths.get(idx)
                 ]
+        # 关系元数据白名单拾取（sentence_window/parent_child 产物）——公共段：
+        # 文本与图片（line_aware=False）都可携带；音视频走 line_aware 回落
+        # meta 恒空、拾取自然跳过。放 is_text 分支内会让图片文档选新策略时
+        # 切分带出的 meta 在落库时被静默丢弃（验证轮案例 E 实测）。
+        # parent_slot 是切分期相对槽位（瞬态），解析成绝对 id 后不入 ES；
+        # slot 断链（父块缺失/被上游过滤）→ 不写指针，子块退化为普通块
+        #（检索期不扩展——能力缺失优于错误指针）。
+        chunk_role = meta.get("chunk_role")
+        if chunk_role in ("parent", "child"):
+            chunk_meta["chunk_role"] = chunk_role
+        if chunk_role == "child" and isinstance(meta.get("parent_slot"), int):
+            parent_pos = slot_to_position.get(meta["parent_slot"])
+            if parent_pos is not None:
+                chunk_meta["parent_chunk_id"] = f"{document.id}_{parent_pos}"
+                chunk_meta["expansion_type"] = "parent_child"
+        if meta.get("expansion_type") == "sentence_window":
+            chunk_meta["expansion_type"] = "sentence_window"
+            if isinstance(meta.get("expansion_window_size"), int):
+                chunk_meta["expansion_window_size"] = meta["expansion_window_size"]
         chunk_data = {
             "space_id": document.space_id,
             "kb_id": document.kb_id,

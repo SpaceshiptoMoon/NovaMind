@@ -51,6 +51,50 @@ REFUSAL_ANSWER_TEXT = (
 _GRADE_RETRY_FALLBACK_MODES = [SearchMode.CONTENT_HYBRID.value, SearchMode.CONTENT_BM25.value, SearchMode.ALL_HYBRID.value]
 
 
+def _dedupe_expanded_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """跨 KB 聚合后对扩展命中做同文档窗口重叠去重（保留高分）。
+
+    句子窗口/父子回带的命中携带 metadata.expansion.window_chunk_range 或
+    parent_chunk_id——同一文档两个命中的窗口区间重叠（或回带同一父块）时，
+    扩展后的 content 高度重复，只保留高分一条。无扩展元数据的命中原样保留
+    （存量行为零变化）。
+    """
+    by_doc: dict[int, list[dict[str, Any]]] = {}
+    plain: list[dict[str, Any]] = []
+    for r in results:
+        meta = r.get("metadata") or {}
+        if meta.get("expansion"):
+            by_doc.setdefault(r.get("document_id"), []).append(r)
+        else:
+            plain.append(r)
+
+    deduped: list[dict[str, Any]] = plain
+    for _doc_id, hits in by_doc.items():
+        hits.sort(key=lambda h: h.get("score") or 0.0, reverse=True)
+        kept_ranges: list[tuple[int, int]] = []
+        kept_parents: set[str] = set()
+        for hit in hits:
+            exp = hit["metadata"]["expansion"]
+            parent_id = exp.get("parent_chunk_id")
+            if parent_id:
+                # 父子回带：同父块只留一条
+                if parent_id in kept_parents:
+                    continue
+                kept_parents.add(parent_id)
+            else:
+                # 句窗口：区间重叠（含相邻）视为重复
+                rng = exp.get("window_chunk_range")
+                if not (isinstance(rng, list) and len(rng) == 2):
+                    deduped.append(hit)
+                    continue
+                lo, hi = rng
+                if any(lo <= khi + 1 and klo - 1 <= hi for klo, khi in kept_ranges):
+                    continue
+                kept_ranges.append((lo, hi))
+            deduped.append(hit)
+    return deduped
+
+
 @dataclass
 class ChatPreparation:
     """对话预处理的共享结果"""
@@ -896,6 +940,12 @@ class AIChatService:
         if not all_results:
             return None
 
+        # 检索期扩展（句子窗口/父子回带）命中窗口高度重叠：相邻句各自命中时
+        # 窗口并集几乎相同——单次 search 内已按区间合并去重，但跨 KB 聚合
+        # （逐库 search 再拼接）管不到。此处按「同文档 + 扩展区间重叠」二次
+        # 去重，保留高分；语义重复的 source 只会浪费 LLM 上下文额度。
+        all_results = _dedupe_expanded_results(all_results)
+
         all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
         results = all_results[:top_k]
 
@@ -905,9 +955,13 @@ class AIChatService:
             metadata = r.get("metadata") or {}
             filename = file_info.get("filename", "")
             # wiki 页是预合成结构化内容（术语/综述/对比），信息密度高于原始 chunk，
-            # 截断放宽到 1500 保住骨架结构；普通 chunk 维持 800
+            # 截断放宽到 1500 保住骨架结构；普通 chunk 维持 800；
+            # 检索期扩展命中（句子窗口扩窗/父子回带）content 已是完整上下文——
+            # 截断到 800 会把窗口砍半，扩展价值尽失，同 wiki 档放宽到 1500。
             is_wiki = r.get("chunk_type") == "wiki_page"
-            snippet = _sanitize_input(r.get("content", ""))[: 1500 if is_wiki else 800]
+            is_expanded = bool(metadata.get("expansion"))
+            snippet_limit = 1500 if (is_wiki or is_expanded) else 800
+            snippet = _sanitize_input(r.get("content", ""))[:snippet_limit]
             sources.append({
                 "index": i,
                 "kind": "kb",

@@ -65,10 +65,18 @@ async def _expand_inner(es_client, space_id: int, results: list[dict]) -> list[d
     """扩展主逻辑（expand_search_results 的兜底内层）。"""
     window_hits: dict[int, list[dict]] = {}
     parent_hits: list[dict] = []
+    seen_chunk_ids: set[str] = set()
     for r in results:
         meta = r.get("metadata") or {}
         if meta.get("expansion"):
             continue  # 幂等护栏：已扩展（引擎缓存复入/重复调用）跳过
+        # 同 chunk_id 多份命中（sub_query 双路重复召回等脏入参的防御纵深）：
+        # 只扩展第一份，其余保持原始形态——两份独立 dict 骗不过对象级幂等标记。
+        cid = r.get("chunk_id")
+        if cid and cid in seen_chunk_ids:
+            continue
+        if cid:
+            seen_chunk_ids.add(cid)
         if meta.get("expansion_type") == "sentence_window":
             window_hits.setdefault(r.get("document_id"), []).append(r)
         elif meta.get("chunk_role") == "child" and meta.get("parent_chunk_id"):

@@ -143,8 +143,25 @@ _CHUNK_HEALTH_SUGGESTIONS = {
 }
 
 
+def _original_chunk_content(result: dict[str, Any]) -> str:
+    """取命中结果的切分产物本体文本：有扩展元数据时取 retrieved_content。
+
+    检索期扩展（句子窗口扩窗/父子回带）会把 content 替换成窗口/父块全文；
+    切分质量分析、溯源对齐等场景关心的是被检索单元的原始文本。
+    """
+    expansion = (result.get("metadata") or {}).get("expansion") or {}
+    retrieved = expansion.get("retrieved_content")
+    if isinstance(retrieved, str) and retrieved:
+        return retrieved
+    return result.get("content", "")
+
+
 def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
     """统计命中 chunk 的切分健康度（按 chunk_id 去重）。
+
+    统计对象是「切分产物本体」：检索期扩展命中（句子窗口扩窗/父子回带）的
+    content 已被窗口/父块全文替换，直接统计会让碎片信号被扩窗掩盖——此处
+    经 _original_chunk_content 还原原始命中文本再判定。
 
     Returns:
         {total_chunks, short_chunks, unterminated_chunks}：
@@ -157,11 +174,12 @@ def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
         if cid and cid not in unique:
             unique[cid] = chunk
     short = sum(
-        1 for c in unique.values() if len(str(c.get("content", ""))) < CHUNK_SHORT_LENGTH
+        1 for c in unique.values()
+        if len(_original_chunk_content(c)) < CHUNK_SHORT_LENGTH
     )
     unterminated = 0
     for c in unique.values():
-        tail = str(c.get("content", "")).rstrip()
+        tail = _original_chunk_content(c).rstrip()
         if tail and tail[-1] not in _SENTENCE_END_CHARS:
             unterminated += 1
     return {
@@ -1533,7 +1551,10 @@ class EvaluationService:
             chunk_list = [
                 {
                     "chunk_id": c.get("chunk_id", ""),
-                    "content": c.get("content", ""),
+                    # 检索期扩展命中（句子窗口扩窗/父子回带）的 content 已是窗口/
+                    # 父块全文——切分健康统计的对象是「切分产物本体」，须取
+                    # retrieved_content（原始命中块），否则碎片信号被扩窗掩盖。
+                    "content": _original_chunk_content(c),
                     "score": c.get("score", 0),
                     # 硬基准（expected_sources）按 document_id 比对需要此字段
                     "document_id": c.get("document_id"),
