@@ -5,13 +5,17 @@
 ## 给部署方终端用户
 
 - **skill 安装包**：[`docs/skill-package/novamind-kb/`](../docs/skill-package/novamind-kb/)
-  （`SKILL.md` + `INSTALL.md` 三步安装：装 skill → 建 key → 注册 MCP server）
+  （`SKILL.md` + `INSTALL.md` + `scripts/kb_search.py`；三步安装：装 skill → 建 key →
+  注册 MCP server 或设 `NOVAMIND_API_KEY` 环境变量）
 - **完整配置指南**：[`docs/agent/claude-code-mcp-setup.md`](../docs/agent/claude-code-mcp-setup.md)
 
 ## 给本仓库协作者
 
 - skill 已随仓库分发在 `.claude/skills/novamind-kb/`（项目级自动生效——
   实际文件在 `docs/skill-package/`，gitignore 例外指到这里，单一事实源）；
+  含两条检索路径：MCP tool（首选，注册后可用）与
+  `scripts/kb_search.py`（裸 JSON-RPC，仅需 `NOVAMIND_API_KEY` 环境变量，
+  MCP 未注册时 Claude 自动降级走它）；
 - key 管理接口：`/api/v1/agent-api/keys`（实现见 `backend/src/features/agent_api/`）。
 
 ## 快速开始
@@ -21,4 +25,5 @@
 claude mcp add --transport http novamind-kb http://127.0.0.1:8100/mcp \
   --header "X-API-Key: <你的 key>"
 # 2. 重启 Claude Code 会话，直接自然语言问知识库
+#    （不注册 MCP 时：export NOVAMIND_API_KEY=<key> 后 skill 走脚本路径）
 ```

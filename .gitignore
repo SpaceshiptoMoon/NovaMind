@@ -64,6 +64,12 @@ backend/src/setting/yaml_config/yaml/default.yaml
 # 注意：父目录被忽略时需先解禁目录本身，子项例外才生效。
 !.claude/
 !.claude/NOVAMIND-MCP.md
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/novamind-kb/
+!.claude/skills/novamind-kb/**
+# skill 本地配置含明文 API key，永不入库
+.claude/skills/novamind-kb/config.json
 backend/skills-lock.json
 
 # ========================================
