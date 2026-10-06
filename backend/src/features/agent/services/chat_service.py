@@ -20,6 +20,7 @@ from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
 from novamind.engines.search.ports import WebSearchPort
+from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
@@ -173,7 +174,7 @@ class AgentChatService:
                 memory_store, memory_search, prompt_provider,
             )
 
-            llm_client, tools, messages, snapshot, _ = await self._build_context(
+            llm_client, tools, messages, snapshot, _, caps = await self._build_context(
                 agent, conv, user_id, model, content, memory_manager
             )
             # 调试向预览：会话级上下文用量（ContextMeter）+ 压缩事件（CompactionItem）
@@ -265,8 +266,25 @@ class AgentChatService:
                     tools=tools,
                 )
 
-            # E7 Plan-and-Execute：Agent extra_config.plan_mode 时用 PlanningFlow 编排
+            # E7 Plan-and-Execute：Agent extra_config.plan_mode 时用 PlanningFlow 编排。
+            # plan 模式强依赖工具（plan_output/每步工具执行），模型无工具能力时
+            # 静默降级=计划环节全空转，直接阻断并明示，不出错误结果。
             plan_mode = bool((agent.extra_config or {}).get("plan_mode"))
+            if plan_mode and not caps.tools:
+                await self._save_error_message(
+                    conv,
+                    "当前模型不支持工具调用，无法使用计划模式（Plan-and-Execute）。"
+                    "请更换支持工具调用的模型，或在 Agent 设置中关闭计划模式。",
+                    extra={"error": True, "plan_mode_blocked": True},
+                )
+                yield self._emit("error", {
+                    "content": "当前模型不支持工具调用，无法使用计划模式（Plan-and-Execute）。"
+                               "请更换支持工具调用的模型，或在 Agent 设置中关闭计划模式。",
+                })
+                return
+
+            # 思考模式协商：模型不支持 thinking 时强制关（声明 False=实测不支持）
+            effective_thinking = enable_thinking and caps.thinking
             if plan_mode:
                 from novamind.engines.agent.flow import PlanningFlow
 
@@ -279,7 +297,7 @@ class AgentChatService:
                     max_tokens=agent.max_tokens,
                     temperature=agent.temperature,
                     top_p=agent.top_p,
-                    enable_thinking=enable_thinking,
+                    enable_thinking=effective_thinking,
                     stream=stream,
                     compress_fn=_compress_on_overflow,
                     max_iterations=agent.max_tool_calls_per_turn or 5,
@@ -291,7 +309,7 @@ class AgentChatService:
                     tools=tools,
                     context=context,
                     stream=stream,
-                    enable_thinking=enable_thinking,
+                    enable_thinking=effective_thinking,
                     max_iterations=agent.max_tool_calls_per_turn,
                     max_tokens=agent.max_tokens,
                     temperature=agent.temperature,
@@ -640,11 +658,15 @@ class AgentChatService:
         user_content: str,
         memory_manager: MemoryManager,
         dry_run: bool = False,
-    ) -> tuple[Any, list[dict], list[dict], MemorySnapshot]:
+    ) -> tuple[Any, list[dict], list[dict], MemorySnapshot, str, LLMCapabilities]:
         """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）。
 
         dry_run=True 时只算 token 不触发压缩、不写 summary、跳过 prefetch/附件注入
         副作用，用于历史会话初始 context_usage 估算（ContextMeter）。
+
+        Returns:
+            (llm_client, tools, messages, snapshot, system_prompt, caps)。
+            caps 为模型生效能力集，供调用侧协商 plan_mode/thinking 透传。
         """
         # LLM 客户端（优先 LLM 类型，fallback 到 VLM 类型）
         try:
@@ -656,6 +678,10 @@ class AgentChatService:
                 user_id, model
             )
 
+        # 能力协商：模型不支持工具时跳过辅助工具注入（无工具路径经 BaseLLM
+        # 委托纯文本方法，任何协议都可用）；enabled_tools 非空时降级提示词模拟
+        caps = resolve_capabilities(llm_client)
+
         # 工具列表
         tool_executor = self.agent_engine.tool_executor
         enabled_tools = agent.enabled_tools or []
@@ -663,10 +689,16 @@ class AgentChatService:
         enabled_mcp_ids = await self._filter_visible_mcp_ids(
             user_id, agent.enabled_mcp_servers or []
         )
-        tools = tool_executor.resolve_tools_openai_format(enabled_tools, enabled_mcp_ids)
+        tools = (
+            tool_executor.resolve_tools_openai_format(enabled_tools, enabled_mcp_ids)
+            if caps.tools
+            else []
+        )
 
         # 自动注入 read_tool_result 工具（始终可用，不受 enabled_tools 限制）
-        if not any(t.get("function", {}).get("name") == "read_tool_result" for t in tools):
+        if caps.tools and not any(
+            t.get("function", {}).get("name") == "read_tool_result" for t in tools
+        ):
             try:
                 read_tool_def = tool_executor._resolve_tool_definition("read_tool_result")
                 if read_tool_def:
@@ -676,7 +708,9 @@ class AgentChatService:
 
         # 自动注入 read_attachment 工具（始终可用）：附件正文不注入上下文，
         # 上下文里只有 <system-uploaded-files> 清单，模型经本工具按 offset/limit 分片读取
-        if not any(t.get("function", {}).get("name") == "read_attachment" for t in tools):
+        if caps.tools and not any(
+            t.get("function", {}).get("name") == "read_attachment" for t in tools
+        ):
             try:
                 read_att_def = tool_executor._resolve_tool_definition("read_attachment")
                 if read_att_def:
@@ -686,20 +720,22 @@ class AgentChatService:
 
         # 计划模式注入 plan_output 工具：各步产出上下文里只有头尾节选，
         # 模型经本工具按步骤号回查落库全文（非计划模式不注入，防止误用）
-        self._inject_plan_output_tool(tools, agent)
+        if caps.tools:
+            self._inject_plan_output_tool(tools, agent)
 
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
         frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
 
-        cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}"
+        # cache key 纳入能力标记：同 agent 换模型（能力面不同 → 提示词不同）不串缓存
+        cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}:tools={caps.tools}"
         cached_partial = self._get_cached_prompt(cache_key)
 
         if cached_partial is None:
             skill_fragments = await self._collect_skill_fragments(enabled_tools)
             cached_partial = await self._prompt_builder.build(
                 base_prompt=formatted_prompt,
-                enabled_tools=enabled_tools,
+                enabled_tools=enabled_tools if caps.tools else [],
                 skill_fragments=skill_fragments,
                 frozen_memory="",
                 model_name=model,
@@ -707,10 +743,20 @@ class AgentChatService:
             )
             self._set_cached_prompt(cache_key, cached_partial)
 
-        if frozen_memory:
-            system_prompt = cached_partial + "\n\n" + frozen_memory
+        if caps.tools:
+            system_prompt = (
+                cached_partial + "\n\n" + frozen_memory if frozen_memory else cached_partial
+            )
         else:
-            system_prompt = cached_partial
+            # 无工具能力的模型：诚实声明工具不可执行（防正文假调用被误解为已执行），
+            # 引导模型基于上下文直接回答
+            sim_block = self._build_tool_simulation_block(agent, enabled_tools)
+            parts = [cached_partial]
+            if frozen_memory:
+                parts.append(frozen_memory)
+            if sim_block:
+                parts.append(sim_block)
+            system_prompt = "\n\n".join(parts)
 
         # Layer 1+2 并行：短期记忆构建 + 长期记忆预取同时发起（dry_run 跳过预取副作用）
         prefetch_task = None
@@ -757,7 +803,35 @@ class AgentChatService:
             except Exception as inject_err:
                 logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
 
-        return llm_client, tools, snapshot.messages, snapshot, system_prompt
+        return llm_client, tools, snapshot.messages, snapshot, system_prompt, caps
+
+    @staticmethod
+    def _build_tool_simulation_block(
+        agent: AgentDefinition, enabled_tools: list[str]
+    ) -> str:
+        """构造无工具模型的提示词模拟块：诚实声明不可执行，仅列能力意图。
+
+        文案必须明确「不可执行」——否则模型在正文输出形似工具调用的文本，
+        用户会误以为已执行（失败方向安全：宁可少能力，不出错误结果）。
+
+        Args:
+            agent: Agent 定义（未使用参数保留签名对称性）。
+            enabled_tools: Agent 勾选的工具名列表。
+
+        Returns:
+            提示词模拟块文本；Agent 未勾选任何工具时返回空串（无必要声明）。
+        """
+        if not enabled_tools:
+            return ""
+        tool_list = "\n".join(f"- {name}" for name in enabled_tools)
+        return (
+            "<system-tool-simulation>\n"
+            "当前所配置的模型不支持工具调用（function calling）。以下工具在本会话中不可执行：\n"
+            f"{tool_list}\n\n"
+            "请基于已有上下文直接回答用户问题。若任务必须依赖上述工具才能完成，"
+            "请如实告知用户当前模型不支持该操作，不要在回答中输出任何形似工具调用的内容。"
+            "</system-tool-simulation>"
+        )
 
     async def estimate_context_usage(
         self, user_id: int, session_id: str
@@ -775,7 +849,7 @@ class AgentChatService:
             agent, user_id, model, conv.id,
             self._memory_store_port, self._memory_search_port, self._prompt_provider,
         )
-        _, _, _, snapshot, _ = await self._build_context(
+        _, _, _, snapshot, _, _ = await self._build_context(
             agent, conv, user_id, model, "", memory_manager, dry_run=True
         )
         return ContextUsageResponse(

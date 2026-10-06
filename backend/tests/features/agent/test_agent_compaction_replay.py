@@ -268,7 +268,7 @@ async def test_estimate_context_usage_uses_dry_run() -> None:
         messages_tokens=70, context_window=32768, reserved_tokens=1024,
         compressed=False, compression_ratio=1.0, compressed_count=0, compaction_summary="",
     )
-    svc._build_context = AsyncMock(return_value=(None, [], [], fake_snapshot, "fake system prompt"))  # type: ignore[assignment]
+    svc._build_context = AsyncMock(return_value=(None, [], [], fake_snapshot, "fake system prompt", None))  # type: ignore[assignment]
 
     resp = await svc.estimate_context_usage(user_id=1, session_id="sess-1")
 
