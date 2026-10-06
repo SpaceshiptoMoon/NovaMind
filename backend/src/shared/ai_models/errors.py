@@ -68,6 +68,22 @@ class ModelOutputTruncatedError(ModelProviderError):
         super().__init__(message, status_code=400, model=model)
 
 
+class ModelQuotaError(ModelProviderError):
+    """模型额度不可用（欠费/免费额度耗尽/余额不足）。
+
+    状态码固定 400 档语义（同模型不可重试），但对换卡充值后可恢复。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = 400,
+        model: str | None = None,
+    ):
+        """初始化额度异常（默认状态码 400，同模型重试无意义）。"""
+        super().__init__(message, status_code, model)
+
+
 def _extract_status_code(exc: BaseException) -> int | None:
     """按优先级从异常对象提取 HTTP 状态码。
 
@@ -93,12 +109,46 @@ def _extract_status_code(exc: BaseException) -> int | None:
 
 # 状态码 → 中文说明。403 覆盖百炼官方文档列出的三类根因（未开通/额度耗尽/已下线）。
 _STATUS_MESSAGES: dict[int, str] = {
-    400: "请求参数不被该模型支持（可能模型仅支持流式、不支持的参数或输入格式）",
+    400: "请求参数不被该模型接受（参数组合或输入格式不匹配）",
     401: "API Key 无效或已过期",
-    403: "无权访问该模型（可能未在服务商控制台开通、免费额度已耗尽或模型已下线）",
+    403: "无权访问该模型（未开通、额度不可用或已下线）",
     404: "模型或接口路径不存在（请检查模型名拼写与 Base URL）",
     429: "触发服务商限流，请稍后重试或降低调用频率",
 }
+
+# 额度类错误的通用词面（小写）：覆盖 quota/arrearage/insufficient/balance/credit
+# 等主流服务商计费错误的英文措辞与中文欠费类措辞。判据从第一性原理出发
+# （计费语义词 + 4xx），具体厂商样例（DashScope Arrearage/AllocationQuota.
+# FreeTierOnly）仅作测试验证，不作判据来源。
+_QUOTA_TEXT_PATTERNS = (
+    "quota",
+    "arrearage",
+    "insufficient",
+    "balance",
+    "credit",
+    "欠费",
+    "余额不足",
+    "免费额度",
+)
+
+
+def _is_quota_error(status_code: int | None, raw_detail: str) -> bool:
+    """判定是否为额度类错误：4xx（除 404）+ 错误文本命中计费语义词面。
+
+    404 排除：「不存在」语义下 balance/credit 等词面（如 "check balance of
+    model name"）无计费含义，不应归类额度错误。
+
+    Args:
+        status_code: 服务商 HTTP 状态码。
+        raw_detail: 服务商错误原文（小写化由本函数内部处理）。
+
+    Returns:
+        True 表示应归类为 ModelQuotaError。
+    """
+    if status_code is None or not (400 <= status_code < 500) or status_code == 404:
+        return False
+    lowered = raw_detail.lower()
+    return any(p in lowered for p in _QUOTA_TEXT_PATTERNS)
 
 
 def translate_provider_error(exc: BaseException, model: str | None = None) -> ModelProviderError:
@@ -134,4 +184,10 @@ def translate_provider_error(exc: BaseException, model: str | None = None) -> Mo
 
     if status_code == 429:
         return ModelRateLimitError(message, status_code=429, model=model)
+    if _is_quota_error(status_code, raw_detail):
+        # 额度类错误给短文案 + 行动指引，不再拼「请求参数」类误导前缀
+        quota_message = "模型额度不可用（欠费或免费额度耗尽），请充值或在服务商控制台调整"
+        if raw_detail:
+            quota_message += f"。服务商返回：{raw_detail}"
+        return ModelQuotaError(quota_message, status_code=status_code, model=model)
     return ModelProviderError(message, status_code=status_code, model=model)
