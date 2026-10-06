@@ -19,11 +19,15 @@ class LLMQuirks:
             仅影响探针，不改变运行时请求行为。
         thinking_budget_ratio: thinking 模式下思考预算占 max_tokens 的比例封顶。
             收编自 openai_compatible._THINKING_BUDGET_RATIO。
+        auth_type: Anthropic 协议凭据的鉴权头语义。"api_key"（默认）发
+            x-api-key 头（官方 Anthropic）；"bearer" 发 Authorization: Bearer
+            头（智谱等兼容网关的 coding-plan token 语义）。
     """
 
     stream_only: bool = False
     force_thinking: bool = False
     thinking_budget_ratio: float = 0.5
+    auth_type: str = "api_key"
 
 
 @dataclass(frozen=True)
@@ -60,10 +64,20 @@ _QUIRK_RULES: tuple[_QuirkRule, ...] = (
         model_pattern=r"^qwen3",
         quirks=LLMQuirks(force_thinking=True),
     ),
+    # 智谱 Anthropic 兼容端点（coding plan）：凭据语义是 Bearer token
+    # （官方文档指定 ANTHROPIC_AUTH_TOKEN）。2026-10-06 实测两种头都放行，
+    # 但 Bearer 是其正规语义；且该网关优先校验 Authorization 头。
+    _QuirkRule(
+        base_url_pattern="open.bigmodel.cn/api/anthropic",
+        model_pattern=r".*",
+        quirks=LLMQuirks(auth_type="bearer"),
+    ),
 )
 
 # extra_config → LLMQuirks 字段的白名单（布尔字段），防任意键注入
 _OVERRIDE_KEYS = {"stream_only", "force_thinking"}
+# 字符串枚举类覆盖键：值必须落在合法集合内才生效
+_OVERRIDE_ENUM_KEYS: dict[str, frozenset[str]] = {"auth_type": frozenset({"api_key", "bearer"})}
 
 
 def _coerce_bool(value: object) -> bool | None:
@@ -83,8 +97,8 @@ def resolve_quirks(
     Args:
         base_url: 模型服务端点；空/None 不参与匹配。
         model: 模型名称。
-        overrides: 用户显式声明（extra_config 中的 stream_only/force_thinking 键），
-            优先级最高；非法值（非布尔）静默忽略，不抛错。
+        overrides: 用户显式声明（extra_config 中的 stream_only/force_thinking/
+            auth_type 键），优先级最高；非法值静默忽略，不抛错。
 
     Returns:
         合并后的 LLMQuirks；无注册表命中且无覆盖时为全默认实例。
@@ -110,6 +124,10 @@ def resolve_quirks(
             coerced = _coerce_bool(overrides.get(key))
             if coerced is not None:
                 quirks_kwargs[key] = coerced
+        for key, allowed in _OVERRIDE_ENUM_KEYS.items():
+            value = overrides.get(key)
+            if isinstance(value, str) and value in allowed:
+                quirks_kwargs[key] = value
 
     if not quirks_kwargs:
         return LLMQuirks()

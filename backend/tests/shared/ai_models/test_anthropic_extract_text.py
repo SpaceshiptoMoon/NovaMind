@@ -150,3 +150,58 @@ class TestHostEnvInsulation:
                 api_key="k", base_url="", model_name="m",
             )
             assert str(client.client.base_url) == "https://api.anthropic.com"
+
+
+class TestAuthTypeHeaderSelection:
+    """auth_type 决定凭据头语义：api_key→x-api-key，bearer→Authorization。
+
+    背景（2026-10-06 用户指出）：智谱 coding plan 发的是 token（官方指定
+    ANTHROPIC_AUTH_TOKEN/Bearer 语义），不能与 API Key（x-api-key）混为一谈。
+    """
+
+    def _capture_headers(self, client) -> dict:
+        import httpx
+
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.update({k.lower(): v for k, v in request.headers.items()})
+            return httpx.Response(
+                200,
+                json={
+                    "id": "x", "type": "message", "role": "assistant",
+                    "model": "m", "content": [{"type": "text", "text": "ok"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            )
+
+        client.client._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url=client.client.base_url,
+        )
+        import asyncio
+
+        asyncio.run(client.generate_text(prompt="hi", max_tokens=10))
+        return captured
+
+    def test_default_sends_x_api_key(self):
+        """默认（官方语义）：凭据走 x-api-key，无 Authorization 头。"""
+        with patch.dict("os.environ", {"ANTHROPIC_AUTH_TOKEN": "ENV_JUNK"}):
+            client = AnthropicLLM(api_key="cred-1", base_url="", model_name="m")
+            headers = self._capture_headers(client)
+            assert headers.get("x-api-key") == "cred-1"
+            assert "authorization" not in headers
+
+    def test_bearer_sends_authorization(self):
+        """bearer 语义（智谱等网关）：凭据走 Authorization，无 x-api-key 头。"""
+        from novamind.shared.ai_models.llm.quirks import LLMQuirks
+
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "ENV_JUNK"}):
+            client = AnthropicLLM(
+                api_key="cred-2", base_url="", model_name="m",
+                quirks=LLMQuirks(auth_type="bearer"),
+            )
+            headers = self._capture_headers(client)
+            assert headers.get("authorization") == "Bearer cred-2"
+            assert "x-api-key" not in headers

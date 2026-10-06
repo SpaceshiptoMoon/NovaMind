@@ -92,3 +92,34 @@ def testis_stream_only_error_matches_dashscope_wording():
 def testis_stream_only_error_rejects_auth_and_timeout():
     assert not is_stream_only_error("Error code: 403 - Access denied")
     assert not is_stream_only_error("Request timed out")
+
+
+# ========== auth_type 鉴权头语义 ==========
+
+
+def test_zhipu_anthropic_endpoint_resolves_bearer():
+    """智谱 Anthropic 兼容端点命中 bearer（coding-plan token 语义）。"""
+    quirks = resolve_quirks("https://open.bigmodel.cn/api/anthropic", "glm-5.3-flash")
+    assert quirks.auth_type == "bearer"
+
+
+def test_official_anthropic_stays_api_key():
+    """官方 Anthropic 端点不命中，保持 x-api-key 语义。"""
+    quirks = resolve_quirks("https://api.anthropic.com", "claude-sonnet-4-5")
+    assert quirks.auth_type == "api_key"
+
+
+def test_user_override_auth_type_for_any_endpoint():
+    """用户经 extra_config 声明 auth_type 对任意端点生效。"""
+    quirks = resolve_quirks(
+        "https://my-gateway.example.com", "any-model", {"auth_type": "bearer"}
+    )
+    assert quirks.auth_type == "bearer"
+
+
+def test_invalid_auth_type_override_silently_ignored():
+    """非法 auth_type 值静默忽略，不抛错不落怪癖。"""
+    quirks = resolve_quirks(
+        "https://my-gateway.example.com", "any-model", {"auth_type": "digest"}
+    )
+    assert quirks == LLMQuirks()

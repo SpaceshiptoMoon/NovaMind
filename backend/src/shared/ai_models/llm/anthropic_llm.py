@@ -7,6 +7,7 @@ Anthropic LLM 客户端
 from collections.abc import AsyncGenerator
 
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.llm.quirks import LLMQuirks
 from novamind.shared.logging import get_logger
 from tenacity import (
     retry,
@@ -35,19 +36,22 @@ class AnthropicLLM(BaseLLM):
         max_retries: int = 3,
         max_concurrent: int = 10,
         default_max_tokens: int = 4096,
+        quirks: LLMQuirks | None = None,
         **kwargs,
     ):
         """
         初始化 Anthropic LLM 客户端
 
         Args:
-            api_key: Anthropic API 密钥
+            api_key: 凭据本体（API Key 或 Bearer token，按 quirks.auth_type 决定发送头）
             base_url: API 基础 URL（默认官方地址）
             model_name: 模型名称
             timeout: API 调用超时（秒）
             max_retries: 最大重试次数
             max_concurrent: 最大并发调用数
             default_max_tokens: 默认最大生成 token 数（Anthropic 必填）
+            quirks: provider 怪癖声明；auth_type 决定凭据走 x-api-key 还是
+                Authorization: Bearer 头，None 时按官方语义走 x-api-key
         """
         super().__init__(
             api_key=api_key,
@@ -58,29 +62,36 @@ class AnthropicLLM(BaseLLM):
             max_concurrent=max_concurrent,
         )
         self.default_max_tokens = default_max_tokens
+        self.quirks = quirks or LLMQuirks()
 
         # 延迟导入 anthropic，避免未安装时报错
         try:
-            from anthropic import AsyncAnthropic
-            from anthropic._types import Omit
+            from anthropic import AsyncAnthropic, Omit
         except ImportError:
             raise ImportError(
                 "使用 Anthropic 协议需要安装 anthropic 库: pip install anthropic"
             )
 
-        self.client = AsyncAnthropic(
-            api_key=self.api_key,
+        # 凭据只认显式传入的值。不传的槽位必须用 Omit 压头：auth_token/api_key
+        # 缺省时 SDK 会自动读宿主环境 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY，
+        # 双头并发；优先校验 Authorization 的网关（如智谱）会用环境里的无关
+        # token 鉴权而 401。
+        client_kwargs: dict = {
             # 空串/None 一律落官方默认：传 None 时 SDK 会回读宿主环境
             # ANTHROPIC_BASE_URL，把请求劫持到无关端点
-            base_url=self.base_url or "https://api.anthropic.com",
-            timeout=timeout,
-            max_retries=max_retries,
-            # 凭据只认显式传入的 api_key（x-api-key 头）。不传 auth_token 时
-            # SDK 会自动读宿主环境 ANTHROPIC_AUTH_TOKEN 拼成 Authorization 头，
-            # 与 x-api-key 双头并发；优先校验 Authorization 的网关（如智谱）
-            # 会用环境里的无关 token 鉴权而 401。Omit 显式压制该头。
-            default_headers={"Authorization": Omit()},
-        )
+            "base_url": self.base_url or "https://api.anthropic.com",
+            "timeout": timeout,
+            "max_retries": max_retries,
+        }
+        if self.quirks.auth_type == "bearer":
+            client_kwargs["auth_token"] = self.api_key
+            client_kwargs["api_key"] = ""
+            client_kwargs["default_headers"] = {"X-Api-Key": Omit()}
+        else:
+            client_kwargs["api_key"] = self.api_key
+            client_kwargs["auth_token"] = ""
+            client_kwargs["default_headers"] = {"Authorization": Omit()}
+        self.client = AsyncAnthropic(**client_kwargs)
 
     def _build_messages(self, prompt: str | list) -> tuple:
         """
