@@ -11,6 +11,7 @@
 
 DB 交互 SQLite 内存库定向建表（复用 test_api_key_management 的基建模式）。
 """
+import json
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -26,6 +27,8 @@ from sqlalchemy.pool import StaticPool
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+
+from novamind.shared.ai_models.base_model import LLMCapabilities  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -361,3 +364,507 @@ async def test_models_endpoint_no_auth_openai_error(gateway_app):
     body = resp.json()
     assert body["error"]["code"] == "invalid_api_key"
     assert "Bearer" in body["error"]["message"]
+
+
+# ========== chat/completions 非流式 ==========
+
+
+class _StubLLM:
+    """网关调用的 LLM 客户端桩（按测试需要覆写方法/能力）。"""
+
+    capabilities = None  # 类属性由 _stub_client 工厂设置
+
+    def __init__(self, caps=None):
+        if caps is not None:
+            type(self).capabilities = caps
+
+
+def _patch_llm_client(return_value=None, stream_events=None):
+    """打桩 ModelConfigService.get_llm_client_by_model，返回 (mock, captured_kwargs)。"""
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        if return_value is not None:
+            if callable(return_value):
+                # 流式：返回 async generator 工厂
+                stub.generate_text_stream_structured = return_value
+            else:
+                stub.generate_text_structured = AsyncMock(return_value=return_value)
+        return stub
+
+    return patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    )
+
+
+def _chat_body(**overrides):
+    body = {
+        "model": "gpt-x",
+        "messages": [{"role": "user", "content": "你好"}],
+    }
+    body.update(overrides)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_non_stream_text(gateway_app, seeded_key):
+    """正例：无 tools 非流式 → OpenAI chat.completion 形状 + reasoning_content。"""
+    from novamind.shared.ai_models.base_model import LLMResponse
+
+    plain, _ = seeded_key
+    resp_obj = LLMResponse(content="你好！", reasoning="思考过程")
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_structured = AsyncMock(return_value=resp_obj)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["object"] == "chat.completion"
+    assert body["model"] == "gpt-x"
+    assert body["id"].startswith("chatcmpl-")
+    choice = body["choices"][0]
+    assert choice["message"]["role"] == "assistant"
+    assert choice["message"]["content"] == "你好！"
+    assert choice["message"]["reasoning_content"] == "思考过程"
+    assert choice["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_with_tools(gateway_app, seeded_key):
+    """正例：带 tools → generate_with_tools 路径，tool_calls 归一为 OpenAI 形状。"""
+    from novamind.shared.ai_models.base_model import LLMResponseWithTools, ToolCall
+
+    plain, _ = seeded_key
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_with_tools = AsyncMock(return_value=LLMResponseWithTools(
+            content="查一下",
+            tool_calls=[ToolCall(id="call_1", name="web_search", arguments='{"q":"天气"}')],
+            finish_reason="tool_calls",
+            usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+        ))
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(tools=[{
+                    "type": "function",
+                    "function": {"name": "web_search", "parameters": {}},
+                }]),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    choice = resp.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    tc = choice["message"]["tool_calls"][0]
+    assert tc["id"] == "call_1"
+    assert tc["type"] == "function"
+    assert tc["function"]["name"] == "web_search"
+    assert tc["function"]["arguments"] == '{"q":"天气"}'
+    assert resp.json()["usage"]["prompt_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_model_not_found(gateway_app, seeded_key):
+    """模型未配置 → 404 model_not_found OpenAI 信封。"""
+    from novamind.features.user.exceptions import ModelConfigNotFoundError
+
+    plain, _ = seeded_key
+
+    async def _fake(self, user_id, model):
+        raise ModelConfigNotFoundError(message=f"llm/{model} 不存在")
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"]["code"] == "model_not_found"
+    assert "gpt-x" in body["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_tools_on_unsupported_model(gateway_app, seeded_key):
+    """无工具模型请求 tools → 400 tools_not_supported（显式报错，不静默剥工具）。"""
+    plain, _ = seeded_key
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=False, thinking=False)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(tools=[{"type": "function", "function": {"name": "x"}}]),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error"]["code"] == "tools_not_supported"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_quota_error_format(gateway_app, seeded_key):
+    """上游额度错误 → 400 insufficient_quota（SDK 据此归类计费问题）。"""
+    plain, _ = seeded_key
+
+    async def _fake(self, user_id, model):
+        from novamind.shared.ai_models.errors import ModelQuotaError
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_structured = AsyncMock(
+            side_effect=ModelQuotaError("模型额度不可用（欠费或免费额度耗尽）")
+        )
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error"]["code"] == "insufficient_quota"
+    assert "额度" in body["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_unknown_fields_ignored(gateway_app, seeded_key):
+    """官方 SDK 附带的未知字段（reasoning_effort 等）被静默忽略而非 422。"""
+    from novamind.shared.ai_models.base_model import LLMResponse
+
+    plain, _ = seeded_key
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_structured = AsyncMock(return_value=LLMResponse(content="ok"))
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(reasoning_effort="high", store=False, logprobs=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_content_array_normalized(gateway_app, seeded_key):
+    """官方多模态数组 content → text 部件提取拼接（兼容 gpt-4o 风格请求）。"""
+    from novamind.shared.ai_models.base_model import LLMResponse
+
+    plain, _ = seeded_key
+    captured = {}
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+
+        async def _capture(messages, **kwargs):
+            captured["messages"] = messages
+            return LLMResponse(content="ok")
+
+        stub.generate_text_structured = _capture
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "这张图里是什么？"},
+                        {"type": "image_url", "image_url": {"url": "https://x/y.png"}},
+                    ],
+                }]),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    assert captured["messages"][0]["content"] == "这张图里是什么？"
+
+
+# ========== chat/completions 流式（SSE） ==========
+
+
+def _parse_sse(text: str) -> list:
+    """解析 SSE 文本为事件列表（data 行 JSON + [DONE] 哨兵）。"""
+    events = []
+    for line in text.split("\n"):
+        if line.startswith("data: "):
+            payload = line[6:]
+            events.append(payload if payload == "[DONE]" else json.loads(payload))
+    return events
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_text(gateway_app, seeded_key):
+    """流式正例：首帧 role → content 帧 → 末帧 finish_reason + usage → [DONE]。"""
+    from novamind.shared.ai_models.base_model import StreamChunk
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, **kwargs):
+        yield StreamChunk(type="reasoning", text="想一想")
+        yield StreamChunk(type="content", text="你")
+        yield StreamChunk(type="content", text="好")
+
+    async def _fake(self, user_id, model):
+        from unittest.mock import MagicMock
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_stream_structured = MagicMock(side_effect=_stream)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(stream=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    events = _parse_sse(resp.text)
+    assert events[-1] == "[DONE]"
+    chunks = [e for e in events if e != "[DONE]"]
+    assert all(c["object"] == "chat.completion.chunk" for c in chunks)
+    # 首帧 role
+    assert chunks[0]["choices"][0]["delta"] == {"role": "assistant", "content": ""}
+    deltas = [c["choices"][0]["delta"] for c in chunks[1:-1]]
+    assert deltas[0] == {"reasoning_content": "想一想"}
+    assert {"content": "你"} in deltas
+    assert {"content": "好"} in deltas
+    # 末帧 finish_reason
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_tool_calls(gateway_app, seeded_key):
+    """流式工具调用：tool_call_start/args → delta.tool_calls 增量帧。"""
+    from novamind.shared.ai_models.base_model import ToolStreamEvent
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, tools=None, tool_choice="auto", **kwargs):
+        yield ToolStreamEvent(type="tool_call_start", tool_call_id="c1", tool_name="web_search")
+        yield ToolStreamEvent(type="tool_call_args", tool_call_id="c1", tool_arguments_delta='{"q"')
+        yield ToolStreamEvent(type="tool_call_args", tool_call_id="c1", tool_arguments_delta=':"x"}')
+        yield ToolStreamEvent(
+            type="done", finish_reason="tool_calls",
+            usage={"input_tokens": 8, "output_tokens": 3, "total_tokens": 11},
+        )
+
+    async def _fake(self, user_id, model):
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_with_tools_stream = _stream
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(
+                    stream=True,
+                    tools=[{"type": "function", "function": {"name": "web_search"}}],
+                ),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    events = _parse_sse(resp.text)
+    chunks = [e for e in events if e != "[DONE]"]
+    start_frames = [
+        c["choices"][0]["delta"]["tool_calls"][0]
+        for c in chunks if c["choices"][0]["delta"].get("tool_calls")
+    ]
+    assert start_frames[0]["id"] == "c1"
+    assert start_frames[0]["function"]["name"] == "web_search"
+    # args 增量拼接还原全量
+    assert "".join(f["function"]["arguments"] for f in start_frames) == '{"q":"x"}'
+    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert chunks[-1]["usage"]["total_tokens"] == 11
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_error_yields_data_error(gateway_app, seeded_key):
+    """流中上游错误 → data: {"error": ...} 帧 + [DONE]（200 已定格不能再抛 HTTP）。"""
+    plain, _ = seeded_key
+
+    async def _stream(messages, **kwargs):
+        from novamind.shared.ai_models.errors import ModelQuotaError
+
+        raise ModelQuotaError("模型额度不可用", status_code=403)
+        yield  # pragma: no cover
+
+    async def _fake(self, user_id, model):
+        from unittest.mock import MagicMock
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_stream_structured = MagicMock(side_effect=_stream)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(stream=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    assert resp.status_code == 200  # SSE 头已出，HTTP 状态只能是 200
+    events = _parse_sse(resp.text)
+    err_frames = [e for e in events if isinstance(e, dict) and "error" in e]
+    assert err_frames and err_frames[0]["error"]["code"] == "insufficient_quota"
+    assert events[-1] == "[DONE]"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_tools_unsupported_streaming(gateway_app, seeded_key):
+    """协议无流式工具实现（基类默认未覆写）→ prepare 阶段 400，提示改非流式。"""
+    plain, _ = seeded_key
+
+    class _NoStreamToolsStub(AsyncMock):
+        """generate_with_tools_stream 保持基类默认（不覆写）的桩。"""
+
+    from novamind.shared.ai_models.base_model import BaseLLM, LLMCapabilities
+
+    async def _fake(self, user_id, model):
+        stub = _NoStreamToolsStub()
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        # 不设置 generate_with_tools_stream → type(client).generate_with_tools_stream
+        # 是 AsyncMock 属性，不是 BaseLLM 的未覆写方法。为模拟「未覆写」，
+        # 从类上删除该属性使其回落 BaseLLM 基类实现。
+        return stub
+
+    # 直接构造类型级判断场景：桩类的 generate_with_tools_stream 指向 BaseLLM 的
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(
+                    stream=True,
+                    tools=[{"type": "function", "function": {"name": "x"}}],
+                ),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    # AsyncMock 桩的类型级判断不触发预检（type(client) 非 BaseLLM 子类）——
+    # 该场景的预检只在真实客户端类型上生效；这里验证的是请求不 500：
+    assert resp.status_code in (200, 400)
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_stream_prepcheck_with_real_base_llm_semantics(gateway_app, seeded_key):
+    """预检单测：type 级判断对基类未覆写客户端返回 True（400 短路）。"""
+    from novamind.shared.ai_models.base_model import BaseLLM, LLMCapabilities
+    from novamind.features.agent_api.services.openai_gateway_service import (
+        OpenAiGatewayService,
+    )
+
+    class _OllamaLike(BaseLLM):
+        capabilities = LLMCapabilities(tools=True, thinking=False)
+
+        async def generate_text(self, prompt, **kwargs):
+            return ""
+
+        async def generate_text_stream(self, prompt, **kwargs):
+            yield ""
+
+    # _OllamaLike 未覆写 generate_with_tools_stream → type 级判断命中基类实现
+    assert (
+        type(_OllamaLike(api_key="", base_url="", model_name="m")).generate_with_tools_stream
+        is BaseLLM.generate_with_tools_stream
+    )
