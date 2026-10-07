@@ -229,7 +229,7 @@ The deploy script will automatically:
 - Create `backend/src/setting/yaml_config/yaml/default.yaml` (the single backend config file)
 - Build and start the full stack
 - Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr, several hundred MB total) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable). **A failure here does not abort the deploy** — parsing degrades gracefully (formula recognition skipped, DeepDoc full mode unavailable) and you can retry later per the script's warning
-- Download the local speech model (faster-whisper-tiny, ~75MB) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
+- Download the local speech model (production default `faster-whisper-large-v3`, ~3GB; switch to smaller tiers like tiny/small via `--model`) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
 - Poll `http://localhost/health` for a health check
 
 After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`; **the default username is `admin`**.
@@ -293,11 +293,10 @@ Notes:
       -e PYTHONPATH=/app/src \
       app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
     ```
-  - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually:
+  - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually (production default `large-v3`; add `--model small` on low-memory machines):
     ```bash
     docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
-      -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
       app python scripts/download_faster_whisper_model.py
     ```
   - **Download source**: model downloads read `HF_ENDPOINT` from `.env` (the default template ships the hf-mirror.com mirror; overseas users should switch to the official source). Commands above without an explicit `-e HF_ENDPOINT` stay consistent with `.env`.
@@ -354,7 +353,7 @@ uv run python main.py --reload
 Default backend address: `http://localhost:8100`
 
 > [!NOTE]
-> **Audio / video parsing in local development**: the local speech model loads from `backend/.cache/faster-whisper/tiny` by default (same repo-root cache directory as the DeepDoc models); download it before first use:
+> **Audio / video parsing in local development**: the local speech model loads from `backend/.cache/faster-whisper/large-v3` by default (same repo-root cache directory as the DeepDoc models; on memory-constrained dev machines set a lower tier via YAML `knowledge_base.parsing.local_whisper_model` and download that tier); download it before first use:
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py
@@ -545,7 +544,7 @@ Plan for at least these model types:
 
 Audio documents have two ASR paths, selectable in the KB parsing config's audio section:
 
-- **Local Whisper (default, free)**: local CPU inference via faster-whisper (INT8 quantized, dedicated single-process isolation, never blocks other tasks); the `faster-whisper-tiny` model is pre-downloaded at deploy time, no API key needed. Good for privacy-sensitive or zero-cost scenarios; Chinese quality is usable — swap in a larger local model (`small` / `base`) for better accuracy (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
+- **Local Whisper (default, free)**: local CPU inference via faster-whisper (INT8 quantized, dedicated single-process isolation, never blocks other tasks); the production-default `faster-whisper-large-v3` is pre-downloaded at deploy time (lower-memory machines can downgrade to `small`/`tiny` via YAML `knowledge_base.parsing.local_whisper_model`), no API key needed. Good for privacy-sensitive or zero-cost scenarios; for better accuracy swap in another tier (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
 - **Cloud ASR (optional)**: OpenAI Whisper or DashScope Paraformer configured on the "Model Management" page — usually better quality, billed per use; run a connection test before selecting a cloud model
 
 </details>
@@ -607,7 +606,7 @@ The `plain` / `default` mode only extracts the PDF text layer, which is empty fo
 <details>
 <summary><b>Audio document parsing fails with a local-model-not-found error?</b></summary>
 
-The local speech model (faster-whisper-tiny) is downloaded at deploy time; if that step failed, or you chose manual deploy and skipped it, run the commands in [Option 2](#option-2-manual-docker-deploy); for local development run `uv run python scripts/download_faster_whisper_model.py`. You can also switch to a configured cloud ASR model in the KB config.
+The local speech model (production default `faster-whisper-large-v3`) is downloaded at deploy time; if that step failed, or you chose manual deploy and skipped it, run the commands in [Option 2](#option-2-manual-docker-deploy); for local development run `uv run python scripts/download_faster_whisper_model.py`. You can also switch to a configured cloud ASR model in the KB config.
 </details>
 
 <details>

@@ -68,7 +68,7 @@ services:
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./backend/.cache/deepdoc:/app/.cache/deepdoc
-      # 本地 ASR 默认模型（faster-whisper-tiny）：deploy 脚本部署期下载到此卷，
+      # 本地 ASR 模型（生产默认档 large-v3，deploy 脚本按档位下载到此卷），
       # 容器重建不丢；运行时音频解析默认协议 local 即从此目录加载模型。
       - ./backend/.cache/faster-whisper:/app/.cache/faster-whisper
     depends_on:
