@@ -55,8 +55,8 @@ schemas/
 | `backend/src/features/user/` | 认证、用户、模型配置、RBAC、应用门禁 |
 | `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、Wiki 生成与浏览 |
 | `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
-| `backend/src/features/qa/` | 聊天和问答流程 |
-| `backend/src/features/deep_research/` | 深度研究和报告生成 |
+| `backend/src/features/qa/` | QA 归档读取面 + 共享聊天基础设施（附件/模型清单；对话已统一进 agent） |
+| `backend/src/features/deep_research/` | 深度研究读取面与执行编排（唯一入口是 agent 的 research 工具） |
 | `backend/src/features/agent/` | Agent、MCP 集成、工具编排 |
 | `backend/src/features/skill/` | 技能广场和审核 |
 | `backend/src/features/app/` | 应用中心（简历挖掘） |

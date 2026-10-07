@@ -69,7 +69,7 @@ flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通
 | skill_review | 后台审查三终态 + 异常转人工（`_do_review`）、管理员批准/拒绝 | 技能作者 | `/home/workspace/skills/{id}` |
 | space_invite | `invite_member`（带完整 invite_token）、`add_member_direct` | 被邀请/被直加人 | `/home/spaces/{id}/join?token=` 或 `/home/spaces/{id}` |
 | document_ready | 解析成功 / 用户取消 / 最终失败三终态（**重试中间态不发**） | 文档上传者 | `/home/spaces/{sid}/documents/{did}` |
-| research_done | 深度研究流式 + 非流式两条路径 commit 后 | 发起用户 | `/home/workspace/research/{sid}/history` |
+| research_done | 深度研究流式 + 非流式两条路径 commit 后（唯一执行入口是 agent 对话的 research 工具） | 发起用户 | `/home/workspace/chat` |
 | resume_completed | 简历成功 / 最终失败 / 前置取消 | 发起用户 | `/home/apps/resume/session/{id}` 或 `/home/apps/resume/history` |
 | password_reset | `forgot_password`（link=None，防枚举语义不变） | 请求重置者 | — |
 | wiki_ready | Wiki 生成任务完成/失败（`wiki_tasks`） | 文档上传者 | `/home/spaces/{sid}/knowledge-bases/{kid}/wiki` |

@@ -576,6 +576,18 @@
             ],
             "title": "Enabled Tools"
           },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Config"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -1598,126 +1610,6 @@
           "role"
         ],
         "title": "ChatMessage",
-        "type": "object"
-      },
-      "ChatRequest": {
-        "description": "AI对话请求模式\n\n设计原则：前端只传「开关 + 内容」，所有配置细节（生成参数/检索库/拒答/压缩）\n由后端按 session_id 从 qa_session_configs 表读取（llm_config/kb_bindings/compression_config）。",
-        "properties": {
-          "attachment_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "附件ID列表（通过上传接口获取）",
-            "title": "Attachment Ids"
-          },
-          "content": {
-            "description": "用户消息内容",
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Content",
-            "type": "string"
-          },
-          "enable_thinking": {
-            "default": false,
-            "description": "是否开启深度思考模式（Qwen 等模型支持）",
-            "title": "Enable Thinking",
-            "type": "boolean"
-          },
-          "enable_web_search": {
-            "default": false,
-            "description": "是否启用联网搜索（DuckDuckGo），将检索结果注入上下文",
-            "title": "Enable Web Search",
-            "type": "boolean"
-          },
-          "llm_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "LLM 模型名称（如 gpt-4o），为空使用默认配置",
-            "title": "Llm Model"
-          },
-          "search_provider": {
-            "anyOf": [
-              {
-                "enum": [
-                  "tavily",
-                  "serpapi",
-                  "duckduckgo"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "联网搜索服务商：tavily/serpapi/duckduckgo；为空走用户首选 → YAML 兜底，指定值用该 provider 的用户配置，未配置/失败回退自动择优",
-            "title": "Search Provider"
-          },
-          "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "会话ID（为空创建新会话）",
-            "title": "Session Id"
-          }
-        },
-        "required": [
-          "content"
-        ],
-        "title": "ChatRequest",
-        "type": "object"
-      },
-      "ChatResponse": {
-        "description": "AI对话响应模式",
-        "properties": {
-          "ai_message": {
-            "additionalProperties": true,
-            "title": "Ai Message",
-            "type": "object"
-          },
-          "conversation_history": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Conversation History",
-            "type": "array"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          },
-          "user_message": {
-            "additionalProperties": true,
-            "title": "User Message",
-            "type": "object"
-          }
-        },
-        "required": [
-          "session_id",
-          "user_message",
-          "ai_message",
-          "conversation_history"
-        ],
-        "title": "ChatResponse",
         "type": "object"
       },
       "ChatSessionListResponse": {
@@ -4148,36 +4040,6 @@
         "title": "ExpansionConfig",
         "type": "object"
       },
-      "ExternalSearchConfig": {
-        "description": "外部 Web 搜索配置\n\n控制外部搜索引擎的行为",
-        "properties": {
-          "max_results": {
-            "default": 10,
-            "description": "每次搜索返回的最大结果数量",
-            "maximum": 50.0,
-            "minimum": 1.0,
-            "title": "Max Results",
-            "type": "integer"
-          },
-          "provider": {
-            "$ref": "#/components/schemas/ExternalSearchProvider",
-            "default": "duckduckgo",
-            "description": "外部搜索服务商：tavily/serpapi/duckduckgo（默认免费）"
-          },
-          "search_depth": {
-            "default": "basic",
-            "description": "搜索深度（仅 Tavily 支持）：basic(快速)/advanced(深度)，覆盖部署级 YAML 默认",
-            "enum": [
-              "basic",
-              "advanced"
-            ],
-            "title": "Search Depth",
-            "type": "string"
-          }
-        },
-        "title": "ExternalSearchConfig",
-        "type": "object"
-      },
       "ExternalSearchProvider": {
         "description": "外部搜索提供商枚举",
         "enum": [
@@ -4477,139 +4339,6 @@
           }
         },
         "title": "ImageParsingConfig",
-        "type": "object"
-      },
-      "InternalSearchConfig": {
-        "description": "内部知识库检索配置\n\n细粒度控制内部 RAG 检索行为",
-        "properties": {
-          "bm25_weight": {
-            "default": 0.3,
-            "description": "BM25 检索权重（hybrid 模式）",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Bm25 Weight",
-            "type": "number"
-          },
-          "kb_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "指定知识库 ID 列表（为空则搜索空间下所有知识库）",
-            "title": "Kb Ids"
-          },
-          "query_rewrite_enabled": {
-            "default": false,
-            "description": "是否启用查询改写（HyDE 或子问题拆分）",
-            "title": "Query Rewrite Enabled",
-            "type": "boolean"
-          },
-          "query_rewrite_llm_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "查询改写使用的 LLM 模型名称，为空使用用户默认",
-            "title": "Query Rewrite Llm Model"
-          },
-          "query_rewrite_strategy": {
-            "default": "hyde",
-            "description": "查询改写策略：hyde(假设性文档嵌入)/sub_query(子问题拆分)",
-            "enum": [
-              "hyde",
-              "sub_query"
-            ],
-            "title": "Query Rewrite Strategy",
-            "type": "string"
-          },
-          "rerank_enabled": {
-            "default": false,
-            "description": "是否启用 Rerank 重排序",
-            "title": "Rerank Enabled",
-            "type": "boolean"
-          },
-          "rerank_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Rerank 模型名称，为空使用用户默认",
-            "title": "Rerank Model"
-          },
-          "rerank_top_k": {
-            "default": 5,
-            "description": "Rerank 后返回的结果数量",
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Rerank Top K",
-            "type": "integer"
-          },
-          "score_threshold": {
-            "default": 0.0,
-            "description": "最低分数阈值，低于此值的结果被过滤",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Score Threshold",
-            "type": "number"
-          },
-          "search_mode": {
-            "default": "content_hybrid",
-            "description": "\n检索模式：{target}_{algorithm}\n- content_bm25: 内容全文检索\n- content_vector: 内容向量检索\n- content_hybrid: 内容混合检索（默认）\n- question_bm25: 问题全文检索（需启用问题生成）\n- question_vector: 问题向量检索\n- question_hybrid: 问题混合检索\n- all_hybrid: 全字段全算法融合（最强召回）\n",
-            "enum": [
-              "content_bm25",
-              "content_vector",
-              "content_hybrid",
-              "question_bm25",
-              "question_vector",
-              "question_hybrid",
-              "all_bm25",
-              "all_vector",
-              "all_hybrid"
-            ],
-            "title": "Search Mode",
-            "type": "string"
-          },
-          "sub_query_count": {
-            "default": 3,
-            "description": "子问题拆分数量（strategy=sub_query 时生效）",
-            "maximum": 5.0,
-            "minimum": 2.0,
-            "title": "Sub Query Count",
-            "type": "integer"
-          },
-          "top_k": {
-            "default": 10,
-            "description": "每次检索返回的结果数量",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Top K",
-            "type": "integer"
-          },
-          "vector_weight": {
-            "default": 0.7,
-            "description": "向量检索权重（hybrid 模式，0=纯 BM25，1=纯向量）",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Vector Weight",
-            "type": "number"
-          }
-        },
-        "title": "InternalSearchConfig",
         "type": "object"
       },
       "InviteResponse": {
@@ -8435,49 +8164,6 @@
         "title": "RerankConfig",
         "type": "object"
       },
-      "ResearchLLMConfig": {
-        "description": "LLM 模型配置\n\n控制报告生成、任务分解、摘要等 LLM 调用",
-        "properties": {
-          "llm_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "LLM 模型名称（如 gpt-4o），为空使用默认配置",
-            "title": "Llm Model"
-          },
-          "max_tokens": {
-            "default": 4096,
-            "description": "最大生成 Token 数",
-            "maximum": 16384.0,
-            "minimum": 1024.0,
-            "title": "Max Tokens",
-            "type": "integer"
-          },
-          "temperature": {
-            "default": 0.7,
-            "description": "温度参数（创造性）",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "title": "Temperature",
-            "type": "number"
-          },
-          "top_p": {
-            "default": 0.9,
-            "description": "Top-p 采样参数",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Top P",
-            "type": "number"
-          }
-        },
-        "title": "ResearchLLMConfig",
-        "type": "object"
-      },
       "ResearchListItem": {
         "description": "研究列表项",
         "properties": {
@@ -8624,80 +8310,6 @@
           }
         },
         "title": "ResearchPlanModel",
-        "type": "object"
-      },
-      "ResearchRequest": {
-        "description": "研究请求\n\n支持细粒度配置内部检索、外部搜索、LLM 模型等",
-        "properties": {
-          "auto_accepted_plan": {
-            "default": true,
-            "description": "自动接受研究计划。true=计划生成后直接执行（旧行为，非流式强制 true）；false=生成计划后暂停，等待 WS plan_feedback 确认/编辑再执行",
-            "title": "Auto Accepted Plan",
-            "type": "boolean"
-          },
-          "enable_background_investigation": {
-            "default": true,
-            "description": "规划前背景调查：先按 search_source 做一轮检索，结果注入规划 prompt 提升计划质量",
-            "title": "Enable Background Investigation",
-            "type": "boolean"
-          },
-          "external_search": {
-            "$ref": "#/components/schemas/ExternalSearchConfig",
-            "description": "外部 Web 搜索配置"
-          },
-          "internal_search": {
-            "$ref": "#/components/schemas/InternalSearchConfig",
-            "description": "内部知识库检索配置"
-          },
-          "llm": {
-            "$ref": "#/components/schemas/ResearchLLMConfig",
-            "description": "LLM 模型配置"
-          },
-          "query": {
-            "description": "研究查询/问题",
-            "maxLength": 2000,
-            "minLength": 5,
-            "title": "Query",
-            "type": "string"
-          },
-          "report_style": {
-            "default": "default",
-            "description": "报告风格：academic(学术)/popular_science(科普)/news(新闻)/default(通用)",
-            "enum": [
-              "academic",
-              "popular_science",
-              "news",
-              "default"
-            ],
-            "title": "Report Style",
-            "type": "string"
-          },
-          "research_mode": {
-            "$ref": "#/components/schemas/ResearchMode",
-            "default": "standard",
-            "description": "研究模式：quick(快速)/standard(标准)/deep(深度)"
-          },
-          "search_source": {
-            "$ref": "#/components/schemas/SearchSource",
-            "default": "hybrid",
-            "description": "搜索来源：internal(仅内部)/external(仅外部)/hybrid(混合)"
-          },
-          "sources": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourcesConfig"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "可插拔数据源组合配置（新源扩展入口；不传时按平铺字段 + search_source 预设）"
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "title": "ResearchRequest",
         "type": "object"
       },
       "ResearchResponse": {
@@ -11426,59 +11038,6 @@
           }
         },
         "title": "SkillsData",
-        "type": "object"
-      },
-      "SourcesConfig": {
-        "description": "数据源组合配置（可选嵌套段，可插拽数据源入口）\n\n- ``enabled``：显式指定启用的数据源类型列表（如 [\"internal\", \"external\"]，\n  未来 [\"internal\", \"confluence\"]）；为空按 ``search_source`` 预设组合映射\n  （INTERNAL→[internal]、EXTERNAL→[external]、HYBRID→[internal, external]）\n- ``internal``/``external``：非空时覆盖同名平铺字段（internal_search/external_search）\n- ``extra``：未来新数据源的配置段（如 sources.extra.confluence），经\n  ``SearchSourceContext.config`` 透传对应工厂，schema 侧免改",
-        "properties": {
-          "enabled": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "显式启用的数据源类型列表（为空按 search_source 预设映射）",
-            "title": "Enabled"
-          },
-          "external": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExternalSearchConfig"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "外部搜索配置（非空覆盖平铺 external_search）"
-          },
-          "extra": {
-            "additionalProperties": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "description": "扩展数据源配置段（type → 配置 dict），透传对应源工厂",
-            "title": "Extra",
-            "type": "object"
-          },
-          "internal": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InternalSearchConfig"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "内部检索配置（非空覆盖平铺 internal_search）"
-          }
-        },
-        "title": "SourcesConfig",
         "type": "object"
       },
       "SpaceASRConfig": {
@@ -16965,53 +16524,6 @@
         ]
       }
     },
-    "/api/v1/ai-chat/chat": {
-      "post": {
-        "description": "执行AI对话并返回完整响应",
-        "operationId": "chat_api_v1_ai_chat_chat_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "AI对话（非流式）",
-        "tags": [
-          "AI 聊天"
-        ]
-      }
-    },
     "/api/v1/ai-chat/chat-attachments": {
       "post": {
         "description": "上传文档附件，返回附件ID用于后续聊天请求",
@@ -21294,62 +20806,6 @@
           }
         ],
         "summary": "获取研究历史列表",
-        "tags": [
-          "深度研究"
-        ]
-      },
-      "post": {
-        "description": "基于知识空间执行深度研究，返回完整报告",
-        "operationId": "execute_research_api_v1_spaces__space_id__deep_research_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResearchResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "执行深度研究（非流式）",
         "tags": [
           "深度研究"
         ]
