@@ -275,6 +275,10 @@ const router = createRouter({
               meta: { title: '对话' },
             },
             {
+              path: 'chat/archive',
+              redirect: '/home/workspace/chat',
+            },
+            {
               path: 'agents',
               name: 'WorkspaceAgents',
               component: () => import('@/views/agent/AgentWorkspaceView.vue'),
@@ -285,6 +289,14 @@ const router = createRouter({
               name: 'WorkspaceAgentChat',
               component: () => import('@/views/agent/AgentChatView.vue'),
               meta: { title: '智能体对话' },
+            },
+            {
+              path: 'research/:spaceId(\\d+)?',
+              redirect: '/home/workspace/chat',
+            },
+            {
+              path: 'research/:spaceId(\\d+)/history',
+              redirect: '/home/workspace/chat',
             },
             {
               path: 'skills',
