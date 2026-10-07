@@ -1292,11 +1292,6 @@ export interface ChatResponse {
   conversation_history: Array<{ id: number; content: string; role: string; created_at: string }>
 }
 
-export interface ChatHistoryResponse {
-  session_id: string
-  messages: Array<{ id: number; content: string; role: string; created_at: string }>
-}
-
 export interface HealthCheckResponse {
   status: string
   message: string
@@ -1811,8 +1806,36 @@ export interface AgentConversation {
   status: string
   message_count: number
   total_tokens_used: number
+  /** 会话级配置（knowledge_bindings：知识范围/检索约束，批2）；存量会话无此键 */
+  extra_config?: {
+    knowledge_bindings?: KnowledgeBindings | null
+  } | null
   created_at: string
   updated_at: string
+}
+
+// 会话级知识绑定（对齐后端 KnowledgeBindings）：限定知识工具/深度研究的检索范围
+export interface KnowledgeBindings {
+  /** 限定可检索的空间 ID 列表；null/undefined 不限定 */
+  space_ids?: number[] | null
+  /** 限定可检索的知识库 ID 列表；null/undefined 不限定 */
+  kb_ids?: number[] | null
+}
+
+// 深度研究进度（WS research_progress 事件，批3 工具化后经 agent WS 旁路下发）
+export interface ResearchProgressData {
+  /** analyzing | planning | plan | searching | synthesizing | failed */
+  status: string
+  current_step?: string
+  progress_percent?: number
+  completed_tasks?: number
+  total_tasks?: number
+  /** status=plan 时的研究计划（对齐 ResearchPlanModel） */
+  plan?: {
+    title?: string
+    thought?: string
+    steps?: { step_id?: string; title?: string; description?: string }[]
+  } | null
 }
 
 export interface AgentConversationListResponse {
@@ -1825,7 +1848,7 @@ export interface AgentConversationListResponse {
 export interface AgentMessage {
   id: number
   conversation_id: number
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'compaction' | 'plan' | 'notice'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'compaction' | 'plan' | 'notice' | 'research'
   content: string | null
   tool_call_id: string | null
   tool_name: string | null

@@ -2,7 +2,6 @@ import { request, createWebSocketStream, tokenManager } from './index'
 import type {
   ChatRequest,
   ChatResponse,
-  ChatHistoryResponse,
   HealthCheckResponse,
   ModelsResponse,
   UploadChatAttachmentResponse,
@@ -128,16 +127,6 @@ export const chatApi = {
         : undefined,
       signal: callbacks.signal,
     })
-  },
-
-  /** 会话历史消息 */
-  getChatHistory(sessionId: string) {
-    return request.get<ChatHistoryResponse>(`${BASE_URL}/chat-history`, { session_id: sessionId })
-  },
-
-  /** 清空会话消息（会话本身保留） */
-  clearChat(sessionId: string) {
-    return request.delete<void>(`${BASE_URL}/clear-chat`, { session_id: sessionId })
   },
 
   /** 服务健康探活 */

@@ -181,6 +181,15 @@
                     @toggle="togglePlan(p.id)"
                   />
 
+                  <!-- 深度研究进度卡（批3 research 工具）：spinner 胶囊行，展开看进度条与计划 -->
+                  <ResearchProgressCard
+                    v-for="r in turn.researchItems"
+                    :key="`research-${r.id}`"
+                    :data="getResearchData(r)"
+                    :expanded="expandedResearch.has(r.id)"
+                    @toggle="toggleResearch(r.id)"
+                  />
+
                   <!-- 纠偏警告行（loop_detection）：常显轻量提示，不折叠（用户应看到的异常信号） -->
                   <div
                     v-for="n in turn.noticeItems"
@@ -407,6 +416,61 @@
                     <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
                     <span>流式输出</span>
                   </button>
+                  <button
+                    class="mode-chip"
+                    :class="{ active: enableResearch }"
+                    title="复杂课题先调研再作答（耗时数分钟）"
+                    @click="enableResearch = !enableResearch"
+                  >
+                    <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
+                    <span>深度研究</span>
+                  </button>
+                  <!-- teleported=false：popper 留在组件 DOM 内，scoped 样式直接生效 -->
+                  <el-popover
+                    placement="top-start"
+                    :width="320"
+                    trigger="click"
+                    :teleported="false"
+                    @show="onScopePopoverShow"
+                  >
+                    <template #reference>
+                      <button
+                        class="mode-chip"
+                        :class="{ active: knowledgeScopeActive }"
+                        title="限定知识工具与深度研究的检索范围"
+                      >
+                        <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
+                        <span>{{
+                          knowledgeScopeLabel
+                        }}</span>
+                      </button>
+                    </template>
+                    <div class="kb-scope-panel">
+                      <div class="kb-scope-title">知识检索范围</div>
+                      <div class="kb-scope-hint">
+                        限定知识工具与深度研究的检索范围；不选则检索全部可见空间。
+                      </div>
+                      <el-checkbox-group v-model="selectedSpaceIds" class="kb-scope-list">
+                        <el-checkbox
+                          v-for="sp in spaces"
+                          :key="sp.id"
+                          :value="sp.id"
+                          class="kb-scope-item"
+                        >
+                          <span class="kb-scope-item-name">{{ sp.name }}</span>
+                        </el-checkbox>
+                      </el-checkbox-group>
+                      <div v-if="spaces.length === 0" class="kb-scope-empty">
+                        暂无可见空间
+                      </div>
+                      <div class="kb-scope-actions">
+                        <button class="kb-scope-btn" @click="clearKnowledgeScope">全部</button>
+                        <button class="kb-scope-btn primary" @click="saveKnowledgeScope">
+                          应用
+                        </button>
+                      </div>
+                    </div>
+                  </el-popover>
                 </div>
               </div>
               <div class="input-trailing">
@@ -502,23 +566,29 @@ import {
   Expand,
   MagicStick,
   Lightning,
+  Collection,
   Warning,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import { chatApi } from '@/api/chat'
+import { spaceApi } from '@/api/space'
 import type {
   AgentMessage,
   AgentCompactionData,
   ContentBlock,
+  KnowledgeBindings,
   OpenAICompatToolCall,
+  ResearchProgressData,
+  Space,
 } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
 import ContextMeter from '@/components/common/ContextMeter.vue'
 import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
+import ResearchProgressCard from '@/components/agent/ResearchProgressCard.vue'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
@@ -545,6 +615,66 @@ window.addEventListener('resize', () => {
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
+// 深度研究开关（请求级）：开启时本轮消息引导模型优先调用 research 工具
+const enableResearch = ref(false)
+
+// ===================== 知识范围绑定（会话级，批2 extra_config.knowledge_bindings） =====================
+const spaces = ref<Space[]>([])
+const selectedSpaceIds = ref<number[]>([])
+const knowledgeBindingsLoaded = ref(false)
+// el-popover 打开态（拉空间列表用；el-popover 不直接给受控 v-model，用事件跟踪）
+const scopePopoverVisible = ref(false)
+
+const knowledgeScopeActive = computed(() => selectedSpaceIds.value.length > 0)
+const knowledgeScopeLabel = computed(() =>
+  knowledgeScopeActive.value ? `知识范围 ${selectedSpaceIds.value.length}` : '知识范围',
+)
+
+async function ensureSpacesLoaded() {
+  if (spaces.value.length) return
+  try {
+    const res = await spaceApi.getSpaces({ skip: 0, limit: 50 })
+    spaces.value = res.items
+  } catch {
+    spaces.value = []
+  }
+}
+
+async function loadKnowledgeBindings(sessionId: string | null) {
+  if (!sessionId) {
+    selectedSpaceIds.value = []
+    knowledgeBindingsLoaded.value = true
+    return
+  }
+  try {
+    const conv = await agentApi.getSession(sessionId)
+    selectedSpaceIds.value = [...(conv.extra_config?.knowledge_bindings?.space_ids ?? [])]
+  } catch {
+    selectedSpaceIds.value = []
+  }
+  knowledgeBindingsLoaded.value = true
+}
+
+async function saveKnowledgeScope() {
+  const sessionId = agentStore.currentSessionId
+  if (!sessionId) {
+    // 新会话尚无 session_id：选择已暂存，首条消息建立会话后自动应用
+    ElMessage.info('将在发送首条消息后自动应用')
+    return
+  }
+  const bindings: KnowledgeBindings | null =
+    selectedSpaceIds.value.length > 0 ? { space_ids: [...selectedSpaceIds.value] } : null
+  try {
+    await agentApi.updateKnowledgeBindings(sessionId, bindings)
+    ElMessage.success('知识范围已更新')
+  } catch {
+    ElMessage.error('知识范围保存失败')
+  }
+}
+
+function clearKnowledgeScope() {
+  selectedSpaceIds.value = []
+}
 // 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
 const selectedModel = ref('')
 const availableModels = ref<
@@ -569,6 +699,13 @@ function togglePlan(id: number) {
   else expandedPlans.value.add(id)
 }
 
+// 研究进度卡就地展开态（同 expandedPlans 模式）
+const expandedResearch = ref(new Set<number>())
+function toggleResearch(id: number) {
+  if (expandedResearch.value.has(id)) expandedResearch.value.delete(id)
+  else expandedResearch.value.add(id)
+}
+
 // 视图模式：聊天（产品化气泡）/ 轨迹（调试向消息时间线，平铺每条消息 + 点击展开详情）
 const viewMode = ref<'chat' | 'trajectory'>('chat')
 
@@ -589,6 +726,7 @@ interface ChatTurn {
   compactionItems: AgentMessage[]
   planItems: AgentMessage[]
   noticeItems: AgentMessage[]
+  researchItems: AgentMessage[]
   finalAssistant: AgentMessage | null
   workItems: AgentMessage[]
   steps: ReActStep[]
@@ -629,6 +767,7 @@ const turns = computed<ChatTurn[]>(() => {
         compactionItems: [],
         planItems: [],
         noticeItems: [],
+        researchItems: [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -644,6 +783,8 @@ const turns = computed<ChatTurn[]>(() => {
         current.compactionItems.push(msg)
       } else if (msg.role === 'plan') {
         current.planItems.push(msg)
+      } else if (msg.role === 'research') {
+        current.researchItems.push(msg)
       } else if (msg.role === 'notice') {
         current.noticeItems.push(msg)
       } else {
@@ -658,6 +799,7 @@ const turns = computed<ChatTurn[]>(() => {
         compactionItems: msg.role === 'compaction' ? [msg] : [],
         planItems: msg.role === 'plan' ? [msg] : [],
         noticeItems: msg.role === 'notice' ? [msg] : [],
+        researchItems: msg.role === 'research' ? [msg] : [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -872,6 +1014,21 @@ function getPlanData(msg: AgentMessage): {
   }
 }
 
+/** 研究进度卡的 extra.research 提取（字段缺省安全：历史/异常数据兜底空态） */
+function getResearchData(msg: AgentMessage): ResearchProgressData {
+  const r = (
+    msg.extra as { research?: Record<string, unknown> } | null | undefined
+  )?.research
+  return {
+    status: typeof r?.status === 'string' ? r.status : 'analyzing',
+    current_step: typeof r?.current_step === 'string' ? r.current_step : undefined,
+    progress_percent: typeof r?.progress_percent === 'number' ? r.progress_percent : 0,
+    completed_tasks: typeof r?.completed_tasks === 'number' ? r.completed_tasks : 0,
+    total_tasks: typeof r?.total_tasks === 'number' ? r.total_tasks : 0,
+    plan: (r?.plan as ResearchProgressData['plan']) ?? null,
+  }
+}
+
 function getFileIconClass(type?: string): string {
   if (!type) return 'file-default'
   const t = type.toLowerCase()
@@ -985,6 +1142,40 @@ watch(
   },
 )
 
+// 会话切换时同步知识范围绑定（新会话/未加载时重置为不限定）。
+// pendingScopeApply：发送首条消息建立会话后，watch 触发的加载会 GET 到
+// extra_config=null 并清空用户刚勾选的范围——跳过这一次，保留选择等流结束后自动应用
+//（流式对话期间会话行被 chat 事务锁定，流中 PUT 绑定会 1205 锁超时）。
+let pendingScopeApply = false
+watch(
+  () => agentStore.currentSessionId,
+  (sid) => {
+    if (pendingScopeApply) {
+      pendingScopeApply = false
+      return
+    }
+    loadKnowledgeBindings(sid)
+  },
+  { immediate: true },
+)
+
+async function applyKnowledgeScope() {
+  const sessionId = agentStore.currentSessionId
+  if (!sessionId) return
+  const bindings: KnowledgeBindings | null =
+    selectedSpaceIds.value.length > 0 ? { space_ids: [...selectedSpaceIds.value] } : null
+  try {
+    await agentApi.updateKnowledgeBindings(sessionId, bindings)
+    ElMessage.success('知识范围已应用')
+  } catch {
+    ElMessage.error('知识范围保存失败')
+  }
+}
+
+function onScopePopoverShow() {
+  ensureSpacesLoaded()
+}
+
 function goBack() {
   // 广场页已删：工作台内返回智能体占位页，否则回首页
   if (isInWorkspace) {
@@ -1061,14 +1252,21 @@ async function handleSend() {
     const attachmentIds = agentStore.pendingAttachments.map((a) => a.id)
     const opts = {
       enable_thinking: enableThinking.value,
+      deep_research: enableResearch.value,
       llm_model: selectedModel.value || undefined,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
+    // 新会话 + 已勾选范围：会话建立后 watch 跳过清空（pendingScopeApply），
+    // 流结束后再 PUT——流中会话行被 chat 事务锁定，流中写绑定会锁超时
+    const shouldApplyScope =
+      !agentStore.currentSessionId && selectedSpaceIds.value.length > 0
+    pendingScopeApply = shouldApplyScope
     if (useStream.value) {
       await agentStore.sendMessageStream(agentId.value, sendContent, opts)
     } else {
       await agentStore.sendMessage(agentId.value, sendContent, opts)
     }
+    if (shouldApplyScope) await applyKnowledgeScope()
   } catch {
     ElMessage.error('发送失败，请重试')
   }
@@ -2410,6 +2608,83 @@ onBeforeUnmount(() => {
   align-items: center;
   font-size: 14px;
   line-height: 1;
+}
+
+/* 知识范围弹层面板（el-popover 内，非 scoped 生效域需 :global） */
+.kb-scope-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kb-scope-title {
+  font-size: 13px;
+  font-weight: var(--weight-medium, 500);
+  color: var(--color-text);
+}
+
+.kb-scope-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.kb-scope-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.kb-scope-item {
+  height: auto;
+  margin-right: 0;
+  padding: 2px 0;
+}
+
+.kb-scope-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+.kb-scope-empty {
+  font-size: 12px;
+  color: var(--color-text-tertiary, #a1a1aa);
+  padding: 4px 0;
+}
+
+.kb-scope-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--color-border-light);
+  padding-top: 8px;
+}
+
+.kb-scope-btn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kb-scope-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.kb-scope-btn.primary {
+  background: var(--color-chip-active);
+  border-color: var(--color-chip-active);
+  color: var(--color-chip-active-text);
 }
 
 /* 发送 / 停止主按钮（34px 圆形，active 纯黑） */

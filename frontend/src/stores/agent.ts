@@ -22,6 +22,7 @@ import type {
   OpenAICompatToolCall,
   AgentContextUsageData,
   PlanData,
+  ResearchProgressData,
 } from '@/api/types'
 
 // 后端工具状态归并到前端 ToolCallRecord.status 四态
@@ -100,6 +101,36 @@ function applyPlanEvent(
   return false
 }
 
+/**
+ * research_progress 事件统一处理（批3 深度研究工具化）：
+ * 首个事件建 role='research' 消息（extra.research 存进度态），后续事件原地
+ * 更新同一条消息——研究耗时数分钟，进度一条消息内推进而非刷屏。
+ */
+function applyResearchProgress(
+  researchMsg: { value: AgentMessage | null },
+  messages: AgentMessage[],
+  d: ResearchProgressData,
+): void {
+  if (!researchMsg.value) {
+    const msg: AgentMessage = {
+      id: Date.now() + Math.random(),
+      conversation_id: 0,
+      role: 'research',
+      content: d.current_step || '深度研究进行中',
+      tool_call_id: null,
+      tool_name: null,
+      token_count: null,
+      created_at: new Date().toISOString(),
+      extra: { research: d },
+    }
+    messages.push(msg)
+    researchMsg.value = msg
+    return
+  }
+  researchMsg.value.content = d.current_step || researchMsg.value.content
+  researchMsg.value.extra = { research: d }
+}
+
 export const useAgentStore = defineStore('agent', () => {
   // Agent 列表
   const agents = ref<Agent[]>([])
@@ -131,6 +162,8 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingAttachments = ref<ChatAttachment[]>([])
   // 当前 plan 消息引用（Plan-and-Execute 模式，onPlan 聚合 step 状态用）
   const planMsg = ref<AgentMessage | null>(null)
+  // 当前深度研究进度消息引用（批3 research 工具，onResearchProgress 原地推进用）
+  const researchMsg = ref<AgentMessage | null>(null)
 
   // MCP & 工具（全局共享）
   const mcpServers = ref<McpServer[]>([])
@@ -257,7 +290,7 @@ export const useAgentStore = defineStore('agent', () => {
   async function sendMessageStream(
     agentId: number,
     content: string,
-    options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] },
+    options?: { llm_model?: string; enable_thinking?: boolean; deep_research?: boolean; attachmentIds?: number[] },
   ) {
     if (!content.trim() && !options?.attachmentIds?.length) return
 
@@ -289,6 +322,7 @@ export const useAgentStore = defineStore('agent', () => {
     toolCalls.value = []
     error.value = null
     planMsg.value = null
+    researchMsg.value = null
 
     // 不预先 push assistant 占位消息，按事件顺序自然 push
     let assistantMsg: AgentMessage | null = null
@@ -321,6 +355,7 @@ export const useAgentStore = defineStore('agent', () => {
           session_id: currentSessionId.value || null,
           llm_model: options?.llm_model || null,
           enable_thinking: options?.enable_thinking,
+          deep_research: options?.deep_research,
           stream: true,
           attachment_ids: options?.attachmentIds,
         },
@@ -459,6 +494,9 @@ export const useAgentStore = defineStore('agent', () => {
           onContextUsage(d) {
             contextUsage.value = d
           },
+          onResearchProgress(d) {
+            applyResearchProgress(researchMsg, messages.value, d)
+          },
           onPlan(type, d) {
             const created = applyPlanEvent(planMsg, messages.value, type, d)
             if (created) return
@@ -522,7 +560,7 @@ export const useAgentStore = defineStore('agent', () => {
   async function sendMessage(
     agentId: number,
     content: string,
-    options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] },
+    options?: { llm_model?: string; enable_thinking?: boolean; deep_research?: boolean; attachmentIds?: number[] },
   ) {
     if (!content.trim() && !options?.attachmentIds?.length) return
 
@@ -550,6 +588,7 @@ export const useAgentStore = defineStore('agent', () => {
     toolCalls.value = []
     error.value = null
     planMsg.value = null
+    researchMsg.value = null
 
     const controller2 = new AbortController()
     abortController.value = controller2
@@ -577,6 +616,7 @@ export const useAgentStore = defineStore('agent', () => {
           session_id: currentSessionId.value || null,
           llm_model: options?.llm_model || null,
           enable_thinking: options?.enable_thinking,
+          deep_research: options?.deep_research,
           stream: false,
           attachment_ids: options?.attachmentIds,
         },
@@ -758,6 +798,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingAttachments.value = []
     contextUsage.value = null
     planMsg.value = null
+    researchMsg.value = null
   }
 
   // ========== 附件管理 ==========
@@ -880,6 +921,8 @@ export const useAgentStore = defineStore('agent', () => {
     tools,
     error,
     pendingAttachments,
+    planMsg,
+    researchMsg,
     // Actions
     fetchAgents,
     fetchAgent,
