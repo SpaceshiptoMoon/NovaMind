@@ -156,9 +156,8 @@ class ResearchTool(BaseTool):
                     )
         except Exception as e:
             logger.error("深度研究工具执行失败", error=str(e))
-            return json.dumps(
-                {"error": f"深度研究失败：{str(e)}"}, ensure_ascii=False
-            )
+            # 固定文案回模型：str(e) 可能含 SQL 片段/表名/主机信息等内部细节
+            return json.dumps({"error": "深度研究执行失败，请稍后重试"}, ensure_ascii=False)
         finally:
             await service.cleanup()
             # research 服务持有独立 db session（与外层 chat 事务隔离），用完即关

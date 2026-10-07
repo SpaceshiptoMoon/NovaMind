@@ -156,6 +156,12 @@ class AgentChatService:
             # 里裸原文」的双版本不一致。
             content = user_msg.content or content
 
+            # user 消息（和新建的会话行）在此提前提交：流式主循环可能含 research
+            # 等长任务（单工具最长 15min），事务横跨全程会钉住连接并持有行锁
+            # （阻塞并发改知识绑定等写操作）；此后工具/消息落库各自 flush，
+            # 终态仍由 _handle_done 统一 commit。
+            await self.db.commit()
+
             yield self._emit("session", {
                 "session_id": conv.session_id,
                 "agent_id": agent_id,
@@ -263,9 +269,10 @@ class AgentChatService:
                 context["subagent_runner"] = None
 
             # 深度研究（批3）：Agent 勾选 research 工具时注入请求级服务工厂。
-            # 每次调用构造独立 DeepResearchService（web 适配器按请求 cleanup），
-            # 复用当前请求 db session 与模型配置服务；space_id=0 时内部源按
-            # 无空间处理（SearchService 层拦截）。
+            # 每次调用构造独立 DeepResearchService：db session 用全局工厂新开
+            # （研究内部 rollback/错误恢复不得连坐外层 chat 事务）、web 适配器
+            # 按请求 cleanup；space_id=None 时内部源按无空间处理（SearchService
+            # 层拦截，内部检索跳过只走外部）。
             context["research_service_factory"] = (
                 await self._build_research_service_factory()
                 if "research" in (agent.enabled_tools or [])
@@ -511,7 +518,7 @@ class AgentChatService:
             yield self._emit("error", {"content": "Agent 不存在"})
         except (asyncio.CancelledError, GeneratorExit):
             # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚未提交事务，
-            # assistant 消息不落库（user 消息已在 _prepare 提交）
+            # assistant 消息不落库（user 消息已在 _prepare 后提前 commit，见上）
             conv_id = conv.id if "conv" in locals() else None
             logger.info("Agent 对话被客户端取消", conversation_id=conv_id)
             try:

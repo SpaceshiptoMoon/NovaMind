@@ -246,9 +246,9 @@ class AgentService:
             tools = list(agent.enabled_tools or [])
             missing = [t for t in _DEFAULT_AGENT_TOOLS if t not in tools]
             if missing:
-                agent.enabled_tools = tools + missing
-                self.db.add(agent)
-                await self.db.flush()
+                async with self.db.begin_nested():
+                    agent.enabled_tools = tools + missing
+                    await self.db.flush()
             return AgentDetailResponse.model_validate(agent)
 
         await self._validate_mcp_ids(user_id, None)

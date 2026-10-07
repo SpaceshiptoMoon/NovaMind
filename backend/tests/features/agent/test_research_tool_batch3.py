@@ -159,6 +159,42 @@ async def test_research_tool_error_event_short_circuits():
 
 
 @pytest.mark.asyncio
+async def test_research_tool_exception_returns_fixed_message():
+    """异常分支返回固定文案：str(e) 可能含 SQL 片段/主机信息等内部细节，不透传给模型。
+
+    正例：内部异常细节（表名/SQL）不出现在结果里；
+    反例（不误伤）：事件流 error 分支（服务层已包装的业务消息）仍原样透传。
+    """
+    from novamind.features.agent.tool.builtins.research import ResearchTool
+
+    class _BoomService:
+        pass
+
+    async def research_stream(space_id, user_id, request):
+        raise RuntimeError(
+            "(pymysql.err.IntegrityError) INSERT INTO research_sessions ... 'db-host-internal'"
+        )
+        yield  # pragma: no cover
+
+    async def cleanup():
+        return None
+
+    svc = _BoomService()
+    svc.research_stream = research_stream
+    svc.cleanup = cleanup
+
+    tool = ResearchTool()
+    result = json.loads(await tool.execute_tool(
+        "research", {"query": "研究主题足够长"},
+        {"research_service_factory": lambda: svc, "event_sink": None, "user_id": 1,
+         "knowledge_pipeline": {}},
+    ))
+    assert result == {"error": "深度研究执行失败，请稍后重试"}
+
+    # 反例：事件流 error 分支消息原样透传（见 test_research_tool_error_event_short_circuits）
+
+
+@pytest.mark.asyncio
 async def test_research_tool_no_sink_silent():
     """event_sink 缺失静默降级：不推送进度，最终结果照常返回。"""
     events = [{"type": "done", "data": {"final_report": "报告", "stats": {},
