@@ -67,6 +67,8 @@ const messagesRef = ref<HTMLElement>()
 
 async function handleSelectSession(sessionId: string) {
   if (!sessionId) return
+  // 归档页与对话页共用 chat store：在途流不中止会把增量写进刚拉取的历史列表
+  if (chatStore.isStreaming) chatStore.cancelStream()
   await chatStore.fetchMessages(sessionId)
   nextTick(() => {
     if (messagesRef.value) {

@@ -781,7 +781,8 @@ async function handleSubmit() {
       if (isEdit.value && editUserId.value) {
         await userApi.updateUser(editUserId.value, {
           email: formData.email,
-          phone: formData.phone || undefined,
+          // 空串须显式传 null：传 undefined 会被 exclude_unset 丢弃成"未提交"，清空手机号假成功
+          phone: formData.phone.trim() === '' ? null : formData.phone,
         })
         ElMessage.success('用户更新成功')
       } else {
@@ -789,7 +790,7 @@ async function handleSubmit() {
           username: formData.username,
           email: formData.email,
           password: formData.password,
-          phone: formData.phone || undefined,
+          phone: formData.phone.trim() === '' ? null : formData.phone,
         })
         ElMessage.success('用户创建成功')
       }

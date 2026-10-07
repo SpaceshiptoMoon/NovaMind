@@ -1001,6 +1001,8 @@ function handleNewChat() {
 
 async function handleSelectConversation(sessionId: string) {
   if (agentStore.currentSessionId === sessionId) return
+  // 流式进行中先中止：SSE 回调写 store 全局 messages，不中止会把旧会话增量写进新会话
+  if (agentStore.isStreaming) agentStore.cancelStream()
   await agentStore.fetchMessages(sessionId)
   // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
   workbench.resetSelection()

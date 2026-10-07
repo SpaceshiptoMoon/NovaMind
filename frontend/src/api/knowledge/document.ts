@@ -213,7 +213,7 @@ export const documentApi = {
   getChunkPosition(spaceId: number, kbId: number, docId: number, chunkId: string) {
     return request.get<ChunkPositionResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/chunk-position`,
-      { params: { chunk_id: chunkId } },
+      { chunk_id: chunkId },
     )
   },
 

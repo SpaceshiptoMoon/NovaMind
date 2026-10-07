@@ -83,13 +83,14 @@ export interface CreateUserRequest {
   username: string
   email: string
   password: string
-  phone?: string
+  phone?: string | null
 }
 
 export interface UpdateUserRequest {
   username?: string
   email?: string
-  phone?: string
+  // null 表示显式清空手机号；undefined 才是"不提交该字段"（后端 exclude_unset 语义）
+  phone?: string | null
   password?: string
   is_admin?: boolean
   status?: number

@@ -180,6 +180,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (scrollRAF) cancelAnimationFrame(scrollRAF)
   revokeBlobUrls()
+  // 在途流随视图卸载中止：chat store 是全局单例，回调会继续写共享 messages
+  if (chatStore.isStreaming) chatStore.cancelStream()
 })
 </script>
 

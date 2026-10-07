@@ -179,7 +179,7 @@ export const evaluationApi = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
 
-    if (!response.ok) throw new Error('瀵煎嚭澶辫触')
+    if (!response.ok) throw new Error('导出失败')
 
     const blob = await response.blob()
     const disposition = response.headers.get('content-disposition')

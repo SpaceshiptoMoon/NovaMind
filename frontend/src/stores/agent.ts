@@ -745,6 +745,9 @@ export const useAgentStore = defineStore('agent', () => {
 
   /** 清空整个聊天状态（会话 ID、消息、工具卡、流式累积、附件、计划卡），切会话/删 Agent 时调用 */
   function clearChat() {
+    // 在途流先中止：流回调写的是 store 级全局 messages，不中止会把旧会话
+    // 增量写进新会话列表，且 onSession 会把旧会话 id 写回 currentSessionId
+    if (isStreaming.value) abortController.value?.abort()
     currentSessionId.value = null
     messages.value = []
     toolCalls.value = []
