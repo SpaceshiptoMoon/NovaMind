@@ -1,5 +1,9 @@
 """
-AI对话API路由
+AI 对话 API 路由（共享基础设施）
+
+批4 工作台统一后，对话唯一入口是 agent 对话面；QA 对话端点（POST /chat
+与 /ws）已清退，本路由仅保留 agent 侧复用的共享端点：附件上传/下载、
+模型清单、健康检查。
 """
 
 import io
@@ -12,17 +16,12 @@ from fastapi import (
     File,
     Path,
     UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
 from novamind.core.auth import (
     get_current_user,
     get_current_user_optional,
-    get_user_status_resolver,
 )
-from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
-from novamind.core.ws import run_stream_to_ws
 from novamind.features.qa.api.constants import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
@@ -34,106 +33,13 @@ from novamind.features.qa.api.dependencies import (
 )
 from novamind.features.qa.schemas.ai_chat import (
     ChatAvailableModelsResponse,
-    ChatRequest,
-    ChatResponse,
     HealthCheckResponse,
     UploadChatAttachmentResponse,
 )
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.user.services.user_service import UserService
 
 router = APIRouter()
-
-
-
-
-@router.post(
-    "/chat",
-    response_model=ChatResponse,
-    summary="AI对话（非流式）",
-    description="执行AI对话并返回完整响应",
-)
-async def chat(
-    request: ChatRequest,
-    ai_chat_service: AIChatService = Depends(get_aichat_service),
-    current_user: dict = Depends(get_current_user),
-):
-    """执行AI对话（非流式）"""
-    # 执行对话
-    result = await ai_chat_service.chat(
-        user_id=current_user["id"],
-        session_id=request.session_id,
-        content=request.content,
-        llm_model=request.llm_model,
-        enable_thinking=request.enable_thinking,
-        attachment_ids=request.attachment_ids,
-        enable_web_search=request.enable_web_search,
-        search_provider=request.search_provider,
-    )
-
-    return ChatResponse(
-        session_id=result["session_id"],
-        user_message=result["user_message"],
-        ai_message=result["ai_message"],
-        conversation_history=result["conversation_history"]
-    )
-
-
-@router.websocket("/ws")
-async def chat_ws(
-    websocket: WebSocket,
-    ai_chat_service: AIChatService = Depends(get_aichat_service),
-    resolver: UserService = Depends(get_user_status_resolver),
-):
-    """AI 对话（WebSocket 流式）。
-
-    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
-    客户端连接后发 ``{"action": "chat", "payload": {content, session_id?, ...}}``，
-    服务端推送 ``{"type": ..., "data": ...}`` 事件流（user_message/sources/trace/
-    reasoning/content/heartbeat/done/error）。客户端 close 触发 service
-    CancelledError 清理。
-    """
-    user, close_code = await ws_authenticate(websocket, resolver)
-    token = ws_extract_token(websocket)
-    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
-    if close_code is not None:
-        await websocket.close(code=close_code)
-        return
-
-    try:
-        msg = await websocket.receive_json()
-    except (WebSocketDisconnect, OSError):
-        # OSError 兜 TCP 猝死：uvicorn send/receive 抛 ClientDisconnected（OSError 子类）
-        return
-
-    if not isinstance(msg, dict) or msg.get("action") != "chat":
-        await websocket.send_json(
-            {"type": "error", "data": {"content": "未知 action，期望 action=chat"}}
-        )
-        await websocket.close()
-        return
-
-    try:
-        data = ChatRequest(**(msg.get("payload") or {}))
-    except Exception as e:
-        await websocket.send_json(
-            {"type": "error", "data": {"content": f"请求参数错误：{str(e)}"}}
-        )
-        await websocket.close()
-        return
-
-    gen = ai_chat_service.chat_stream(
-        user_id=user["id"],
-        session_id=data.session_id,
-        content=data.content,
-        llm_model=data.llm_model,
-        enable_thinking=data.enable_thinking,
-        attachment_ids=data.attachment_ids,
-        enable_web_search=data.enable_web_search,
-        search_provider=data.search_provider,
-    )
-    await run_stream_to_ws(websocket, gen)
 
 
 @router.post(
@@ -149,7 +55,7 @@ async def upload_chat_attachment(
 ):
     """上传聊天附件。
 
-    共享端点：QA 聊天（/ai-chat/ws）与 Agent 对话（/agent/agents/{id}/ws）共用。
+    共享端点：agent 对话（/agent/agents/{id}/ws）与 QA 归档数据共用。
     物理归属在 features/qa（chat_attachments 表 + MinIO），agent 前端
     （stores/agent.ts）与后端（features/agent/chat_service._prepare）均按
     user_id 维度引用附件 id，不做会话级归属校验——同一用户可跨会话/跨

@@ -1,16 +1,15 @@
 """
-深度研究 API 路由
+深度研究 API 路由（只读取面）
+
+批4 工作台统一后，研究执行唯一入口是 agent 对话的 research 工具；
+本路由仅保留源发现/列表/详情/删除读取端点，web 写入端点（POST+WS）已清退。
 """
 
-import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from novamind.core.auth import get_current_user, get_user_status_resolver
-from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
-from novamind.core.database.database import get_db
+from fastapi import APIRouter, Depends, Path, Query
+from novamind.core.auth import get_current_user
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
 from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,
@@ -20,7 +19,6 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchListItem,
     ResearchListResponse,
     ResearchMode,
-    ResearchRequest,
     ResearchResponse,
     ResearchStatus,
     SearchSource,
@@ -32,15 +30,9 @@ from novamind.features.deep_research.services.deep_research_service import (
     parse_plan_json,
     plan_to_event_data,
 )
-from novamind.features.deep_research.services.plan_feedback_registry import (
-    PlanFeedbackRegistry,
-)
 from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
-from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.user.schemas.user_schema import UserMessageResponse
-from novamind.features.user.services.user_service import UserService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -157,180 +149,6 @@ async def list_search_sources(
         for st in source_registry.known_types()
     ]
     return SearchSourceListResponse(sources=sources)
-
-
-@router.post(
-    "",
-    response_model=ResearchResponse,
-    summary="执行深度研究（非流式）",
-    description="基于知识空间执行深度研究，返回完整报告",
-)
-async def execute_research(
-    request: ResearchRequest,
-    validated: tuple = Depends(validate_space_access),
-    research_service: DeepResearchService = Depends(get_deep_research_service),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    执行深度研究（非流式）
-
-    space_id 为路径参数，由 URL 提供（如 /api/v1/spaces/1/deep-research）。
-
-    请求体示例：
-    ```json
-    {
-        "query": "什么是 RAG 技术？有哪些最佳实践？",
-        "research_mode": "standard",
-        "search_source": "hybrid",
-        "internal_search": {
-            "kb_ids": [1, 2],
-            "search_mode": SearchMode.CONTENT_HYBRID.value,
-            "top_k": 10,
-            "vector_weight": 0.7,
-            "rerank_enabled": true,
-            "rerank_top_k": 5
-        },
-        "external_search": {
-            "provider": "duckduckgo",
-            "max_results": 10
-        },
-        "llm": {
-            "llm_model": "gpt-4o",
-            "temperature": 0.7,
-            "max_tokens": 4096
-        }
-    }
-    ```
-    """
-    space, member = validated
-    space_id = space.id
-    user_id = current_user["id"]
-
-    result = await research_service.research(
-        space_id=space_id,
-        user_id=user_id,
-        request=request,
-    )
-
-    # 从研究结果获取 external_provider，避免与 service 层重复提取
-    external_provider = result.get("external_provider")
-
-    return ResearchResponse(
-        session_id=result["session_id"],
-        query=result["query"],
-        research_mode=result.get("research_mode", request.research_mode),
-        search_source=result.get("search_source", request.search_source),
-        external_provider=external_provider,
-        status=_map_status_to_schema(ModelResearchStatus(result["status"])),
-        research_topic=result.get("research_topic"),
-        research_tasks=result.get("research_tasks"),
-        final_report=result.get("final_report"),
-        search_summary=result.get("search_summary"),
-        stats=result.get("stats", {}),
-        created_at=result.get("created_at"),
-        completed_at=result.get("completed_at"),
-    )
-
-
-@router.websocket("/ws")
-async def research_ws(
-    websocket: WebSocket,
-    space_id: Annotated[int, Path(gt=0, description="知识空间 ID")],
-    db: AsyncSession = Depends(get_db),
-    resolver: UserService = Depends(get_user_status_resolver),
-    research_service: DeepResearchService = Depends(get_deep_research_service),
-):
-    """深度研究（WebSocket 流式，支持计划确认双向交互）。
-
-    路由前缀 ``/api/v1/spaces/{space_id}/deep-research`` + ``/ws`` →
-    ``/api/v1/spaces/{space_id}/deep-research/ws``。
-
-    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
-    空间权限：ws_authenticate 拿到 user 后，用 ``space_id`` + ``user["id"]`` 复用
-    ``validate_space_access`` 校验空间访问权限（失败 close 4403，握手前 close 由
-    Starlette 回 403）。客户端连接后发 ``{"action": "research", "payload": ResearchRequest}``，
-    服务端推送 ``{"type": ..., "data": ...}`` 事件流（progress/plan_generated/content/
-    done/error）。``auto_accepted_plan=false`` 时计划生成后服务端挂起，客户端发
-    ``{"action": "plan_feedback", "decision": "accepted"|"edit_plan", "feedback": "..."}"
-    继续（edit_plan 携 feedback 重规划；超时自动接受）。客户端 close 触发 service
-    ``asyncio.CancelledError`` → 研究记录标记 CANCELLED。
-    """
-    user, close_code = await ws_authenticate(websocket, resolver)
-    token = ws_extract_token(websocket)
-    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
-    if close_code is not None:
-        await websocket.close(code=close_code)
-        return
-
-    # 空间权限校验（WS 不能用 HTTP Depends(get_current_user_id)，直接传 user_id + db）
-    try:
-        await validate_space_access(space_id, user_id=user["id"], db=db)
-    except (SpaceNotFoundError, SpaceAccessDeniedError):
-        await websocket.close(code=4403, reason="无权访问该知识空间")
-        return
-
-    try:
-        msg = await websocket.receive_json()
-    except (WebSocketDisconnect, OSError):
-        # OSError 兜 TCP 猝死：uvicorn send/receive 抛 ClientDisconnected（OSError 子类）
-        return
-
-    if not isinstance(msg, dict) or msg.get("action") != "research":
-        await websocket.send_json(
-            {"type": "error", "data": {"message": "未知 action，期望 action=research"}}
-        )
-        await websocket.close()
-        return
-
-    try:
-        data = ResearchRequest(**(msg.get("payload") or {}))
-    except Exception as e:
-        await websocket.send_json(
-            {"type": "error", "data": {"message": f"请求参数错误：{str(e)}"}}
-        )
-        await websocket.close()
-        return
-
-    # 计划确认双向通道：locked_send（并发 send 加锁）+ send/recv 双 task
-    # （deer-flow human_feedback 对齐；参照 agent ApprovalRegistry 先例）
-    registry = PlanFeedbackRegistry()
-    send_lock = asyncio.Lock()
-
-    async def locked_send(event):
-        async with send_lock:
-            await send_event(websocket, event)
-
-    gen = research_service.research_stream(
-        space_id=space_id,
-        user_id=user["id"],
-        request=data,
-        feedback_registry=registry,
-    )
-
-    async def recv_plan_feedback():
-        """并发收用户 WS 消息（计划反馈 → registry.resolve）。"""
-        while True:
-            try:
-                msg = await websocket.receive_json()
-            except (WebSocketDisconnect, OSError):
-                break
-            if (
-                isinstance(msg, dict)
-                and msg.get("action") == "plan_feedback"
-            ):
-                registry.resolve(
-                    str(msg.get("decision", "accepted")),
-                    str(msg.get("feedback", "") or ""),
-                )
-
-    send_task = asyncio.create_task(
-        run_stream_to_ws(websocket, gen, send_fn=locked_send)
-    )
-    recv_task = asyncio.create_task(recv_plan_feedback())
-    try:
-        await send_task
-    finally:
-        recv_task.cancel()
 
 
 @router.get(

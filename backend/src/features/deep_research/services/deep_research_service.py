@@ -550,8 +550,9 @@ class DeepResearchService:
         if not research:
             raise ResearchNotFoundError(session_id)
 
-        # 验证空间归属
-        if research.space_id != space_id:
+        # 验证空间归属；agent 发起的研究 space_id 为 NULL（无空间锚点），
+        # 不属于任何空间路径，跳过空间匹配仅按 user_id 隔离
+        if research.space_id is not None and research.space_id != space_id:
             raise ResearchSpaceAccessDeniedError(space_id, user_id)
 
         # 非管理员只能查看自己的研究
@@ -586,8 +587,8 @@ class DeepResearchService:
         if not research:
             raise ResearchNotFoundError(session_id)
 
-        # 验证空间归属
-        if research.space_id != space_id:
+        # 验证空间归属；agent 发起的 NULL 空间行跳过空间匹配（同 get_research）
+        if research.space_id is not None and research.space_id != space_id:
             raise ResearchSpaceAccessDeniedError(space_id, user_id)
 
         # 权限检查：非管理员只能删除自己的研究
@@ -1338,13 +1339,9 @@ class DeepResearchService:
     async def _notify_research_done(self, ctx: ResearchContext, elapsed_seconds: int) -> None:
         """研究完成通知发起用户（commit 后调用；失败静默不影响主流程）。"""
         topic = ctx.research_topic or ctx.params.query
-        # agent 发起的研究 space_id=None（会话无知识绑定）：历史页路由需要数值
-        # spaceId，None 插值成 'None' 前端 Number() 后 NaN → 422，改指无 spaceId
-        # 的工作台研究页
-        if ctx.space_id is not None:
-            link = f"/home/workspace/research/{ctx.space_id}/history"
-        else:
-            link = "/home/workspace/research"
+        # 批4 web 研究页清退后统一指工作台对话页（研究经 agent 对话发起，
+        # 报告已在对话流内可达；原 /research/... 路由已删）
+        link = "/home/workspace/chat"
         try:
             from novamind.features.notification.services.notification_service import (
                 NotificationService,
