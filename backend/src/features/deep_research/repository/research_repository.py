@@ -16,7 +16,7 @@ from novamind.features.deep_research.models.research_session import (
     ResearchStatus,
 )
 from novamind.shared.utils.time_utils import now_china
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -108,7 +108,7 @@ class ResearchRepository:
         self, session_id: str, user_id: int | None = None
     ) -> ResearchSession | None:
         """
-        通过会话 ID 获取研究会话（检查关联 space 未删除）
+        通过会话 ID 获取研究会话（有空间锚点的行校验 space 未删除）
 
         Args:
             session_id: 会话唯一标识
@@ -122,15 +122,23 @@ class ResearchRepository:
         conditions = [
             ResearchSession.session_id == session_id,
             ResearchSession.deleted_at.is_(None),
-            KnowledgeSpace.deleted_at.is_(None),
         ]
         if user_id is not None:
             conditions.append(ResearchSession.user_id == user_id)
 
+        # LEFT JOIN + 条件放行：agent 会话发起的研究 space_id 为 NULL（批3 起无空间
+        # 锚点），INNER JOIN 会使其恒不可达（详情/删除全 404）。NULL 行仅靠
+        # deleted_at + user_id 隔离；有空间行仍要求关联空间未删除。
         result = await self.session.execute(
             select(ResearchSession)
-            .join(KnowledgeSpace, ResearchSession.space_id == KnowledgeSpace.id)
-            .where(*conditions)
+            .outerjoin(KnowledgeSpace, ResearchSession.space_id == KnowledgeSpace.id)
+            .where(
+                *conditions,
+                or_(
+                    ResearchSession.space_id.is_(None),
+                    KnowledgeSpace.deleted_at.is_(None),
+                ),
+            )
         )
         return result.scalar_one_or_none()
 
