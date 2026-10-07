@@ -1,7 +1,7 @@
 # 工作台统一重构方案：个人 Agent 单一对话面（前端优先、后端跟随）
 
 > **状态（2026-10-07 回填）**：批1 已实施并合并 main（d659dcb 默认助手幂等开通 + d5f0cd3 三频道收敛为单一「对话」+ QA 历史转只读归档）；批2 进行中——5b6e596 已落知识检索管线吸收 + 会话级知识绑定 + 消息反馈埋点。批3/批4 未开始。
-> **批4 部分落地（2026-10-07 晚）**：清退三提交已并 main——992e9b7（NULL 空间研究行读取面修复）、9b77661（web 研究写入端点 POST+WS 与 QA 对话端点 /ai-chat/chat+/ws 清退，ai_chat 保留 agent 复用的附件/模型/健康端点；通知 link 统一指对话页）、2381ce1（前端 ResearchView/ResearchHistoryView/ChatView/ChatArchiveView 四视图 + chat/qa 组件链 + research/chat store/api 全删，/research/* redirect 对话页）。OpenAPI 基线已刷新。**未做**：research 工具的计划确认桥接（PlanFeedbackRegistry 服务层已保留待接）；qa 三表与 research_sessions 数据保留未写入收口已达成。
+> **批4 部分落地（2026-10-07 晚）**：清退三提交已并 main——992e9b7（NULL 空间研究行读取面修复）、9b77661（web 研究写入端点 POST+WS 与 QA 对话端点 /ai-chat/chat+/ws 清退，ai_chat 保留 agent 复用的附件/模型/健康端点；通知 link 统一指对话页）、2381ce1（前端 ResearchView/ResearchHistoryView/ChatView/ChatArchiveView 四视图 + chat/qa 组件链 + research/chat store/api 全删，/research/* redirect 对话页）。另有 599323d（编辑洗 extra_config 改 merge 语义）、93d5081（OpenAPI+文档）、98986ad（通知断言）、5f552d9（E2E 发现 redirect 层级错误，workspace 子树内补 /research/* 与 /chat/archive redirect）。OpenAPI 基线已刷新。**未做**：research 工具的计划确认桥接（PlanFeedbackRegistry 服务层已保留待接）；qa 三表与 research_sessions 数据保留未写入收口已达成。
 >
 > 2026-10-07 起草。目标：把工作台「AI 对话（QA）/ 智能体（Agent）/ 深度研究（Research）」三个平级入口，
 > 收敛为行业标准形态——**一个聊天界面 + 输入框能力开关**，QA 与 Research 降级为能力/模式，不再是入口。
