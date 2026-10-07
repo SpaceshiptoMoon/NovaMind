@@ -1,5 +1,7 @@
 # 系统级 RBAC 鉴权 Implementation Plan
 
+> **状态（2026-10-07 回填）：已实施并合并进 main。** 代码证据：`features/user/models/role.py`（Role/Permission/RolePermission 三表 + `User.role_id`）、`core/authorization/`（PermissionCheckerPort / require_permission / permission_codes）、`features/user/api/role_routes.py`（角色管理 API）、前端 `stores/permission.ts` + `directives/permission.ts` + 路由 `requiresPermission` meta。本计划的 checkbox 未逐项勾选，实施细节以代码与 git 历史为准；设计文档见 `docs/superpowers/specs/2026-08-26-system-rbac-design.md`，权限双层模型定稿见 `docs/permission-architecture.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 用可自定义角色 × 权限矩阵替代 `is_admin` 二值，新增系统级 RBAC + 前端权限层，space 域资源级 RBAC 保持现状。
