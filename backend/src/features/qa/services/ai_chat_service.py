@@ -1089,6 +1089,9 @@ class AIChatService:
                     "content": ai_message.content,
                     "role": ai_message.role,
                     "created_at": ai_message.created_at,
+                    # extra 与落库形状对齐（含 sources/answer_status/confidence）：
+                    # 前端消息渲染统一读 msg.extra.sources，缺失则非流式来源角标不渲染
+                    "extra": ai_message.extra,
                     "sources": prep.sources,
                     "answer_status": prep.answer_status,
                     "confidence": prep.confidence,
