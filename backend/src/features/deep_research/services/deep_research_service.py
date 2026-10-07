@@ -1338,6 +1338,13 @@ class DeepResearchService:
     async def _notify_research_done(self, ctx: ResearchContext, elapsed_seconds: int) -> None:
         """研究完成通知发起用户（commit 后调用；失败静默不影响主流程）。"""
         topic = ctx.research_topic or ctx.params.query
+        # agent 发起的研究 space_id=None（会话无知识绑定）：历史页路由需要数值
+        # spaceId，None 插值成 'None' 前端 Number() 后 NaN → 422，改指无 spaceId
+        # 的工作台研究页
+        if ctx.space_id is not None:
+            link = f"/home/workspace/research/{ctx.space_id}/history"
+        else:
+            link = "/home/workspace/research"
         try:
             from novamind.features.notification.services.notification_service import (
                 NotificationService,
@@ -1347,7 +1354,7 @@ class DeepResearchService:
                 type="research_done",
                 title=f"深度研究「{topic}」已完成",
                 content=f"研究耗时 {elapsed_seconds} 秒，报告已生成，点击查看完整内容。",
-                link=f"/home/workspace/research/{ctx.space_id}/history",
+                link=link,
                 extra_data={
                     "session_id": ctx.session_id,
                     "space_id": ctx.space_id,

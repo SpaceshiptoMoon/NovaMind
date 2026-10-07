@@ -150,12 +150,23 @@ class ResearchTool(BaseTool):
                     citations = data.get("citations") or []
                     topic = str(data.get("session_id") or "")
                 elif etype == "error":
+                    await self._emit_progress(
+                        event_sink,
+                        {"status": "failed", "current_step": "研究执行失败",
+                         "progress_percent": 0},
+                    )
                     return json.dumps(
                         {"error": str(data.get("message") or "研究执行失败")},
                         ensure_ascii=False,
                     )
         except Exception as e:
             logger.error("深度研究工具执行失败", error=str(e))
+            # 失败也推终态：前端进度卡停在最后一条进度事件会 spinner 永转
+            await self._emit_progress(
+                event_sink,
+                {"status": "failed", "current_step": "研究执行失败",
+                 "progress_percent": 0},
+            )
             # 固定文案回模型：str(e) 可能含 SQL 片段/表名/主机信息等内部细节
             return json.dumps({"error": "深度研究执行失败，请稍后重试"}, ensure_ascii=False)
         finally:
@@ -169,10 +180,22 @@ class ResearchTool(BaseTool):
                     pass
 
         if not full_report:
+            await self._emit_progress(
+                event_sink,
+                {"status": "failed", "current_step": "研究未产出报告",
+                 "progress_percent": 0},
+            )
             return json.dumps(
                 {"error": "研究未产出报告内容"}, ensure_ascii=False
             )
 
+        # 终态事件：done 后主模型还要消化报告再作答（1-3 分钟），不推 100% 的话
+        # 前端进度卡停在 synthesizing 85% 假活
+        await self._emit_progress(
+            event_sink,
+            {"status": "completed", "current_step": "研究完成",
+             "progress_percent": 100},
+        )
         return json.dumps(
             {
                 "report": full_report[:_REPORT_PREVIEW_CHARS],

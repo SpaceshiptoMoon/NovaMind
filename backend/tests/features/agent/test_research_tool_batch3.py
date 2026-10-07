@@ -83,11 +83,15 @@ async def test_research_tool_happy_path_with_progress():
     assert result["citations"] == [{"title": "src", "url": "http://x"}]
 
     sink = context["event_sink"]
-    assert sink.await_count == 2
+    # progress + plan + completed 终态（done 后工具层补发 100%）
+    assert sink.await_count == 3
     types = [c.args[0]["type"] for c in sink.await_args_list]
     assert all(t == "research_progress" for t in types)
     assert sink.await_args_list[0].args[0]["data"]["status"] == "searching"
     assert sink.await_args_list[1].args[0]["data"]["status"] == "plan"
+    final = sink.await_args_list[2].args[0]["data"]
+    assert final["status"] == "completed"
+    assert final["progress_percent"] == 100
 
 
 @pytest.mark.asyncio
@@ -148,7 +152,7 @@ async def test_research_tool_invalid_enum_falls_back():
 
 @pytest.mark.asyncio
 async def test_research_tool_error_event_short_circuits():
-    """事件流 error 事件直接返回错误 JSON，不产出假报告。"""
+    """事件流 error 事件直接返回错误 JSON，不产出假报告；且推 failed 终态给前端。"""
     events = [
         {"type": "progress", "data": {"status": "searching"}},
         {"type": "error", "data": {"message": "搜索引擎不可用"}},
@@ -156,6 +160,10 @@ async def test_research_tool_error_event_short_circuits():
     tool, context = _tool_with_factory(events)
     result = json.loads(await tool.execute_tool("research", {"query": "研究一下长尾问题"}, context))
     assert result == {"error": "搜索引擎不可用"}
+    # 失败终态：前端进度卡靠它停 spinner（否则停在最后一条进度假活）
+    sink = context["event_sink"]
+    assert sink.await_count == 2
+    assert sink.await_args_list[1].args[0]["data"]["status"] == "failed"
 
 
 @pytest.mark.asyncio
