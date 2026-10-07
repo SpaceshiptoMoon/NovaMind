@@ -48,7 +48,7 @@ class TestApiKeyNotUrl:
     @pytest.mark.parametrize("schema", SCHEMAS)
     def test_normal_credential_allowed(self, schema):
         """正常凭据（API Key 与 token 两种形状）不误伤。"""
-        assert schema(**_kwargs(schema, api_key="REDACTED")).api_key == "REDACTED"
+        assert schema(**_kwargs(schema, api_key="a1b2c3d4.e5f6g7h8i9j0k1l2")).api_key == "a1b2c3d4.e5f6g7h8i9j0k1l2"
 
     @pytest.mark.parametrize("schema", SCHEMAS)
     def test_none_and_empty_allowed(self, schema):
