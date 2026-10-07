@@ -1147,3 +1147,78 @@ async def test_non_stream_finish_reason_length_passthrough(gateway_app, seeded_k
     body = resp.json()
     assert body["choices"][0]["finish_reason"] == "length"
     assert body["usage"] == {}
+
+
+# ========== 流式结构化 finish 帧（Anthropic 截断语义透传回归） ==========
+
+
+@pytest.mark.asyncio
+async def test_stream_structured_finish_chunk_sets_finish_reason(gateway_app, seeded_key):
+    """上游 StreamChunk(type='finish') 携带的 finish_reason 透传末帧（如 Anthropic length 截断）。"""
+    from novamind.shared.ai_models.base_model import StreamChunk
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, **kwargs):
+        yield StreamChunk(type="content", text="截断前的部分回答")
+        yield StreamChunk(type="finish", text="", finish_reason="length")
+
+    async def _fake(self, user_id, model):
+        from unittest.mock import MagicMock
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_stream_structured = MagicMock(side_effect=_stream)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(stream=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    assert chunks[-1]["choices"][0]["finish_reason"] == "length"
+
+
+@pytest.mark.asyncio
+async def test_stream_structured_no_finish_chunk_keeps_stop(gateway_app, seeded_key):
+    """相邻正常场景不误伤：上游不发 finish 帧（OpenAI 兼容驱动现状）→ 末帧保持 stop 兜底。"""
+    from novamind.shared.ai_models.base_model import StreamChunk
+
+    plain, _ = seeded_key
+
+    async def _stream(messages, **kwargs):
+        yield StreamChunk(type="content", text="你")
+        yield StreamChunk(type="content", text="好")
+
+    async def _fake(self, user_id, model):
+        from unittest.mock import MagicMock
+
+        stub = AsyncMock()
+        stub.quirks = None
+        stub.capabilities = LLMCapabilities(tools=True, thinking=True)
+        stub.generate_text_stream_structured = MagicMock(side_effect=_stream)
+        return stub
+
+    with patch(
+        "novamind.features.user.services.model_config_service.ModelConfigService.get_llm_client_by_model",
+        new=_fake,
+    ), _patch_user_status(True), _patch_touch():
+        transport = ASGITransport(app=gateway_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json=_chat_body(stream=True),
+                headers={"Authorization": f"Bearer {plain}"},
+            )
+
+    chunks = [e for e in _parse_sse(resp.text) if e != "[DONE]"]
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
