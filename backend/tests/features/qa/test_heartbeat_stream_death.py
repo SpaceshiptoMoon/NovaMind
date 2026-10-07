@@ -99,11 +99,15 @@ async def test_silence_counter_resets_on_activity():
 
     async def recovering_stream():
         yield _mk("早")
-        await asyncio.sleep(0.06)  # > 0.04 interval：先心跳一次
+        # 余量设计：目标静默 1 个 interval（0.02），但须远小于阈值×interval
+        # （2×0.02=0.04 是误杀线）。不能贴近边界取值——高负载下调度延迟会把
+        # 名义 1 间隔的 sleep 拉过误杀线（实测 0.06/0.04 组合在 CI 级负载下
+        # 间歇性触发流死判定吞掉第二个块），留 2 倍余量保证判据稳定。
+        await asyncio.sleep(0.03)  # 0.02 < 间隔 < 0.04 误杀线：恰好心跳一次
         yield _mk("晚")
 
     texts, heartbeats, _ = await _collect(
-        stream_with_heartbeat_structured(recovering_stream(), interval=0.04, outcome=outcome)
+        stream_with_heartbeat_structured(recovering_stream(), interval=0.02, outcome=outcome)
     )
     assert texts == ["早", "晚"]
     assert heartbeats >= 1

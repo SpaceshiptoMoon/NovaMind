@@ -1263,6 +1263,7 @@ class AIChatService:
             else:
                 # 收集完整的AI回复
                 full_response = ""
+                full_reasoning = ""
 
                 # 流式生成AI回复（带心跳机制 + thinking 模式适配 + 流死检测）
                 raw_stream = prep.llm_client.generate_text_stream_structured(
@@ -1283,6 +1284,7 @@ class AIChatService:
                         yield self._emit("heartbeat", {})
                         continue
                     if chunk.type == "reasoning":
+                        full_reasoning += chunk.text
                         yield self._emit("reasoning", {
                             "content": chunk.text,
                             "session_id": session_id,
@@ -1328,6 +1330,9 @@ class AIChatService:
                         role="assistant",
                         session_id=session_id,
                         space_id=prep.rag_space,
+                        # 思考过程随消息落库（列直存，与 agent_messages.reasoning
+                        # 同构）：历史/归档视图回填时前端 reasoning 渲染块可亮
+                        reasoning=full_reasoning or None,
                         extra=_ai_extra,
                     ),
                     user_id,
@@ -1343,6 +1348,7 @@ class AIChatService:
                 if ai_message.created_at else None,
                 "session_id": session_id,
                 "llm_model": llm_model,
+                "reasoning": full_reasoning or None,
                 "sources": prep.sources,
                 "answer_status": prep.answer_status,
                 "confidence": prep.confidence,

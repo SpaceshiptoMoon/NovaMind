@@ -290,6 +290,8 @@ export const useChatStore = defineStore('chat', () => {
             const lastMsg = messages.value[messages.value.length - 1]
             if (lastMsg?.role === 'assistant') {
               lastMsg.content = d.content || streamingContent.value
+              // done 帧的 reasoning 是服务端累积终稿（含落库值），流式中断时兜底还原
+              if (d.reasoning) lastMsg.reasoning = d.reasoning
               if (d.id) lastMsg.id = d.id
               // 来源 / 回答状态兜底（与 sources 事件互补，刷新后历史消息也能还原）
               const extra: Record<string, unknown> = { ...lastMsg.extra }

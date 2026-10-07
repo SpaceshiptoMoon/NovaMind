@@ -170,6 +170,7 @@ async def get_chat_history(
                 "id": msg.id,
                 "content": msg.content,
                 "role": msg.role,
+                "reasoning": msg.reasoning,
                 "extra": msg.extra,
                 "created_at": msg.created_at,
             }

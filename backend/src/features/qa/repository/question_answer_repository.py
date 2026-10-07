@@ -28,6 +28,7 @@ class QuestionAnswerRepository:
         session_id: str,
         kb_id: int | None = None,
         space_id: int | None = None,
+        reasoning: str | None = None,
         extra: dict | None = None,
     ) -> QuestionAnswer:
         """
@@ -42,6 +43,7 @@ class QuestionAnswerRepository:
             session_id: 会话 ID
             kb_id: 知识库 ID（可选）
             space_id: 知识空间 ID（可选）
+            reasoning: 助手思考过程（可选，仅 assistant 消息）
             extra: 扩展信息（可选，如附件列表）
         """
         try:
@@ -52,6 +54,7 @@ class QuestionAnswerRepository:
                 session_id=session_id,
                 kb_id=kb_id,
                 space_id=space_id,
+                reasoning=reasoning,
                 extra=extra,
             )
             self.session.add(message)

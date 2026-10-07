@@ -122,6 +122,7 @@ class QAService:
                 session_id=session_id,
                 kb_id=request.kb_id,
                 space_id=request.space_id,
+                reasoning=request.reasoning,
                 extra=request.extra,
             )
 
@@ -137,6 +138,7 @@ class QAService:
                 session_id=message.session_id,
                 space_id=message.space_id,
                 kb_id=message.kb_id,
+                reasoning=message.reasoning,
                 extra=message.extra,
                 created_at=message.created_at
             )

@@ -29,6 +29,8 @@ class QARequest(BaseModel):
     )
     kb_id: int | None = Field(default=None, gt=0, description="知识库ID（正整数）")
     space_id: int | None = Field(default=None, description="知识空间ID")
+    # 思考过程（服务端流式链路写入 assistant 消息；客户端直写通道无消费方）
+    reasoning: str | None = Field(default=None, description="助手思考过程")
     extra: dict[str, Any] | None = Field(default=None, description="扩展信息（附件等）")
 
 
@@ -48,6 +50,7 @@ class QAResponse(BaseModel):
     session_id: str
     space_id: int | None = None
     kb_id: int | None = None
+    reasoning: str | None = None
     extra: dict[str, Any] | None = None
     created_at: datetime
     # 当前用户对此消息的反馈（assistant 消息回显；批次 2a）

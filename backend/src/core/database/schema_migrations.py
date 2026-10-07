@@ -55,6 +55,11 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "ALTER TABLE agent_messages ADD COLUMN reasoning TEXT NULL",
     ),
     (
+        "question_answers",
+        "reasoning",
+        "ALTER TABLE question_answers ADD COLUMN reasoning TEXT NULL COMMENT '助手思考过程（深度思考模式下的推理链）'",
+    ),
+    (
         "agent_tool_calls",
         "call_id",
         "ALTER TABLE agent_tool_calls ADD COLUMN call_id VARCHAR(64) NULL COMMENT 'LLM 工具调用ID，与 tool 消息 tool_call_id 对应'",

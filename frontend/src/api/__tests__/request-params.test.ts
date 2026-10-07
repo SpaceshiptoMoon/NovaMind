@@ -65,7 +65,7 @@ describe('request.get params 扁平传参契约', () => {
 
     await request.get('/x/chunk-position', { params: { chunk_id: 'doc568_3' } } as any)
 
-    const config = instanceGet.mock.calls[0][1]
+    const config = instanceGet.mock.calls[0]![1]
     // 双层包装的实际形状：config.params.params 才是真 query——这就是 422 根因
     expect(config.params).toEqual({ params: { chunk_id: 'doc568_3' } })
   })

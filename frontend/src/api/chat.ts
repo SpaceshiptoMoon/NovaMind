@@ -81,6 +81,8 @@ export const chatApi = {
         content: string
         role: string
         session_id: string
+        /** 服务端累积的思考过程终稿（与落库值一致；无思考模式为 null） */
+        reasoning?: string | null
         sources?: ChatSource[]
         answer_status?: string
         confidence?: number | null

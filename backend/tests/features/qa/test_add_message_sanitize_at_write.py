@@ -23,7 +23,7 @@ def _make_service() -> QAService:
     svc.logger = get_logger(__name__)
     svc.repository = SimpleNamespace(create=AsyncMock(return_value=SimpleNamespace(
         id=1, content="", role="user", user_id=1, session_id="s",
-        space_id=None, kb_id=None, extra=None,
+        space_id=None, kb_id=None, reasoning=None, extra=None,
         created_at=datetime.now(UTC),
     )))
     svc.cache_service = None

@@ -37,6 +37,10 @@ class QuestionAnswer(BaseModel):
     role = Column(String(20), nullable=False, comment="user/assistant/system")
     content = Column(Text, nullable=False, comment="消息内容")
 
+    # 助手思考过程（深度思考模式下 LLM 的推理链；仅 assistant 消息非空。
+    # 与 agent_messages.reasoning 同构：列直存而非塞 extra，历史回填走统一字段）
+    reasoning = Column(Text, nullable=True, comment="助手思考过程（深度思考模式下的推理链）")
+
     # 扩展信息（合并为 JSON）
     extra = Column(JSON, comment="扩展信息（反馈、Token统计等）")
 

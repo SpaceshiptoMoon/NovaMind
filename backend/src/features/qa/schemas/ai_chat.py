@@ -61,6 +61,7 @@ class ChatMessageResponse(BaseModel):
     id: int = Field(..., description="消息ID")
     content: str = Field(..., description="消息内容")
     role: str = Field(..., description="角色（user/assistant）")
+    reasoning: str | None = Field(default=None, description="助手思考过程（仅 assistant）")
     extra: dict[str, Any] | None = Field(default=None, description="扩展信息（附件等）")
     sources: list[SourceRef] = Field(default_factory=list, description="检索来源引用")
     answer_status: str = Field(default="answered", description="回答状态：answered/refused/low_confidence")
