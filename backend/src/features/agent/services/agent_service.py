@@ -327,6 +327,16 @@ class AgentService:
                 agent.user_id if agent.user_id is not None else user_id,
                 update_data["enabled_mcp_servers"],
             )
+        if "extra_config" in update_data:
+            # merge 语义：extra_config 是服务端管理的扩展配置容器（is_default/
+            # knowledge_bindings 等非表单键住在这里），客户端表单只声明自己管
+            # 的键（如 plan_mode）。整体替换会把客户端不认识的键洗掉——编辑弹窗
+            # 曾因此抹掉 is_default 致 ensure_default_agent 误建重复行。
+            # 删除扩展键走显式传 null 值（键存在值为 None 即覆盖为 None）。
+            update_data["extra_config"] = {
+                **(agent.extra_config or {}),
+                **(update_data["extra_config"] or {}),
+            }
         if update_data:
             agent = await self.agent_repo.update(agent_id, **update_data)
             await self.db.commit()

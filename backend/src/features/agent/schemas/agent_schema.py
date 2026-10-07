@@ -78,6 +78,9 @@ class AgentResponse(BaseModel):
     max_tool_calls_per_turn: int = 10
     enabled_tools: list[str] | None = None
     enabled_mcp_servers: list[int] | None = None
+    # 列表也透出：前端编辑弹窗从列表数据回填表单（plan_mode 等扩展键），
+    # 缺了会以 undefined 回填、提交时 merge 空壳
+    extra_config: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

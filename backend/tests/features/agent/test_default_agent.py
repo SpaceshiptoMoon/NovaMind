@@ -6,6 +6,7 @@
 3. 用户自建同名 agent 不干扰识别
 4. 默认助手可经普通 update 路径编辑而不破坏标记
 5. 删除后再次 ensure 重建新行（新 id）
+6. update_agent extra_config merge 语义：表单键不洗服务端扩展键、显式 null 删键、显式 None 不清空
 """
 import sys
 from pathlib import Path
@@ -172,6 +173,100 @@ async def test_default_agent_editable_via_update(agent_db):
         await session.commit()
         assert updated.temperature == 0.3
         assert updated.extra_config.get("is_default") is True
+
+
+@pytest.mark.asyncio
+async def test_update_agent_extra_config_merges_preserving_server_keys(agent_db):
+    """merge 正用例：只传表单键（plan_mode）时服务端扩展键（is_default）保留。"""
+    factory, _ = agent_db
+    async with factory() as session:
+        svc = _make_service(factory)
+        svc.db = session
+        detail = await svc.ensure_default_agent(user_id=7)
+        await session.commit()
+
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(extra_config={"plan_mode": True}),
+        )
+        await session.commit()
+        assert updated.extra_config.get("plan_mode") is True
+        assert updated.extra_config.get("is_default") is True
+
+
+@pytest.mark.asyncio
+async def test_update_agent_extra_config_merge_overwrites_same_key(agent_db):
+    """merge 同键覆盖：已存在的表单键更新为新值。"""
+    factory, _ = agent_db
+    async with factory() as session:
+        svc = _make_service(factory)
+        svc.db = session
+        detail = await svc.ensure_default_agent(user_id=7)
+        await session.commit()
+
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(extra_config={"plan_mode": True}),
+        )
+        assert updated.extra_config.get("plan_mode") is True
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(extra_config={"plan_mode": False}),
+        )
+        await session.commit()
+        assert updated.extra_config.get("plan_mode") is False
+        assert updated.extra_config.get("is_default") is True
+
+
+@pytest.mark.asyncio
+async def test_update_agent_extra_config_explicit_null_deletes_key(agent_db):
+    """merge 删键契约：显式传 null 值（键存在值为 None）覆盖为 None。"""
+    factory, _ = agent_db
+    async with factory() as session:
+        svc = _make_service(factory)
+        svc.db = session
+        detail = await svc.ensure_default_agent(user_id=7)
+        await session.commit()
+
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(extra_config={"plan_mode": None}),
+        )
+        await session.commit()
+        # plan_mode 键被显式置 None；is_default 不受牵连
+        assert updated.extra_config.get("plan_mode") is None
+        assert updated.extra_config.get("is_default") is True
+
+
+@pytest.mark.asyncio
+async def test_update_agent_extra_config_null_is_noop(agent_db):
+    """显式传 extra_config=null 是无操作：merge 空壳不洗掉既有键（失败方向安全）。
+
+    Pydantic exclude_unset 语义：AgentUpdate() 不传字段时 extra_config 不进
+    update_data；显式传 None 时进 update_data 但 merge 展开为空壳，保留旧键。
+    """
+    factory, _ = agent_db
+    async with factory() as session:
+        svc = _make_service(factory)
+        svc.db = session
+        detail = await svc.ensure_default_agent(user_id=7)
+        await session.commit()
+
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(extra_config=None),
+        )
+        await session.commit()
+        assert updated.extra_config.get("is_default") is True
+
+        # 不传字段的调用（编辑弹窗只改名字等）同样不触碰 extra_config
+        updated = await svc.update_agent(
+            user_id=7, agent_id=detail.id,
+            data=AgentUpdate(name="改名"),
+        )
+        await session.commit()
+        assert updated.extra_config.get("is_default") is True
+        assert updated.name == "改名"
 
 
 @pytest.mark.asyncio
