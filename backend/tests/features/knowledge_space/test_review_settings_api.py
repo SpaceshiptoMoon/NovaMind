@@ -83,11 +83,12 @@ def _request(**kwargs):
 
 
 async def _call_update(factory, *, doc_id: int, user_id: int, is_admin: bool, request):
-    """直调路由函数（依赖参数手工注入；validate_kb_access 打桩放行）。"""
+    """直调路由函数（依赖参数手工注入；validate_kb_access 在 service 模块命名空间打桩）。"""
     import novamind.features.knowledge_space.api.document_routes as dr
+    import novamind.features.knowledge_space.services.document_review_service as svc_mod
 
     async with factory() as db:
-        with patch.object(dr, "validate_kb_access", new=AsyncMock(return_value=None)):
+        with patch.object(svc_mod, "validate_kb_access", new=AsyncMock(return_value=None)):
             return await dr.update_document_review_settings(
                 space_id=10, kb_id=1, document_id=doc_id,
                 request=request, member=_member(is_admin),
@@ -180,3 +181,48 @@ async def test_none_fields_noop(rs_db):
     assert result["review_cycle_days"] is None
     assert result["next_review_at"] is None
     assert result["owner_id"] == 7
+
+
+# ========== confirm_review（确认复审顺延，下沉 service 后的回归） ==========
+
+
+async def _call_confirm(factory, *, doc_id: int, user_id: int, is_admin: bool):
+    """直调 confirm 路由函数（validate_kb_access 在 service 模块命名空间打桩）。"""
+    import novamind.features.knowledge_space.api.document_routes as dr
+    import novamind.features.knowledge_space.services.document_review_service as svc_mod
+
+    async with factory() as db:
+        with patch.object(svc_mod, "validate_kb_access", new=AsyncMock(return_value=None)):
+            return await dr.confirm_document_review(
+                space_id=10, kb_id=1, document_id=doc_id,
+                member=_member(is_admin), current_user_id=user_id, db=db,
+            )
+
+
+@pytest.mark.asyncio
+async def test_confirm_review_extends_next_review(rs_db):
+    """owner 确认复审 → next_review_at 顺延（无周期回退默认 90 天）。"""
+    factory, _ = rs_db
+    await _seed_doc(factory, doc_id=1, owner_id=7)
+
+    result = await _call_confirm(factory, doc_id=1, user_id=7, is_admin=False)
+
+    assert result["document_id"] == 1
+    assert result["next_review_at"] is not None
+    # 顺延至少 89 天（时区/秒级截断余量）
+    from datetime import timedelta
+
+    next_at = datetime.fromisoformat(result["next_review_at"])
+    assert next_at - datetime.now() > timedelta(days=89)
+
+
+@pytest.mark.asyncio
+async def test_confirm_review_denied_for_non_owner(rs_db):
+    """非 owner 非 admin 确认复审同样被拒。"""
+    from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError
+
+    factory, _ = rs_db
+    await _seed_doc(factory, doc_id=1, owner_id=7)
+
+    with pytest.raises(SpaceAccessDeniedError):
+        await _call_confirm(factory, doc_id=1, user_id=8, is_admin=False)

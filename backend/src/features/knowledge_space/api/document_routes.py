@@ -1223,38 +1223,13 @@ async def confirm_document_review(
     db: AsyncSession = Depends(get_db),
 ):
     """确认复审：顺延 next_review_at（owner 或空间管理员）"""
-    from datetime import datetime
-
-    from sqlalchemy import select
-
-    from novamind.features.knowledge_ops.tasks.review_reminder import (
-        compute_next_review_at,
-        load_review_config,
+    from novamind.features.knowledge_space.services.document_review_service import (
+        DocumentReviewService,
     )
-    from novamind.features.knowledge_space.models.document import Document
 
-    await validate_kb_access(kb_id, space_id, db)
-
-    doc = (await db.execute(
-        select(Document).where(Document.id == document_id)
-    )).scalar_one_or_none()
-    if doc is None or doc.kb_id != kb_id or doc.deleted_at is not None:
-        raise DocumentNotFoundError(document_id)
-    # 归属校验：owner 本人或空间管理员（member 为 admin 时放行）
-    if doc.owner_id != current_user_id and not member.is_admin():
-        raise SpaceAccessDeniedError(space_id, current_user_id, "仅文档 owner 或空间管理员可确认复审")
-
-    cfg = load_review_config()
-    doc.next_review_at = compute_next_review_at(
-        doc.review_cycle_days, cfg["fallback_cycle_days"], base=datetime.now()
+    return await DocumentReviewService(db).confirm_review(
+        space_id, kb_id, document_id, member, current_user_id,
     )
-    async with db.begin_nested():
-        await db.flush()
-    await db.commit()
-    return {
-        "document_id": doc.id,
-        "next_review_at": doc.next_review_at.isoformat() if doc.next_review_at else None,
-    }
 
 @router.patch(
     "/{kb_id}/documents/{document_id}/review-settings",
@@ -1277,45 +1252,10 @@ async def update_document_review_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """设置复审策略字段（owner 或空间管理员；owner 改派仅管理员）"""
-    from sqlalchemy import select
+    from novamind.features.knowledge_space.services.document_review_service import (
+        DocumentReviewService,
+    )
 
-    from novamind.features.knowledge_space.models.document import Document
-
-    await validate_kb_access(kb_id, space_id, db)
-
-    doc = (await db.execute(
-        select(Document).where(Document.id == document_id)
-    )).scalar_one_or_none()
-    if doc is None or doc.kb_id != kb_id or doc.deleted_at is not None:
-        raise DocumentNotFoundError(document_id)
-
-    is_admin = member.is_admin()
-    # owner 本人或空间管理员可改复审策略
-    if doc.owner_id != current_user_id and not is_admin:
-        raise SpaceAccessDeniedError(space_id, current_user_id, "仅文档 owner 或空间管理员可设置复审策略")
-    # owner 改派仅空间管理员（责任人变更属管理动作）
-    if request.owner_id is not None and request.owner_id != doc.owner_id and not is_admin:
-        raise SpaceAccessDeniedError(space_id, current_user_id, "改派内容责任人需空间管理员权限")
-
-    # 请求体各字段 None=不修改（PATCH 语义）；显式清除用 null 的字段单独处理
-    if request.review_cycle_days is not None:
-        if request.review_cycle_days < 1 or request.review_cycle_days > 3650:
-            raise DocumentInvalidTypeError("review_cycle_days 须在 1~3650 天之间")
-        doc.review_cycle_days = request.review_cycle_days
-    if request.next_review_at is not None:
-        doc.next_review_at = request.next_review_at
-    if request.effective_date is not None:
-        doc.effective_date = request.effective_date
-    if request.owner_id is not None:
-        doc.owner_id = request.owner_id
-
-    async with db.begin_nested():
-        await db.flush()
-    await db.commit()
-    return {
-        "document_id": doc.id,
-        "owner_id": doc.owner_id,
-        "effective_date": doc.effective_date.isoformat() if doc.effective_date else None,
-        "review_cycle_days": doc.review_cycle_days,
-        "next_review_at": doc.next_review_at.isoformat() if doc.next_review_at else None,
-    }
+    return await DocumentReviewService(db).update_review_settings(
+        space_id, kb_id, document_id, request, member, current_user_id,
+    )
