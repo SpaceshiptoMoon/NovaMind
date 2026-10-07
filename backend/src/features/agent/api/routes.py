@@ -12,6 +12,13 @@ from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalRegistry
+# 反馈/引用点击 schema 复用 qa 公共面（同名类会让 FastAPI 的 OpenAPI 组件名
+# 消歧前缀随 import 顺序漂移，破坏契约快照确定性——两处语义本就相同，只留一份）
+from novamind.features.qa.schemas.qa import (
+    CitationClickRequest,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
+)
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
     build_agent_chat_service,
@@ -41,10 +48,7 @@ from novamind.features.agent.schemas.agent_schema import (
     McpToolsRefreshResponse,
     MemoryListResponse,
     MemoryStatsResponse,
-    MessageFeedbackRequest,
-    MessageFeedbackResponse,
     MessageListResponse,
-    CitationClickRequest,
     SessionKnowledgeBindingsUpdate,
     SessionResponse,
     SystemPromptResponse,
@@ -233,6 +237,7 @@ async def chat_ws(
         session_id=data.session_id,
         llm_model=data.llm_model,
         enable_thinking=data.enable_thinking,
+        deep_research=data.deep_research,
         stream=data.stream,
         attachment_ids=data.attachment_ids,
         approval_registry=registry,

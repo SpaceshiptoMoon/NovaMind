@@ -3,7 +3,6 @@ QA模式定义 - 数据传输对象和验证模型（简化版本）
 """
 
 from .ai_chat import (
-    ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "QAUpdateRequest",
     "ChatRequest",
     "ChatResponse",
-    "ChatHistoryResponse",
     "SessionConfigCreate",
     "SessionConfigResponse",
 ]

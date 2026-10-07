@@ -1524,28 +1524,6 @@
         "title": "ChatCompletionRequest",
         "type": "object"
       },
-      "ChatHistoryResponse": {
-        "description": "聊天历史响应模式",
-        "properties": {
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/ChatMessageResponse"
-            },
-            "title": "Messages",
-            "type": "array"
-          },
-          "session_id": {
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "messages"
-        ],
-        "title": "ChatHistoryResponse",
-        "type": "object"
-      },
       "ChatMessage": {
         "description": "单条对话消息（OpenAI Chat Completions 格式）。",
         "properties": {
@@ -1620,79 +1598,6 @@
           "role"
         ],
         "title": "ChatMessage",
-        "type": "object"
-      },
-      "ChatMessageResponse": {
-        "description": "聊天消息响应模式",
-        "properties": {
-          "answer_status": {
-            "default": "answered",
-            "description": "回答状态：answered/refused/low_confidence",
-            "title": "Answer Status",
-            "type": "string"
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "置信度（0~1）",
-            "title": "Confidence"
-          },
-          "content": {
-            "description": "消息内容",
-            "title": "Content",
-            "type": "string"
-          },
-          "created_at": {
-            "description": "创建时间",
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "extra": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "扩展信息（附件等）",
-            "title": "Extra"
-          },
-          "id": {
-            "description": "消息ID",
-            "title": "Id",
-            "type": "integer"
-          },
-          "role": {
-            "description": "角色（user/assistant）",
-            "title": "Role",
-            "type": "string"
-          },
-          "sources": {
-            "description": "检索来源引用",
-            "items": {
-              "$ref": "#/components/schemas/SourceRef"
-            },
-            "title": "Sources",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "content",
-          "role",
-          "created_at"
-        ],
-        "title": "ChatMessageResponse",
         "type": "object"
       },
       "ChatRequest": {
@@ -5471,6 +5376,43 @@
         "title": "KnowledgeBaseUpdate",
         "type": "object"
       },
+      "KnowledgeBindings": {
+        "description": "会话级知识绑定：限定知识工具的检索范围（对齐 QA kb_bindings 语义）。\n\nspace_ids/kb_ids 均为 null 表示不限定（全部可访问空间）；两者同时给出时\nkb_ids 优先生效（工具内部按 kb 归属空间解析）。校验归属在写入时做。",
+        "properties": {
+          "kb_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "限定可检索的知识库 ID 列表；null 不限定",
+            "title": "Kb Ids"
+          },
+          "space_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "限定可检索的空间 ID 列表；null 不限定",
+            "title": "Space Ids"
+          }
+        },
+        "title": "KnowledgeBindings",
+        "type": "object"
+      },
       "KnowledgeGapKpi": {
         "description": "KPI 四卡 + 附加比率",
         "properties": {
@@ -8067,6 +8009,18 @@
             "description": "知识库ID（正整数）",
             "title": "Kb Id"
           },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手思考过程",
+            "title": "Reasoning"
+          },
           "role": {
             "default": "user",
             "description": "消息角色（system 保留给服务端注入面——压缩摘要/检索资料，客户端直写会被模型当作真系统指令，属提示词注入原语）",
@@ -8157,6 +8111,17 @@
               }
             ],
             "title": "Kb Id"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
           },
           "role": {
             "title": "Role",
@@ -10348,6 +10313,24 @@
         "title": "SessionConfigWebSearchUpdate",
         "type": "object"
       },
+      "SessionKnowledgeBindingsUpdate": {
+        "description": "会话知识绑定更新请求：整个 knowledge_bindings 对象整体替换（null 即清除）。",
+        "properties": {
+          "knowledge_bindings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeBindings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "知识绑定配置；null 清除绑定恢复不限定"
+          }
+        },
+        "title": "SessionKnowledgeBindingsUpdate",
+        "type": "object"
+      },
       "SessionPreviewResponse": {
         "description": "会话列表项（含预览）",
         "properties": {
@@ -10387,6 +10370,18 @@
               }
             ],
             "title": "Created At"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Config"
           },
           "id": {
             "title": "Id",
@@ -11431,123 +11426,6 @@
           }
         },
         "title": "SkillsData",
-        "type": "object"
-      },
-      "SourceRef": {
-        "description": "检索来源引用（RAG 命中片段或联网结果）",
-        "properties": {
-          "chunk_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "分块ID",
-            "title": "Chunk Id"
-          },
-          "document_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "文档ID",
-            "title": "Document Id"
-          },
-          "document_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "文档名/标题",
-            "title": "Document Name"
-          },
-          "index": {
-            "description": "来源序号，与正文 [1][2] 角标对齐",
-            "title": "Index",
-            "type": "integer"
-          },
-          "kb_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "知识库ID",
-            "title": "Kb Id"
-          },
-          "kind": {
-            "default": "kb",
-            "description": "来源类型：kb=知识库 / web=联网",
-            "title": "Kind",
-            "type": "string"
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "页码",
-            "title": "Page"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "检索得分（0~1）",
-            "title": "Score"
-          },
-          "snippet": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "命中片段预览",
-            "title": "Snippet"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "网址（联网来源）",
-            "title": "Url"
-          }
-        },
-        "required": [
-          "index"
-        ],
-        "title": "SourceRef",
         "type": "object"
       },
       "SourcesConfig": {
@@ -15656,6 +15534,33 @@
         ]
       }
     },
+    "/api/v1/agent/agents/default": {
+      "get": {
+        "description": "获取当前用户的默认助手，不存在时自动创建（幂等）",
+        "operationId": "get_default_agent_api_v1_agent_agents_default_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取默认助手",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/agents/{agent_id}": {
       "delete": {
         "description": "删除指定的 Agent 及其相关数据",
@@ -16487,6 +16392,128 @@
         ]
       }
     },
+    "/api/v1/agent/messages/{message_id}/citation-click": {
+      "post": {
+        "description": "点击回答引用角标/来源卡时上报（kb-ops 核验行为信号，旁路落账本）",
+        "operationId": "record_citation_click_api_v1_agent_messages__message_id__citation_click_post",
+        "parameters": [
+          {
+            "description": "消息ID",
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "description": "消息ID",
+              "exclusiveMinimum": 0,
+              "title": "Message Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CitationClickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "上报引用点击",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
+    "/api/v1/agent/messages/{message_id}/feedback": {
+      "put": {
+        "description": "对 AI 回答点赞/点踩；rating=null 撤销（幂等）",
+        "operationId": "set_message_feedback_api_v1_agent_messages__message_id__feedback_put",
+        "parameters": [
+          {
+            "description": "消息ID",
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "description": "消息ID",
+              "exclusiveMinimum": 0,
+              "title": "Message Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置消息反馈",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/sessions/{session_id}": {
       "delete": {
         "description": "删除指定的对话会话及其所有消息",
@@ -16647,6 +16674,67 @@
           }
         ],
         "summary": "获取会话当前上下文用量",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
+    "/api/v1/agent/sessions/{session_id}/knowledge-bindings": {
+      "put": {
+        "description": "整体替换会话级知识绑定（限定知识工具检索范围）；传 null 清除绑定恢复不限定",
+        "operationId": "update_session_knowledge_bindings_api_v1_agent_sessions__session_id__knowledge_bindings_put",
+        "parameters": [
+          {
+            "description": "会话ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话ID",
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionKnowledgeBindingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新会话知识绑定",
         "tags": [
           "Agent 智能体"
         ]
@@ -17015,101 +17103,6 @@
           }
         ],
         "summary": "下载聊天附件",
-        "tags": [
-          "AI 聊天"
-        ]
-      }
-    },
-    "/api/v1/ai-chat/chat-history": {
-      "get": {
-        "description": "获取指定会话的聊天历史记录",
-        "operationId": "get_chat_history_api_v1_ai_chat_chat_history_get",
-        "parameters": [
-          {
-            "description": "会话ID",
-            "in": "query",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "description": "会话ID",
-              "minLength": 1,
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatHistoryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "获取聊天历史",
-        "tags": [
-          "AI 聊天"
-        ]
-      }
-    },
-    "/api/v1/ai-chat/clear-chat": {
-      "delete": {
-        "description": "清除指定会话的所有聊天记录",
-        "operationId": "clear_chat_history_api_v1_ai_chat_clear_chat_delete",
-        "parameters": [
-          {
-            "description": "会话ID",
-            "in": "query",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "description": "会话ID",
-              "minLength": 1,
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "清除聊天历史",
         "tags": [
           "AI 聊天"
         ]

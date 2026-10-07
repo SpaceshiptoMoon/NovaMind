@@ -11,12 +11,11 @@ from fastapi import (
     Depends,
     File,
     Path,
-    Query,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from novamind.core.auth import (
     get_current_user,
     get_current_user_optional,
@@ -31,23 +30,18 @@ from novamind.features.qa.api.constants import (
 )
 from novamind.features.qa.api.dependencies import (
     get_aichat_service,
-    get_minio_client_for_presign,
     get_model_config_service,
-    get_qa_service,
 )
 from novamind.features.qa.schemas.ai_chat import (
     ChatAvailableModelsResponse,
-    ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
     HealthCheckResponse,
     UploadChatAttachmentResponse,
 )
 from novamind.features.qa.services.ai_chat_service import AIChatService
-from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.user_service import UserService
-from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 
 router = APIRouter()
 
@@ -140,62 +134,6 @@ async def chat_ws(
         search_provider=data.search_provider,
     )
     await run_stream_to_ws(websocket, gen)
-
-
-@router.get(
-    "/chat-history",
-    response_model=ChatHistoryResponse,
-    summary="获取聊天历史",
-    description="获取指定会话的聊天历史记录",
-)
-async def get_chat_history(
-    session_id: Annotated[str, Query(min_length=1, description="会话ID")],
-    qa_service: QAService = Depends(get_qa_service),
-    current_user: dict = Depends(get_current_user),
-    minio_client=Depends(get_minio_client_for_presign),
-):
-    """分页读取 AI 对话历史（按会话隔离，含 reasoning 轨迹）。"""
-    messages = await qa_service.get_session_messages(
-        session_id, current_user["id"]
-    )
-
-    if minio_client:
-        for msg in messages:
-            await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
-
-    return ChatHistoryResponse(
-        session_id=session_id,
-        messages=[
-            {
-                "id": msg.id,
-                "content": msg.content,
-                "role": msg.role,
-                "reasoning": msg.reasoning,
-                "extra": msg.extra,
-                "created_at": msg.created_at,
-            }
-            for msg in messages
-        ]
-    )
-
-
-@router.delete(
-    "/clear-chat",
-    status_code=204,
-    summary="清除聊天历史",
-    description="清除指定会话的所有聊天记录",
-)
-async def clear_chat_history(
-    session_id: Annotated[str, Query(min_length=1, description="会话ID")],
-    qa_service: QAService = Depends(get_qa_service),
-    current_user: dict = Depends(get_current_user),
-):
-    """清除聊天历史"""
-    await qa_service.delete_session(
-        session_id, current_user["id"]
-    )
-
-    return Response(status_code=204)
 
 
 @router.post(

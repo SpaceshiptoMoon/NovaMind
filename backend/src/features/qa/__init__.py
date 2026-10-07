@@ -14,7 +14,6 @@ from novamind.features.qa.repository import QuestionAnswerRepository
 
 # Schema
 from novamind.features.qa.schemas import (
-    ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
     QARequest,
@@ -41,7 +40,6 @@ __all__ = [
     "QAUpdateRequest",
     "ChatRequest",
     "ChatResponse",
-    "ChatHistoryResponse",
     # API 路由
     "qa_router",
     "ai_chat_router",

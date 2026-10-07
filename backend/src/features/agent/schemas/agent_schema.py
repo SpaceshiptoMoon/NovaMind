@@ -3,7 +3,7 @@ Agent 模块 Pydantic 数据模型
 """
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -136,46 +136,6 @@ class SessionKnowledgeBindingsUpdate(BaseModel):
     )
 
 
-class MessageFeedbackRequest(BaseModel):
-    """Agent 消息反馈请求（对齐 QA MessageFeedbackRequest 语义）。
-
-    rating=null 表示撤销反馈（幂等：无论是否曾投过，撤销后均无反馈记录）。
-    """
-    rating: Literal["up", "down"] | None = Field(
-        default=None, description="反馈类型：up=赞 / down=踩 / null=撤销",
-    )
-    comment: str | None = Field(
-        default=None, max_length=2000, description="反馈补充说明（可选）",
-    )
-
-
-class MessageFeedbackResponse(BaseModel):
-    """Agent 消息反馈响应"""
-    message_id: int
-    rating: Literal["up", "down"] | None = None
-    comment: str | None = None
-
-
-class CitationClickRequest(BaseModel):
-    """Agent 引用点击上报请求（kb-ops O2 语义，对齐 QA CitationClickRequest）。
-
-    点击回答引用角标/来源卡时上报被点击的来源；全字段可选——上报是行为
-    信号而非数据写入，前端拿不到的字段（如联网来源无 doc_id）不强求。
-    """
-    source_index: int | None = Field(
-        default=None, ge=1, description="被点击来源的序号（与正文角标对齐，1-based）",
-    )
-    chunk_id: str | None = Field(
-        default=None, max_length=128, description="命中的分块 ID（KB 来源）",
-    )
-    document_id: int | None = Field(
-        default=None, ge=1, description="命中的文档 ID（KB 来源）",
-    )
-    kb_id: int | None = Field(
-        default=None, ge=1, description="命中的知识库 ID（KB 来源）",
-    )
-
-
 class AgentSessionListResponse(BaseModel):
     """会话列表响应"""
     items: list[SessionResponse]
@@ -262,6 +222,9 @@ class AgentChatRequest(BaseModel):
     session_id: str | None = Field(None, description="会话 ID，不传则创建新会话")
     llm_model: str | None = Field(None, description="覆盖 Agent 的 LLM 模型")
     enable_thinking: bool = Field(default=False, description="是否开启深度思考模式")
+    deep_research: bool = Field(
+        default=False, description="是否开启深度研究模式（本轮引导模型优先调用 research 工具）"
+    )
     stream: bool = Field(default=True, description="是否流式输出")
     attachment_ids: list[int] | None = Field(default=None, description="附件ID列表")
 

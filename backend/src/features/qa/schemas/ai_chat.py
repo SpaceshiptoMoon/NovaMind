@@ -2,24 +2,9 @@
 AI对话相关的数据模式
 """
 
-from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class SourceRef(BaseModel):
-    """检索来源引用（RAG 命中片段或联网结果）"""
-    index: int = Field(..., description="来源序号，与正文 [1][2] 角标对齐")
-    kind: str = Field(default="kb", description="来源类型：kb=知识库 / web=联网")
-    document_id: int | None = Field(default=None, description="文档ID")
-    document_name: str | None = Field(default=None, description="文档名/标题")
-    kb_id: int | None = Field(default=None, description="知识库ID")
-    chunk_id: str | None = Field(default=None, description="分块ID")
-    score: float | None = Field(default=None, description="检索得分（0~1）")
-    snippet: str | None = Field(default=None, description="命中片段预览")
-    page: int | None = Field(default=None, description="页码")
-    url: str | None = Field(default=None, description="网址（联网来源）")
 
 
 class ChatRequest(BaseModel):
@@ -52,29 +37,6 @@ class ChatResponse(BaseModel):
     user_message: dict
     ai_message: dict
     conversation_history: list[dict]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ChatMessageResponse(BaseModel):
-    """聊天消息响应模式"""
-    id: int = Field(..., description="消息ID")
-    content: str = Field(..., description="消息内容")
-    role: str = Field(..., description="角色（user/assistant）")
-    reasoning: str | None = Field(default=None, description="助手思考过程（仅 assistant）")
-    extra: dict[str, Any] | None = Field(default=None, description="扩展信息（附件等）")
-    sources: list[SourceRef] = Field(default_factory=list, description="检索来源引用")
-    answer_status: str = Field(default="answered", description="回答状态：answered/refused/low_confidence")
-    confidence: float | None = Field(default=None, description="置信度（0~1）")
-    created_at: datetime = Field(..., description="创建时间")
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ChatHistoryResponse(BaseModel):
-    """聊天历史响应模式"""
-    session_id: str
-    messages: list[ChatMessageResponse]
 
     model_config = ConfigDict(from_attributes=True)
 
