@@ -18,6 +18,21 @@ CONSTRAINT_MIGRATIONS: tuple[tuple[str, str, str, str], ...] = (
     ),
 )
 
+# 约束放宽迁移：(表名, 列名, IS_NULLABLE 目标, MODIFY DDL)。
+# SHOW COLUMNS 检测不了 nullable 变更，按 information_schema.COLUMNS 的
+# IS_NULLABLE 与目标不符时执行 MODIFY（幂等：已达标则跳过）。
+NULLABLE_MIGRATIONS: tuple[tuple[str, str, str, str], ...] = (
+    (
+        # 工作台统一批3：agent 会话发起深度研究无空间归属，space_id=0 违反 FK，
+        # 放开为 NULL（语义=无归属；FK 约束保留，NULL 不参与约束校验）
+        "research_sessions",
+        "space_id",
+        "YES",
+        "ALTER TABLE research_sessions MODIFY `space_id` BIGINT NULL "
+        "COMMENT '知识空间ID；NULL=agent 会话发起（无空间归属）'",
+    ),
+)
+
 SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     (
         "users",

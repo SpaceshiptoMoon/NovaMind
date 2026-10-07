@@ -34,7 +34,7 @@ class HostInternalSearchPort:
         self,
         search_port: "SearchService",
         kb_repo: KnowledgeBaseRepository,
-        space_id: int,
+        space_id: int | None,
         user_id: int,
         internal_config: InternalSearchConfig,
         logger: object | None = None,

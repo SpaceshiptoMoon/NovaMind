@@ -6,7 +6,11 @@ from contextlib import asynccontextmanager
 
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes
 from novamind.core.database.database import dispose_engine, get_engine
-from novamind.core.database.schema_migrations import CONSTRAINT_MIGRATIONS, SCHEMA_MIGRATIONS
+from novamind.core.database.schema_migrations import (
+    CONSTRAINT_MIGRATIONS,
+    NULLABLE_MIGRATIONS,
+    SCHEMA_MIGRATIONS,
+)
 from novamind.core.middleware.manifest_loader import get_sorted_manifests
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.setting.yaml_config import get_config
@@ -292,6 +296,40 @@ class AppLifespanManager:
                     if not exists:
                         await conn.execute(text(ddl))
                         self.logger.info("schema 迁移：补列", table=table, column=column)
+            except Exception as e:
+                self.logger.warning(
+                    "schema 迁移失败",
+                    table=table,
+                    column=column,
+                    error=str(e),
+                )
+
+        # 约束放宽（nullable 变更）：information_schema 检测 IS_NULLABLE 与目标
+        # 不符时执行 MODIFY，幂等（已达标跳过）。create_all 不改存量列约束。
+        for table, column, target_nullable, ddl in NULLABLE_MIGRATIONS:
+            try:
+                async with db_engine.begin() as conn:
+                    row = (
+                        await conn.execute(
+                            text(
+                                "SELECT IS_NULLABLE FROM information_schema.COLUMNS "
+                                "WHERE table_schema = DATABASE() "
+                                "AND table_name = :t AND column_name = :c LIMIT 1"
+                            ),
+                            {"t": table, "c": column},
+                        )
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    if row[0] == target_nullable:
+                        continue
+                    await conn.execute(text(ddl))
+                    self.logger.info(
+                        "schema 迁移：约束放宽",
+                        table=table,
+                        column=column,
+                        nullable=target_nullable,
+                    )
             except Exception as e:
                 self.logger.warning(
                     "schema 迁移失败",

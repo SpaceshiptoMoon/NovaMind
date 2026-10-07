@@ -95,7 +95,10 @@ def build_web_search_source(context: SearchSourceContext) -> SearchSourcePort:
     YAML 凭据提取（含请求级 search_depth 合并）与中立异常 → feature 异常镜像。
     """
     config = context.config or {}
-    provider = str(config.get("provider") or "duckduckgo").lower()
+    # provider 可能是 str-Enum 成员（Pydantic model_dump python 模式不取 value），
+    # 直接 str() 会得到 'ExternalSearchProvider.XXX' 污染注册表查名；Enum 成员取 .value
+    raw_provider = config.get("provider") or "duckduckgo"
+    provider = str(getattr(raw_provider, "value", raw_provider)).lower()
     from novamind.setting.yaml_config import get_config
 
     es_cfg = get_config().external_search

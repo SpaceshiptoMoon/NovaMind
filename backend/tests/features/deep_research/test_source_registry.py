@@ -197,6 +197,42 @@ def test_external_source_delegates_to_shared_factory():
             wsa.build_web_search_source(_ctx({"provider": "locked"}))
 
 
+def test_external_source_provider_str_enum_unpolluted():
+    """回归：provider 为 str-Enum 成员时取 .value，不被 str() 污染成类名形状。
+
+    Pydantic model_dump(python 模式) 返回枚举成员本身；直接 str() 得
+    'ExternalSearchProvider.DUCKDUCKGO'，注册表查名 miss 误报「未配置 API Key」。
+    """
+    import novamind.features.deep_research.services.web_search_source as wsa
+
+    from novamind.features.deep_research.models.research_session import (
+        ExternalSearchProvider,
+    )
+
+    calls = []
+
+    def _fake_build(provider, api_key, extra):
+        calls.append(provider)
+        return object()
+
+    # 正例：枚举成员 → 'duckduckgo'
+    ctx = _ctx({"provider": ExternalSearchProvider.DUCKDUCKGO, "max_results": 5})
+    with patch.object(wsa, "build_web_search_port_from_provider", _fake_build):
+        with patch("novamind.setting.yaml_config.get_config") as mock_cfg:
+            mock_cfg.return_value.external_search = _fake_es_config()
+            wsa.build_web_search_source(ctx)
+    assert calls == ["duckduckgo"]
+
+    # 反例相邻场景：普通字符串 provider 行为不变
+    calls.clear()
+    ctx2 = _ctx({"provider": "serpapi", "max_results": 5})
+    with patch.object(wsa, "build_web_search_port_from_provider", _fake_build):
+        with patch("novamind.setting.yaml_config.get_config") as mock_cfg:
+            mock_cfg.return_value.external_search = _fake_es_config()
+            wsa.build_web_search_source(ctx2)
+    assert calls == ["serpapi"]
+
+
 def test_external_source_tavily_without_key_raises():
     """tavily 无 YAML api_key → SearchProviderNotConfiguredError。"""
     ctx = _ctx({"provider": "tavily", "max_results": 5})

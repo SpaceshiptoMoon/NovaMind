@@ -332,7 +332,7 @@ class ResearchContext:
     # 流程标识
     research_id: int = 0
     session_id: str = ""
-    space_id: int = 0
+    space_id: int | None = None
     user_id: int = 0
     params: ResearchParams | None = None
     mode_config: dict[str, Any] | None = None
@@ -747,7 +747,7 @@ class DeepResearchService:
 
     async def research_stream(
         self,
-        space_id: int,
+        space_id: int | None,
         user_id: int,
         request: ResearchRequest,
         feedback_registry: Any | None = None,

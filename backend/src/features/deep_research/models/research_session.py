@@ -61,7 +61,7 @@ class ResearchSession(BaseModel):
     space_id = Column(
         BigInteger,
         ForeignKey("knowledge_spaces.id", ondelete="CASCADE"),
-        nullable=False, index=True, comment="知识空间ID",
+        nullable=True, index=True, comment="知识空间ID；NULL=agent 会话发起（无空间归属）",
     )
     user_id = Column(
         BigInteger,
