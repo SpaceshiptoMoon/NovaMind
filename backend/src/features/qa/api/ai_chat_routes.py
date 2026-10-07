@@ -174,14 +174,8 @@ async def download_chat_attachment(
     current_user: dict = Depends(get_current_user),
 ):
     """下载聊天附件"""
-    attachment = await ai_chat_service.attachment_repo.get_by_id(attachment_id)
-    if not attachment or attachment.user_id != current_user["id"]:
-        from novamind.features.qa.exceptions import ChatAttachmentNotFoundError
-        raise ChatAttachmentNotFoundError(attachment_id)
-
-    file_content = await ai_chat_service.minio_client.download_document(
-        ai_chat_service.minio_client.default_bucket,
-        attachment.storage_path,
+    attachment, file_content = await ai_chat_service.get_attachment_content(
+        attachment_id, current_user["id"],
     )
 
     encoded_filename = quote(attachment.filename)

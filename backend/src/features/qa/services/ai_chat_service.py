@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.engines.search.ports import WebSearchPort
 from novamind.features.qa.exceptions import (
+    ChatAttachmentNotFoundError,
     InvalidMessageContentError,
     LLMServiceError,
     QAError,
@@ -1430,6 +1431,33 @@ class AIChatService:
     ATTACHMENT_TOKEN_BUDGET = 20000   # 总预算
     ATTACHMENT_MSG_BUDGET = 5000      # 单条消息附件预算（常量——形态确定性前提）
     ATTACHMENT_HEAD_KEEP = 800        # 超出槽位的最老消息注入的头部保底 token
+
+    async def get_attachment_content(self, attachment_id: int, user_id: int) -> tuple[Any, bytes]:
+        """按用户校验归属后取回附件记录与文件内容。
+
+        Args:
+            attachment_id: 附件 ID。
+            user_id: 请求者用户 ID，与附件归属不一致按不存在处理（不泄漏存在性）。
+
+        Returns:
+            (attachment, file_content) 二元组，附件记录与 MinIO 原始字节。
+
+        Raises:
+            LLMServiceError: 附件服务未初始化。
+            ChatAttachmentNotFoundError: 附件不存在或不属于该用户。
+        """
+        if not self.attachment_repo or not self.minio_client:
+            raise LLMServiceError("附件服务未初始化")
+
+        attachment = await self.attachment_repo.get_by_id(attachment_id)
+        if not attachment or attachment.user_id != user_id:
+            raise ChatAttachmentNotFoundError(attachment_id)
+
+        file_content = await self.minio_client.download_document(
+            self.minio_client.default_bucket,
+            attachment.storage_path,
+        )
+        return attachment, file_content
 
     async def upload_attachment(
         self,
