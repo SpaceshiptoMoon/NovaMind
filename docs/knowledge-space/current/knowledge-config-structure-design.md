@@ -370,8 +370,9 @@ Current image splitting overrides were previously removed and should not be rein
 
 ### Splitting strategies (2026-10)
 
-`splitting.strategy` supports seven values: `recursive` (default), `fixed_size`,
-`markdown`, `semantic`, `delimiter`, `sentence_window`, `parent_child`.
+`splitting.strategy` supports eight values: `recursive` (default), `fixed_size`,
+`markdown`, `semantic`, `delimiter`, `sentence_window`, `parent_child`,
+`hierarchical`.
 
 - `sentence_window` — one sentence per indexed chunk; at retrieval time a hit is
   expanded with `chunk_index ± window_size` neighbor sentences. Params:
@@ -382,6 +383,10 @@ Current image splitting overrides were previously removed and should not be rein
   act as context containers only: excluded from recall
   (`must_not metadata.chunk_role=parent`), no embedding, no question generation.
   At retrieval time a child hit returns the parent's full text.
+- `hierarchical` — chunk tree with two-way retrieval-time expansion: child hits
+  can expand to siblings/parents per `expansion_type` metadata; params follow the
+  same self-describing metadata pattern below (see
+  `backend/src/engines/document/splitters/hierarchical_splitter.py`).
 
 Both strategies mark their chunks with self-describing metadata
 (`expansion_type` / `chunk_role` / `parent_chunk_id` / `expansion_window_size`),

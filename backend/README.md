@@ -79,7 +79,7 @@ src/features/{module}/
 文档处理引擎实现位于：
 
 - `src/engines/document/pipeline/`（DocumentLoader / DocumentProcessor / DocumentRegistry）
-- `src/engines/document/splitters/`（recursive / semantic / fixed / markdown）
+- `src/engines/document/splitters/`（8 策略：recursive / fixed_size / markdown / semantic / delimiter / sentence_window / parent_child / hierarchical）
 - `src/engines/document/converters/`
 - `src/engines/document/media/`（audio / video / vlm / OCR）
 - `src/engines/document/integrations/deepdoc/`（vendored，自包含）

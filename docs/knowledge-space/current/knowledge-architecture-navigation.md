@@ -17,7 +17,7 @@ This document describes the current canonical backend knowledge-base structure.
 ### Engine Layer（纯逻辑实现）
 
 - `backend/src/engines/document/pipeline/` — 解析管道（DocumentLoader / DocumentProcessor / DocumentRegistry）
-- `backend/src/engines/document/splitters/` — 切分器（recursive / semantic / fixed / markdown）
+- `backend/src/engines/document/splitters/` — 切分器（8 策略：recursive / fixed_size / markdown / semantic / delimiter / sentence_window / parent_child / hierarchical）
 - `backend/src/engines/document/converters/` — 文档格式转换器
 - `backend/src/engines/document/media/` — 音频（ASR）、视频（抽帧）、VLM、OCR 处理
 - `backend/src/engines/document/integrations/deepdoc/` — DeepDoc 集成（vendored，自包含）

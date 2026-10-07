@@ -80,7 +80,7 @@
 
 - `src/features/knowledge_space/`：文档、KB 配置、任务、chunk 生命周期、API 的领域层（业务逻辑；解析/切分/多模态引擎在 `engines/document/`）
 - `src/engines/document/pipeline/`：文档解析管道（DocumentLoader/DocumentProcessor/DocumentRegistry）——可复用的引擎层组件
-- `src/engines/document/splitters/`：分块切分器（recursive/semantic/fixed/markdown）
+- `src/engines/document/splitters/`：分块切分器（8 策略：recursive/fixed_size/markdown/semantic/delimiter/sentence_window/parent_child/hierarchical，权威清单见 `features/knowledge_space/schemas/knowledge_base_schema.py` 的 strategy Literal）
 - `src/engines/document/converters/`：文档格式转换器
 - `src/engines/document/media/`：音频/视频/图像多模态处理（VLM/OCR/audio/video）
 - `src/engines/document/integrations/deepdoc/`：DeepDoc 专有实现（vendored，自包含）
