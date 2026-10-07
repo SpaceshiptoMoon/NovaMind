@@ -622,8 +622,6 @@ const enableResearch = ref(false)
 const spaces = ref<Space[]>([])
 const selectedSpaceIds = ref<number[]>([])
 const knowledgeBindingsLoaded = ref(false)
-// el-popover 打开态（拉空间列表用；el-popover 不直接给受控 v-model，用事件跟踪）
-const scopePopoverVisible = ref(false)
 
 const knowledgeScopeActive = computed(() => selectedSpaceIds.value.length > 0)
 const knowledgeScopeLabel = computed(() =>

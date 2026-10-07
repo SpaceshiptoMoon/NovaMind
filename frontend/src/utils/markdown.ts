@@ -1,16 +1,28 @@
+import DOMPurify from 'dompurify'
 import { Marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
 import { copyToClipboard } from '@/utils/clipboard'
 
-// 代码块复制按钮是渲染产物里的内联 onclick，拿不到模块作用域，
-// 把统一复制工具挂到 window 供其调用（幂等，重复挂载无副作用）
-declare global {
-  interface Window {
-    __copyToClipboard?: typeof copyToClipboard
-  }
-}
-window.__copyToClipboard = copyToClipboard
+/**
+ * 代码块复制按钮走 document 级事件委托：渲染产物要过 DOMPurify 消毒，
+ * 内联 onclick 属性会被剥掉，复制逻辑必须移出 HTML 属性。
+ */
+document.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest?.('.code-copy-btn')
+  if (!btn) return
+  const code = btn.closest('.code-block')?.querySelector('code')
+  if (!code) return
+  copyToClipboard(code.textContent || '').then((ok) => {
+    if (!ok) return
+    btn.classList.add('copied')
+    btn.textContent = '已复制'
+    setTimeout(() => {
+      btn.classList.remove('copied')
+      btn.textContent = '复制代码'
+    }, 2000)
+  })
+})
 
 /**
  * Markdown 渲染工具
@@ -18,6 +30,11 @@ window.__copyToClipboard = copyToClipboard
  * renderMarkdown：GFM + highlight.js 代码高亮（带复制按钮）+ KaTeX 数学公式 +
  * 引用角标 [n] 交互化；代码块/公式经占位符暂存穿过 marked 解析后回填。
  * renderMarkdownWithToc：在其产物上为 h2/h3 注入锚点 id 并返回目录（Wiki 页专用）。
+ *
+ * 安全契约：marked 原样透传内嵌 HTML，不消毒（marked 官方立场）；渲染内容可能
+ * 含外部不可信来源（research 报告聚合互联网全文、知识库文档），出口统一过
+ * DOMPurify 消毒。cite/KaTeX 占位符在消毒之后回填（自产可信 HTML，且占位符
+ * 纯 ASCII 本就不会被 marked 改写）。
  */
 
 let codeBlockId = 0
@@ -33,16 +50,10 @@ const marked = new Marked({
         : hljs.highlightAuto(text).value
       const id = `code-block-${++codeBlockId}`
       const displayLang = language || 'code'
-      // 复制走 window.__copyToClipboard（clipboard.ts 挂到 window）：内联 onclick
-      // 拿不到模块作用域，直接内联 navigator.clipboard.writeText 无降级、失败静默
       return `<div class="code-block" data-id="${id}">
   <div class="code-header">
     <span class="code-lang">${displayLang}</span>
-    <button class="code-copy-btn" onclick="(function(btn){
-      var code=btn.closest('.code-block').querySelector('code');
-      var done=function(){btn.classList.add('copied');btn.textContent='已复制';setTimeout(function(){btn.classList.remove('copied');btn.textContent='复制代码';},2000);};
-      window.__copyToClipboard(code.textContent||'').then(function(ok){if(ok){done();}});
-    })(this)">复制代码</button>
+    <button class="code-copy-btn" type="button">复制代码</button>
   </div>
   <pre><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre>
 </div>`
@@ -126,8 +137,13 @@ export function renderMarkdown(text: string): string {
   // 4. 还原代码块
   const restored = citedText.replace(/@@CODEBLOCK_(\d+)_@@/g, (_m, i) => codeStore[Number(i)] ?? '')
 
-  // 5. marked 解析
-  const html = marked.parse(restored) as string
+  // 5. marked 解析 + DOMPurify 消毒（marked 不消毒内嵌 HTML，来源可能不可信；
+  //    目标为聊天/文档富文本面，允许 img/a 等常规标签，禁 javascript:/data: URI）
+  const parsed = marked.parse(restored) as string
+  const html = DOMPurify.sanitize(parsed, {
+    ADD_ATTR: ['target'],
+    FORBID_ATTR: ['style'],
+  })
 
   // 6. 占位符 → 角标 sup（事件代理在 ChatView 统一接管 hover/click）
   const withCites = html.replace(

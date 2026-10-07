@@ -248,6 +248,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { UploadFilled, ArrowLeft, ArrowRight, Loading, Check } from '@element-plus/icons-vue'
 import { ElMessage, type UploadFile } from 'element-plus'
+import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { appApi, type ResumeSession } from '@/api/app'
 
@@ -316,7 +317,8 @@ function enhanceReportHtml(html: string): string {
 const renderedMd = computed(() => {
   if (!reportContent.value) return ''
   const raw = marked.parse(reportContent.value) as string
-  return enhanceReportHtml(raw)
+  // 报告内容由 LLM 生成且经 v-html 渲染，出口消毒（与 renderMarkdown 同契约）
+  return enhanceReportHtml(DOMPurify.sanitize(raw, { FORBID_ATTR: ['style'] }))
 })
 
 const statusText = computed(() => {
