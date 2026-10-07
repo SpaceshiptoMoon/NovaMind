@@ -6,8 +6,6 @@ repository 空间谓词双保险），跨空间数据不可见；建议处置（
 """
 from __future__ import annotations
 
-import logging
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -36,8 +34,6 @@ from novamind.features.knowledge_ops.services.gap_report_service import GapRepor
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["知识运营"])
-
-logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -152,62 +148,19 @@ async def resolve_review_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     """处置建议（accept 联动 supersede）"""
-    from novamind.features.knowledge_ops.repository.suggestion_repository import (
-        STATUS_ACCEPTED,
-        SUGGESTION_CONTRADICTION,
-        SUGGESTION_NEW_VERSION,
+    from novamind.features.knowledge_ops.services.suggestion_resolve_service import (
+        SuggestionResolveService,
     )
-    from novamind.features.knowledge_ops.exceptions import KbOpsNotFoundError
-    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
 
-    repo = SuggestionRepository(db)
-    suggestion = await repo.get_by_id(suggestion_id)
-    if suggestion is None or suggestion.space_id != space_id:
-        raise KbOpsNotFoundError("复审建议不存在")
-
-    resolved = await repo.resolve(suggestion_id, request.action, current_user["id"])
-    superseded_doc_id = None
-    if request.action == STATUS_ACCEPTED and suggestion.suggestion_type == SUGGESTION_NEW_VERSION:
-        # 联动 B1 supersede（旧文档下线；ES 同步失败会抛 RuntimeError 由全局兜底）
-        if suggestion.old_doc_id and suggestion.new_doc_id:
-            await LifecycleService(db).supersede(suggestion.old_doc_id, suggestion.new_doc_id)
-            superseded_doc_id = suggestion.old_doc_id
-    elif request.action == STATUS_ACCEPTED and suggestion.suggestion_type == SUGGESTION_CONTRADICTION:
-        # 矛盾建议 accept = 通知两位文档 owner 人工对齐；平台永不自动改写/删除
-        await _notify_contradiction_owners(db, suggestion)
-    await db.commit()
+    resolved, superseded_doc_id = await SuggestionResolveService(db).resolve(
+        space_id, suggestion_id, request.action, current_user["id"],
+    )
     return SuggestionResolveResponse(
         suggestion_id=suggestion_id,
         status=resolved.status,
         superseded_doc_id=superseded_doc_id,
     )
 
-
-async def _notify_contradiction_owners(db, suggestion) -> None:
-    """矛盾建议 accept：通知双方文档 owner 人工对齐内容（通知失败仅告警）。"""
-    from sqlalchemy import select
-
-    from novamind.features.knowledge_space.models.document import Document
-    from novamind.features.notification.services.notification_service import NotificationService
-
-    doc_ids = [d for d in (suggestion.old_doc_id, suggestion.new_doc_id) if d]
-    owners = (await db.execute(
-        select(Document.id, Document.owner_id, Document.filename)
-        .where(Document.id.in_(doc_ids))
-    )).all()
-    for row in owners:
-        if row.owner_id is None:
-            continue
-        try:
-            await NotificationService(db).send_notification(
-                user_id=row.owner_id,
-                type="kb_contradiction_confirmed",
-                title=f"文档「{row.filename}」被确认与其他内容存在矛盾",
-                content=f"管理员确认了内容矛盾：{suggestion.reason or ''}（建议 #{suggestion.id}），请与相关文档 owner 对齐修正。",
-                link=f"/home/spaces/documents/{row.id}",
-            )
-        except Exception as e:
-            logger.warning("矛盾通知发送失败（跳过）", document_id=row.id, error=str(e))
 
 # ========== gap → 测试集 flywheel（kb-ops C：生产失败变回归用例） ==========
 
@@ -232,54 +185,13 @@ async def convert_gap_to_testset(
     db: AsyncSession = Depends(get_db),
 ):
     """gap → 测试用例（flywheel：每次失败都成为测试集的一部分）"""
-    from datetime import datetime
+    from novamind.features.knowledge_ops.services.gap_to_testset_service import (
+        GapToTestSetService,
+    )
 
-    from novamind.features.evaluation.services.evaluation_service import EvaluationService
-    from novamind.features.knowledge_ops.exceptions import KbOpsError
-    from novamind.features.knowledge_ops.repository.gap_repository import GapRepository
-    from sqlalchemy.ext.asyncio import AsyncSession as _Session  # noqa: F401 类型引用
-
-    if member is None:  # 防御（依赖已校验）
-        raise KbOpsError("无权访问")
-
-    # 取时间窗内的 content_gap 清单（近 7 天，与 gap-report 同窗口）
-    repo = GapRepository(db)
-    end = datetime.now()
-    start = end.replace(microsecond=0) - __import__("datetime").timedelta(days=7)
-    items = await repo.list_gap_items(space_id, start, end, limit=50)
-    if not items:
-        raise KbOpsError("近 7 天没有内容缺口，无可转换的 gap 条目")
-
-    cases = [
-        {
-            "question": item["query"],
-            # 检索命中验证型用例：expected_answer 语义为「补充文档后应能检索到本问题相关内容」
-            "expected_answer": f"知识库应能回答该问题（gap 转用例，最近提问 {item['hit_count']} 次）",
-        }
-        for item in items
-    ]
-
-    service = evaluation_service
-    if test_set_id:
-        # 已有集：追加（create_test_set_from_cases 的公共面无 append-with-service-instance
-        # 之外的路径，直接走 append_cases_to_test_set）
-        test_set_obj = await service.append_cases_to_test_set(
-            test_set_id=test_set_id, space_id=space_id, kb_id=kb_id, cases=cases,
-        )
-        action = "已追加"
-    else:
-        test_set_obj = await service.create_test_set_from_cases(
-            space_id=space_id, kb_id=kb_id, user_id=current_user["id"],
-            name=f"缺口用例集-{kb_id}-{datetime.now().strftime('%Y%m%d')}", cases=cases,
-        )
-        action = "已创建"
-    await db.commit()
-    return {
-        "test_set_id": test_set_obj.id,
-        "total_cases": test_set_obj.total_cases,
-        "added_cases": len(cases),
-        "message": f"gap 条目转测试用例{action}",
-    }
+    return await GapToTestSetService(db, evaluation_service).convert(
+        space_id, kb_id, current_user["id"], test_set_id=test_set_id,
+    )
 
 # ========== 治理视图（kb-ops D：重复/矛盾/贡献） ==========
 
