@@ -6,6 +6,7 @@ repository 空间谓词双保险），跨空间数据不可见；建议处置（
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -35,6 +36,8 @@ from novamind.features.knowledge_ops.services.gap_report_service import GapRepor
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["知识运营"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.get(
