@@ -806,13 +806,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ========== 附件管理 ==========
 
-  /** 上传附件（动态引入 chatApi 避免循环依赖），成功后加入待发队列 */
+  /** 上传附件（共享 /ai-chat/chat-attachments 端点），成功后加入待发队列 */
   async function uploadAttachment(
     file: File,
     onProgress?: (percent: number) => void,
   ): Promise<ChatAttachment> {
-    const { chatApi } = await import('@/api/chat')
-    const result = await chatApi.uploadAttachment(file, onProgress)
+    const result = await agentApi.uploadAttachment(file, onProgress)
     const attachment: ChatAttachment = {
       id: result.attachment_id,
       filename: result.filename,

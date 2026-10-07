@@ -42,7 +42,7 @@
         >
         <span class="stat-divider" />
         <span class="stat-item"
-          ><strong>{{ chatStore.sessions.length }}</strong> 段对话</span
+          ><strong>{{ qaSessionCount }}</strong> 段对话</span
         >
         <span class="stat-divider" />
         <span class="stat-item"
@@ -68,20 +68,21 @@
 
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { Promotion, ArrowRight } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
-import { useChatStore } from '@/stores/chat'
 import { useAgentStore } from '@/stores/agent'
 import { usePermissionStore } from '@/stores/permission'
+import { sessionApi } from '@/api/session'
 import { wikiApi } from '@/api/knowledge'
 import NavIcon from '@/components/common/NavIcon.vue'
 
 const router = useRouter()
 const spaceStore = useSpaceStore()
-const chatStore = useChatStore()
 const agentStore = useAgentStore()
 const permStore = usePermissionStore()
+
+// QA 历史会话总数（数据条展示；QA 对话已归档，仅统计不再新增入口）
+const qaSessionCount = ref(0)
 
 // 当前空间的 Wiki 资产概览（跨 KB 聚合）；零页/无空间时不占位
 const wikiPagesLabel = ref('')
@@ -122,8 +123,8 @@ const featureCards = [
     key: 'research',
     icon: 'research',
     title: '深度研究',
-    desc: '自动规划、多源检索，生成结构化研究报告',
-    action: () => goToResearch(),
+    desc: '对话中发起深度研究：自动规划、多源检索，生成结构化研究报告',
+    action: () => router.push('/home/workspace/chat'),
     app: null,
   },
   {
@@ -148,20 +149,11 @@ function goChat() {
   router.push('/home/workspace/chat')
 }
 
-/** 跳转深度研究；无可用空间时引导先创建空间 */
-function goToResearch() {
-  const spaceId = spaceStore.currentSpace?.id || spaceStore.spaces[0]?.id
-  if (spaceId) {
-    router.push(`/home/workspace/research/${spaceId}`)
-  } else {
-    ElMessage.info('请先创建一个知识空间')
-    router.push('/home/spaces')
-  }
-}
-
 onMounted(() => {
-  // 数据条数据源（已有会话/智能体缓存时静默跳过）
-  if (chatStore.sessions.length === 0) chatStore.fetchSessions().catch(() => {})
+  // 数据条数据源（已有智能体缓存时静默跳过）
+  sessionApi.getSessions({ limit: 1 }).then((d) => {
+    qaSessionCount.value = d.total
+  }).catch(() => {})
   if (agentStore.agents.length === 0) agentStore.fetchAgents().catch(() => {})
   void loadWikiOverview()
 })

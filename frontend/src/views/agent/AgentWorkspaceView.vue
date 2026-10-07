@@ -11,7 +11,6 @@
         <el-icon :size="14"><Plus /></el-icon>
         添加智能体
       </button>
-      <router-link class="archive-link" to="/home/workspace/chat/archive">QA 历史归档</router-link>
     </div>
   </div>
 </template>
@@ -102,18 +101,5 @@ function openCreate() {
 
 .placeholder-action:hover {
   background: var(--color-btn-primary-hover);
-}
-
-.archive-link {
-  margin-top: var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: color var(--transition-base);
-}
-
-.archive-link:hover {
-  color: var(--color-text);
-  text-decoration: underline;
 }
 </style>

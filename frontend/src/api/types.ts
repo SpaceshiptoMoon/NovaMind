@@ -1275,35 +1275,6 @@ export interface SessionListResponse {
   offset: number
 }
 
-export interface ChatRequest {
-  content: string
-  session_id?: string
-  llm_model?: string
-  enable_thinking?: boolean
-  attachment_ids?: number[]
-  enable_web_search?: boolean
-  search_provider?: SearchProvider
-}
-
-export interface ChatResponse {
-  session_id: string
-  user_message: ChatMessage
-  ai_message: ChatMessage
-  conversation_history: Array<{ id: number; content: string; role: string; created_at: string }>
-}
-
-export interface HealthCheckResponse {
-  status: string
-  message: string
-}
-
-export interface ModelsResponse {
-  models: Record<
-    string,
-    { max_tokens: number; temperature: number; top_p: number; model_type: string }
-  >
-}
-
 // ===================== 会话配置相关 =====================
 
 export interface CompressionConfig {

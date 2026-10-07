@@ -573,7 +573,6 @@ import {
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
-import { chatApi } from '@/api/chat'
 import { spaceApi } from '@/api/space'
 import type {
   AgentMessage,
@@ -1406,7 +1405,7 @@ function truncateResult(text: string): string {
 
 async function fetchModels() {
   try {
-    const data = await chatApi.getModels()
+    const data = await agentApi.getModels()
     availableModels.value = data.models
   } catch {
     // ignore

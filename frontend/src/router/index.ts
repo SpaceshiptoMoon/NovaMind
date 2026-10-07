@@ -227,11 +227,15 @@ const router = createRouter({
         },
         {
           path: 'research/:spaceId',
-          redirect: (to) => `/home/workspace/research/${to.params.spaceId}`,
+          redirect: '/home/workspace/chat',
         },
         {
           path: 'research/:spaceId/history',
-          redirect: (to) => `/home/workspace/research/${to.params.spaceId}/history`,
+          redirect: '/home/workspace/chat',
+        },
+        {
+          path: 'research',
+          redirect: '/home/workspace/chat',
         },
         {
           path: 'apps',
@@ -271,12 +275,6 @@ const router = createRouter({
               meta: { title: '对话' },
             },
             {
-              path: 'chat/archive',
-              name: 'WorkspaceChatArchive',
-              component: () => import('@/views/chat/ChatArchiveView.vue'),
-              meta: { title: 'QA 历史归档', requiresApp: 'qa' },
-            },
-            {
               path: 'agents',
               name: 'WorkspaceAgents',
               component: () => import('@/views/agent/AgentWorkspaceView.vue'),
@@ -287,24 +285,6 @@ const router = createRouter({
               name: 'WorkspaceAgentChat',
               component: () => import('@/views/agent/AgentChatView.vue'),
               meta: { title: '智能体对话' },
-            },
-            {
-              path: 'research',
-              name: 'WorkspaceResearch',
-              component: () => import('@/views/research/ResearchView.vue'),
-              meta: { title: '深度研究' },
-            },
-            {
-              path: 'research/:spaceId',
-              name: 'WorkspaceResearchSpace',
-              component: () => import('@/views/research/ResearchView.vue'),
-              meta: { title: '深度研究' },
-            },
-            {
-              path: 'research/:spaceId/history',
-              name: 'WorkspaceResearchHistory',
-              component: () => import('@/views/research/ResearchHistoryView.vue'),
-              meta: { title: '研究历史' },
             },
             {
               path: 'skills',

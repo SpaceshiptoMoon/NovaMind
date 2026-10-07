@@ -488,7 +488,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { usePermissionStore } from '@/stores/permission'
-import { chatApi } from '@/api/chat'
+import { agentApi } from '@/api/agent'
 import NavIcon from '@/components/common/NavIcon.vue'
 import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
@@ -532,7 +532,7 @@ watch(
 )
 
 // 频道清单：app 键对应应用门禁代码（AppCode）；统一对话面后 chat 即 agent 聊天（含默认助手），
-// 智能体管理与深度研究不再是频道（agent 列表收进 chat 侧栏，research 保留路由经设置区进入）
+// 智能体管理与深度研究不再是频道（agent 列表收进 chat 侧栏；web 研究页批4 已清退）
 const allChannels = [
   { key: 'chat', label: '对话', icon: 'chat', group: 'primary', app: 'agent' },
   { key: 'skills', label: '技能广场', icon: 'skill', group: 'more', app: 'skill' },
@@ -590,7 +590,7 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
 }
 
-// 按频道执行「新建/开启」动作：对话经入口页解析默认助手；skills 跳广场；research 无频道入口
+// 按频道执行「新建/开启」动作：对话经入口页解析默认助手；skills 跳广场
 function handleNew(key: string = activeChannelKey.value) {
   switch (key) {
     case 'chat':
@@ -785,7 +785,7 @@ const vlmModelNames = computed(() =>
 
 async function fetchModels() {
   try {
-    const data = await chatApi.getModels()
+    const data = await agentApi.getModels()
     availableModels.value = data.models
   } catch {
     // ignore
