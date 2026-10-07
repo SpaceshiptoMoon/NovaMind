@@ -54,7 +54,7 @@ async def test_notify_research_done(capture):
     assert call["type"] == "research_done"
     assert "RAG 检索优化" in call["title"]
     assert "120" in call["content"]
-    assert call["link"] == "/home/workspace/research/3/history"
+    assert call["link"] == "/home/workspace/chat"
     assert call["extra_data"]["session_id"] == "sess-abc"
     assert call["extra_data"]["elapsed_seconds"] == 120
 
