@@ -218,8 +218,22 @@ class AnthropicLLM(BaseLLM):
 
     @staticmethod
     def _map_stop_reason(stop_reason: str | None) -> str:
-        """Anthropic stop_reason → OpenAI finish_reason 语义。"""
-        return {"tool_use": "tool_calls", "stop_sequence": "stop"}.get(stop_reason or "", "stop")
+        """Anthropic stop_reason → OpenAI finish_reason 语义。
+
+        Anthropic 词汇表（截至 SDK 当前版本）：end_turn / max_tokens /
+        stop_sequence / tool_use / refusal / pause_turn / model_context_window_exceeded。
+        OpenAI 侧只有 stop / length / tool_calls / content_filter 四个 finish_reason，
+        截断类统一归 length，拒绝类归 content_filter，其余正常结束归 stop。
+        """
+        return {
+            "tool_use": "tool_calls",
+            "max_tokens": "length",
+            "model_context_window_exceeded": "length",
+            "stop_sequence": "stop",
+            "end_turn": "stop",
+            "pause_turn": "stop",
+            "refusal": "content_filter",
+        }.get(stop_reason or "", "stop")
 
     @staticmethod
     def _normalize_usage(usage: Any) -> dict[str, int] | None:
@@ -580,7 +594,7 @@ class AnthropicLLM(BaseLLM):
                 content="".join(text_parts),
                 reasoning="".join(reasoning_parts) or None,
                 usage=usage,
-                finish_reason=getattr(response, "stop_reason", None),
+                finish_reason=self._map_stop_reason(getattr(response, "stop_reason", None)),
             )
 
     async def generate_text_stream_structured(
@@ -618,6 +632,17 @@ class AnthropicLLM(BaseLLM):
                             yield StreamChunk(type="content", text=delta.text)
                         elif delta_type == "thinking_delta":
                             yield StreamChunk(type="reasoning", text=delta.thinking)
+                    # message_delta 事件携带最终 stop_reason；不产出 finish 帧
+                    # 时截断语义（max_tokens→length）会在下游被兜底成 stop
+                    final_message = getattr(stream, "get_final_message", None)
+                    if final_message is not None:
+                        stop_reason = getattr(final_message(), "stop_reason", None)
+                    else:
+                        stop_reason = None
+                    yield StreamChunk(
+                        type="finish", text="",
+                        finish_reason=self._map_stop_reason(stop_reason),
+                    )
             except Exception as e:
                 raise translate_provider_error(e, model=self.model) from e
 

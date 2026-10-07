@@ -415,6 +415,9 @@ class OpenAiGatewayService:
                         yield self._sse(self._chunk(model, {"reasoning_content": chunk.text}, chunk_id=stream_id))
                     elif chunk.type == "content" and chunk.text:
                         yield self._sse(self._chunk(model, {"content": chunk.text}, chunk_id=stream_id))
+                    elif chunk.type == "finish" and chunk.finish_reason:
+                        # 上游显式 finish_reason（如 Anthropic length 截断）优先于 stop 兜底
+                        finish_reason = chunk.finish_reason
         except ModelProviderError as e:
             _, body = provider_error_to_openai(e)
             yield self._sse(body)

@@ -81,9 +81,13 @@ class StreamChunk:
     将 Qwen 的 reasoning_content / content 两种字段统一为
     type="reasoning" 或 type="content" 的 StreamChunk，
     上层代码无需关心底层模型是否开启 thinking。
+
+    finish_reason 为可选结束标记：流末由驱动产出（OpenAI 兼容/Anthropic 流式
+    结构化路径），缺失时消费方按 "stop" 兜底——截断语义（length）不丢。
     """
-    type: str   # "content" | "reasoning"
+    type: str   # "content" | "reasoning" | "finish"
     text: str
+    finish_reason: str | None = None
 
 
 @dataclass
