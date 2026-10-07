@@ -69,6 +69,10 @@ async def init_agent_components(app):
     from novamind.features.agent.tool.builtins import WikiTool
     registry.register(WikiTool())
 
+    # 4.2 注册深度研究工具（长任务 15min 超时；进度经 event_sink 旁路推 WS）
+    from novamind.features.agent.tool.builtins import ResearchTool
+    registry.register(ResearchTool())
+
     # 5. 注册会话附件按需读取工具（始终可用；正文不注入上下文，靠本工具读取）
     registry.register(ReadAttachmentTool())
 

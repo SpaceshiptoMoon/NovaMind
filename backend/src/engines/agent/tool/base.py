@@ -65,6 +65,10 @@ class ToolContext:
 class BaseTool(ABC):
     """工具基类"""
 
+    # 工具执行超时毫秒数；executor 按 OpenAI 原始 dict 反推定义时拿不到 timeout_ms，
+    # 长任务工具覆写此属性（如 research 跑数分钟），缺省维持 30s 通用值。
+    default_timeout_ms: int = 30_000
+
     @property
     @abstractmethod
     def name(self) -> str:

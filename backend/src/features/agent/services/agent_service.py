@@ -49,6 +49,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
+# 默认助手内置工具基线：ensure 幂等更新时对 is_default 行做并集补齐
+# （版本演进新增工具时，存量默认助手在下次 ensure 自动获得）
+_DEFAULT_AGENT_TOOLS = [
+    "knowledge_search",
+    "web_search",
+    "memory",
+    "todo",
+    "task",
+    "read_attachment",
+    "research",
+]
+
 
 class AgentService:
     """Agent 管理服务"""
@@ -228,6 +240,15 @@ class AgentService:
         )
         agent = existing.scalar_one_or_none()
         if agent is not None:
+            # 存量默认助手补齐新增内置工具（幂等）：seed 之后版本新增的工具并入
+            # enabled_tools（当前新增 research）。仅对 is_default 行——默认助手是
+            # 系统播种的基线，用户要定制可自建 agent；并集保证用户自行加过的工具不丢
+            tools = list(agent.enabled_tools or [])
+            missing = [t for t in _DEFAULT_AGENT_TOOLS if t not in tools]
+            if missing:
+                agent.enabled_tools = tools + missing
+                self.db.add(agent)
+                await self.db.flush()
             return AgentDetailResponse.model_validate(agent)
 
         await self._validate_mcp_ids(user_id, None)
@@ -235,21 +256,16 @@ class AgentService:
             agent = await self.agent_repo.create(
                 user_id=user_id,
                 name="个人助手",
-                description="内置助手：可检索知识库、联网搜索、读取附件",
+                description="内置助手：可检索知识库、联网搜索、深度研究、读取附件",
                 system_prompt=(
                     "你是用户的个人助手。回答知识性、时效性问题或需要查资料时，"
                     "优先调用 knowledge_search 或 web_search 工具获取依据后再作答；"
+                    "用户要求深入调研、全面分析或横向对比复杂课题时，调用 research "
+                    "工具发起深度研究（需数分钟，先告知用户）。"
                     "寒暄、改写、简单解释等无需外部信息的请求直接回答，不调用工具。"
                     "回答基于检索结果时注明来源。"
                 ),
-                enabled_tools=[
-                    "knowledge_search",
-                    "web_search",
-                    "memory",
-                    "todo",
-                    "task",
-                    "read_attachment",
-                ],
+                enabled_tools=list(_DEFAULT_AGENT_TOOLS),
                 extra_config={"is_default": True},
             )
         return AgentDetailResponse.model_validate(agent)

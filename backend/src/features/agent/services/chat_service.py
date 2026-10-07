@@ -119,6 +119,7 @@ class AgentChatService:
         session_id: str | None = None,
         llm_model: str | None = None,
         enable_thinking: bool = False,
+        deep_research: bool = False,
         stream: bool = True,
         attachment_ids: list[int] | None = None,
         approval_registry: Any | None = None,
@@ -133,6 +134,7 @@ class AgentChatService:
             session_id: 业务会话 ID；None 时新建会话。
             llm_model: 覆盖 Agent 配置的模型名；None 用 Agent 配置或用户默认。
             enable_thinking: 是否启用思考过程输出。
+            deep_research: 是否开启深度研究模式（本轮提示增强，引导复杂课题优先调用 research 工具）。
             stream: 是否流式生成。
             attachment_ids: 随消息引用的附件 ID 列表。
             approval_registry: 异步审批注册表（WS 端点注入，DANGEROUS 工具需用户决策）。
@@ -177,6 +179,12 @@ class AgentChatService:
             llm_client, tools, messages, snapshot, _, caps = await self._build_context(
                 agent, conv, user_id, model, content, memory_manager
             )
+            # 深度研究模式（批3）：本轮请求级提示增强——prepend 到最后一条用户消息，
+            # 引导模型对复杂课题优先调用 research 工具（工具本身始终在工具列表里，
+            # 开关只是提升选择优先级；随消息不落库、单轮生效，与 <system-memory-context>
+            # 同款注入模式）。
+            if deep_research:
+                self._inject_research_mode_hint(messages)
             # 调试向预览：会话级上下文用量（ContextMeter）+ 压缩事件（CompactionItem）
             # 在事件循环之前 emit，前端输入框仪表即时更新、压缩发生时插标记行
             yield self._emit("context_usage", {
@@ -253,6 +261,16 @@ class AgentChatService:
                 )
             else:
                 context["subagent_runner"] = None
+
+            # 深度研究（批3）：Agent 勾选 research 工具时注入请求级服务工厂。
+            # 每次调用构造独立 DeepResearchService（web 适配器按请求 cleanup），
+            # 复用当前请求 db session 与模型配置服务；space_id=0 时内部源按
+            # 无空间处理（SearchService 层拦截）。
+            context["research_service_factory"] = (
+                await self._build_research_service_factory()
+                if "research" in (agent.enabled_tools or [])
+                else None
+            )
 
             # E5 异步审批：注入 approval_registry + event_sink（WS 端点传入，
             # ApprovalHook DANGEROUS 时发 approval_request + 等用户决策）
@@ -591,6 +609,31 @@ class AgentChatService:
                 user_id, embedding_model
             )
         return resolver
+
+    async def _build_research_service_factory(self):
+        """构造 DeepResearchService 工厂（供 research 工具经 context 调用）。
+
+        每次调用构造独立服务实例：db session 用全局工厂新开（研究内部 rollback /
+        错误恢复不得连坐外层 chat 事务）、web 适配器按请求构造、cleanup 统一关闭；
+        ES 客户端经 shared/storage 客户端工厂取单例（与 web 适配层 dependencies 同款装配）。
+        """
+        from novamind.core.database.database import get_session_factory
+        from novamind.shared.storage.client_factory import get_elasticsearch_client
+
+        es_client = await get_elasticsearch_client()
+
+        def factory():
+            from novamind.features.deep_research.services.deep_research_service import (
+                DeepResearchService,
+            )
+
+            return DeepResearchService(
+                get_session_factory()(),
+                model_config_service=self.model_config_service,
+                es_client=es_client,
+            )
+
+        return factory
 
     # ==================== 阶段方法 ====================
 
@@ -1028,6 +1071,26 @@ class AgentChatService:
         for msg in reversed(messages):
             if msg.get("role") == "user":
                 msg["content"] = f"{memory_block}\n\n{msg['content']}"
+                break
+
+    # ==================== 深度研究模式（批3） ====================
+    # 请求级提示增强：用户在输入框开启「深度研究」chip 时，本轮消息 prepend 引导块。
+    # research 工具本身始终对模型可见（agent.enabled_tools 门控），开关只影响选择
+    # 优先级；提示块不落库（messages 是构建态副本），单轮生效。
+
+    RESEARCH_MODE_HINT = (
+        "<system-research-mode>\n"
+        "[系统提示：用户已开启深度研究模式。本轮若课题需要多源调研、横向对比或全面分析，"
+        "优先调用 research 工具发起深度研究（耗时数分钟，调用前先用一句话告知用户），"
+        "再基于研究报告作答；简单问答不需要研究，直接回答。]\n"
+        "</system-research-mode>"
+    )
+
+    def _inject_research_mode_hint(self, messages: list[dict]) -> None:
+        """将深度研究模式引导块 prepend 到最后一条用户消息。"""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                msg["content"] = f"{self.RESEARCH_MODE_HINT}\n\n{msg['content']}"
                 break
 
     # ==================== 附件清单注入（对齐 deer-flow） ====================

@@ -26,7 +26,7 @@ if str(BACKEND_ROOT) not in sys.path:
 pytestmark = pytest.mark.unit
 
 EXPECTED_TOOLS = {
-    "knowledge_search", "web_search", "memory", "todo", "task", "read_attachment",
+    "knowledge_search", "web_search", "memory", "todo", "task", "read_attachment", "research",
 }
 
 
@@ -105,6 +105,35 @@ async def test_ensure_is_idempotent(agent_db):
     async with factory() as session:
         rows = (await session.execute(select(AgentDefinition))).scalars().all()
         assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_backfills_missing_builtin_tools(agent_db):
+    """存量默认助手补齐新增内置工具：旧 seed 行（缺 research）ensure 后并入，自加工具保留。"""
+    factory, _ = agent_db
+    async with factory() as session:
+        svc = _make_service(factory)
+        svc.db = session
+        # 模拟批3 之前的存量行：无 research，但用户自行加了 wiki
+        from novamind.features.agent.models.agent import AgentDefinition
+
+        legacy = await svc.agent_repo.create(
+            user_id=9, name="个人助手", system_prompt="旧",
+            enabled_tools=["knowledge_search", "web_search", "wiki"],
+            extra_config={"is_default": True},
+        )
+        await session.commit()
+
+        detail = await svc.ensure_default_agent(user_id=9)
+        await session.commit()
+        assert detail.id == legacy.id
+        # research 补齐 + 用户自加的 wiki 不丢
+        assert "research" in detail.enabled_tools
+        assert "wiki" in detail.enabled_tools
+
+        # 再次 ensure 不重复追加（幂等稳定）
+        again = await svc.ensure_default_agent(user_id=9)
+        assert sorted(again.enabled_tools) == sorted(detail.enabled_tools)
 
 
 @pytest.mark.asyncio

@@ -138,7 +138,12 @@ class ToolExecutor:
                         name = func.get("name", "")
                         if name not in self._tool_defs:
                             self._cache_tool_def(
-                                name, self._raw_to_definition(raw_tool, ToolSource.BUILTIN)
+                                name,
+                                self._raw_to_definition(
+                                    raw_tool,
+                                    ToolSource.BUILTIN,
+                                    timeout_ms=self._provider_timeout_ms(name),
+                                ),
                             )
                         tools.append(self._tool_defs[name])
 
@@ -152,7 +157,12 @@ class ToolExecutor:
                     name = func.get("name", "")
                     if name not in self._tool_defs:
                         self._cache_tool_def(
-                            name, self._raw_to_definition(raw_tool, ToolSource.MCP)
+                            name,
+                            self._raw_to_definition(
+                                raw_tool,
+                                ToolSource.MCP,
+                                timeout_ms=self._provider_timeout_ms(name),
+                            ),
                         )
                     tools.append(self._tool_defs[name])
 
@@ -238,7 +248,7 @@ class ToolExecutor:
 
     @staticmethod
     def _raw_to_definition(
-        raw_tool: dict[str, Any], source: ToolSource
+        raw_tool: dict[str, Any], source: ToolSource, timeout_ms: int | None = None
     ) -> ToolDefinition:
         """将 OpenAI 格式工具定义转换为 ToolDefinition。
 
@@ -250,6 +260,7 @@ class ToolExecutor:
         from novamind.shared.prompts.sanitize import escape_system_tags
 
         func = raw_tool.get("function", {})
+        name = func.get("name", "")
         params_schema = func.get("parameters", {})
         properties = params_schema.get("properties", {})
         required = params_schema.get("required", [])
@@ -268,4 +279,14 @@ class ToolExecutor:
             parameters=parameters,
             required=required,
             source=source,
+            timeout_ms=timeout_ms if timeout_ms is not None
+            else ToolDefinition.model_fields["timeout_ms"].default,
         )
+
+    def _provider_timeout_ms(self, tool_name: str) -> int:
+        """按工具名找提供者读 default_timeout_ms（OpenAI 原始 dict 不携带超时，
+        长任务工具覆写类属性才能生效），找不到提供者维持 ToolDefinition 默认。"""
+        provider = self._tool_registry.find_tool_provider(tool_name)
+        if provider is None:
+            return ToolDefinition.model_fields["timeout_ms"].default
+        return provider.default_timeout_ms
