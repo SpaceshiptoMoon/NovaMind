@@ -33,11 +33,11 @@ AI 生成的 UI 有一眼可辨的公版套路。以下症状**出现任意一�
 
 ### 2.1 色彩
 
-- **中性面零色度**：底 `#f7f6f3`（骨白）、卡 `#ffffff`、发丝线 `#e8e8e6`、字 `#37352f`（Notion 墨阶）——中性就是中性，不 tint（impeccable：「中性灰本身合法」；tint 只在确有品牌凝聚收益时用）
-- **主按钮 = 墨黑** `#191918`（hover `#33322f`）：编辑感主 CTA，最反 SaaS 公版的一招；暗色**签名反差**：骨白底 `#e8e6e1` + 墨字（亮暗互为图底）
-- **accent = 蓝黑墨水** `#20618f`（hue 206°，白底 5.2:1）：只给链接/选中态/焦点环/活动 tab——「Rarity gives an accent force」（impeccable），墨黑只给主 CTA，两者职责不混
-- **语义色 = Notion 四组淡彩**（深字+淡底）：success `#346538/#edf3ec`、warning `#956400/#fbf3db`、danger `#9f2f2d/#fdebec`、info 暖灰；仅状态表达不装饰；暗色下文字提亮、底改透明
-- **暗色独立设计不机械反转**（impeccable）：暖墨黑分层 `#191918 → #212120 → #282827`，文字暖骨白阶
+- **中性面零色度**（light = Tailwind neutral 纯灰，dark = shadcn zinc 冷灰；Notion 暖灰已否决——发黄显脏）：底 `#f5f5f3`（与白卡拉 2% 明度差防「白上白」灰朦）、卡 `#ffffff`、发丝线 `#dcdcd8`、字 `#0a0a0a`（纯墨阶）——中性就是中性，不 tint（impeccable：「中性灰本身合法」）
+- **主按钮 = 中性深墨** `#2e2e2e`（hover `#444444`，黑度 82% 不死黑）：编辑感主 CTA，最反 SaaS 公版的一招；暗色**签名反差**：骨白按钮 `#dcdcdf` + 墨字 `#141416`（亮暗互为图底）
+- **accent = 蓝黑墨水** `#20618f`（hue 206°，白底 5.2:1；暗色提亮 `#86afd4`）：只给链接/选中态/焦点环/活动 tab——「Rarity gives an accent force」（impeccable），墨黑只给主 CTA，两者职责不混
+- **语义色 = Notion 四组淡彩**（深字+淡底）：success `#346538/#edf3ec`、warning `#956400/#fbf3db`、danger `#9f2f2d/#fdebec`、info `#787672`；仅状态表达不装饰；暗色下文字提亮、底改透明
+- **暗色独立设计不机械反转**（impeccable）：冷墨黑分层 `#0c0c0e → #18181b → #1e1e21`（zinc dark），文字冷骨白阶
 - **全 UI 无纯 `#000`/纯 `#FFF` 大平面**；阴影只给浮层（透明度 ≤0.05 超弥散，taste-skill）
 - **改色铁律**：任何新颜色先进 base.css，light/dark **成对添加**；组件内禁止新 hex 字面量；**主按钮上的文字/图标一律 `--color-btn-primary-text`**（暗色按钮反白时白字会撞白底——评审 F1 教训，禁止写死 `color:#fff`）
 - **CSS 特异性铁律**：base.css 暗色块选择器必须 `html[data-theme='dark']`（0,1,1）——裸 `[data-theme='dark']` 与 main.css `:root` 同特异性被源序覆盖，暗色 EP 色板整体静默失效（历史 N-1 教训）
@@ -45,7 +45,7 @@ AI 生成的 UI 有一眼可辨的公版套路。以下症状**出现任意一�
 
 ### 2.2 字体排印
 
-- 正文/标题 Inter + PingFang SC / Microsoft YaHei；代码/ID/坐标/数字列 JetBrains Mono（`--font-mono`）
+- 正文/标题 Inter Variable + PingFang SC / Microsoft YaHei；代码/ID/坐标/数字列 JetBrains Mono（`--font-mono`）
 - 字号阶梯 `12/13/15/16/17/18/22/28/36`——标题用 `--text-2xl`(22px) 已足够「大气」，**不靠超大字号撑气场**
 - 标题 `letter-spacing: -0.025em` + `text-wrap: balance`；正文 `line-height 1.5`
 - 数据表格中的 ID、hash、路径、金额用 mono + `tabular-nums`，专业感来自等宽而非花哨字体
@@ -86,7 +86,7 @@ AI 生成的 UI 有一眼可辨的公版套路。以下症状**出现任意一�
 
 挑选标准：**信息密度、层级手法、留白节奏**可迁移的才参考；皮（配色/字体）不可直接搬——皮必须出自 base.css。
 
-> **当前选定参考（2026-10-03，经 ui-no-slop 流程独立评审 PASS；皮已弃用）**：shadcn/ui 官方 Dashboard 示例（Neutral 主题，https://ui.shadcn.com/examples/dashboard）。评审 agent 真实操作验证：黑名单十项零命中、核心交互（图表时间范围/表格 tabs/列自定义/全选/分页/行菜单）全部真实可用、暗色整套适配、console 零报错、320px 零横向溢出。学其**骨**：三段式骨架（侧栏分组导航 → 页头唯一主 CTA → KPI 行→图表卡→tab 化数据表）、KPI 卡解剖（灰标签→大数字→趋势徽章→一句话解读）、表格当工作面而非展示面、克制即层级（每卡两种字重一个饱和色）。落地的四个 P3 注意点：KPI 卡标题折行基线错位、~1264px 下表格需受控横向滚动（留意列优先级）、参考的三个 tab 是空占位（密度以 Outline tab 为准）、<768px 参考本体无法实测移动端。**2026-10-03 起皮不再沿用**：其 Neutral 灰白「零个性色」细节不到位就退化成默认模板感，配色已整体迁往 Pine Ink 松烟墨绿（见第二节）。备选落选记录：Plausible 仪表盘（骨架干净但主色靛蓝紫撞黑名单①④）。
+> **当前选定参考（2026-10-03，经 ui-no-slop 流程独立评审 PASS；皮已弃用）**：shadcn/ui 官方 Dashboard 示例（Neutral 主题，https://ui.shadcn.com/examples/dashboard）。评审 agent 真实操作验证：黑名单十项零命中、核心交互（图表时间范围/表格 tabs/列自定义/全选/分页/行菜单）全部真实可用、暗色整套适配、console 零报错、320px 零横向溢出。学其**骨**：三段式骨架（侧栏分组导航 → 页头唯一主 CTA → KPI 行→图表卡→tab 化数据表）、KPI 卡解剖（灰标签→大数字→趋势徽章→一句话解读）、表格当工作面而非展示面、克制即层级（每卡两种字重一个饱和色）。落地的四个 P3 注意点：KPI 卡标题折行基线错位、~1264px 下表格需受控横向滚动（留意列优先级）、参考的三个 tab 是空占位（密度以 Outline tab 为准）、<768px 参考本体无法实测移动端。**2026-10-03 起皮不再沿用**：其 Neutral 灰白「零个性色」细节不到位就退化成默认模板感（配色先后迁往 Pine Ink 松烟墨绿、最终定稿 Ink & Bone 墨与骨白，见第二节；灰阶本体仍是 neutral/zinc 系，但补上了蓝黑墨水 accent）。备选落选记录：Plausible 仪表盘（骨架干净但主色靛蓝紫撞黑名单①④）。
 
 ### 第 2 步：截图复刻 + 抽取 token
 

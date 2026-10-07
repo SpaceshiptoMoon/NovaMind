@@ -46,8 +46,9 @@ worktree 只是把"文件系统静默覆盖"变成"git 可控合并";真正少�
 - **按 feature / 目录边界切任务**:项目天然按 `backend/src/features/<domain>/` 切分,优先让一个 agent 独占一个 feature(`knowledge_space`、`agent`、`qa`、`evaluation`、`skill`、`user`…)。
 - **单点共享文件串行化**:以下文件是跨 feature 单点,同一时间**只允许一个 agent 修改**,其余 agent 需要改时排队等前一个合并:
   - `src/shared/prompts/` 提示词注册表(参见记忆 [[prompt-registry-architecture]])
-  - `src/core/middleware/router_manager.py`(路由注册)
-  - `src/core/middleware/startup_manager.py`(模块初始化注册)
+  - `src/features/*/manifest.py`(feature 声明入口:RouterSpec / init_hook / models_loader,同 feature 内路由变更都会触碰)
+  - `src/core/middleware/router_manager.py`(路由聚合)
+  - `src/core/middleware/startup_manager.py`(启动编排)
   - `*.example` 配置模板、`CLAUDE.md`、`docs/` 架构文档
   - DB schema 相关模型(无 Alembic,参见 [[db-schema-sync-no-alembic]])
 - **跨 feature 接口先约定**:两个 agent 的改动有依赖时(如 A 改 schema、B 调用),先在群里/文档里定接口,再各自实现,避免最后合并时大改对方依赖的签名。
