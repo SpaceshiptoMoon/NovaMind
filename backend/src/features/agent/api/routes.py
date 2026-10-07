@@ -41,7 +41,11 @@ from novamind.features.agent.schemas.agent_schema import (
     McpToolsRefreshResponse,
     MemoryListResponse,
     MemoryStatsResponse,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
     MessageListResponse,
+    CitationClickRequest,
+    SessionKnowledgeBindingsUpdate,
     SessionResponse,
     SystemPromptResponse,
     ToolFunctionResponse,
@@ -303,6 +307,24 @@ async def delete_session(
     return {"success": True, "message": "对话已删除"}
 
 
+@router.put(
+    "/sessions/{session_id}/knowledge-bindings",
+    response_model=SessionResponse,
+    summary="更新会话知识绑定",
+    description="整体替换会话级知识绑定（限定知识工具检索范围）；传 null 清除绑定恢复不限定",
+)
+async def update_session_knowledge_bindings(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    request: SessionKnowledgeBindingsUpdate,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.update_session_knowledge_bindings(
+        user_id, session_id,
+        request.knowledge_bindings.model_dump() if request.knowledge_bindings else None,
+    )
+
+
 @router.get(
     "/sessions/{session_id}/messages",
     response_model=MessageListResponse,
@@ -322,6 +344,39 @@ async def get_messages(
         for msg in result.items:
             await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
     return result
+
+
+@router.put(
+    "/messages/{message_id}/feedback",
+    response_model=MessageFeedbackResponse,
+    summary="设置消息反馈",
+    description="对 AI 回答点赞/点踩；rating=null 撤销（幂等）",
+)
+async def set_message_feedback(
+    message_id: Annotated[int, Path(gt=0, description="消息ID")],
+    request: MessageFeedbackRequest,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.set_message_feedback(
+        user_id, message_id, request.rating, request.comment
+    )
+
+
+@router.post(
+    "/messages/{message_id}/citation-click",
+    response_model=AgentActionResponse,
+    summary="上报引用点击",
+    description="点击回答引用角标/来源卡时上报（kb-ops 核验行为信号，旁路落账本）",
+)
+async def record_citation_click(
+    message_id: Annotated[int, Path(gt=0, description="消息ID")],
+    request: CitationClickRequest,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    await service.record_citation_click(user_id, message_id, request.model_dump())
+    return {"success": True, "message": "已记录"}
 
 
 @router.get(

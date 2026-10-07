@@ -216,6 +216,20 @@ class AgentChatService:
                 else None
             )
             context["knowledge_search_port"] = knowledge_search_port
+            # 知识检索管线配置（批2）：会话级知识绑定 + 会话模型 LLM。
+            # llm_client 是 _build_context 已解析的会话模型客户端——改写/打分与主回答
+            # 同模型，修掉 QA「改写固定用用户默认模型」的错位；会话无绑定时配置仍注入
+            # （管线质量层默认生效），仅范围约束为不限定。
+            session_bindings = (conv.extra_config or {}).get("knowledge_bindings")
+            context["knowledge_pipeline"] = {
+                "llm_client": llm_client,
+                "knowledge_bindings": session_bindings,
+                "conversation_history": [
+                    {"role": m.get("role"), "content": str(m.get("content") or "")}
+                    for m in messages[-6:]
+                    if m.get("role") in ("user", "assistant")
+                ],
+            }
             context["attachment_read_port"] = self._attachment_read_port
             context["memory_store_port"] = memory_store
             context["memory_search_port"] = memory_search

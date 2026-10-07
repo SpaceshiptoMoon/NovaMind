@@ -11,6 +11,7 @@ def _import_models() -> None:
     from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
     from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
     from novamind.features.agent.models.message import AgentMessage  # noqa: F401
+    from novamind.features.agent.models.message_feedback import AgentMessageFeedback  # noqa: F401
     from novamind.features.agent.models.session import AgentSession  # noqa: F401
     from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
 

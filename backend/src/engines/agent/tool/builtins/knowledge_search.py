@@ -276,7 +276,12 @@ class KnowledgeSearchTool(BaseTool):
     # ==================== 搜索与文档列表 ====================
 
     async def _search(self, port, args: dict[str, Any], context: dict[str, Any]) -> str:
-        """检索用户可见知识库，返回格式化的命中列表 JSON。"""
+        """检索用户可见知识库，返回格式化的命中列表 JSON。
+
+        context 带 knowledge_pipeline 配置（会话级知识绑定 + 会话模型，主对话场景由
+        chat_service 注入）时走质量管线（改写→检索→grade→阈值→insufficient_evidence
+        拒答声明）；无配置走裸检索（task 子 agent 等场景，行为不变）。
+        """
         try:
             user_id: int = context["user_id"]
 
@@ -285,6 +290,10 @@ class KnowledgeSearchTool(BaseTool):
             kb_id = args.get("kb_id")
             top_k = args.get("top_k", 5)
             search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
+
+            pipeline_cfg = context.get("knowledge_pipeline")
+            if pipeline_cfg:
+                return await self._pipeline_search(port, args, pipeline_cfg, context)
 
             items = await port.search(
                 space_id=space_id,
@@ -322,6 +331,89 @@ class KnowledgeSearchTool(BaseTool):
         except Exception as e:
             logger.error("知识库搜索失败", error=str(e))
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
+
+    async def _pipeline_search(
+        self, port, args: dict[str, Any], cfg: dict[str, Any], context: dict[str, Any]
+    ) -> str:
+        """走质量管线的检索：注入会话绑定范围约束，结果附检索质量元数据。
+
+        范围约束优先级（没选不兜底）：会话绑定 kb_ids 显式给定时忽略工具入参 kb_id
+        （会话约束是用户声明，工具入参越权扩域）；仅 space_ids 时取交集。
+        """
+        user_id: int = context["user_id"]
+        space_id = args["space_id"]
+        query = args["query"]
+        top_k = args.get("top_k", 5)
+        search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
+
+        bindings = cfg.get("knowledge_bindings") or {}
+        bound_space_ids = bindings.get("space_ids")
+        bound_kb_ids = bindings.get("kb_ids")
+
+        # 会话限定了 space 集合：请求空间必须在集合内（越权拒绝而非静默放行）
+        if bound_space_ids and space_id not in bound_space_ids:
+            return json.dumps(
+                {
+                    "error": (
+                        f"当前会话知识范围限定为空间 {bound_space_ids}，"
+                        f"空间 {space_id} 不在范围内"
+                    )
+                },
+                ensure_ascii=False,
+            )
+
+        kb_ids: list[int] | None = bound_kb_ids or ([args["kb_id"]] if args.get("kb_id") else None)
+
+        result = await port.pipeline_search(
+            space_id=space_id,
+            user_id=user_id,
+            query=query,
+            llm_client=cfg.get("llm_client"),
+            conversation_history=cfg.get("conversation_history"),
+            rewrite_strategy=cfg.get("rewrite_strategy", "completion"),
+            grade_retry_enabled=bool(cfg.get("grade_retry_enabled", False)),
+            grade_passing_score=int(cfg.get("grade_passing_score", 5)),
+            score_threshold=cfg.get("score_threshold", 0.3),
+            top_k=top_k,
+            search_mode=search_mode,
+            kb_ids=kb_ids,
+        )
+
+        items = result["items"]
+        payload: dict[str, Any] = {
+            "query": query,
+            "total": len(items),
+            "insufficient_evidence": result["insufficient_evidence"],
+        }
+        if result["rewritten_query"] != query:
+            payload["rewritten_query"] = result["rewritten_query"]
+        if result["rewrite_degraded"]:
+            payload["rewrite_degraded"] = True
+        if result["grade_traces"]:
+            payload["grade_traces"] = result["grade_traces"]
+
+        if not items:
+            payload["message"] = (
+                "检索结果经质量过滤后为空（证据不足）"
+                if result["insufficient_evidence"]
+                else "未找到相关结果"
+            )
+            return json.dumps(payload, ensure_ascii=False, indent=2)
+
+        payload["results"] = [
+            {
+                "content": item.content[:500],
+                "score": round(item.score, 4),
+                "document_id": item.document_id,
+                "chunk_id": item.chunk_id,
+                **(
+                    {"filename": item.file_info.get("filename", "")}
+                    if item.file_info else {}
+                ),
+            }
+            for item in items
+        ]
+        return json.dumps(payload, ensure_ascii=False, indent=2)
 
     async def _list_documents(
         self, port, args: dict[str, Any], context: dict[str, Any]

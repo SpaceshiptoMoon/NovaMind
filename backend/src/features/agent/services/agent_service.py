@@ -4,6 +4,7 @@ Agent 管理服务
 负责 Agent 定义和会话的 CRUD。
 """
 from datetime import datetime
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.exceptions import (
@@ -463,6 +464,191 @@ class AgentService:
         if not deleted:
             raise SessionNotFoundError(session_id)
         await self.db.commit()
+
+    async def update_session_knowledge_bindings(
+        self, user_id: int, session_id: str, knowledge_bindings: dict[str, Any] | None
+    ) -> SessionResponse:
+        """更新会话级知识绑定（extra_config.knowledge_bindings 整体替换）。
+
+        约束（没选不兜底）：bindings 中声明的 space_ids/kb_ids 必须全部属于该用户
+        可访问范围，任一越权即整体拒绝（不做静默过滤——静默丢 ID 会让"看似绑定了
+        实际没绑定"的错配不可追踪）。knowledge_bindings=None 清除绑定恢复不限定。
+
+        Args:
+            user_id: 当前用户 ID，同时是会话归属与空间/知识库访问校验主体。
+            session_id: 业务会话 ID。
+            knowledge_bindings: 绑定 dict（KnowledgeBindings 校验后的形态），None 清除。
+
+        Returns:
+            更新后的会话响应。
+
+        Raises:
+            SessionNotFoundError: 会话不存在或不属于该用户。
+            AgentError: 绑定引用了不可访问的空间或知识库。
+        """
+        conv = await self.get_session(user_id, session_id)
+
+        if knowledge_bindings is not None:
+            from novamind.features.agent.exceptions import AgentError
+            from novamind.features.knowledge_space.services.access_service import (
+                check_space_access,
+            )
+
+            space_ids = knowledge_bindings.get("space_ids")
+            kb_ids = knowledge_bindings.get("kb_ids")
+
+            if space_ids:
+                for sid in space_ids:
+                    if not await check_space_access(self.db, sid, user_id):
+                        raise AgentError(f"空间 {sid} 不存在或无权访问")
+
+            if kb_ids:
+                from novamind.features.knowledge_space.services.knowledge_base_service import (
+                    KnowledgeBaseService,
+                )
+                from novamind.features.knowledge_space.services.space_service import (
+                    SpaceService,
+                )
+
+                kb_service = KnowledgeBaseService(self.db, es_client=None, minio_client=None)
+                space_service = SpaceService(self.db)
+                accessible_space_ids = {
+                    s.id for s in await space_service.get_user_spaces(user_id)
+                }
+                for kbid in kb_ids:
+                    kb = await kb_service.get_knowledge_base(kbid)
+                    if kb is None or kb.space_id not in accessible_space_ids:
+                        raise AgentError(f"知识库 {kbid} 不存在或无权访问")
+
+        extra_config = dict(conv.extra_config) if conv.extra_config else {}
+        if knowledge_bindings is None:
+            extra_config.pop("knowledge_bindings", None)
+        else:
+            extra_config["knowledge_bindings"] = knowledge_bindings
+
+        async with self.db.begin_nested():
+            await self.session_repo.update(conv.id, extra_config=extra_config)
+        await self.db.commit()
+
+        await self.db.refresh(conv)
+        return SessionResponse.model_validate(conv)
+
+    # ==================== 消息反馈与引用点击（批2：对齐 qa_message_feedback 语义） ====================
+
+    async def _get_message_with_session_check(
+        self, user_id: int, message_id: int
+    ) -> AgentMessage:
+        """按主键取消息并校验归属（经会话归属链），失败统一视为不存在。
+
+        Args:
+            user_id: 当前用户 ID。
+            message_id: 消息主键 ID。
+
+        Returns:
+            校验通过的消息 ORM 实体。
+
+        Raises:
+            SessionNotFoundError: 消息不存在或所属会话不属于该用户。
+        """
+        result = await self.db.execute(
+            select(AgentMessage).where(AgentMessage.id == message_id)
+        )
+        msg = result.scalar_one_or_none()
+        if msg is None:
+            raise SessionNotFoundError(f"message:{message_id}")
+        conv = await self.session_repo.get_by_id(msg.conversation_id)
+        if conv is None or conv.user_id != user_id:
+            raise SessionNotFoundError(f"message:{message_id}")
+        return msg
+
+    async def set_message_feedback(
+        self, user_id: int, message_id: int, rating: str | None, comment: str | None
+    ) -> dict[str, Any]:
+        """设置/撤销消息反馈（点赞/点踩）。
+
+        rating=None 撤销（幂等：无反馈也返回成功）；仅 assistant 消息可反馈且
+        必须属于当前用户；写走独立 feedback repository（SAVEPOINT），事务在此提交。
+
+        Args:
+            user_id: 当前用户 ID。
+            message_id: 被反馈的 assistant 消息 ID。
+            rating: up/down，None 撤销。
+            comment: 反馈补充说明，None 不改已有评论。
+
+        Returns:
+            反馈响应 dict（message_id/rating/comment）。
+
+        Raises:
+            SessionNotFoundError: 消息不存在或不属于该用户。
+            AgentError: 对非 assistant 消息反馈。
+        """
+        from novamind.features.agent.exceptions import AgentError
+        from novamind.features.agent.repository.message_feedback_repository import (
+            MessageFeedbackRepository,
+        )
+
+        msg = await self._get_message_with_session_check(user_id, message_id)
+        if msg.role != "assistant":
+            raise AgentError("只能对 AI 回答反馈")
+
+        feedback_repo = MessageFeedbackRepository(self.db)
+        conv = await self.session_repo.get_by_id(msg.conversation_id)
+        if rating is None:
+            await feedback_repo.delete(message_id, user_id)
+            await self.db.commit()
+            return {"message_id": message_id, "rating": None, "comment": None}
+
+        await feedback_repo.upsert(
+            message_id=message_id,
+            user_id=user_id,
+            session_id=conv.session_id if conv else "",
+            rating=rating,
+            comment=comment,
+        )
+        await self.db.commit()
+        return {"message_id": message_id, "rating": rating, "comment": comment}
+
+    async def record_citation_click(
+        self, user_id: int, message_id: int, click: dict[str, Any]
+    ) -> None:
+        """记录引用点击（kb-ops O2：用户核验行为的被动信号）。
+
+        仅 assistant 消息且消息归属人可上报；落账本走 EventRecorder 旁路
+        （独立短事务、全异常吞掉），上报失败不影响主流程。幂等性不做——
+        同一来源多次点击是真实的重复核验行为，每次都记。space_id 锚点：
+        agent 会话无固定空间归属，点击载荷里带 kb_id/document_id 即可归因。
+
+        Args:
+            user_id: 当前用户 ID。
+            message_id: 被点击引用所属的 assistant 消息 ID。
+            click: 点击载荷（source_index/chunk_id/document_id/kb_id）。
+
+        Raises:
+            SessionNotFoundError: 消息不存在或不属于该用户。
+            AgentError: 对非 assistant 消息上报。
+        """
+        from novamind.features.agent.exceptions import AgentError
+
+        msg = await self._get_message_with_session_check(user_id, message_id)
+        if msg.role != "assistant":
+            raise AgentError("只能上报 AI 回答的引用点击")
+
+        conv = await self.session_repo.get_by_id(msg.conversation_id)
+        from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+        await EventRecorder().record(
+            event_type="citation_click",
+            user_id=user_id,
+            session_id=conv.session_id if conv else None,
+            kb_id=click.get("kb_id"),
+            extra={
+                "source": "agent",
+                "message_id": message_id,
+                "source_index": click.get("source_index"),
+                "chunk_id": click.get("chunk_id"),
+                "document_id": click.get("document_id"),
+            },
+        )
 
     # ==================== 消息 ====================
 

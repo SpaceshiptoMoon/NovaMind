@@ -3,7 +3,7 @@ Agent 模块 Pydantic 数据模型
 """
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -110,8 +110,70 @@ class SessionResponse(BaseModel):
     status: str = "active"
     message_count: int = 0
     total_tokens_used: int = 0
+    extra_config: dict[str, Any] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class KnowledgeBindings(BaseModel):
+    """会话级知识绑定：限定知识工具的检索范围（对齐 QA kb_bindings 语义）。
+
+    space_ids/kb_ids 均为 null 表示不限定（全部可访问空间）；两者同时给出时
+    kb_ids 优先生效（工具内部按 kb 归属空间解析）。校验归属在写入时做。
+    """
+    space_ids: list[int] | None = Field(
+        None, description="限定可检索的空间 ID 列表；null 不限定",
+    )
+    kb_ids: list[int] | None = Field(
+        None, description="限定可检索的知识库 ID 列表；null 不限定",
+    )
+
+
+class SessionKnowledgeBindingsUpdate(BaseModel):
+    """会话知识绑定更新请求：整个 knowledge_bindings 对象整体替换（null 即清除）。"""
+    knowledge_bindings: KnowledgeBindings | None = Field(
+        None, description="知识绑定配置；null 清除绑定恢复不限定",
+    )
+
+
+class MessageFeedbackRequest(BaseModel):
+    """Agent 消息反馈请求（对齐 QA MessageFeedbackRequest 语义）。
+
+    rating=null 表示撤销反馈（幂等：无论是否曾投过，撤销后均无反馈记录）。
+    """
+    rating: Literal["up", "down"] | None = Field(
+        default=None, description="反馈类型：up=赞 / down=踩 / null=撤销",
+    )
+    comment: str | None = Field(
+        default=None, max_length=2000, description="反馈补充说明（可选）",
+    )
+
+
+class MessageFeedbackResponse(BaseModel):
+    """Agent 消息反馈响应"""
+    message_id: int
+    rating: Literal["up", "down"] | None = None
+    comment: str | None = None
+
+
+class CitationClickRequest(BaseModel):
+    """Agent 引用点击上报请求（kb-ops O2 语义，对齐 QA CitationClickRequest）。
+
+    点击回答引用角标/来源卡时上报被点击的来源；全字段可选——上报是行为
+    信号而非数据写入，前端拿不到的字段（如联网来源无 doc_id）不强求。
+    """
+    source_index: int | None = Field(
+        default=None, ge=1, description="被点击来源的序号（与正文角标对齐，1-based）",
+    )
+    chunk_id: str | None = Field(
+        default=None, max_length=128, description="命中的分块 ID（KB 来源）",
+    )
+    document_id: int | None = Field(
+        default=None, ge=1, description="命中的文档 ID（KB 来源）",
+    )
+    kb_id: int | None = Field(
+        default=None, ge=1, description="命中的知识库 ID（KB 来源）",
+    )
 
 
 class AgentSessionListResponse(BaseModel):

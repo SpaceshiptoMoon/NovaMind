@@ -107,4 +107,10 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "superseded_by_doc_id",
         "ALTER TABLE documents ADD COLUMN superseded_by_doc_id BIGINT NULL COMMENT '被哪个新版文档替代（版本链锚点，superseded 态必填）'",
     ),
+    # ===== 工作台统一对话面批2：agent 会话级知识绑定（对齐 qa_session_configs.kb_bindings 语义） =====
+    (
+        "agent_sessions",
+        "extra_config",
+        "ALTER TABLE agent_sessions ADD COLUMN extra_config JSON NULL COMMENT '会话级配置（knowledge_bindings：知识范围/检索约束）'",
+    ),
 )

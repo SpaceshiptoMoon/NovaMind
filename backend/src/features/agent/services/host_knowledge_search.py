@@ -296,3 +296,210 @@ class HostKnowledgeSearchPort:
             for doc in documents
         ]
         return DocumentListResult(total=total, documents=docs)
+
+    # ==================== 检索管线（QA 管线吸收，批2） ====================
+
+    async def pipeline_search(
+        self,
+        space_id: int,
+        user_id: int,
+        query: str,
+        *,
+        llm_client: Any | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+        rewrite_strategy: str = "completion",
+        grade_retry_enabled: bool = False,
+        grade_passing_score: int = 5,
+        score_threshold: float = 0.3,
+        top_k: int = 5,
+        search_mode: str = SearchMode.CONTENT_HYBRID.value,
+        kb_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """带质量保障层的知识库检索管线：改写 → 检索 → grade-retry（可选）→ 阈值过滤。
+
+        吸收 QA ai_chat_service 的检索管线语义（工作台统一对话面批2），差异点：
+        - 改写/打分 LLM 由调用方注入（agent 会话模型），修掉 QA「改写固定用用户默认
+          模型」的错位；llm_client=None 时改写与 grade 静默降级（能力缺失非错误结果）。
+        - 拒答语义变为结果声明 ``insufficient_evidence``，由主模型决定如何向用户表达
+          （QA 侧是服务端固定文案拒答，agent 场景主模型自持）。
+        - 检索执行仍走 InstrumentedSearchService，kb-ops 事件账本埋点不回退。
+
+        Args:
+            space_id: 空间主键 ID（调用方已校验访问权限）。
+            user_id: 当前用户 ID。
+            query: 检索查询文本（用户原话）。
+            llm_client: 会话模型 LLM 客户端；None 跳过改写与 grade。
+            conversation_history: 对话历史（OpenAI 格式），completion 改写消费。
+            rewrite_strategy: 改写策略；"none" 关闭改写。
+            grade_retry_enabled: 是否启用检索后打分重试（切模式+降阈值）。
+            grade_passing_score: 打分及格线（1-10）。
+            score_threshold: 低分过滤线；None 传给检索层即不过滤。
+            top_k: 返回条数上限。
+            search_mode: 首轮检索模式。
+            kb_ids: 限定知识库列表；None 跨空间前 3 个活跃库。
+
+        Returns:
+            dict：items（KnowledgeSearchItem 列表）、rewritten_query（实际检索用词）、
+            rewrite_degraded、grade_traces、insufficient_evidence（过滤后为空且曾
+            有原始结果时 True）、raw_count（过滤前数量）。
+        """
+        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
+
+        # ===== 1. 查询改写（会话模型；失败降级原 query） =====
+        rewritten = query
+        rewrite_degraded = False
+        if rewrite_strategy != "none" and llm_client is not None:
+            from novamind.engines.rag.query_rewriter import QueryRewriter, RewriteStrategy
+
+            rewriter = QueryRewriter(llm_client)
+            try:
+                result = await rewriter.rewrite(
+                    query=query,
+                    strategy=RewriteStrategy(rewrite_strategy),
+                    history=conversation_history or [],
+                )
+                if result.queries:
+                    rewritten = result.queries[0]
+                rewrite_degraded = result.degraded
+            except Exception:
+                rewrite_degraded = True
+
+        search_service = await self._build_search_service()
+
+        async def _do_search(mode: str, threshold: float | None) -> list[dict[str, Any]]:
+            """单轮检索：kb_ids 限库，否则跨空间活跃库前 3 合并；单库失败静默跳过。"""
+            request = SearchRequest(
+                query=rewritten,
+                search_mode=mode,
+                top_k=top_k,
+                score_threshold=threshold if threshold is not None else 0.0,
+            )
+            if kb_ids:
+                merged: list[dict[str, Any]] = []
+                for kbid in kb_ids:
+                    try:
+                        r = await search_service.search(
+                            space_id=space_id, kb_id=kbid,
+                            user_id=user_id, request=request,
+                        )
+                        merged.extend(r.get("results", []))
+                    except Exception:
+                        continue
+            else:
+                from novamind.features.knowledge_space.models.knowledge_base import (
+                    KnowledgeBaseStatus,
+                )
+
+                kbs = await self._kb_service().get_space_knowledge_bases(
+                    space_id, status=KnowledgeBaseStatus.ACTIVE
+                )
+                merged = []
+                for kb in kbs[:3]:
+                    try:
+                        r = await search_service.search(
+                            space_id=space_id, kb_id=kb.id,
+                            user_id=user_id, request=request,
+                        )
+                        merged.extend(r.get("results", []))
+                    except Exception:
+                        continue
+            merged.sort(key=lambda x: x.get("score", 0), reverse=True)
+            return merged[:top_k]
+
+        # ===== 2. 检索（grade-retry 可选：不通过切模式+降阈值重试） =====
+        grade_traces: list[dict[str, Any]] = []
+        if grade_retry_enabled and llm_client is not None:
+            from novamind.engines.rag import GradeRetrier
+
+            retrier = GradeRetrier(
+                llm_client,
+                prompt_provider=self._build_prompt_provider(),
+                logger=self._build_logger(),
+            )
+            fallback_modes = [
+                SearchMode.CONTENT_HYBRID.value,
+                SearchMode.CONTENT_VECTOR.value,
+                SearchMode.CONTENT_BM25.value,
+            ]
+            raw_results = await self._grade_retry_search(
+                retrier, rewritten, search_mode, fallback_modes,
+                score_threshold, grade_passing_score, _do_search, grade_traces,
+            )
+        else:
+            raw_results = await _do_search(search_mode, score_threshold)
+
+        raw_count = len(raw_results)
+
+        # ===== 3. 阈值过滤 + 结果映射 =====
+        # 过滤已在 SearchRequest 下推（检索层预过滤），此处兜底双保险（对齐 QA post-hoc 语义）
+        if score_threshold is not None:
+            raw_results = [r for r in raw_results if r.get("score", 0) >= score_threshold]
+
+        items = [
+            KnowledgeSearchItem(
+                content=r.get("content", ""),
+                score=r.get("score", 0),
+                document_id=r.get("document_id"),
+                chunk_id=r.get("chunk_id"),
+                file_info=r.get("file_info"),
+            )
+            for r in raw_results
+        ]
+
+        return {
+            "items": items,
+            "rewritten_query": rewritten,
+            "rewrite_degraded": rewrite_degraded,
+            "grade_traces": grade_traces,
+            "insufficient_evidence": raw_count > 0 and len(items) == 0,
+            "raw_count": raw_count,
+        }
+
+    async def _grade_retry_search(
+        self,
+        retrier: Any,
+        query: str,
+        initial_mode: str,
+        fallback_modes: list[str],
+        score_threshold: float,
+        passing_score: int,
+        do_search: Any,
+        grade_traces: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """GradeRetrier 适配：search_fn 签名对齐（返回 (sources, system_prompt)），只回收 sources。
+
+        grade_traces 由 retrier 产出后追加进传入列表，供工具结果透传给前端轨迹。
+        """
+        result_sources, _, traces = await retrier.search_with_retry(
+            query=query,
+            search_fn=lambda q, mode, threshold: self._search_fn_adapter(
+                do_search, mode, threshold
+            ),
+            search_modes=fallback_modes,
+            initial_mode=initial_mode,
+            score_threshold=score_threshold,
+            passing_score=passing_score,
+        )
+        grade_traces.extend(traces)
+        return result_sources
+
+    @staticmethod
+    async def _search_fn_adapter(
+        do_search: Any, mode: str, threshold: float | None
+    ) -> tuple[list[dict[str, Any]], str]:
+        """把单轮检索函数适配成 GradeRetrier 期望的 (sources, system_prompt) 返回形态。"""
+        sources = await do_search(mode, threshold)
+        return sources, ""
+
+    def _build_prompt_provider(self) -> Any:
+        """构造 PromptManager（grade 打分 prompt 从中央注册表取，与 QA 同源）。"""
+        from novamind.shared.prompts.prompt_manager import PromptManager
+
+        return PromptManager()
+
+    @staticmethod
+    def _build_logger() -> Any:
+        """构造管线日志器（结构化 JSON 日志口径）。"""
+        from novamind.core.middleware.structured_logging import get_logger
+
+        return get_logger(__name__)
