@@ -206,7 +206,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         password=es_cfg.get("password"),
         index_prefix=es_cfg.get("index_prefix", "kb"),
         default_embedding_dim=es_cfg.get("default_embedding_dim", 1024),
-        analyzer=es_cfg.get("analyzer", "ik_max_word"),
+        analyzer=es_cfg.get("analyzer", "standard"),
         verify_certs=es_cfg.get("verify_certs", False),
         ca_certs=es_cfg.get("ca_certs"),
     )
@@ -404,7 +404,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     tq = data.get("task_queue", {})
     config.task_queue = TaskQueueConfig(
         max_jobs=tq.get("max_jobs", 3),
-        job_timeout=tq.get("job_timeout", 1800),
+        job_timeout=tq.get("job_timeout", 7200),
         max_tries=tq.get("max_tries", 3),
         retry_base_delay=tq.get("retry_base_delay", 60),
         queue_name=tq.get("queue_name", "arq:queue"),

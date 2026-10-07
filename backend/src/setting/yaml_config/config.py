@@ -52,7 +52,9 @@ class ElasticsearchConfig:
     password: str | None = None
     index_prefix: str = "kb"
     default_embedding_dim: int = 1024
-    analyzer: str = "ik_max_word"
+    # standard 是零插件 ES 的通用默认；中文优化分词（ik_max_word 等）需部署期
+    # 装插件，由 YAML 模板/部署配置显式指定，不作为代码默认（默认面向通用环境）
+    analyzer: str = "standard"
     verify_certs: bool = False
     ca_certs: str | None = None
 
@@ -109,8 +111,8 @@ class ParsingConfig:
     # silero VAD 前置过滤（切静音/噪声段，省算力 + 抑制静音段幻觉），默认开。
     local_whisper_vad_enabled: bool = True
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
-    # 易逼近 arq job_timeout=1800s，有界并发降时延；过高可能触发 VLM 配额限流，
-    # 配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。
+    # 耗时可逼近 arq job_timeout（默认 7200s），有界并发降时延；过高可能触发 VLM
+    # 配额限流，配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。
     video_vlm_concurrency: int = 4
     # 上传流式读取的全局字节硬顶（MB）。流式 sha256+计数边读边检，超限即断流
     # 拒收——Content-Length 缺失/chunked encoding/伪造头都靠它兜底。须 >= 各模态
@@ -370,7 +372,9 @@ class ProjectConfig:
 class TaskQueueConfig:
     """task_queue 段：arq 任务队列的并发上限、单任务超时、重试次数与退避基数。"""
     max_jobs: int = 3
-    job_timeout: int = 1800
+    # 7200 对齐 default.example 模板值：2GB 级视频全链路（VLM 逐帧 + ASR + 切分
+    # + embedding）在 4 并发挤占下可超 30 分钟，1800 会把长作业误杀成超时重试
+    job_timeout: int = 7200
     max_tries: int = 3
     retry_base_delay: int = 60
     queue_name: str = "arq:queue"
