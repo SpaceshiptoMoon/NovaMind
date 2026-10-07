@@ -1824,7 +1824,7 @@ export interface KnowledgeBindings {
 
 // 深度研究进度（WS research_progress 事件，批3 工具化后经 agent WS 旁路下发）
 export interface ResearchProgressData {
-  /** analyzing | planning | plan | searching | synthesizing | failed */
+  /** analyzing | planning | plan | searching | synthesizing | completed | failed（completed/failed 由 research 工具层补发终态） */
   status: string
   current_step?: string
   progress_percent?: number

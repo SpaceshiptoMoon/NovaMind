@@ -25,6 +25,7 @@ export type TrajectoryKind =
   | 'system'
   | 'plan'
   | 'notice'
+  | 'research'
 
 /** 轨迹视图单行 record：由 messages 平铺派生，携带稳定序号、行摘要与决策/工具父子关系 */
 export interface TrajectoryRecord {
@@ -188,6 +189,9 @@ export function useTrajectoryRecords(
         summary = plan?.title ? `计划: ${plan.title} (${stepN}步)` : `计划 (${stepN}步)`
       } else if (kind === 'notice') {
         summary = firstLine(msg.content) || '系统纠偏警告'
+      } else if (kind === 'research') {
+        // 批3 深研进度消息：extra.research 存最近一条进度（不落库，仅本轮内存）
+        summary = firstLine(msg.content) || '深度研究'
       }
 
       result.push({

@@ -15,6 +15,7 @@ import re
 import pytest
 from novamind.core.database.schema_migrations import (
     CONSTRAINT_MIGRATIONS,
+    NULLABLE_MIGRATIONS,
     SCHEMA_MIGRATIONS,
 )
 
@@ -78,3 +79,35 @@ def test_constraint_no_duplicate_table_index():
         key = (table, new_index)
         assert key not in seen, f"重复的 (表,新索引) 迁移条目: {key}"
         seen.add(key)
+
+
+def test_nullable_entries_are_four_tuples_with_legal_target():
+    """NULLABLE_MIGRATIONS：每条是 (表名, 列名, IS_NULLABLE 目标, MODIFY DDL) 四元组。
+
+    目标值只允许 YES/NO（information_schema.COLUMNS.IS_NULLABLE 值域）；
+    NO 目标没有业务场景（收紧约束依赖 ORM 先行，当前全部是放宽），
+    出现即提示重新评估幂等检测方向。
+    """
+    assert len(NULLABLE_MIGRATIONS) > 0, "NULLABLE_MIGRATIONS 不应为空"
+    for entry in NULLABLE_MIGRATIONS:
+        assert isinstance(entry, tuple) and len(entry) == 4, f"条目非 4 元组: {entry!r}"
+        table, column, target, ddl = entry
+        assert all(isinstance(x, str) and x for x in entry), f"条目含空/非字符串: {entry!r}"
+        assert target in ("YES", "NO"), f"IS_NULLABLE 目标非法（值域 YES/NO）: {target!r}"
+
+
+def test_nullable_ddl_well_formed_matches_table_and_column():
+    """MODIFY DDL 必须形如 ALTER TABLE <表名> MODIFY `<列名>` ... NULL/NOT NULL，
+    且表名/列名与条目一致、NULL 性与 IS_NULLABLE 目标一致。"""
+    pattern = re.compile(
+        r"^ALTER TABLE `?(\w+)`? MODIFY `(\w+)` .* (NOT NULL|NULL)", re.IGNORECASE
+    )
+    for table, column, target, ddl in NULLABLE_MIGRATIONS:
+        m = pattern.match(ddl)
+        assert m, f"DDL 不匹配 'ALTER TABLE <表> MODIFY <列> ... NULL|NOT NULL': {ddl!r}"
+        assert m.group(1) == table, f"DDL 表名 {m.group(1)!r} 与条目表名 {table!r} 不一致"
+        assert m.group(2) == column, f"DDL 列名 {m.group(2)!r} 与条目列名 {column!r} 不一致"
+        ddl_nullable = "NOT NULL" not in m.group(3).upper()
+        assert ddl_nullable == (target == "YES"), (
+            f"DDL NULL 性与 IS_NULLABLE 目标矛盾: ddl={m.group(3)!r} target={target!r}"
+        )

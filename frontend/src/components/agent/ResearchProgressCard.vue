@@ -30,8 +30,9 @@
 <script setup lang="ts">
 /**
  * 深度研究进度卡：spinner + 标题 + 进度百分比的折叠胶囊行，展开看进度条与计划步骤。
- * 数据源为 role='research' 消息的 extra.research（research_progress 事件原地更新），
- * 会话刷新后随历史消息回放（终态无持久化时按合成/失败展示最后已知进度）。
+ * 数据源为 role='research' 消息的 extra.research（research_progress 事件原地更新）。
+ * 进度是瞬态增强：role='research' 消息不落库，会话刷新/切换后卡片消失
+ * （研究报告正文经 tool 消息留档，进度/计划不可回看——批4 再议持久化）。
  */
 import { computed } from 'vue'
 import type { ResearchProgressData } from '@/api/types'
@@ -49,10 +50,13 @@ const STATUS_LABELS: Record<string, string> = {
   plan: '计划就绪',
   searching: '检索中',
   synthesizing: '生成报告',
+  completed: '研究完成',
   failed: '研究失败',
 }
 
-const isDone = computed(() => props.data.status === 'synthesizing')
+// completed 是工具层（research.py）在 done 后补发的终态事件；synthesizing 只是
+// 引擎综合阶段（85%），此后主模型还要消化报告作答，不算完成
+const isDone = computed(() => props.data.status === 'completed')
 const isFailed = computed(() => props.data.status === 'failed')
 
 const title = computed(() => props.data.current_step || STATUS_LABELS[props.data.status] || '深度研究')

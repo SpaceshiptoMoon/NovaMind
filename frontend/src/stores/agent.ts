@@ -676,6 +676,9 @@ export const useAgentStore = defineStore('agent', () => {
           onSources(d) {
             collectedSources = d.sources as SourceRef[]
           },
+          onResearchProgress(d) {
+            applyResearchProgress(researchMsg, messages.value, d)
+          },
           onDone(d) {
             // Apply collected data once
             toolCalls.value = collectedToolCalls

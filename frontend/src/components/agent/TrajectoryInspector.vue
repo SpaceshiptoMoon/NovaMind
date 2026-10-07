@@ -571,6 +571,8 @@ function kindLabel(kind: TrajectoryRecord['kind'] | 'system'): string {
       return 'PLAN'
     case 'notice':
       return 'NOTICE'
+    case 'research':
+      return 'RESEARCH'
   }
 }
 

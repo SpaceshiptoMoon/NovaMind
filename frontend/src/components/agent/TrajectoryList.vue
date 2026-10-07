@@ -536,6 +536,8 @@ function roleLabel(kind: TrajectoryRecord['kind']): string {
       return 'PLAN'
     case 'notice':
       return 'NOTICE'
+    case 'research':
+      return 'RESEARCH'
   }
 }
 function firstLine(text: string | null | undefined, max = 120): string {
@@ -810,6 +812,10 @@ function cssEscape(s: string): string {
 .traj-role.notice {
   background: rgba(245, 158, 11, 0.12);
   color: #f59e0b;
+}
+.traj-role.research {
+  background: rgba(20, 184, 166, 0.12);
+  color: #14b8a6;
 }
 
 .traj-iter {

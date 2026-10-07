@@ -420,15 +420,16 @@
                     class="mode-chip"
                     :class="{ active: enableResearch }"
                     title="复杂课题先调研再作答（耗时数分钟）"
-                    @click="enableResearch = !enableResearch"
+                    @click="toggleDeepResearch"
                   >
                     <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
                     <span>深度研究</span>
                   </button>
-                  <!-- teleported=false：popper 留在组件 DOM 内，scoped 样式直接生效 -->
+                  <!-- teleported=false：popper 留在组件 DOM 内，scoped 样式直接生效；
+                       宽度响应式：320px 满宽在极窄视口会溢出（抗压缩三档规范） -->
                   <el-popover
                     placement="top-start"
-                    :width="320"
+                    :width="scopePopoverWidth"
                     trigger="click"
                     :teleported="false"
                     @show="onScopePopoverShow"
@@ -617,6 +618,19 @@ const useStream = ref(true)
 const enableThinking = ref(false)
 // 深度研究开关（请求级）：开启时本轮消息引导模型优先调用 research 工具
 const enableResearch = ref(false)
+
+// 深度研究依赖 Agent 勾选 research 工具；未勾选时 hint 注入后模型会空转一轮
+// 工具调用再口播失败——开启瞬间明示，避免用户以为开关生效
+function toggleDeepResearch() {
+  enableResearch.value = !enableResearch.value
+  if (
+    enableResearch.value &&
+    agentStore.currentAgent &&
+    !(agentStore.currentAgent.enabled_tools || []).includes('research')
+  ) {
+    ElMessage.warning('当前智能体未启用 research 工具，深度研究不会执行（请在智能体管理中勾选）')
+  }
+}
 
 // ===================== 知识范围绑定（会话级，批2 extra_config.knowledge_bindings） =====================
 const spaces = ref<Space[]>([])
@@ -1170,6 +1184,10 @@ async function applyKnowledgeScope() {
   }
 }
 
+// 知识范围 popover 宽度：桌面 320，窄视口收进边距（teleported=false 下
+// overflow:hidden 祖先会裁切溢出部分）
+const scopePopoverWidth = computed(() => Math.min(320, window.innerWidth - 24))
+
 function onScopePopoverShow() {
   ensureSpacesLoaded()
 }
@@ -1258,13 +1276,20 @@ async function handleSend() {
     // 流结束后再 PUT——流中会话行被 chat 事务锁定，流中写绑定会锁超时
     const shouldApplyScope =
       !agentStore.currentSessionId && selectedSpaceIds.value.length > 0
+    const sessionAtSend = agentStore.currentSessionId
     pendingScopeApply = shouldApplyScope
-    if (useStream.value) {
-      await agentStore.sendMessageStream(agentId.value, sendContent, opts)
-    } else {
-      await agentStore.sendMessage(agentId.value, sendContent, opts)
+    try {
+      if (useStream.value) {
+        await agentStore.sendMessageStream(agentId.value, sendContent, opts)
+      } else {
+        await agentStore.sendMessage(agentId.value, sendContent, opts)
+      }
+      if (shouldApplyScope) await applyKnowledgeScope()
+    } finally {
+      // 复位绑定发送生命周期：失败/中止时不能让标记挂着——否则 watch 会把
+      // 下一次会话切换的绑定加载跳过，残留勾选可写错其他会话
+      if (agentStore.currentSessionId === sessionAtSend) pendingScopeApply = false
     }
-    if (shouldApplyScope) await applyKnowledgeScope()
   } catch {
     ElMessage.error('发送失败，请重试')
   }
