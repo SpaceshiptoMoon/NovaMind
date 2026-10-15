@@ -45,6 +45,13 @@ docker-compose.yml
 - **国内网络便利不得变默认耦合**：镜像源、时区等只允许出现在部署配置（`.env.example`/deploy 脚本/compose 注入），功能代码零硬编码；默认值面向通用环境。
 - 每次修复优先补一条**正反两用例**的回归测试（触发场景 + 相邻正常场景不误伤），防止案例特例化漂移。
 
+## 分支职责：main 只放 Python 代码（硬规则）
+
+- **`main` 分支 = Python 单体分支**，只包含 `backend/`（FastAPI）、`frontend/`、`docs/`、`docker/` 等现有目录。Go 迁移代码（`engine/`、`backend-go/`）只属于 `refactor/go-migration` 及其后继分支。
+- **禁止把 Go 分支的目录合入/提交到 main**；同样禁止在 Go 分支动 main 的独有资产（两边共享的文件应先在分支里对齐再合并）。
+- **从其它分支 `git checkout main` 时警惕残留**：git 只清理被跟踪的文件，分支上的未跟踪/运行时产物（`.venv/`、`.cache/` 模型、`__pycache__/`、日志）会原样留在工作区，`git status` 显示 `??` 即为此类。发现非 main 职责的目录出现在 main 工作区，先 `git log --all -- <dir>` 确认归属，再清理，不要让它混入后续提交。
+- 2026-10-15 实际事故：从 `refactor/go-migration` 切回 main 后残留 `engine/`、`backend-go/` 共 2.4 万个未跟踪文件，一度污染工作区且掩盖了 `default.yaml` 缺失的真实启动故障。
+
 ## 多 Agent 并行开发
 
 多个 agent 窗口（或开发者）并发操作本仓库时，每个隔离在自己的 git worktree、自己的分支里。绝不让多个 agent 编辑同一工作目录——重叠修改会在 git 介入之前就被文件系统层静默覆盖，且无法恢复或归因。
@@ -59,7 +66,7 @@ docker-compose.yml
 - **频繁且原子地提交。** 不要把未提交修改留过夜；停工前 commit 或 stash。
 - **从干净主干合并回来：** `git checkout main` → `git merge feat/<scope>-<desc>`。每次合并后、开始下一项前跑相关测试。
 - **合并后清理：** `git worktree remove ../intelligent-<scope>` + `git branch -d feat/<scope>-<desc>` + `git worktree prune`。
-- **主工作目录只用于集成合并与主干同步**，不作为任何 agent 的开发工作区。
+- **主工作目录只用于集成合并与主干同步**，不作为任何 agent 的开发工作区。分支间切换后先 `git status` 检查未跟踪残留（见上节分支隔离规则）。
 
 完整工作流与冲突解决指引见 `docs/multi-agent-parallel-development-workflow.md`。
 
