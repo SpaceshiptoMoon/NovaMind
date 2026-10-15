@@ -116,8 +116,21 @@ class Document(BaseModel):
     # ========== 存储信息 ==========
 
     def get_storage_info(self) -> dict:
-        """读取存储 JSON 段（MinIO 桶/对象键/媒体产物锚点）。"""
-        return self.storage or {}
+        """读取存储 JSON 段（MinIO 桶/对象键/媒体产物锚点）。
+
+        旧键名归一：早期 backend-go 上传端点（8485d4dc）曾写入
+        ``{"bucket", "object_name", "etag"}``，与现行 ``minio_*`` 键并存于
+        存量数据；读取时映射回新键，避免逐个调用点兜底。
+        """
+        storage = self.storage or {}
+        if "minio_bucket" not in storage and "bucket" in storage:
+            storage = {
+                **storage,
+                "minio_bucket": storage["bucket"],
+                "minio_object_name": storage.get("object_name"),
+                "minio_etag": storage.get("etag"),
+            }
+        return storage
 
     def get_minio_bucket(self) -> str | None:
         """获取 MinIO 桶名"""

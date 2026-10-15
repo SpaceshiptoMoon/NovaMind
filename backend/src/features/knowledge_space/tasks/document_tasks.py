@@ -205,6 +205,17 @@ async def process_document_task(
             await batch_repo.refresh_summary(task.batch_id)
             await session.commit()
 
+        # 在首次 commit 后立即固化终态通知入参：后续 rollback 会 expire 实例，
+        # rollback 后再访问 document.uploader_id / filename 触发属性 refresh，
+        # async 会话下抛 MissingGreenlet，终态通知随之中断。
+        notify_ctx = {
+            "user_id": document.uploader_id,
+            "document_id": document_id,
+            "space_id": space_id,
+            "kb_id": kb_id,
+            "filename": document.filename,
+        }
+
         try:
             # 全量清理仅 REPROCESS 触发：REPROCESS 语义是「配置可能已变，全部重做」，
             # 必须清空所有旧产物（ES 分块 + MinIO 各前缀 + 快照指针）。
@@ -329,11 +340,24 @@ async def process_document_task(
             # 文本直接复用），临时文件 finally 统一清理。
             from novamind.features.knowledge_space.exceptions import (
                 DocumentProcessingError,
+                PermanentProcessingError,
             )
+            storage_info = document.get_storage_info()
+            # 边界守卫：无 MinIO 定位信息（桶/对象键）时下载必然失败，且重试
+            # 不会让键名长出来——判永久性错误直接终判，而非把 None 透传给
+            # MinIO SDK 换来正则匹配 TypeError 的隐晦堆栈。
+            if not storage_info.get("minio_bucket") or not storage_info.get("minio_object_name"):
+                raise PermanentProcessingError(
+                    document_id=document_id,
+                    error_message=(
+                        f"文档 {document.filename} 缺少对象存储定位信息"
+                        "（storage.minio_bucket/minio_object_name），无法下载解析"
+                    ),
+                )
+
             from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
 
-            storage_info = document.get_storage_info()
             import tempfile as _tempfile
 
             from novamind.setting.yaml_config import get_config as _get_config
@@ -395,11 +419,7 @@ async def process_document_task(
             # 终态通知上传者（commit 后）
             await _notify_document_terminal(
                 "completed",
-                user_id=document.uploader_id,
-                document_id=document_id,
-                space_id=space_id,
-                kb_id=kb_id,
-                filename=document.filename,
+                **notify_ctx,
             )
 
             # 8. Wiki 生成触发（KB 开启 wiki 才入队；失败不影响文档任务终态）
@@ -437,11 +457,7 @@ async def process_document_task(
             # 终态通知上传者
             await _notify_document_terminal(
                 "cancelled",
-                user_id=document.uploader_id,
-                document_id=document_id,
-                space_id=space_id,
-                kb_id=kb_id,
-                filename=document.filename,
+                **notify_ctx,
             )
 
         except TransientBusyError as asr_busy:
@@ -543,11 +559,7 @@ async def process_document_task(
                 await _unbind_job_safely(document_id, job_id=job_id)
                 await _notify_document_terminal(
                     "failed",
-                    user_id=document.uploader_id,
-                    document_id=document_id,
-                    space_id=space_id,
-                    kb_id=kb_id,
-                    filename=document.filename,
+                    **notify_ctx,
                     detail=str(e)[:200],
                 )
                 return
@@ -593,11 +605,7 @@ async def process_document_task(
                 # 终态通知上传者（重试中间态不发，只在最终失败时发）
                 await _notify_document_terminal(
                     "failed",
-                    user_id=document.uploader_id,
-                    document_id=document_id,
-                    space_id=space_id,
-                    kb_id=kb_id,
-                    filename=document.filename,
+                    **notify_ctx,
                     detail=str(e)[:200],
                 )
             else:

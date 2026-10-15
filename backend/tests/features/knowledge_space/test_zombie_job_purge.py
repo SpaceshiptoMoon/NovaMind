@@ -270,7 +270,7 @@ def test_recover_orphan_mark_failed_branch_cleans_arq_residue(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
@@ -324,7 +324,7 @@ def test_recover_orphan_requeue_branch_purges_old_jobs(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
@@ -391,7 +391,7 @@ def test_recover_orphan_covers_stale_pending(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             # 超龄 PENDING（25 天前入队，job 已丢失）——应被收编
@@ -450,7 +450,7 @@ def test_recover_orphan_skips_queued_stale_pending(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             # 超龄 3h 但 job 仍在队列——正常排队
@@ -503,7 +503,7 @@ def test_recover_orphan_skips_fresh_pending(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
@@ -555,7 +555,7 @@ async def _run_enqueue_zombie_case(*, latest_task_status: TaskStatus):
                 file_type="txt",
                 file_size=1,
                 file_hash="a" * 64,
-                storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
             )
         )
         session.add(
@@ -666,7 +666,7 @@ def test_memory_error_cascade_still_raises_retry_and_marks_task(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
@@ -768,7 +768,7 @@ def test_memory_error_disposes_engine_pool_before_retry_marking(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
@@ -862,7 +862,7 @@ def test_generic_error_keeps_engine_pool_alive(monkeypatch):
                     file_type="txt",
                     file_size=1,
                     file_hash="a" * 64,
-                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                    storage={"minio_bucket": "novamind-dev", "minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
                 )
             )
             session.add(
