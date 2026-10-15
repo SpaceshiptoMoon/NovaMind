@@ -1,5 +1,6 @@
 <template>
   <el-popover
+    v-model:visible="visible"
     trigger="click"
     placement="top-start"
     :width="260"
@@ -114,6 +115,7 @@ const currentLabel = computed(() => (props.modelValue ? props.modelValue : 'Auto
 
 function choose(value: string) {
   emit('update:modelValue', value)
+  // 受控绑定：置 false 真正收起 popper（此前只改本地箭头状态，面板仍展开）
   visible.value = false
 }
 </script>

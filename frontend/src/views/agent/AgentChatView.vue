@@ -428,15 +428,17 @@
                   <!-- teleported=false：popper 留在组件 DOM 内，scoped 样式直接生效；
                        宽度响应式：320px 满宽在极窄视口会溢出（抗压缩三档规范） -->
                   <el-popover
+                    v-model:visible="scopePopoverVisible"
                     placement="top-start"
                     :width="scopePopoverWidth"
                     trigger="click"
                     :teleported="false"
+                    popper-class="kb-scope-popper"
                     @show="onScopePopoverShow"
                   >
                     <template #reference>
                       <button
-                        class="mode-chip"
+                        class="mode-chip kb-scope-trigger"
                         :class="{ active: knowledgeScopeActive }"
                         title="限定知识工具与深度研究的检索范围"
                       >
@@ -467,7 +469,7 @@
                       <div class="kb-scope-actions">
                         <button class="kb-scope-btn" @click="clearKnowledgeScope">全部</button>
                         <button class="kb-scope-btn primary" @click="saveKnowledgeScope">
-                          应用
+                          应用{{ selectedSpaceIds.length ? `（${selectedSpaceIds.length}）` : '' }}
                         </button>
                       </div>
                     </div>
@@ -667,6 +669,7 @@ async function loadKnowledgeBindings(sessionId: string | null) {
 }
 
 async function saveKnowledgeScope() {
+  scopePopoverVisible.value = false
   const sessionId = agentStore.currentSessionId
   if (!sessionId) {
     // 新会话尚无 session_id：选择已暂存，首条消息建立会话后自动应用
@@ -685,6 +688,8 @@ async function saveKnowledgeScope() {
 
 function clearKnowledgeScope() {
   selectedSpaceIds.value = []
+  // 「全部」= 放弃限定检索全部可见空间，选完即收起
+  scopePopoverVisible.value = false
 }
 // 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
 const selectedModel = ref('')
@@ -1187,8 +1192,22 @@ async function applyKnowledgeScope() {
 // overflow:hidden 祖先会裁切溢出部分）
 const scopePopoverWidth = computed(() => Math.min(320, window.innerWidth - 24))
 
+// 受控开关：应用/全部后主动收起面板
+const scopePopoverVisible = ref(false)
+
+// 列表视口自适应高度：popper 向上弹出（top-start），列表过高会把标题/首项
+// 顶出视口上缘被裁。弹出时按「chip 上缘到视口顶的可用空间 − 面板其余部分
+// 固定高度（壳内距+标题+说明+操作行+间隙 ≈ 152px）− 8px 余量」精确钳制；
+// CSS 拿不到 chip 位置，只能在 show 时量。下限 120px 保证至少可见数项。
 function onScopePopoverShow() {
   ensureSpacesLoaded()
+  nextTick(() => {
+    const chip = document.querySelector<HTMLElement>('.kb-scope-trigger')
+    const list = document.querySelector<HTMLElement>('.kb-scope-list')
+    if (!chip || !list) return
+    const available = chip.getBoundingClientRect().top - 8 - 152
+    list.style.maxHeight = `${Math.max(120, Math.min(224, available))}px`
+  })
 }
 
 function goBack() {
@@ -2456,7 +2475,9 @@ onBeforeUnmount(() => {
 
 .input-area-inner.welcome-center {
   position: relative;
-  max-width: var(--container-width-sm);
+  /* 与对话态同宽（md 档）：sm 档 576px 装不下「+附件+4 chip+模型+发送」单行（需 ~610px），
+     换行会把右侧模型/发送簇挤到第二行；同宽也消除首条消息后卡片宽度跳变 */
+  max-width: var(--container-width-md);
   transform: translateY(calc(-50vh + 80px));
 }
 
@@ -2560,11 +2581,15 @@ onBeforeUnmount(() => {
 
 .input-modes {
   gap: 8px;
+  /* 极窄视口 chip 群整体放不下时换行（chip 本身 nowrap 不可压缩） */
+  flex-wrap: wrap;
 }
 
 .input-trailing {
   flex: none;
   gap: 12px;
+  /* 左侧工具簇 flex-wrap 换行时，右簇仍吸右，不落回第二行行首 */
+  margin-left: auto;
 }
 
 /* + 附件圆形按钮（dsh 风格 28px 圆） */
@@ -2636,32 +2661,48 @@ onBeforeUnmount(() => {
 .kb-scope-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .kb-scope-title {
   font-size: 13px;
-  font-weight: var(--weight-medium, 500);
+  font-weight: var(--weight-semibold, 600);
   color: var(--color-text);
 }
 
 .kb-scope-hint {
   font-size: 12px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary, #a1a1aa);
   line-height: 1.5;
+  margin-top: -6px;
 }
 
 .kb-scope-list {
   display: flex;
   flex-direction: column;
-  max-height: 200px;
+  /* 动态上限由 onScopePopoverShow 按 chip 到视口顶的可用空间精确设置；
+     此处 160px 仅作 CSS 加载先于 show 测量的保底，防极端场景顶出视口 */
+  max-height: 160px;
   overflow-y: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+  /* 窄列表滚动条贴边难点中：留出右缘呼吸空隙 */
+  scrollbar-gutter: stable;
 }
 
 .kb-scope-item {
-  height: auto;
+  height: 30px;
+  /* flex column 列表内禁收缩：不禁则超容器高的项被均摊压扁（20px），
+     scrollHeight==clientHeight 永不滚动 */
+  flex-shrink: 0;
   margin-right: 0;
-  padding: 2px 0;
+  padding: 0 8px;
+  border-radius: var(--radius-md, 8px);
+  transition: background var(--transition-fast);
+}
+
+.kb-scope-item:hover {
+  background: var(--color-bg-hover);
 }
 
 .kb-scope-item-name {
@@ -2671,41 +2712,54 @@ onBeforeUnmount(() => {
   max-width: 240px;
   display: inline-block;
   vertical-align: bottom;
+  font-size: 13px;
+  color: var(--color-text);
 }
 
 .kb-scope-empty {
   font-size: 12px;
   color: var(--color-text-tertiary, #a1a1aa);
-  padding: 4px 0;
+  padding: 8px 0;
+  text-align: center;
 }
 
 .kb-scope-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   border-top: 1px solid var(--color-border-light);
-  padding-top: 8px;
+  padding-top: 10px;
 }
 
 .kb-scope-btn {
-  height: 26px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 14px;
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 12px;
   cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .kb-scope-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .kb-scope-btn.primary {
   background: var(--color-chip-active);
   border-color: var(--color-chip-active);
+  color: var(--color-chip-active-text);
+  font-weight: var(--weight-medium, 500);
+}
+
+.kb-scope-btn.primary:hover {
+  background: var(--color-send-active-hover, #52525b);
+  border-color: var(--color-send-active-hover, #52525b);
   color: var(--color-chip-active-text);
 }
 
@@ -2901,5 +2955,17 @@ onBeforeUnmount(() => {
 .file-image {
   background: var(--color-file-image-bg);
   color: var(--color-file-image);
+}
+</style>
+
+<style>
+/* 知识范围 popper 外壳（teleported=false 留在组件内，但 popper 类不在任何
+   scoped 作用域，需全局穿透对齐输入卡设计语言：大圆角 + 精修阴影 + 呼吸感内距） */
+.kb-scope-popper.el-popover.el-popper {
+  padding: 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-lg);
 }
 </style>
