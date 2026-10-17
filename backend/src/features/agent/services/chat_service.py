@@ -788,9 +788,9 @@ class AgentChatService:
 
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
-        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径
+        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径；会话粒度冻结
         frozen_memory = await self._get_frozen_memory(
-            memory_manager, agent.id, user_id,
+            memory_manager, agent.id, user_id, conv.id,
             max_tokens=int((agent.context_window or 32768) * 0.20),
         )
 
@@ -947,9 +947,9 @@ class AgentChatService:
         )
         enabled_tools = agent.enabled_tools or []
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
-        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径
+        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径；会话粒度冻结
         frozen_memory = await self._get_frozen_memory(
-            memory_manager, agent.id, user_id,
+            memory_manager, agent.id, user_id, conv.id,
             max_tokens=int((agent.context_window or 32768) * 0.20),
         )
         cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}"
@@ -1014,18 +1014,21 @@ class AgentChatService:
         memory_manager: MemoryManager,
         agent_id: int,
         user_id: int,
+        conversation_id: int,
         max_tokens: int | None = None,
     ) -> str:
-        """获取长期记忆冻结快照（类级 TTL 缓存，会话内多轮命中同一字节）。
+        """获取长期记忆冻结快照（类级缓存，会话粒度冻结）。
 
-        记忆条目写入（consolidate/memory 工具）不会即时反映到 system prompt——
-        这正是冻结语义：prompt cache 的 system 前缀在 TTL 窗口内字节恒定，
-        新记忆在下个窗口才进入快照。MemoryManager 实例级的 _frozen_snapshot_cache
-        因每请求新建从未生效，此处类级缓存才是真正的冻结层。
+        冻结语义：快照按会话首请求时点冻结，会话期间字节恒定——记忆写入
+        （consolidate/memory 工具）不使当前会话的 system prompt 变化，
+        前缀 KV cache 不因 TTL 过期被撕裂；新记忆在下个会话进入快照。
+        MemoryManager 实例级的 _frozen_snapshot_cache 因每请求新建从未生效，
+        此处类级缓存才是真正的冻结层。
 
-        max_tokens 为快照护栏（调用方传窗口×20%），进入缓存键避免不同护栏串缓存。
+        conversation_id 与 max_tokens 都进缓存键：前者划定冻结边界，后者
+        避免不同护栏串缓存。
         """
-        cache_key = f"fm:{agent_id}:{user_id}:{max_tokens}"
+        cache_key = f"fm:{agent_id}:{user_id}:{conversation_id}:{max_tokens}"
         cached = self._get_class_cached(self._FROZEN_MEMORY_CACHE, cache_key)
         if cached is not None:
             return cached

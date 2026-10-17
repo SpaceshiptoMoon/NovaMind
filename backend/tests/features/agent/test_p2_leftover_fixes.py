@@ -156,7 +156,7 @@ async def test_attachment_injection_small_attachments_untouched():
 
 @pytest.mark.asyncio
 async def test_frozen_memory_cached_across_instances():
-    """P2-b：同 agent+user 的冻结快照跨 service 实例命中同一字节（记忆写入不即时反映）"""
+    """P2-b：同会话的冻结快照跨 service 实例命中同一字节（记忆写入不即时反映）"""
     from novamind.features.agent.services.chat_service import AgentChatService
 
     AgentChatService._FROZEN_MEMORY_CACHE.clear()
@@ -175,15 +175,15 @@ async def test_frozen_memory_cached_across_instances():
     svc_a = AgentChatService.__new__(AgentChatService)
     svc_b = AgentChatService.__new__(AgentChatService)
 
-    first = await svc_a._get_frozen_memory(_mm("- [偏好] 中文回答"), 7, 1)
+    first = await svc_a._get_frozen_memory(_mm("- [偏好] 中文回答"), 7, 1, 55)
     # 第二个实例（新请求）同 key：命中缓存，不再查 DB
-    second = await svc_b._get_frozen_memory(_mm("- [偏好] 英文回答"), 7, 1)
+    second = await svc_b._get_frozen_memory(_mm("- [偏好] 英文回答"), 7, 1, 55)
     assert first == second == "- [偏好] 中文回答"
-    assert len(calls) == 1, "TTL 窗口内第二次应命中缓存而非重查 DB"
+    assert len(calls) == 1, "会话内第二次应命中缓存而非重查 DB"
 
-    # 不同 key 照常穿透
-    other = await svc_b._get_frozen_memory(_mm("- 其他 agent 记忆"), 8, 1)
-    assert other == "- 其他 agent 记忆"
+    # 不同会话照常穿透（会话粒度冻结边界）
+    other = await svc_b._get_frozen_memory(_mm("- 其他会话快照"), 7, 1, 56)
+    assert other == "- 其他会话快照"
     assert len(calls) == 2
     AgentChatService._FROZEN_MEMORY_CACHE.clear()
 
@@ -205,7 +205,7 @@ async def test_frozen_memory_error_not_cached():
         return mm
 
     svc = AgentChatService.__new__(AgentChatService)
-    out = await svc._get_frozen_memory(_mm_err(), 7, 1)
+    out = await svc._get_frozen_memory(_mm_err(), 7, 1, 55)
     assert out == ""
     assert AgentChatService._FROZEN_MEMORY_CACHE == {}
     AgentChatService._FROZEN_MEMORY_CACHE.clear()

@@ -217,6 +217,45 @@ class AnthropicLLM(BaseLLM):
         return converted
 
     @staticmethod
+    def _apply_cache_breakpoints(
+        system: str | None, tools: list[dict] | None, messages: list[dict]
+    ) -> tuple[Any, list[dict] | None, list[dict]]:
+        """对 system/tools/messages 打 cache_control 断点（Anthropic 显式缓存标记）。
+
+        三断点：system 块、tools 尾部、末条消息最后 content 块。多轮请求中
+        system→tools→历史的公共前缀全部命中缓存，只有新增消息段计入全价；
+        Anthropic 上限 4 断点，3 个留 1 余量。
+
+        Returns:
+            (system, tools, messages)——system 变块列表（无 system 时 None），
+            tools/messages 原位修改后返回。
+        """
+        marker: dict = {"type": "ephemeral"}
+        system_kwarg: Any = None
+        if system:
+            system_kwarg = [{
+                "type": "text",
+                "text": system,
+                "cache_control": dict(marker),
+            }]
+        if tools:
+            tools[-1] = {**tools[-1], "cache_control": dict(marker)}
+        if messages:
+            last = messages[-1]
+            content = last.get("content")
+            if isinstance(content, str):
+                last["content"] = [{
+                    "type": "text",
+                    "text": content,
+                    "cache_control": dict(marker),
+                }]
+            elif isinstance(content, list) and content:
+                tail = content[-1]
+                if isinstance(tail, dict) and "cache_control" not in tail:
+                    tail["cache_control"] = dict(marker)
+        return system_kwarg, tools, messages
+
+    @staticmethod
     def _map_stop_reason(stop_reason: str | None) -> str:
         """Anthropic stop_reason → OpenAI finish_reason 语义。
 
@@ -382,18 +421,22 @@ class AnthropicLLM(BaseLLM):
         """
         async with self._get_semaphore():
             system_prompt, messages = self._build_messages(prompt)
+            converted_tools = self._convert_tools(tools) if tools else None
+            system_kwarg, converted_tools, converted_messages = self._apply_cache_breakpoints(
+                system_prompt, converted_tools, self._convert_messages(messages)
+            )
             kwargs: dict[str, Any] = {
                 "model": self.model,
-                "messages": self._convert_messages(messages),
+                "messages": converted_messages,
                 "max_tokens": max_tokens or self.default_max_tokens,
                 "temperature": temperature,
             }
-            if system_prompt:
-                kwargs["system"] = system_prompt
+            if system_kwarg:
+                kwargs["system"] = system_kwarg
             if top_p is not None:
                 kwargs["top_p"] = top_p
-            if tools:
-                kwargs["tools"] = self._convert_tools(tools)
+            if converted_tools:
+                kwargs["tools"] = converted_tools
             if enable_thinking:
                 kwargs["thinking"] = {"type": "enabled", "budget_tokens": max(1024, max_tokens // 2)}
 
@@ -457,18 +500,22 @@ class AnthropicLLM(BaseLLM):
         """
         async with self._get_semaphore():
             system_prompt, messages = self._build_messages(prompt)
+            converted_tools = self._convert_tools(tools) if tools else None
+            system_kwarg, converted_tools, converted_messages = self._apply_cache_breakpoints(
+                system_prompt, converted_tools, self._convert_messages(messages)
+            )
             kwargs: dict[str, Any] = {
                 "model": self.model,
-                "messages": self._convert_messages(messages),
+                "messages": converted_messages,
                 "max_tokens": max_tokens or self.default_max_tokens,
                 "temperature": temperature,
             }
-            if system_prompt:
-                kwargs["system"] = system_prompt
+            if system_kwarg:
+                kwargs["system"] = system_kwarg
             if top_p is not None:
                 kwargs["top_p"] = top_p
-            if tools:
-                kwargs["tools"] = self._convert_tools(tools)
+            if converted_tools:
+                kwargs["tools"] = converted_tools
             if enable_thinking:
                 kwargs["thinking"] = {"type": "enabled", "budget_tokens": max(1024, max_tokens // 2)}
 
