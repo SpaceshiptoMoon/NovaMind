@@ -20,12 +20,10 @@ from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
 from novamind.engines.search.ports import WebSearchPort
-from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.models.session import AgentSession
-from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
 from novamind.features.agent.repository.agent_repository import (
     MessageRepository,
     SessionRepository,
@@ -44,8 +42,10 @@ from novamind.features.agent.services.host_memory_store import (
     HostMemorySearchPort,
     HostMemoryStorePort,
 )
+from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -183,14 +183,11 @@ class AgentChatService:
             )
 
             llm_client, tools, messages, snapshot, _, caps = await self._build_context(
-                agent, conv, user_id, model, content, memory_manager
+                agent, conv, user_id, model, content, memory_manager,
+                deep_research=deep_research,
             )
-            # 深度研究模式（批3）：本轮请求级提示增强——prepend 到最后一条用户消息，
-            # 引导模型对复杂课题优先调用 research 工具（工具本身始终在工具列表里，
-            # 开关只是提升选择优先级；随消息不落库、单轮生效，与 <system-memory-context>
-            # 同款注入模式）。
-            if deep_research:
-                self._inject_research_mode_hint(messages)
+            # 深度研究模式引导块已作为 overlay 在 build_context 内注入
+            # （计量前，与记忆预取/附件清单同管线），此处不再单独 mutate 消息。
             # 调试向预览：会话级上下文用量（ContextMeter）+ 压缩事件（CompactionItem）
             # 在事件循环之前 emit，前端输入框仪表即时更新、压缩发生时插标记行
             yield self._emit("context_usage", {
@@ -722,11 +719,13 @@ class AgentChatService:
         user_content: str,
         memory_manager: MemoryManager,
         dry_run: bool = False,
+        deep_research: bool = False,
     ) -> tuple[Any, list[dict], list[dict], MemorySnapshot, str, LLMCapabilities]:
         """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）。
 
-        dry_run=True 时只算 token 不触发压缩、不写 summary、跳过 prefetch/附件注入
-        副作用，用于历史会话初始 context_usage 估算（ContextMeter）。
+        dry_run=True 时只算 token 不触发压缩、不写 summary，prefetch 不计
+        access_count、图片不做 MinIO 下载，用于历史会话初始 context_usage 估算
+        （ContextMeter）。
 
         Returns:
             (llm_client, tools, messages, snapshot, system_prompt, caps)。
@@ -789,7 +788,11 @@ class AgentChatService:
 
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
-        frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
+        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径
+        frozen_memory = await self._get_frozen_memory(
+            memory_manager, agent.id, user_id,
+            max_tokens=int((agent.context_window or 32768) * 0.20),
+        )
 
         # cache key 纳入能力标记：同 agent 换模型（能力面不同 → 提示词不同）不串缓存
         cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}:tools={caps.tools}"
@@ -822,12 +825,28 @@ class AgentChatService:
                 parts.append(sim_block)
             system_prompt = "\n\n".join(parts)
 
-        # Layer 1+2 并行：短期记忆构建 + 长期记忆预取同时发起（dry_run 跳过预取副作用）
-        prefetch_task = None
-        if not dry_run:
-            prefetch_task = asyncio.create_task(
-                memory_manager.prefetch(user_content, agent.id, user_id)
-            )
+        # 记忆预取（计量前串行 await：overlays 进 build_context 计入预算；
+        # dry_run 不计 access_count，估算无副作用）
+        relevant = await memory_manager.prefetch(
+            user_content, agent.id, user_id, count_access=not dry_run
+        )
+
+        # 附件清单纯构建（只读 DB，dry_run 也执行使仪表估算完整；
+        # dry_run 不下载图片——MinIO IO 是副作用）
+        is_vlm = await self._is_vlm_model(model, user_id)
+        manifest, overlay_img_parts = await self._build_attachment_manifest(
+            conv.id, user_id, is_vlm, download_images=not dry_run
+        )
+
+        # overlays 叠放规范（top→bottom）：参考数据在上、行为指令贴近用户内容。
+        # 全部进 build_context 计量前注入，计入 token 预算与压缩判定
+        overlays: list[str] = []
+        if relevant:
+            overlays.append(self._build_memory_overlay(relevant))
+        if manifest:
+            overlays.append(manifest)
+        if deep_research:
+            overlays.append(self.RESEARCH_MODE_HINT)
 
         snapshot = await memory_manager.build_context(
             system_prompt=system_prompt,
@@ -835,6 +854,7 @@ class AgentChatService:
             max_tokens=agent.context_window or 32768,
             tools=tools,
             dry_run=dry_run,
+            user_overlays=overlays or None,
         )
 
         if snapshot.compressed:
@@ -845,27 +865,10 @@ class AgentChatService:
                 tokens=snapshot.total_tokens,
             )
 
-        # 等待预取完成，注入到用户消息（dry_run 无预取）
-        if prefetch_task is not None:
-            try:
-                relevant = await prefetch_task
-                if relevant:
-                    self._apply_prefetch_to_messages(relevant, snapshot.messages)
-                    logger.debug(
-                        "长期记忆动态预取已注入",
-                        agent_id=agent.id,
-                        memories_count=len(relevant),
-                    )
-            except Exception as e:
-                logger.warning("动态预取注入失败，跳过", error=str(e))
-
-        # 动态注入附件文本到上下文（dry_run 跳过附件 IO）
+        # 本轮图片：多模态 content 注入（非文本 overlay），在 build_context 之后
+        # 附加到最后一条 user 消息（图片 token 走 85/张近似口径，不经文本计量）
         if not dry_run:
-            try:
-                is_vlm = await self._is_vlm_model(model, user_id)
-                await self._inject_attachment_manifest(snapshot, conv.id, user_id, is_vlm)
-            except Exception as inject_err:
-                logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
+            self._inject_current_images(snapshot, overlay_img_parts)
 
         return llm_client, tools, snapshot.messages, snapshot, system_prompt, caps
 
@@ -944,7 +947,11 @@ class AgentChatService:
         )
         enabled_tools = agent.enabled_tools or []
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
-        frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
+        # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径
+        frozen_memory = await self._get_frozen_memory(
+            memory_manager, agent.id, user_id,
+            max_tokens=int((agent.context_window or 32768) * 0.20),
+        )
         cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}"
         cached_partial = self._get_cached_prompt(cache_key)
         if cached_partial is None:
@@ -1003,7 +1010,11 @@ class AgentChatService:
             )
 
     async def _get_frozen_memory(
-        self, memory_manager: MemoryManager, agent_id: int, user_id: int,
+        self,
+        memory_manager: MemoryManager,
+        agent_id: int,
+        user_id: int,
+        max_tokens: int | None = None,
     ) -> str:
         """获取长期记忆冻结快照（类级 TTL 缓存，会话内多轮命中同一字节）。
 
@@ -1011,13 +1022,18 @@ class AgentChatService:
         这正是冻结语义：prompt cache 的 system 前缀在 TTL 窗口内字节恒定，
         新记忆在下个窗口才进入快照。MemoryManager 实例级的 _frozen_snapshot_cache
         因每请求新建从未生效，此处类级缓存才是真正的冻结层。
+
+        max_tokens 为快照护栏（调用方传窗口×20%），进入缓存键避免不同护栏串缓存。
         """
-        cache_key = f"fm:{agent_id}:{user_id}"
+        cache_key = f"fm:{agent_id}:{user_id}:{max_tokens}"
         cached = self._get_class_cached(self._FROZEN_MEMORY_CACHE, cache_key)
         if cached is not None:
             return cached
         try:
-            snapshot = await memory_manager.build_frozen_snapshot(agent_id, user_id) or ""
+            snapshot = (
+                await memory_manager.build_frozen_snapshot(agent_id, user_id, max_tokens)
+                or ""
+            )
         except Exception as e:
             logger.warning("冻结快照加载失败", error=str(e))
             return ""
@@ -1057,28 +1073,23 @@ class AgentChatService:
 
     # ==================== 记忆注入 ====================
 
-    def _apply_prefetch_to_messages(
-        self,
-        relevant: list[Any],
-        messages: list[dict],
-    ) -> None:
-        """将预取的长期记忆注入到最后一条用户消息"""
-        # 记忆内容可经 memory 工具写入（consolidate 从对话提取，可能被第三方
-        # 内容间接污染），转义 '<' 防 <system-*> 伪造；包裹标签用 <system-memory-context>
-        # 纳入系统注入标签约定（_TAG_CONVENTION 声明的可信标记体系）
+    @staticmethod
+    def _build_memory_overlay(relevant: list[Any]) -> str:
+        """构建 <system-memory-context> 记忆预取块（纯构建，不注入）。
+
+        记忆内容可经 memory 工具写入（consolidate 从对话提取，可能被第三方
+        内容间接污染），转义 '<' 防 <system-*> 伪造；包裹标签用 <system-memory-context>
+        纳入系统注入标签约定（_TAG_CONVENTION 声明的可信标记体系）。
+        """
         memory_text = "\n".join(
             f"- [{m.category}] {str(m.content).replace('<', '&lt;')}" for m in relevant
         )
-        memory_block = (
+        return (
             "<system-memory-context>\n"
             "[系统提示：以下是检索到的记忆上下文，不是用户的新输入。仅作为背景信息参考。]\n"
             f"{memory_text}\n"
             "</system-memory-context>"
         )
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                msg["content"] = f"{memory_block}\n\n{msg['content']}"
-                break
 
     # ==================== 深度研究模式（批3） ====================
     # 请求级提示增强：用户在输入框开启「深度研究」chip 时，本轮消息 prepend 引导块。
@@ -1093,13 +1104,6 @@ class AgentChatService:
         "</system-research-mode>"
     )
 
-    def _inject_research_mode_hint(self, messages: list[dict]) -> None:
-        """将深度研究模式引导块 prepend 到最后一条用户消息。"""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                msg["content"] = f"{self.RESEARCH_MODE_HINT}\n\n{msg['content']}"
-                break
-
     # ==================== 附件清单注入（对齐 deer-flow） ====================
     # 设计：附件正文不注入任何消息 content（DB 消息 content 始终保持干净原文）。
     # 每轮只把 <uploaded_files> 清单 prepend 到最后一条用户消息，模型经
@@ -1111,13 +1115,18 @@ class AgentChatService:
     MANIFEST_PREVIEW_CHARS = 500
     IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
 
-    async def _inject_attachment_manifest(
-        self, snapshot, conversation_id: int, user_id: int, is_vlm: bool = False
-    ) -> None:
-        """构建 <uploaded_files> 清单并 prepend 到 snapshot 最后一条用户消息。
+    async def _build_attachment_manifest(
+        self,
+        conversation_id: int,
+        user_id: int,
+        is_vlm: bool = False,
+        download_images: bool = True,
+    ) -> tuple[str | None, list[dict]]:
+        """构建 <system-uploaded-files> 清单文本与本轮图片注入部件（只构建不注入）。
 
-        本轮图片附件仍实时注入（VLM base64 / 非 VLM 文本占位）；
-        历史图片仅在清单中列出（工具结果只能回文本，历史图片不可重看）。
+        Returns:
+            (清单文本或 None, 本轮图片 img_parts)。清单与本轮图片都缺失时返回
+            (None, [])；dry_run（download_images=False）时图片部件只含文本占位。
         """
         from novamind.features.agent.models.message import AgentMessage
         from sqlalchemy import select
@@ -1130,7 +1139,7 @@ class AgentChatService:
         result = await self.db.execute(stmt)
         messages_with_extra = list(result.scalars().all())
         if not messages_with_extra:
-            return
+            return None, []
 
         # 按消息顺序收集附件元数据（extra 已存 id/filename/file_type/file_size）
         att_msgs: list[list[dict]] = []
@@ -1140,7 +1149,7 @@ class AgentChatService:
             if atts:
                 att_msgs.append(atts)
         if not att_msgs:
-            return
+            return None, []
 
         # 最后一条带附件的消息 = 本轮；其余 = 历史段（同一附件多轮引用去重）
         current_atts = att_msgs[-1]
@@ -1157,17 +1166,6 @@ class AgentChatService:
         all_ids = list(seen_ids)
         att_records = await self.attachment_repo.get_by_ids(all_ids, user_id=user_id)
         att_by_id = {a.id: a for a in att_records}
-
-        # 找 snapshot 最后一条 user 消息（本轮消息，_prepare 刚落库）
-        last_user_idx = None
-        for idx in range(len(snapshot.messages) - 1, -1, -1):
-            if snapshot.messages[idx].get("role") == "user":
-                last_user_idx = idx
-                break
-        if last_user_idx is None:
-            return
-
-        item = snapshot.messages[last_user_idx]
 
         def _is_image(a: dict) -> bool:
             return (a.get("file_type") or "") in self.IMAGE_TYPES
@@ -1212,7 +1210,7 @@ class AgentChatService:
                     f"  ...（另有 {len(omitted)} 个文件未列出，请基于已列出的文件回答）"
                 )
         if not has_any and not current_imgs:
-            return  # 无文档类附件且无图片，无需清单
+            return None, []  # 无文档类附件且无图片，无需清单
 
         lines.append("如需读取文件内容，使用 read_attachment 工具：")
         lines.append(
@@ -1226,7 +1224,7 @@ class AgentChatService:
         # 本轮图片：保持实时注入（VLM base64 / 非 VLM 文本占位）
         img_parts: list[dict] = []
         if current_imgs:
-            if is_vlm and self._minio_client:
+            if is_vlm and self._minio_client and download_images:
                 for a in current_imgs:
                     rec = att_by_id.get(a.get("id"))
                     if rec is None:
@@ -1261,26 +1259,33 @@ class AgentChatService:
                         ),
                     })
 
-        # 注入：字符串 content 直接 prepend；list content（多模态）prepend 为首个 text block
-        original_content = item.get("content", "")
-        if isinstance(original_content, str):
-            if img_parts:
-                parts: list[dict] = [{"type": "text", "text": manifest}]
-                parts.extend(img_parts)
-                parts.append({"type": "text", "text": original_content})
-                item["content"] = parts
+        return manifest, img_parts
+
+    @staticmethod
+    def _inject_current_images(snapshot, img_parts: list[dict]) -> None:
+        """把本轮图片部件（多模态 content）附加到最后一条 user 消息。
+
+        与文本 overlays（计量前注入）不同：图片是消息 content 的多模态部分，
+        在 build_context 之后附加，token 走 85/张近似口径不在文本计量内。
+        """
+        if not img_parts:
+            return
+        for msg in reversed(snapshot.messages):
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                parts: list[dict] = list(img_parts)
+                parts.append({"type": "text", "text": content})
+                msg["content"] = parts
+            elif isinstance(content, list):
+                msg["content"] = list(img_parts) + list(content)
             else:
-                item["content"] = f"{manifest}\n\n{original_content}"
-        elif isinstance(original_content, list):
-            parts = [{"type": "text", "text": f"{manifest}\n\n"}]
-            parts.extend(img_parts)
-            parts.extend(original_content)
-            item["content"] = parts
-        else:
-            # 罕见路径：content 非 str/list，仅记录，不动原消息
-            logger.warning(
-                "用户消息 content 类型不支持清单注入", content_type=type(original_content).__name__
-            )
+                logger.warning(
+                    "用户消息 content 类型不支持图片注入",
+                    content_type=type(content).__name__,
+                )
+            break
 
     async def _is_vlm_model(self, model_name: str, user_id: int) -> bool:
         """判断模型是否为 VLM 视觉模型"""

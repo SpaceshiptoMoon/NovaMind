@@ -133,6 +133,7 @@ class ShortTermMemory(IShortTermMemory):
         reserve_tokens: int = 1024,
         tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
+        user_overlays: list[str] | None = None,
     ) -> MemorySnapshot:
         """
         构建上下文快照
@@ -140,13 +141,18 @@ class ShortTermMemory(IShortTermMemory):
         Args:
             max_tokens: 模型上下文窗口大小（由 agent.context_window 决定，非生成上限）
             reserve_tokens: 为 LLM 生成预留的 token 数
+            user_overlays: 叠放在最后一条用户消息前的注入块（记忆预取/附件清单/
+                research 提示等），按列表顺序叠放。在 token 计量**之前**注入，
+                计入预算与压缩判定；压缩尾部保护区含最后一条 user 消息，
+                overlays 不会被压掉。
 
         步骤：
         1. 加载 DB 消息 + 工具调用记录
         2. 转换为 MemoryMessage 列表
-        3. 计算 token 数
-        4. 超出预算 → 压缩策略
-        5. 组装 OpenAI 格式 messages
+        3. overlays 叠放到最后一条 user 消息
+        4. 计算 token 数
+        5. 超出预算 → 压缩策略
+        6. 组装 OpenAI 格式 messages
         """
         # 1. 查询最新摘要
         summary_msg = None
@@ -187,6 +193,21 @@ class ShortTermMemory(IShortTermMemory):
         # 3. 如果有摘要，前置到消息列表
         if summary_msg:
             memory_messages = [summary_msg] + memory_messages
+
+        # 3.5 overlays 叠放：prepend 到最后一条 user 消息（计量前注入，计入预算）。
+        # 压缩器 _find_tail_cut 保证最后一条 user 消息在尾部保护区内，overlays 安全。
+        if user_overlays:
+            overlay_text = "\n\n".join(block for block in user_overlays if block)
+            if overlay_text:
+                for i in range(len(memory_messages) - 1, -1, -1):
+                    if memory_messages[i].role == "user":
+                        memory_messages[i] = MemoryMessage(
+                            role="user",
+                            content=f"{overlay_text}\n\n{memory_messages[i].content or ''}",
+                            token_count=memory_messages[i].token_count,
+                            metadata=memory_messages[i].metadata,
+                        )
+                        break
 
         # 3. 计算 token 预算（total = system + tools(schema) + messages，对齐 ContextMeter 三项）
         available_tokens = max_tokens - reserve_tokens

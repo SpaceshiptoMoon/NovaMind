@@ -181,6 +181,7 @@ class LongTermMemory(ILongTermMemory):
         query: str,
         top_k: int = 5,
         categories: list[str] | None = None,
+        count_access: bool = True,
     ) -> list[LongTermMemoryEntry]:
         """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE。
 
@@ -190,6 +191,8 @@ class LongTermMemory(ILongTermMemory):
             query: 检索查询文本。
             top_k: 返回条数上限。
             categories: 限定类别列表，None 不限。
+            count_access: 是否递增命中记忆的访问计数（access_count 是用户侧
+                召回热度指标；dry_run 估算等机器内部调用传 False）。
 
         Returns:
             按相关度排序的记忆条目；ES 不可用或无结果时降级 MySQL LIKE。
@@ -197,13 +200,15 @@ class LongTermMemory(ILongTermMemory):
         # 优先 ES 搜索
         if self._search and self._embedding_factory:
             es_results = await self._search_es(
-                agent_id, user_id, query, top_k, categories
+                agent_id, user_id, query, top_k, categories, count_access=count_access
             )
             if es_results:
                 return es_results
 
         # 降级到 MySQL LIKE
-        return await self._search_mysql(agent_id, user_id, query, top_k, categories)
+        return await self._search_mysql(
+            agent_id, user_id, query, top_k, categories, count_access=count_access
+        )
 
     async def consolidate(
         self,
@@ -237,6 +242,10 @@ class LongTermMemory(ILongTermMemory):
                 min_turns=min_turns,
             )
             return 0
+
+        return await self._consolidate_builtin(
+            agent_id, user_id, conversation_id, messages, max_recent_turns
+        )
 
         extraction_prompt = self._build_extraction_prompt(
             messages, max_recent_turns=max_recent_turns, max_prompt_tokens=3000
@@ -380,6 +389,7 @@ class LongTermMemory(ILongTermMemory):
         query: str,
         top_k: int,
         categories: list[str] | None,
+        count_access: bool = True,
     ) -> list[LongTermMemoryEntry]:
         """ES hybrid 搜索 → 回填 MySQL 完整数据"""
         try:
@@ -404,7 +414,8 @@ class LongTermMemory(ILongTermMemory):
             for r in results:
                 memory = await self._store.get_by_id(r["memory_id"])
                 if memory:
-                    await self._store.increment_access_count(memory.id)
+                    if count_access:
+                        await self._store.increment_access_count(memory.id)
                     entries.append(
                         LongTermMemoryEntry(
                             id=memory.id,
@@ -431,6 +442,7 @@ class LongTermMemory(ILongTermMemory):
         query: str,
         top_k: int,
         categories: list[str] | None,
+        count_access: bool = True,
     ) -> list[LongTermMemoryEntry]:
         """MySQL LIKE fallback"""
         memories = await self._store.search_by_keywords(
@@ -442,7 +454,8 @@ class LongTermMemory(ILongTermMemory):
         )
         entries = []
         for m in memories:
-            await self._store.increment_access_count(m.id)
+            if count_access:
+                await self._store.increment_access_count(m.id)
             entries.append(
                 LongTermMemoryEntry(
                     id=m.id,

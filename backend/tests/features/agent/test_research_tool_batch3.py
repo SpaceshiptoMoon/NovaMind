@@ -301,30 +301,17 @@ def test_provider_timeout_ms_unknown_tool_falls_back():
 # ==================== 深度研究模式提示注入 ====================
 
 
-def test_inject_research_mode_hint_prepends_to_last_user_message():
-    """开启深度研究：引导块 prepend 到最后一条用户消息。"""
+def test_research_mode_hint_overlay_contract():
+    """深度研究引导块是 <system-research-mode> 标签块，经 overlays 管线注入。
+
+    原 _inject_research_mode_hint 已并入 _build_context 的 overlays 计量前
+    注入（三处账外注入收编），此处验证提示块常量的结构契约（标签包裹 +
+    系统提示声明），叠放位置由 short_term.build_context 的 overlay 注入逻辑保证。
+    """
     from novamind.features.agent.services.chat_service import AgentChatService
 
-    messages = [
-        {"role": "user", "content": "早"},
-        {"role": "assistant", "content": "你好"},
-        {"role": "user", "content": "调研 RAG"},
-    ]
-    svc = AgentChatService.__new__(AgentChatService)
-    svc._inject_research_mode_hint(messages)
-    assert messages[0]["content"] == "早"
-    assert "<system-research-mode>" in messages[2]["content"]
-    assert messages[2]["content"].startswith("<system-research-mode>")
-    assert "调研 RAG" in messages[2]["content"]
-
-
-def test_research_mode_hint_absent_when_disabled():
-    """关闭深度研究：不注入引导块（chat_stream 分支不调注入器）。"""
-    from novamind.features.agent.services.chat_service import AgentChatService
-
-    assert "research" in AgentChatService.RESEARCH_MODE_HINT
-    # 注入方法是唯一写入点；分支 `if deep_research` 决定调用——此处验证方法本体行为对称
-    messages = [{"role": "user", "content": "普通问题"}]
-    svc = AgentChatService.__new__(AgentChatService)
-    svc._inject_research_mode_hint(messages)
-    assert messages[0]["content"].startswith("<system-research-mode>")
+    hint = AgentChatService.RESEARCH_MODE_HINT
+    assert hint.startswith("<system-research-mode>")
+    assert hint.rstrip().endswith("</system-research-mode>")
+    assert "research" in hint
+    assert "系统提示" in hint

@@ -129,13 +129,21 @@ class MemoryManager:
 
     # ==================== 长期记忆 ====================
 
-    async def build_frozen_snapshot(self, agent_id: int, user_id: int) -> str:
+    async def build_frozen_snapshot(
+        self, agent_id: int, user_id: int, max_tokens: int | None = None
+    ) -> str:
         """构建冻结快照：首次从 MySQL 加载后缓存到内存，会话期间不再查询 DB。
 
         真正的冻结：即使 consolidate 写入新记忆，当前会话的快照也不变。
         新记忆在下一个会话的首次 build_frozen_snapshot 时才可见。
+
+        Args:
+            agent_id: Agent ID。
+            user_id: 用户 ID。
+            max_tokens: 快照 token 护栏（chat_service 传窗口×20%，与 prompt_builder
+                分层丢弃阈值同口径）；None 不限。超限按条截断保留最新。
         """
-        cache_key = f"{agent_id}:{user_id}"
+        cache_key = f"{agent_id}:{user_id}:{max_tokens}"
         if cache_key in self._frozen_snapshot_cache:
             return self._frozen_snapshot_cache[cache_key]
 
@@ -147,8 +155,18 @@ class MemoryManager:
                 self._frozen_snapshot_cache[cache_key] = ""
                 return ""
 
-            lines = [f"- [{m.category}] {m.content}" for m in memories]
-            snapshot = "## 关于该用户的长期记忆\n" + "\n".join(lines)
+            budget = TokenBudget("gpt-4")
+            header = "## 关于该用户的长期记忆\n"
+            used = budget.count_text_tokens(header)
+            lines: list[str] = []
+            for m in memories:
+                line = f"- [{m.category}] {m.content}"
+                cost = budget.count_text_tokens(line) + 1
+                if max_tokens is not None and used + cost > max_tokens and lines:
+                    break
+                used += cost
+                lines.append(line)
+            snapshot = header + "\n".join(lines)
 
             # 冻结：缓存到内存，会话期间不再更新
             self._frozen_snapshot_cache[cache_key] = snapshot
@@ -163,14 +181,16 @@ class MemoryManager:
         agent_id: int,
         user_id: int,
         top_k: int = 3,
+        count_access: bool = True,
     ) -> list[LongTermMemoryEntry]:
-        """动态预取相关记忆（Phase 1: MySQL LIKE，Phase 2 添加 ES）。
+        """动态预取相关记忆。
 
         Args:
             query: 查询文本。
             agent_id: Agent ID。
             user_id: 用户 ID。
             top_k: 返回条数上限。
+            count_access: 是否递增命中记忆的访问计数（dry_run 估算传 False）。
 
         Returns:
             相关记忆条目列表；检索失败时为空列表。
@@ -181,6 +201,7 @@ class MemoryManager:
                 user_id=user_id,
                 query=query,
                 top_k=top_k,
+                count_access=count_access,
             )
         except Exception as e:
             logger.warning("长期记忆预取失败", error=str(e))
@@ -195,6 +216,7 @@ class MemoryManager:
         max_tokens: int,
         tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
+        user_overlays: list[str] | None = None,
     ) -> MemorySnapshot:
         """构建发送给 LLM 的完整上下文快照。
 
@@ -204,6 +226,8 @@ class MemoryManager:
             max_tokens: 模型上下文窗口大小（非生成上限）。
             tools: OpenAI tools schema 列表（计入 tools 分项 token），可空。
             dry_run: True 时只算 token 不触发压缩、不写摘要。
+            user_overlays: 叠放在最后一条用户消息前的注入块，按序叠放，
+                计入 token 预算（记忆预取/附件清单等），可空。
 
         Returns:
             MemorySnapshot，含格式化消息列表与 token 统计。
@@ -214,4 +238,5 @@ class MemoryManager:
             max_tokens=max_tokens,
             tools=tools,
             dry_run=dry_run,
+            user_overlays=user_overlays,
         )
