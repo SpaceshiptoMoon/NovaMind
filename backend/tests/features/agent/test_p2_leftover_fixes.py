@@ -211,6 +211,64 @@ async def test_frozen_memory_error_not_cached():
     AgentChatService._FROZEN_MEMORY_CACHE.clear()
 
 
+def test_frozen_cache_sliding_ttl_renews_on_hit():
+    """滑动 TTL：frozen 读命中刷新时间戳——活跃会话跨 300s 边界快照仍恒定。
+
+    反例（不误伤）：_PROMPT_CACHE（cached_partial）保持固定 TTL，读命中
+    不续期——否则高频 agent 的技能更新永不生效。
+    """
+    from novamind.features.agent.services.chat_service import AgentChatService
+
+    AgentChatService._FROZEN_MEMORY_CACHE.clear()
+    AgentChatService._PROMPT_CACHE.clear()
+    try:
+        # frozen：写入后把时间戳拨回 TTL-1s 边缘，读命中应续期到当前
+        AgentChatService._set_class_cached(AgentChatService._FROZEN_MEMORY_CACHE, "k", "v")
+        key_ts = AgentChatService._FROZEN_MEMORY_CACHE["k"][1]
+        AgentChatService._FROZEN_MEMORY_CACHE["k"] = ("v", key_ts - (AgentChatService._CACHE_TTL - 1))
+        assert AgentChatService._get_class_cached(
+            AgentChatService._FROZEN_MEMORY_CACHE, "k", sliding=True
+        ) == "v"
+        renewed_ts = AgentChatService._FROZEN_MEMORY_CACHE["k"][1]
+        assert renewed_ts > key_ts - (AgentChatService._CACHE_TTL - 1), "读命中应刷新时间戳"
+
+        # 再拨到「原写入已超 TTL 但续期后未超」：仍命中（续期生效的证据）
+        AgentChatService._FROZEN_MEMORY_CACHE["k"] = ("v", renewed_ts - (AgentChatService._CACHE_TTL - 1))
+        assert AgentChatService._get_class_cached(
+            AgentChatService._FROZEN_MEMORY_CACHE, "k", sliding=True
+        ) == "v"
+
+        # prompt cache（非滑动）：同样边缘时间戳，读命中不续期，值仍返回但 ts 不变
+        AgentChatService._set_class_cached(AgentChatService._PROMPT_CACHE, "p", "q")
+        p_ts = AgentChatService._PROMPT_CACHE["p"][1]
+        AgentChatService._PROMPT_CACHE["p"] = ("q", p_ts - (AgentChatService._CACHE_TTL - 1))
+        assert AgentChatService._get_class_cached(AgentChatService._PROMPT_CACHE, "p") == "q"
+        assert AgentChatService._PROMPT_CACHE["p"][1] == p_ts - (AgentChatService._CACHE_TTL - 1), (
+            "非滑动缓存读命中不得刷新时间戳"
+        )
+    finally:
+        AgentChatService._FROZEN_MEMORY_CACHE.clear()
+        AgentChatService._PROMPT_CACHE.clear()
+
+
+def test_frozen_cache_expired_after_inactivity():
+    """停止访问超 TTL：滑动续期不阻止过期回收（下轮穿透重建）。"""
+    from novamind.features.agent.services.chat_service import AgentChatService
+
+    AgentChatService._FROZEN_MEMORY_CACHE.clear()
+    try:
+        AgentChatService._set_class_cached(AgentChatService._FROZEN_MEMORY_CACHE, "k", "v")
+        key_ts = AgentChatService._FROZEN_MEMORY_CACHE["k"][1]
+        # 拨到超 TTL 且无续期发生
+        AgentChatService._FROZEN_MEMORY_CACHE["k"] = ("v", key_ts - (AgentChatService._CACHE_TTL + 1))
+        assert AgentChatService._get_class_cached(
+            AgentChatService._FROZEN_MEMORY_CACHE, "k", sliding=True
+        ) is None
+        assert "k" not in AgentChatService._FROZEN_MEMORY_CACHE, "过期项应被删除"
+    finally:
+        AgentChatService._FROZEN_MEMORY_CACHE.clear()
+
+
 # ==================== P2-c escape_system_tags ====================
 
 

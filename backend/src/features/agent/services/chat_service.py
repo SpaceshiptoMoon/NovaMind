@@ -1017,11 +1017,12 @@ class AgentChatService:
         conversation_id: int,
         max_tokens: int | None = None,
     ) -> str:
-        """获取长期记忆冻结快照（类级缓存，会话粒度冻结）。
+        """获取长期记忆冻结快照（类级缓存，会话粒度冻结 + 滑动 TTL 续期）。
 
         冻结语义：快照按会话首请求时点冻结，会话期间字节恒定——记忆写入
         （consolidate/memory 工具）不使当前会话的 system prompt 变化，
         前缀 KV cache 不因 TTL 过期被撕裂；新记忆在下个会话进入快照。
+        读命中滑动续期（活跃会话任意时长内恒定，停止访问 300s 后过期回收）。
         MemoryManager 实例级的 _frozen_snapshot_cache 因每请求新建从未生效，
         此处类级缓存才是真正的冻结层。
 
@@ -1029,7 +1030,7 @@ class AgentChatService:
         避免不同护栏串缓存。
         """
         cache_key = f"fm:{agent_id}:{user_id}:{conversation_id}:{max_tokens}"
-        cached = self._get_class_cached(self._FROZEN_MEMORY_CACHE, cache_key)
+        cached = self._get_class_cached(self._FROZEN_MEMORY_CACHE, cache_key, sliding=True)
         if cached is not None:
             return cached
         try:
@@ -1044,13 +1045,22 @@ class AgentChatService:
         return snapshot
 
     @classmethod
-    def _get_class_cached(cls, cache: dict, key: str) -> str | None:
-        """读类级 TTL 缓存，过期即删并返回 None。"""
+    def _get_class_cached(cls, cache: dict, key: str, sliding: bool = False) -> str | None:
+        """读类级 TTL 缓存，过期即删并返回 None。
+
+        sliding=True 时读命中刷新时间戳（活跃会话无限续期，停止访问后
+        TTL 自然过期回收）——frozen_memory 专用：会话任意时长内快照字节
+        恒定，前缀 KV cache 不因 TTL 边界被撕裂。_PROMPT_CACHE 保持固定
+        TTL：滑动续期会让高频 agent 的技能更新永不生效。
+        """
         entry = cache.get(key)
         if entry is None:
             return None
         prompt, ts = entry
-        if monotonic() - ts < cls._CACHE_TTL:
+        now = monotonic()
+        if now - ts < cls._CACHE_TTL:
+            if sliding:
+                cache[key] = (prompt, now)
             return prompt
         del cache[key]
         return None
