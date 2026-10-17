@@ -27,6 +27,7 @@ def _to_entry(memory: Any) -> LongTermMemoryEntry:
         source_conversation_id=memory.source_conversation_id,
         created_at=memory.created_at,
         updated_at=memory.updated_at,
+        extra_data=memory.extra_data,
     )
 
 
@@ -66,6 +67,7 @@ class HostMemoryStorePort:
         content: str,
         source_conversation_id: int | None = None,
         source_type: str = "consolidate",
+        extra_data: dict | None = None,
     ) -> LongTermMemoryEntry:
         """写入长期记忆并转换为引擎侧 LongTermMemoryEntry。
 
@@ -76,6 +78,7 @@ class HostMemoryStorePort:
             content: 记忆正文。
             source_conversation_id: 来源会话主键 ID；None 表示无会话来源。
             source_type: 来源类型，默认 consolidate（压缩归纳产物）。
+            extra_data: 附加结构化数据（如 {"mem0_id": ...}），可空。
 
         Returns:
             引擎侧记忆条目（flush 不 commit，事务由调用方收口）。
@@ -87,6 +90,7 @@ class HostMemoryStorePort:
             content=content,
             source_conversation_id=source_conversation_id,
             source_type=source_type,
+            extra_data=extra_data,
         )
         return _to_entry(memory)
 
@@ -166,6 +170,18 @@ class HostMemoryStorePort:
             无。
         """
         await self._repo.update(memory_id, content=content)
+
+    async def update_extra_data(self, memory_id: int, extra_data: dict) -> None:
+        """整体替换记忆的扩展元数据（Mem0 回灌时写 mem0_id 用）。
+
+        Args:
+            memory_id: 记忆主键 ID。
+            extra_data: 新的扩展元数据（整体覆盖，不合并）。
+
+        Returns:
+            无。
+        """
+        await self._repo.update(memory_id, extra_data=extra_data)
 
     async def delete(self, memory_id: int) -> bool:
         """删除记忆条目，返回是否实际删除。

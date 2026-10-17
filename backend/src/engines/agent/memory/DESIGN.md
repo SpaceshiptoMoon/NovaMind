@@ -1082,3 +1082,33 @@ memory 内置工具：
 13. 验证安全扫描：注入恶意内容的记忆被拒绝
 14. 验证上下文围栏：`<memory-context>` 标签正确包裹预取记忆
 15. `pytest tests/ -m integration` 通过
+
+---
+
+## 十七、Mem0 调和管线（2026-10-17 P1 落地）
+
+`agent.memory.backend: mem0` 时，`consolidate` 改走 `Mem0Reconciler`（`mem0_reconciler.py`）：
+Mem0 做写入期「提取+语义调和」（ADD/UPDATE/DELETE 事件），MySQL `agent_memories`
+仍是 source-of-truth，ES hybrid 读取链路零改动。映射经 `extra_data.mem0_id`。
+
+关键事实（PoC 实测，`docs/plans/active/agent-mem0-integration-plan.md` §0）：
+
+- mem0ai 2.2.1 依赖 openai 3.31（httpx2 传输层）；`history_size` 不是 mem0
+  config schema 键；ES provider 的 host 不能带端口（拼 host:port）。
+- v1.1 模式冲突改写产出 ADD 而非 UPDATE；UPDATE/DELETE 真调和是 P3（v2 模式）。
+- DELETE 事件携带 `removed_memory` 字段（无 `memory`/`data`）。
+- LLM 走用户默认模型原始连接参数（`ModelConfigService.get_model_connection_params`）；
+  embedder 同理（自研网关无 /v1/embeddings）。
+
+防御与降级（失败方向 = 不动真源）：
+
+- Mem0 产出过 `scan_memory_content` 门禁 + 50 条上限检查，与人工写入同口径；
+- ADD/UPDATE/DELETE 按 `extra_data.mem0_id` 定位，悬空时 `previous_memory`/
+  `removed_memory` 内容子串二跳，仍找不到则放弃该事件 + warning；
+- 单事件失败不阻断其余事件；reconciler 任意异常降级 `_consolidate_builtin`
+  （原内置提取路径，builtin 默认后端零新增依赖）；
+- 管理端点 `DELETE /agents/{id}/memories/{memory_id}` 联动删 Mem0 工作存储
+  （防幽灵记忆），失败仅告警可经回灌重建（`rebuild_from_mysql`）。
+
+验证：`pytest tests/engines/agent/test_mem0_reconciler.py`（14 例：事件映射三例 /
+注入拦截 / 上限 / 悬空兜底 / 降级 / 防御性解析 / LRU）。

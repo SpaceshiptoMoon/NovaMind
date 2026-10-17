@@ -205,3 +205,15 @@ agent:
       python: "python:3.12-slim"
       javascript: "node:20-slim"
       shell: "bash:5"
+  memory:
+    # 长期记忆巩固后端：builtin（内置 LLM 提取，默认）| mem0（Mem0 语义调和，
+    # 需 uv sync --extra mem0）。mem0 后端 LLM/embedding 走用户模型配置原始参数。
+    backend: builtin
+    # Mem0 工作存储的 ES collection 名（只服务调和比对，不对外检索）
+    es_collection: "novamind_mem0"
+    # 调和时参考的存量相似记忆条数
+    history_size: 5
+    # 每轮对话结束异步巩固（默认关：行为变化大，仅压缩时触发巩固）
+    on_turn_done: false
+    # AsyncMemory 实例 LRU 缓存数
+    lru_size: 16

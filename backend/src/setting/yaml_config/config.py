@@ -305,10 +305,31 @@ class SandboxConfigYaml:
 
 
 @dataclass
+class AgentMemoryConfigYaml:
+    """agent.memory 段：长期记忆巩固后端（Mem0 调和管线）配置。
+
+    backend=mem0 时经 Mem0 做「提取+语义调和」（ADD/UPDATE/DELETE 事件），
+    MySQL agent_memories 仍是 source-of-truth；builtin 为内置提取路径（默认，
+    零额外依赖）。mem0 后端要求安装 mem0 extra（uv sync --extra mem0）。
+    """
+
+    backend: str = "builtin"
+    # Mem0 工作存储的 ES collection 名（只服务调和时相似比对，不对外检索）
+    es_collection: str = "novamind_mem0"
+    # 调和时 Mem0 参考的存量相似记忆条数
+    history_size: int = 5
+    # 每轮对话结束后异步巩固（行为变化大，默认关，P3 再启用）
+    on_turn_done: bool = False
+    # AsyncMemory 实例 LRU 缓存数（按 base_url/model/api_key 指纹为键）
+    lru_size: int = 16
+
+
+@dataclass
 class AgentConfig:
     """agent feature 的 YAML 配置段。"""
 
     sandbox: SandboxConfigYaml = field(default_factory=SandboxConfigYaml)
+    memory: AgentMemoryConfigYaml = field(default_factory=AgentMemoryConfigYaml)
 
 
 @dataclass

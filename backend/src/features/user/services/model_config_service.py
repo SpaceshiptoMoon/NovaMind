@@ -1028,6 +1028,44 @@ class ModelConfigService:
             return configs[0].model
         return None
 
+    async def get_model_connection_params(
+        self, user_id: int, model_type: str
+    ) -> dict[str, Any]:
+        """取用户默认模型的原始连接参数（Mem0 调和管线专用）。
+
+        与 get_*_client_by_model 的差异：返回裸参数而非客户端实例——Mem0 需要
+        base_url/api_key/model 三元组自建 openai 兼容通道（网关无 /v1/embeddings）。
+        api_key 解密产物只在进程内传递，禁止落日志。
+
+        Args:
+            user_id: 用户 ID。
+            model_type: 模型类型（llm/embedding）。
+
+        Returns:
+            {base_url, api_key, model, protocol}；api_key 可能为 None。
+
+        Raises:
+            ModelConfigNotFoundError: 该类型下无任何用户配置（不兜底回退）。
+        """
+        model_name = await self.get_user_default_model_name(user_id, model_type)
+        if not model_name:
+            raise ModelConfigNotFoundError(
+                message=f"用户 {user_id} 未配置 {model_type} 模型"
+            )
+        credentials = await self.get_credentials_by_model(
+            user_id, model_type, model_name
+        )
+        if not credentials:
+            raise ModelConfigNotFoundError(
+                message=f"{model_type}/{model_name} 凭据不存在"
+            )
+        return {
+            "base_url": credentials.base_url or "",
+            "api_key": credentials.api_key or "",
+            "model": credentials.model,
+            "protocol": credentials.protocol,
+        }
+
     # ========== 删除影响检查 ==========
 
     async def _check_delete_impact(

@@ -49,13 +49,15 @@ class LongTermMemory(ILongTermMemory):
         prompt_provider: PromptManager,
         memory_search: HostMemorySearchPort | None = None,
         embedding_factory: Callable | None = None,
+        reconciler: Any | None = None,
     ):
-        """注入记忆存储、LLM 工厂与 prompt 提供者；搜索与 embedding 端口可选，缺省时分别降级 MySQL LIKE 与跳过向量化。"""
+        """注入记忆存储、LLM 工厂与 prompt 提供者；搜索与 embedding 端口可选，缺省时分别降级 MySQL LIKE 与跳过向量化。reconciler 提供时 consolidate 走 Mem0 调和管线，失败降级内置提取。"""
         self._store = memory_store
         self._llm_factory = llm_client_factory
         self._prompt_provider = prompt_provider
         self._search = memory_search
         self._embedding_factory = embedding_factory
+        self._reconciler = reconciler
 
     async def store(
         self,
@@ -219,16 +221,13 @@ class LongTermMemory(ILongTermMemory):
         min_turns: int = 5,
         max_recent_turns: int = 10,
     ) -> int:
-        """
-        从对话消息中提取并存储有价值的长期记忆
+        """从对话消息中提取并存储有价值的长期记忆。
 
-        步骤：
-        0. 轮次检查：低于 min_turns 则跳过
-        1. 预筛选：只取最近 N 轮消息
-        2. 构建提取 prompt（含 Token 上限保护）
-        3. 调用 LLM 提取结构化记忆（JSON 格式）
-        4. 解析提取结果
-        5. 逐条去重检查后存入数据库
+        配置了 Mem0 reconciler 时走 Mem0 提取+语义调和管线；任何失败降级内置
+        提取路径（_consolidate_builtin）。两类路径共享轮次门禁与消息预算。
+
+        Returns:
+            新存储/调和应用的记忆条目数量。
         """
         if not messages:
             return 0
@@ -243,10 +242,39 @@ class LongTermMemory(ILongTermMemory):
             )
             return 0
 
+        if self._reconciler is not None:
+            try:
+                applied = await self._reconciler.reconcile(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    messages=messages,
+                )
+                logger.info(
+                    "Mem0 记忆调和完成",
+                    agent_id=agent_id,
+                    conversation_id=conversation_id,
+                    applied=applied,
+                )
+                return applied
+            except Exception as e:
+                logger.warning(
+                    "Mem0 调和失败，降级内置提取", error=str(e)
+                )
+
         return await self._consolidate_builtin(
             agent_id, user_id, conversation_id, messages, max_recent_turns
         )
 
+    async def _consolidate_builtin(
+        self,
+        agent_id: int,
+        user_id: int,
+        conversation_id: int,
+        messages: list[MemoryMessage],
+        max_recent_turns: int = 10,
+    ) -> int:
+        """内置提取路径：LLM 提取结构化记忆 → 精确匹配去重 → store。"""
         extraction_prompt = self._build_extraction_prompt(
             messages, max_recent_turns=max_recent_turns, max_prompt_tokens=3000
         )

@@ -10,6 +10,7 @@ import yaml
 from .config import (
     AdminConfig,
     AgentConfig,
+    AgentMemoryConfigYaml,
     AppConfig,
     ASRConfig,
     DatabaseConfig,
@@ -355,6 +356,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
 
     agent = data.get("agent", {})
     sandbox = agent.get("sandbox", {})
+    memory = agent.get("memory", {})
     config.agent = AgentConfig(
         sandbox=SandboxConfigYaml(
             enabled=sandbox.get("enabled", False),
@@ -373,7 +375,14 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
                     "shell": "bash:5",
                 },
             ),
-        )
+        ),
+        memory=AgentMemoryConfigYaml(
+            backend=memory.get("backend", "builtin"),
+            es_collection=memory.get("es_collection", "novamind_mem0"),
+            history_size=memory.get("history_size", 5),
+            on_turn_done=memory.get("on_turn_done", False),
+            lru_size=memory.get("lru_size", 16),
+        ),
     )
 
     dr = data.get("deep_research", {})

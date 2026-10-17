@@ -67,6 +67,7 @@ class MemoryManager:
         agent_id: int | None = None,
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
+        reconciler: Any | None = None,
     ) -> MemoryManager:
         """工厂方法：创建完整配置的 MemoryManager。
 
@@ -86,6 +87,7 @@ class MemoryManager:
             agent_id: Agent ID，可空。
             user_id: 用户 ID，可空。
             auxiliary_llm_factory: 压缩用辅助 LLM 工厂，可空。
+            reconciler: Mem0 调和器，可空；None 时 consolidate 走内置提取。
 
         Returns:
             组装完成的 MemoryManager 实例。
@@ -97,6 +99,7 @@ class MemoryManager:
             prompt_provider=prompt_provider,
             memory_search=memory_search,
             embedding_factory=embedding_factory,
+            reconciler=reconciler,
         )
 
         # 压缩策略：ContextCompressor（五阶段结构化压缩 + 压缩时记忆提取）

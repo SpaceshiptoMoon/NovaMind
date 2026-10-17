@@ -44,7 +44,9 @@ from novamind.features.agent.services.host_memory_store import (
 )
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.setting.yaml_config.loader import get_config
 from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
@@ -177,7 +179,7 @@ class AgentChatService:
             knowledge_search_port = self._knowledge_search_port
 
             # 创建 MemoryManager（每请求实例）
-            memory_manager = self._create_memory_manager(
+            memory_manager = await self._create_memory_manager(
                 agent, user_id, model, conv.id,
                 memory_store, memory_search, prompt_provider,
             )
@@ -546,7 +548,7 @@ class AgentChatService:
             raise AgentError("未配置可用的 LLM 模型，请先在模型配置中添加 LLM 模型")
         return model
 
-    def _create_memory_manager(
+    async def _create_memory_manager(
         self,
         agent: AgentDefinition,
         user_id: int,
@@ -581,6 +583,21 @@ class AgentChatService:
         async def auxiliary_llm_factory():
             return await llm_factory()
 
+        reconciler = None
+        if get_config().agent.memory.backend == "mem0":
+            try:
+                reconciler = await self._build_memory_reconciler(
+                    user_id=user_id,
+                    agent_id=agent.id,
+                    memory_store=memory_store,
+                    memory_search=memory_search,
+                    embedding_factory=embedding_factory if memory_search else None,
+                )
+            except Exception as e:
+                # 装配失败（模型参数缺失/mem0ai 未装）→ warning 后走 builtin，
+                # 不阻断对话
+                logger.warning("Mem0 reconciler 装配失败，降级 builtin", error=str(e))
+
         return MemoryManager.create(
             message_repository=self.msg_repo,
             tool_call_repository=self.tc_repo,
@@ -597,6 +614,88 @@ class AgentChatService:
             agent_id=agent.id,
             user_id=user_id,
             auxiliary_llm_factory=auxiliary_llm_factory,
+            reconciler=reconciler,
+        )
+
+    async def _build_memory_reconciler(
+        self,
+        user_id: int,
+        agent_id: int,
+        memory_store: HostMemoryStorePort,
+        memory_search: HostMemorySearchPort | None,
+        embedding_factory=None,
+    ):
+        """构造 Mem0 调和器：按用户当前默认 LLM/embedding 模型的原始连接参数现配。
+
+        每次请求新配一份（模型配置变更即时生效）；AsyncMemory 实例在 reconciler
+        内部按参数指纹 LRU，避免同用户反复握手。
+
+        Args:
+            user_id: 用户 ID（决定 LLM/embedding 连接参数）。
+            agent_id: Agent ID（Mem0 agent_id 命名空间）。
+            memory_store: MySQL 真源读写端口。
+            memory_search: ES hybrid 端口，可空。
+            embedding_factory: embedding 客户端工厂（Mem0 产出索引 ES 用），可空。
+
+        Returns:
+            Mem0Reconciler 实例。
+
+        Raises:
+            Exception: mem0ai 缺失在首次 reconcile 才暴露；模型配置缺失此处即抛。
+        """
+        llm_params = await self.model_config_service.get_model_connection_params(
+            user_id, "llm"
+        )
+        embedding_params = await self.model_config_service.get_model_connection_params(
+            user_id, "embedding"
+        )
+        # Mem0 只有 openai 兼容 provider；anthropic 等其他协议端点用 OpenAI SDK
+        # 调用会得到包着错误的 200（choices=null）→ 管线全空转。装配期显式拒绝，
+        # 由调用方降级 builtin，不偷换成别的模型
+        for name, params in (("llm", llm_params), ("embedding", embedding_params)):
+            if params.get("protocol") != "openai":
+                raise ModelConfigNotFoundError(
+                    message=(
+                        f"Mem0 调和需要 openai 兼容协议，当前 {name} 模型 "
+                        f"{params.get('model')} 协议为 {params.get('protocol')}"
+                    )
+                )
+        # Mem0 是同步构造/异步调用混合 API，连接参数在构造期解析（当前请求的
+        # 事件循环内完成解密），不跨事件循环传递 coroutine
+        es_cfg = get_config().elasticsearch
+        mem_cfg = get_config().agent.memory
+        # mem0 ES provider 拼 host:port，host 必须不带端口
+        from novamind.engines.agent.memory.mem0_reconciler import Mem0Reconciler, split_es_host
+
+        es_host, es_port = split_es_host(es_cfg.hosts[0] if es_cfg.hosts else "http://localhost")
+
+        return Mem0Reconciler(
+            llm_params={
+                "model": llm_params["model"],
+                "openai_base_url": llm_params["base_url"],
+                "api_key": llm_params["api_key"],
+            },
+            embedding_params={
+                "model": embedding_params["model"],
+                "openai_base_url": embedding_params["base_url"],
+                "api_key": embedding_params["api_key"],
+            },
+            es_params={
+                "host": es_host,
+                "port": es_port,
+                "user": es_cfg.username,
+                "password": es_cfg.password,
+                # Mem0 embedder 用用户配置的 embedding 模型，维度以配置声明为准
+                "embedding_model_dims": es_cfg.default_embedding_dim,
+            },
+            store=memory_store,
+            search=memory_search,
+            embedding_factory=embedding_factory,
+            es_collection=mem_cfg.es_collection,
+            history_size=mem_cfg.history_size,
+            lru_size=mem_cfg.lru_size,
+            owner_user_id=user_id,
+            owner_agent_id=agent_id,
         )
 
     def _build_embedding_resolver(self, user_id: int):
@@ -912,7 +1011,7 @@ class AgentChatService:
         conv = await self.agent_service.get_session(user_id, session_id)
         agent = await self.agent_service.get_agent_or_fail(user_id, conv.agent_id)
         model = await self._resolve_model(user_id, agent, None)
-        memory_manager = self._create_memory_manager(
+        memory_manager = await self._create_memory_manager(
             agent, user_id, model, conv.id,
             self._memory_store_port, self._memory_search_port, self._prompt_provider,
         )
@@ -941,7 +1040,7 @@ class AgentChatService:
         conv = await self.agent_service.get_session(user_id, session_id)
         agent = await self.agent_service.get_agent_or_fail(user_id, conv.agent_id)
         model = await self._resolve_model(user_id, agent, None)
-        memory_manager = self._create_memory_manager(
+        memory_manager = await self._create_memory_manager(
             agent, user_id, model, conv.id,
             self._memory_store_port, self._memory_search_port, self._prompt_provider,
         )

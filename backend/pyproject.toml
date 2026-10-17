@@ -10,7 +10,11 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "bs4>=0.0.2",
     "fastapi>=0.128.0",
-    "openai>=2.14.0",
+    # openai 3.x：传输层切换 httpx2（独立包，与直接依赖 httpx 共存）。
+    # 3.31 实测兼容现有用法：chat.completions/embeddings 接口面、异常类型、
+    # http_client 传旧 httpx.AsyncClient 均适配（Mem0 PoC 2026-10-16 验证）。
+    # 注意 httpx2 对 header 值强制 ascii 编码——api_key 解密产物必须纯 ASCII。
+    "openai>=3.31.0",
     "pdfplumber>=0.11.9",
     "pydantic[email]>=2.12.5",
     "pydantic-settings>=2.12.0",
@@ -104,6 +108,12 @@ test = [
 # Docker 镜像经 uv sync --frozen --extra deepdoc-vision 安装（docker/Dockerfile）；本地可选。
 deepdoc-vision = [
     "onnx>=1.16.0",
+]
+# Agent 长期记忆 Mem0 调和管线（agent.memory.backend=mem0 时必需；builtin 默认
+# 后端零新增依赖）。mem0ai 拖 openai>=3.31 与 httpx2——主项目 openai 已升 3.31
+# 全仓验证过（2026-10-16），无版本冲突。
+mem0 = [
+    "mem0ai>=0.1.0",
 ]
 
 [project.scripts]

@@ -98,6 +98,7 @@ class LongTermMemoryEntry:
     source_conversation_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    extra_data: dict | None = None
 
 
 __all__ = [

@@ -44,6 +44,7 @@ from novamind.features.agent.schemas.agent_schema import (
     SessionResponse,
     ToolCallResponse,
 )
+from novamind.setting.yaml_config.loader import get_config
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -871,7 +872,7 @@ class AgentService:
     async def delete_memory(
         self, user_id: int, agent_id: int, memory_id: int
     ) -> None:
-        """删除指定记忆（MySQL + ES）。
+        """删除指定记忆（MySQL + ES + Mem0 工作存储联动）。
 
         Args:
             user_id: 当前用户 ID，用于归属校验。
@@ -879,7 +880,7 @@ class AgentService:
             memory_id: 记忆主键 ID。
 
         Returns:
-            无；ES 删除失败仅告警，仍删除 MySQL 记录。
+            无；ES/Mem0 删除失败仅告警，仍删除 MySQL 记录。
 
         Raises:
             AgentNotFoundError: Agent 不存在，或私有 Agent 非属主。
@@ -902,8 +903,80 @@ class AgentService:
         except Exception as e:
             logger.warning("ES 记忆删除失败，仅删除 MySQL", error=str(e))
 
+        # Mem0 工作存储联动删除：残留会让后续调和基于幽灵记忆产出错误 UPDATE。
+        # 失败仅告警——MySQL 真源删除不受影响，Mem0 侧可经回灌重建修复。
+        mem0_id = (memory.extra_data or {}).get("mem0_id")
+        if mem0_id and get_config().agent.memory.backend == "mem0":
+            try:
+                await self._delete_mem0_entry(
+                    agent_id, user_id, str(mem0_id), content=memory.content
+                )
+            except Exception as e:
+                logger.warning(
+                    "Mem0 工作存储联动删除失败", memory_id=memory_id, error=str(e)
+                )
+
         await self.memory_repo.delete(memory_id)
         await self.db.commit()
+
+    async def _delete_mem0_entry(
+        self, agent_id: int, user_id: int, mem0_id: str, content: str | None = None
+    ) -> None:
+        """按 mem0_id 删除 Mem0 工作存储条目（需模型连接参数构造 reconciler）。
+
+        Args:
+            agent_id: Agent 主键 ID。
+            user_id: 属主用户 ID。
+            mem0_id: Mem0 记忆 ID。
+            content: 记忆内容（ID 直删 404 时按内容检索兜底），可空。
+
+        Raises:
+            Exception: mem0ai 未安装或 Mem0 调用失败（调用方仅告警）。
+        """
+        from novamind.engines.agent.memory.mem0_reconciler import (
+            Mem0Reconciler,
+            split_es_host,
+        )
+        from novamind.features.user.services.model_config_service import (
+            ModelConfigService,
+        )
+
+        model_config_service = ModelConfigService(self.db)
+        llm_params = await model_config_service.get_model_connection_params(
+            user_id, "llm"
+        )
+        embedding_params = await model_config_service.get_model_connection_params(
+            user_id, "embedding"
+        )
+        es_cfg = get_config().elasticsearch
+        mem_cfg = get_config().agent.memory
+        es_host, es_port = split_es_host(es_cfg.hosts[0] if es_cfg.hosts else "http://localhost")
+
+        reconciler = Mem0Reconciler(
+            llm_params={
+                "model": llm_params["model"],
+                "openai_base_url": llm_params["base_url"],
+                "api_key": llm_params["api_key"],
+            },
+            embedding_params={
+                "model": embedding_params["model"],
+                "openai_base_url": embedding_params["base_url"],
+                "api_key": embedding_params["api_key"],
+            },
+            es_params={
+                "host": es_host,
+                "port": es_port,
+                "user": es_cfg.username,
+                "password": es_cfg.password,
+                "embedding_model_dims": es_cfg.default_embedding_dim,
+            },
+            store=None,
+            search=None,
+            es_collection=mem_cfg.es_collection,
+            owner_user_id=user_id,
+            owner_agent_id=agent_id,
+        )
+        await reconciler.delete_by_mem0_id(mem0_id, content=content)
 
     async def get_memory_stats(
         self, user_id: int, agent_id: int
