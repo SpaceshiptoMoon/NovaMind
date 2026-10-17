@@ -261,6 +261,24 @@ const router = createRouter({
           component: () => import('@/views/app/resume/ResumeApp.vue'),
           meta: { title: '简历挖掘', requiresApp: 'app' },
         },
+        {
+          path: 'apps/skills',
+          name: 'SkillsMarketplace',
+          component: () => import('@/views/skill/SkillMarketplaceView.vue'),
+          meta: { title: '技能广场', requiresApp: 'skill' },
+        },
+        {
+          path: 'apps/skills/admin',
+          name: 'SkillAdmin',
+          component: () => import('@/views/skill/SkillAdminView.vue'),
+          meta: { title: '技能审核', requiresPermission: 'skill.config' },
+        },
+        {
+          path: 'apps/skills/:skillId',
+          name: 'SkillDetail',
+          component: () => import('@/views/skill/SkillDetailView.vue'),
+          meta: { title: '技能详情' },
+        },
         // 统一工作台：WorkspaceLayout 已在 /home 顶层，此节点仅承载 children 嵌套与 redirect
         {
           path: 'workspace',
@@ -298,23 +316,18 @@ const router = createRouter({
               path: 'research/:spaceId(\\d+)/history',
               redirect: '/home/workspace/chat',
             },
+            // 技能广场已迁入应用中心（/home/apps/skills），旧路径保留重定向
             {
               path: 'skills',
-              name: 'WorkspaceSkills',
-              component: () => import('@/views/skill/SkillMarketplaceView.vue'),
-              meta: { title: '技能广场', requiresApp: 'skill' },
+              redirect: '/home/apps/skills',
             },
             {
               path: 'skills/admin',
-              name: 'WorkspaceSkillAdmin',
-              component: () => import('@/views/skill/SkillAdminView.vue'),
-              meta: { title: '技能审核', requiresPermission: 'skill.config' },
+              redirect: '/home/apps/skills/admin',
             },
             {
               path: 'skills/:skillId',
-              name: 'WorkspaceSkillDetail',
-              component: () => import('@/views/skill/SkillDetailView.vue'),
-              meta: { title: '技能详情' },
+              redirect: (to) => `/home/apps/skills/${to.params.skillId}`,
             },
           ],
         },

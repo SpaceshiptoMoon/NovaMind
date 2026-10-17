@@ -3,7 +3,7 @@
     <div v-if="skill" class="detail-content">
       <!-- 头部 -->
       <div class="detail-header">
-        <el-button text @click="router.push('/home/workspace/skills')">
+        <el-button text @click="router.push('/home/apps/skills')">
           <el-icon><ArrowLeft /></el-icon> 返回广场
         </el-button>
       </div>
@@ -169,9 +169,9 @@
 
 <script setup lang="ts">
 /**
- * 技能详情页（/home/workspace/skills/:skillId）
+ * 技能详情页（/home/apps/skills/:skillId）
  *
- * 对应路由 WorkspaceSkillDetail，展示技能元数据、审查状态、指令 Markdown 与评价；
+ * 对应路由 SkillDetail，展示技能元数据、审查状态、指令 Markdown 与评价；
  * 所有者可见发布/版本更新/删除操作，普通用户可安装到 Agent、下载与评价。
  */
 
@@ -282,7 +282,7 @@ async function handleDelete() {
     await ElMessageBox.confirm('确定删除此技能？', '确认')
     await skillStore.deleteSkill(skill.value.id)
     ElMessage.success('技能已删除')
-    router.push('/home/workspace/skills')
+    router.push('/home/apps/skills')
   } catch {}
 }
 

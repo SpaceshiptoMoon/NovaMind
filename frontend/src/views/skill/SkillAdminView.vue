@@ -1,7 +1,7 @@
 <template>
   <div class="skill-admin">
     <PageHeader title="技能审核">
-      <el-button @click="router.push('/home/workspace/skills')">
+      <el-button @click="router.push('/home/apps/skills')">
         <el-icon><ArrowLeft /></el-icon>
         返回广场
       </el-button>
@@ -77,9 +77,9 @@
 
 <script setup lang="ts">
 /**
- * 技能审核页（/home/workspace/skills/admin）
+ * 技能审核页（/home/apps/skills/admin）
  *
- * 对应路由 WorkspaceSkillAdmin（需 skill.config 权限），管理 LLM 自动审查设置并处理待审核技能的批准/拒绝。
+ * 对应路由 SkillAdmin（需 skill.config 权限），管理 LLM 自动审查设置并处理待审核技能的批准/拒绝。
  */
 
 import { ref, onMounted } from 'vue'

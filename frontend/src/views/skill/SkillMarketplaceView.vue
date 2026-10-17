@@ -1,9 +1,9 @@
 <template>
   <div class="skill-marketplace">
-    <PageHeader title="技能广场">
+    <PageHeader title="技能广场" show-back back-to="/home/apps">
       <el-button
         v-if="permStore.hasPermission('skill.config')"
-        @click="router.push('/home/workspace/skills/admin')"
+        @click="router.push('/home/apps/skills/admin')"
       >
         <el-icon><Setting /></el-icon>
         审核管理
@@ -201,9 +201,9 @@
 
 <script setup lang="ts">
 /**
- * 技能广场页（/home/workspace/skills）
+ * 技能广场页（/home/apps/skills）
  *
- * 对应路由 WorkspaceSkills，广场/我的技能双 Tab 浏览，支持普通搜索、AI 智能搜索、
+ * 对应路由 SkillsMarketplace，广场/我的技能双 Tab 浏览，支持普通搜索、AI 智能搜索、
  * 分类/标签/排序过滤与 zip 技能包上传（上传与审核入口需 skill.config 权限）。
  */
 
@@ -333,7 +333,7 @@ function handlePageChange(page: number) {
 
 function goToDetail(skillId: number) {
   const query = activeTab.value === 'mine' ? '?from=mine' : ''
-  router.push(`/home/workspace/skills/${skillId}${query}`)
+  router.push(`/home/apps/skills/${skillId}${query}`)
 }
 
 /** el-upload before-upload 钩子：手动调 API 上传 zip 并刷新当前列表，返回 false 阻止默认上传 */

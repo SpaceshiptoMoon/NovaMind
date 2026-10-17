@@ -35,7 +35,7 @@
 
 import { type Component, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Document, ArrowRight } from '@element-plus/icons-vue'
+import { Document, ArrowRight, MagicStick } from '@element-plus/icons-vue'
 import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -61,6 +61,14 @@ const allApps: AppCard[] = [
     route_path: '/home/apps/resume',
     iconComponent: Document,
     appCode: 'app',
+  },
+  {
+    id: 'skill_marketplace',
+    name: '技能广场',
+    description: '发现、上传和分享 AI 技能，安装到你的智能体中',
+    route_path: '/home/apps/skills',
+    iconComponent: MagicStick,
+    appCode: 'skill',
   },
 ]
 
