@@ -282,7 +282,19 @@ class HostKnowledgeSearchPort:
 
         Returns:
             含 total 与文档列表（id/文件名）的 DocumentListResult。
+
+        Raises:
+            ValueError: KB 不存在或不属于该空间（与检索层同款防御：不区分两种
+                情形，防借 space A 的访问权枚举 space B 的 KB 文档——IDOR）。
         """
+        from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+            KnowledgeBaseRepository,
+        )
+
+        kb = await KnowledgeBaseRepository(self._db).get_by_id(kb_id)
+        if not kb or kb.space_id != space_id:
+            raise ValueError(f"知识库 {kb_id} 不存在或不属于空间 {space_id}")
+
         doc_service = self._doc_query_service()
         skip = (page - 1) * page_size
         documents = await doc_service.get_kb_documents(kb_id=kb_id, skip=skip, limit=page_size)

@@ -265,6 +265,214 @@ async def test_tool_search_without_pipeline_cfg_falls_back():
     port.pipeline_search.assert_not_awaited()
 
 
+# ==================== 工具端发现类范围约束（发现不越界，省无效调用） ====================
+
+
+def _fake_discovery_port(spaces=None, all_kbs=None, space_kbs=None):
+    """发现类方法桩：list_spaces/list_all_knowledge_bases/list_knowledge_bases/can_access_space。"""
+    spaces = spaces or []
+    all_kbs = all_kbs or []
+    space_kbs = space_kbs or []
+
+    async def can_access(space_id, user_id):
+        return True
+
+    return SimpleNamespace(
+        list_spaces=AsyncMock(return_value=spaces),
+        list_all_knowledge_bases=AsyncMock(return_value=all_kbs),
+        list_knowledge_bases=AsyncMock(return_value=space_kbs),
+        can_access_space=AsyncMock(side_effect=can_access),
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_list_spaces_filters_by_binding():
+    """list_spaces：绑定 space_ids 只返回绑定内空间（反：越权空间不透出）；无绑定不过滤。"""
+    spaces = [
+        SimpleNamespace(id=7, name="绑定空间", description=""),
+        SimpleNamespace(id=99, name="越权空间", description=""),
+    ]
+    tool = KnowledgeSearchTool()
+    ctx = {
+        "user_id": 1,
+        "knowledge_pipeline": {
+            "knowledge_bindings": {"space_ids": [7], "kb_ids": None}
+        },
+    }
+
+    out = await tool.execute_tool("list_spaces", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(spaces), **ctx})
+    data = json.loads(out)
+    assert [s["id"] for s in data["spaces"]] == [7]
+
+    # 无绑定：全量透出（行为不变）
+    out = await tool.execute_tool("list_spaces", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(spaces)})
+    data = json.loads(out)
+    assert sorted(s["id"] for s in data["spaces"]) == [7, 99]
+
+
+@pytest.mark.asyncio
+async def test_tool_list_all_kbs_filters_by_binding():
+    """list_all_knowledge_bases：space_ids/kb_ids 双重过滤；无绑定全量。"""
+    all_kbs = [
+        SimpleNamespace(id=101, name="A", space_id=7, description="", space_name="S7"),
+        SimpleNamespace(id=102, name="B", space_id=7, description="", space_name="S7"),
+        SimpleNamespace(id=201, name="C", space_id=99, description="", space_name="S99"),
+    ]
+    tool = KnowledgeSearchTool()
+    ctx = {
+        "user_id": 1,
+        "knowledge_pipeline": {
+            "knowledge_bindings": {"space_ids": [7], "kb_ids": [102]}
+        },
+    }
+
+    out = await tool.execute_tool(
+        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs), **ctx}
+    )
+    data = json.loads(out)
+    assert [kb["id"] for kb in data["knowledge_bases"]] == [102]
+
+    # 仅 space_ids 绑定：该空间全部 KB
+    ctx["knowledge_pipeline"]["knowledge_bindings"] = {"space_ids": [7], "kb_ids": None}
+    out = await tool.execute_tool(
+        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs), **ctx}
+    )
+    data = json.loads(out)
+    assert sorted(kb["id"] for kb in data["knowledge_bases"]) == [101, 102]
+
+    # 无绑定：全量
+    out = await tool.execute_tool(
+        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs)}
+    )
+    data = json.loads(out)
+    assert data["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_tool_list_kbs_out_of_scope_rejected():
+    """list_knowledge_bases：绑定后越权空间拒绝（与检索同文案），绑定内空间按 kb_ids 过滤。"""
+    space_kbs = [
+        SimpleNamespace(id=101, name="A", space_id=7, description=""),
+        SimpleNamespace(id=102, name="B", space_id=7, description=""),
+    ]
+    tool = KnowledgeSearchTool()
+    ctx = {
+        "user_id": 1,
+        "knowledge_pipeline": {
+            "knowledge_bindings": {"space_ids": [7], "kb_ids": [101]}
+        },
+    }
+    port = _fake_discovery_port(space_kbs=space_kbs)
+
+    # 反：越权空间
+    out = await tool.execute_tool(
+        "list_knowledge_bases", {"space_id": 99}, {"user_id": 1, "knowledge_search_port": port, **ctx}
+    )
+    data = json.loads(out)
+    assert "不在范围内" in data["error"]
+    port.list_knowledge_bases.assert_not_awaited()
+
+    # 正：绑定内空间，kb 过滤
+    out = await tool.execute_tool(
+        "list_knowledge_bases", {"space_id": 7}, {"user_id": 1, "knowledge_search_port": port, **ctx}
+    )
+    data = json.loads(out)
+    assert [kb["id"] for kb in data["knowledge_bases"]] == [101]
+
+
+@pytest.mark.asyncio
+async def test_tool_document_list_out_of_scope_rejected():
+    """document_list：越权空间/越权 KB 拒绝，范围内放行（防文档列表绕道）。"""
+    tool = KnowledgeSearchTool()
+
+    def _port():
+        return SimpleNamespace(
+            list_documents=AsyncMock(
+                return_value=SimpleNamespace(total=0, documents=[])
+            ),
+            can_access_space=AsyncMock(return_value=True),
+        )
+
+    ctx = {
+        "user_id": 1,
+        "knowledge_pipeline": {
+            "knowledge_bindings": {"space_ids": [7], "kb_ids": [101]}
+        },
+    }
+
+    # 反：越权空间
+    out = await tool.execute_tool(
+        "document_list", {"space_id": 99, "kb_id": 101},
+        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
+    )
+    assert "不在范围内" in json.loads(out)["error"]
+
+    # 反：越权 KB
+    out = await tool.execute_tool(
+        "document_list", {"space_id": 7, "kb_id": 999},
+        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
+    )
+    assert "不在范围内" in json.loads(out)["error"]
+
+    # 正：范围内
+    out = await tool.execute_tool(
+        "document_list", {"space_id": 7, "kb_id": 101},
+        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
+    )
+    data = json.loads(out)
+    assert data["kb_id"] == 101 and data["documents"] == []
+
+
+# ==================== 端口层 KB 归属校验（IDOR 防御） ====================
+
+
+@pytest.mark.asyncio
+async def test_port_list_documents_rejects_kb_space_mismatch(monkeypatch):
+    """list_documents：kb_id 不属于 space_id 时拒绝（反，防借 A 空间访问权枚举
+    B 空间 KB 文档），归属一致放行（正）。"""
+    from novamind.features.agent.services.host_knowledge_search import (
+        HostKnowledgeSearchPort,
+    )
+
+    kb_by_id = {
+        999: SimpleNamespace(id=999, space_id=88),  # 属于别的空间
+        101: SimpleNamespace(id=101, space_id=7),
+    }
+
+    class _FakeKbRepo:
+        def __init__(self, db):
+            pass
+
+        async def get_by_id(self, kb_id):
+            return kb_by_id.get(kb_id)
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository",
+        _FakeKbRepo,
+    )
+
+    port = HostKnowledgeSearchPort(db=None, model_config_service=None)
+
+    # 反：kb 属于其他空间（含 kb 不存在同款拒绝，不泄露存在性）
+    with pytest.raises(ValueError, match="不存在或不属于"):
+        await port.list_documents(space_id=7, kb_id=999, user_id=1)
+    with pytest.raises(ValueError, match="不存在或不属于"):
+        await port.list_documents(space_id=7, kb_id=404, user_id=1)
+
+    # 正：归属一致 → 正常查文档
+    class _FakeDocSvc:
+        async def get_kb_documents(self, **kw):
+            return [SimpleNamespace(id=1, filename="a.md")]
+
+        async def count_kb_documents(self, **kw):
+            return 1
+
+    port._doc_query_service = lambda: _FakeDocSvc()
+    result = await port.list_documents(space_id=7, kb_id=101, user_id=1)
+    assert result.total == 1
+    assert result.documents[0].filename == "a.md"
+
+
 # ==================== 会话知识绑定写入 ====================
 
 

@@ -32,6 +32,7 @@ class KnowledgeSearchTool(BaseTool):
                     "description": (
                         "List all knowledge spaces the user can access. "
                         "Returns space ID, name, and description. "
+                        "If the session has a knowledge scope configured, only in-scope spaces are listed. "
                         "Call this first when you need to discover what knowledge resources are available."
                     ),
                     "parameters": {
@@ -68,6 +69,7 @@ class KnowledgeSearchTool(BaseTool):
                     "name": "list_all_knowledge_bases",
                     "description": (
                         "List ALL knowledge bases across ALL spaces in one call. "
+                        "If the session has a knowledge scope configured, only in-scope KBs are listed. "
                         "Use this when you're unsure which space contains the relevant KB, "
                         "or when you want a quick overview without browsing spaces first."
                     ),
@@ -195,11 +197,32 @@ class KnowledgeSearchTool(BaseTool):
 
     # ==================== 空间与知识库发现 ====================
 
+    @staticmethod
+    def _session_bindings(context: dict[str, Any]) -> tuple[list[int] | None, list[int] | None]:
+        """解析会话知识绑定，返回 (bound_space_ids, bound_kb_ids)；无绑定 both None。
+
+        knowledge_pipeline 配置仅在主对话场景注入（chat_service）；task 子 agent 等
+        场景无此键，视为不限定。
+        """
+        bindings = (context.get("knowledge_pipeline") or {}).get("knowledge_bindings") or {}
+        return bindings.get("space_ids"), bindings.get("kb_ids")
+
+    @staticmethod
+    def _out_of_scope_error(bound_space_ids: list[int]) -> str:
+        """越权拒绝响应（与检索端同文案，模型侧错误口径一致）。"""
+        return json.dumps(
+            {"error": f"当前会话知识范围限定为空间 {bound_space_ids}，不在范围内的空间不可访问"},
+            ensure_ascii=False,
+        )
+
     async def _list_spaces(self, port, context: dict[str, Any]) -> str:
-        """列出用户可访问的知识空间"""
+        """列出用户可访问的知识空间；会话绑定 space_ids 时只返回绑定内空间。"""
         try:
             user_id = context["user_id"]
             spaces = await port.list_spaces(user_id)
+            bound_space_ids, _ = self._session_bindings(context)
+            if bound_space_ids:
+                spaces = [s for s in spaces if s.id in bound_space_ids]
 
             result = [
                 {"id": s.id, "name": s.name, "description": s.description}
@@ -217,10 +240,15 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_knowledge_bases(
         self, port, args: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """列出指定空间下的知识库"""
+        """列出指定空间下的知识库；会话绑定时越权拒绝，绑定 kb_ids 则过滤。"""
         try:
             user_id = context["user_id"]
             space_id = args["space_id"]
+            bound_space_ids, bound_kb_ids = self._session_bindings(context)
+
+            # 会话限定 space 集合：越权空间直接拒绝（与检索端口径一致）
+            if bound_space_ids and space_id not in bound_space_ids:
+                return self._out_of_scope_error(bound_space_ids)
 
             # 校验空间访问权限（与旧路径一致，先校验后列）
             if not await port.can_access_space(space_id, user_id):
@@ -230,6 +258,8 @@ class KnowledgeSearchTool(BaseTool):
                 )
 
             kbs = await port.list_knowledge_bases(space_id, user_id)
+            if bound_kb_ids:
+                kbs = [kb for kb in kbs if kb.id in bound_kb_ids]
             result = [
                 {
                     "id": kb.id,
@@ -249,10 +279,15 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"获取知识库列表失败：{str(e)}"}, ensure_ascii=False)
 
     async def _list_all_knowledge_bases(self, port, context: dict[str, Any]) -> str:
-        """跨空间列出用户所有可访问的知识库"""
+        """跨空间列出用户所有可访问的知识库；会话绑定时只返回范围内 KB。"""
         try:
             user_id = context["user_id"]
             kbs = await port.list_all_knowledge_bases(user_id)
+            bound_space_ids, bound_kb_ids = self._session_bindings(context)
+            if bound_space_ids:
+                kbs = [kb for kb in kbs if kb.space_id in bound_space_ids]
+            if bound_kb_ids:
+                kbs = [kb for kb in kbs if kb.id in bound_kb_ids]
 
             result = [
                 {
@@ -418,13 +453,27 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_documents(
         self, port, args: dict[str, Any], context: dict[str, Any]
     ) -> str:
-        """列出文档"""
+        """列出文档；会话绑定时越权空间/知识库拒绝，绑定 kb_ids 时限定单库。"""
         try:
             user_id = context["user_id"]
             space_id = args["space_id"]
             kb_id = args["kb_id"]
             page = args.get("page", 1)
             page_size = args.get("page_size", 20)
+            bound_space_ids, bound_kb_ids = self._session_bindings(context)
+
+            if bound_space_ids and space_id not in bound_space_ids:
+                return self._out_of_scope_error(bound_space_ids)
+            if bound_kb_ids and kb_id not in bound_kb_ids:
+                return json.dumps(
+                    {
+                        "error": (
+                            f"当前会话知识范围限定为知识库 {bound_kb_ids}，"
+                            f"知识库 {kb_id} 不在范围内"
+                        )
+                    },
+                    ensure_ascii=False,
+                )
 
             # 校验空间访问权限（与旧路径一致，先校验后列）
             if not await port.can_access_space(space_id, user_id):
