@@ -255,6 +255,8 @@ function roleLabel(role: AgentMessage['role']): string {
       return 'PLAN'
     case 'notice':
       return 'NOTICE'
+    case 'research':
+      return 'RESEARCH'
   }
 }
 

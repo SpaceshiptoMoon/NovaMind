@@ -54,10 +54,12 @@
             <div class="badge-avatar">{{ agentName.charAt(0) }}</div>
             <span class="header-title">{{ agentName }}</span>
           </div>
-          <div v-if="!isWelcomeMode" class="header-tabs">
+          <div v-if="!isWelcomeMode" class="header-tabs" role="tablist">
             <button
               class="view-pill"
               :class="{ active: viewMode === 'chat' }"
+              role="tab"
+              :aria-selected="viewMode === 'chat'"
               @click="viewMode = 'chat'"
             >
               聊天
@@ -65,6 +67,8 @@
             <button
               class="view-pill"
               :class="{ active: viewMode === 'trajectory' }"
+              role="tab"
+              :aria-selected="viewMode === 'trajectory'"
               @click="viewMode = 'trajectory'"
             >
               轨迹
@@ -78,6 +82,7 @@
         v-if="!isWelcomeMode && viewMode === 'chat'"
         ref="messagesRef"
         class="messages-container"
+        @scroll="handleMessagesScroll"
       >
         <div class="messages-inner">
           <template v-for="turn in turns" :key="turn.key">
@@ -138,21 +143,21 @@
               >
                 <div class="turn-avatar" :title="agentName">{{ agentName.charAt(0) }}</div>
                 <div class="turn-body">
-                  <!-- 有工作过程（ReAct 步骤或思考过程）即显示折叠头；完成后默认折叠，进行中默认展开 -->
+                  <!-- 有工作过程（ReAct 步骤或思考过程）即显示折叠头；始终默认折叠（含进行中，
+                     进行中与已完成的区分靠 spinner/主题色与「思考中/思考过程」一词之差，句式统一），
+                     展开才见运行轨迹 -->
                   <button
                     v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
                     class="fold-line"
+                    :class="{ running: turn.isActive }"
                     @click="toggleTurn(turn)"
                   >
-                    <span class="fold-status">{{
-                      turn.isActive
-                        ? '生成中…'
-                        : turn.planItems.length && turn.planItems.length > 0
-                          ? `已执行 ${turn.steps.length} 轮 · ${turnDurationLabel(turn)}`
-                          : turn.steps.length > 0
-                            ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
-                            : '思考过程'
-                    }}</span>
+                    <span
+                      v-if="turn.isActive"
+                      class="fold-spinner"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="fold-status">{{ foldStatusLabel(turn) }}</span>
                     <el-icon
                       :size="12"
                       class="fold-chevron"
@@ -200,30 +205,56 @@
                     <span class="notice-text">{{ n.content }}</span>
                   </div>
 
-                  <!-- 工作过程：按 ReAct 步骤渲染。完成后默认折叠，进行中默认展开（实时看工具进度）。
+                  <!-- 工作过程：按 ReAct 步骤渲染。始终默认折叠（含进行中——轨迹不抢视觉焦点，
+                     进行中状态由折叠条「思考中 · Ns」表达），展开后每个 AI 步骤也是
+                     摘要行默认收起（回答、调用工具、结果逐层 disclosure）。
                      无步骤且无思考过程时不渲染空容器 -->
                   <div
                     v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
-                    v-show="turn.isActive || isTurnExpanded(turn)"
+                    v-show="isTurnExpanded(turn)"
                     class="work-trail"
                   >
                     <template v-for="(step, si) in turn.steps" :key="si">
-                      <!-- AI 输出（LLM 一次响应原样还原：按 ContentBlock 分发 reasoning/text/tool_call） -->
-                      <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-output">
-                        <template v-for="(block, bi) in toContentBlocks(step.ai)" :key="bi">
-                          <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
-                            <MarkdownRenderer :content="block.text" />
-                          </div>
-                          <div v-else-if="block.kind === 'text'" class="ai-content">
-                            <MarkdownRenderer :content="block.text" />
-                          </div>
-                          <div v-else-if="block.kind === 'tool_call'" class="ai-tool-call">
-                            <span class="ai-tool-name">{{ block.name }}</span>
-                            <pre v-if="block.arguments" class="ai-tool-args">{{
-                              formatToolArgs(block.arguments)
-                            }}</pre>
-                          </div>
-                        </template>
+                      <!-- AI 输出（LLM 一次响应）：摘要行默认收起，展开看完整 reasoning/文本/工具参数 -->
+                      <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-step">
+                        <button
+                          class="ai-step-summary"
+                          @click="toggleStep(`${turn.key}:${si}`)"
+                        >
+                          <span class="ai-step-kind">{{
+                            toContentBlocks(step.ai).some((b) => b.kind === 'tool_call') ? '调用工具' : '已完成思考'
+                          }}</span>
+                          <span class="ai-step-text">{{ stepSummary(step) }}</span>
+                          <el-icon
+                            :size="12"
+                            class="expand-icon"
+                            :class="{ expanded: expandedSteps.has(`${turn.key}:${si}`) }"
+                          >
+                            <ArrowDown />
+                          </el-icon>
+                        </button>
+                        <div
+                          v-if="expandedSteps.has(`${turn.key}:${si}`)"
+                          class="ai-output"
+                        >
+                          <template
+                            v-for="(block, bi) in toContentBlocks(step.ai)"
+                            :key="bi"
+                          >
+                            <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
+                              <MarkdownRenderer :content="block.text" />
+                            </div>
+                            <div v-else-if="block.kind === 'text'" class="ai-content">
+                              <MarkdownRenderer :content="block.text" />
+                            </div>
+                            <div v-else-if="block.kind === 'tool_call'" class="ai-tool-call">
+                              <span class="ai-tool-name">{{ block.name }}</span>
+                              <pre v-if="block.arguments" class="ai-tool-args">{{
+                                formatToolArgs(block.arguments)
+                              }}</pre>
+                            </div>
+                          </template>
+                        </div>
                       </div>
                       <!-- 工具实际执行（结果与 AI 输出分离；参数已在 AI 输出的 tool_calls 展示） -->
                       <div v-for="tool in step.tools" :key="tool.id" class="tool-card-row">
@@ -305,8 +336,11 @@
                       </button>
                     </div>
                   </div>
-                  <!-- 流式/加载中：暂无最终回复时的占位 -->
-                  <div v-else-if="turn.isActive" class="typing-row">
+                  <!-- 流式/加载中且无轨迹：点点占位（有轨迹时由折叠条「思考中」表达，不重复显示） -->
+                  <div
+                    v-else-if="turn.isActive && !turn.steps.length && !turn.finalAssistant?.reasoning"
+                    class="typing-row"
+                  >
                     <div class="message-body">
                       <div class="typing-bubble">
                         <span class="typing-dot"></span>
@@ -321,6 +355,16 @@
           </template>
         </div>
       </div>
+
+      <!-- 回到底部：用户上拉离开底部后出现（对话模式） -->
+      <button
+        v-if="!isWelcomeMode && viewMode === 'chat' && !stickToBottom"
+        class="jump-to-bottom"
+        title="回到底部"
+        @click="scrollToBottom(); stickToBottom = true"
+      >
+        <el-icon :size="14"><ArrowDown /></el-icon>
+      </button>
 
       <!-- 轨迹视图（调试向消息时间线，平铺每条消息 + 内部 inspector 展开详情） -->
       <div v-if="!isWelcomeMode && viewMode === 'trajectory'" class="trajectory-container">
@@ -548,10 +592,11 @@
 /**
  * 智能体对话页（/home/workspace/agents/:agentId/chat）
  *
- * 对应路由 WorkspaceAgentChat，承载 ReAct 多步对话：消息按轮分组渲染（工作过程折叠）、
+ * 对应路由 WorkspaceAgentChat，承载 ReAct 多步对话：消息按轮分组渲染（工作过程默认折叠）、
  * 聊天/轨迹双视图切换、附件上传与图片预览、上下文压缩标记就地展开、模型选择。
- * 关键交互：按 turn 分组的 computed 是渲染核心——进行中轮次默认展开、完成后折叠，
- * 用户手动点过折叠条后以手动意图为准（manualTurnOverrides）。
+ * 关键交互：按 turn 分组的 computed 是渲染核心——各轮（含进行中）默认折叠只看最终回复，
+ * 用户点开折叠条后以手动意图为准（manualTurnOverrides）；流式自动滚底仅在用户本就
+ * 位于底部时跟随（stickToBottom），上拉看历史不被拽回，靠回到底部悬浮键一键归位。
  */
 
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
@@ -901,12 +946,13 @@ const turns = computed<ChatTurn[]>(() => {
 })
 
 function isTurnExpanded(turn: ChatTurn): boolean {
-  // 默认态：进行中展开（实时看工具进度）、完成后折叠（只看最终回复）；
-  // 用户点过折叠条后以手动意图为准（manualOverrides 记住该轮被显式展开/收起）
+  // 默认态：折叠（含进行中——思考层/工具轨迹不抢视觉焦点，进行中状态由折叠条
+  // 「生成中…」文案表达）；用户点过折叠条后以手动意图为准（manualOverrides
+  // 记住该轮被显式展开/收起）
   if (manualTurnOverrides.value.has(turn.key)) {
     return expandedTurns.value.has(turn.key)
   }
-  return turn.isActive
+  return false
 }
 
 function toggleTurn(turn: ChatTurn) {
@@ -916,13 +962,20 @@ function toggleTurn(turn: ChatTurn) {
   else expandedTurns.value.delete(turn.key)
 }
 
-// 该轮总耗时标签（无时间戳数据时退化为「已完成」）
-function turnDurationLabel(turn: ChatTurn): string {
+// 折叠条状态标签：固定两段式「思考中/思考完成 · 耗时」，保证任意轮次长度一致；
+// 状态差异由 spinner + 主题色 + 「中/完成」一词之差表达，步数明细展开折叠条可见
+function foldStatusLabel(turn: ChatTurn): string {
+  const duration = turn.isActive ? activeTurnDuration(turn) : turnDuration(turn)
+  return duration ? `${turn.isActive ? '思考中' : '思考完成'} · ${duration}` : turn.isActive ? '思考中' : '思考完成'
+}
+
+// 该轮总耗时（无有效时间区间返回空串，由调用方省略该段）
+function turnDuration(turn: ChatTurn): string {
   if (turn.endTime && turn.startTime) {
     const ms = turn.endTime - turn.startTime
     if (ms > 0) return formatDuration(ms)
   }
-  return '已完成'
+  return ''
 }
 
 const messagesRef = ref<HTMLElement>()
@@ -1109,6 +1162,24 @@ function formatFileSize(bytes: number): string {
 const textareaRef = ref<HTMLTextAreaElement>()
 const expandedTools = ref(new Set<number>())
 
+// 进行中折叠条的实时秒数：elapsedTick 每秒自增驱动重算（生成期间折叠条显示「思考中 · Ns」）
+const elapsedTick = ref(0)
+let elapsedTimer: number | null = null
+// 进行中折叠条耗时：起点=本轮用户消息时间，终点=now（无有效起点返回空串，折叠条省略耗时段）
+function activeTurnDuration(turn: ChatTurn): string {
+  void elapsedTick.value
+  if (!turn.startTime) return ''
+  return formatDuration(Date.now() - turn.startTime)
+}
+
+// 轨迹内每个 AI 步骤的展开态：按 step 在轮内的唯一键（turnKey:index）记忆，默认收起。
+// 步骤行摘要 = 思考/回答首行 + 工具调用名，展开看完整 reasoning/文本/参数。
+const expandedSteps = ref(new Set<string>())
+function toggleStep(key: string) {
+  if (expandedSteps.value.has(key)) expandedSteps.value.delete(key)
+  else expandedSteps.value.add(key)
+}
+
 const quickPrompts = [
   '你好，你能帮我做什么？',
   '帮我搜索知识库中的相关内容',
@@ -1119,9 +1190,28 @@ const quickPrompts = [
 function scrollToBottom() {
   nextTick(() => {
     if (messagesRef.value) {
+      // 容器开了 scroll-behavior:smooth，直接赋值会走动画；流式高频触发时动画
+      // 不断重启永远到不了底，回到底部按钮也会因 smooth 渐进而第一次点不到位。
+      // 跟随滚动/一键归位要即时落点，瞬间到位。
+      messagesRef.value.style.scrollBehavior = 'auto'
       messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+      messagesRef.value.style.scrollBehavior = ''
     }
   })
+}
+
+// 用户上拉看历史时不被流式输出拽回底部：只有本来就在底部附近（±80px）才自动跟随。
+// stickToBottom 由滚动事件驱动更新，是自动滚动唯一判据。
+const stickToBottom = ref(true)
+
+function handleMessagesScroll() {
+  const el = messagesRef.value
+  if (!el) return
+  stickToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+function scrollToBottomIfNeeded() {
+  if (stickToBottom.value) scrollToBottom()
 }
 
 function autoResize() {
@@ -1136,16 +1226,16 @@ function autoResize() {
 watch(
   () => agentStore.messages.length,
   () => {
-    scrollToBottom()
+    scrollToBottomIfNeeded()
   },
 )
 watch(
   () => agentStore.streamingContent,
-  () => scrollToBottom(),
+  () => scrollToBottomIfNeeded(),
 )
 watch(
   () => agentStore.loading,
-  () => scrollToBottom(),
+  () => scrollToBottomIfNeeded(),
 )
 watch(
   () => agentStore.pendingAttachments.length,
@@ -1276,6 +1366,9 @@ async function handleSend() {
 
   const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
+  // 主动发送 = 意图朝向最新内容：即使此前上拉看历史，也恢复自动跟随并滚到底
+  stickToBottom.value = true
+  scrollToBottom()
   nextTick(() => {
     if (textareaRef.value) {
       textareaRef.value.style.height = 'auto'
@@ -1373,6 +1466,28 @@ function hasToolCallBlocks(msg: AgentMessage | null): boolean {
   return toContentBlocks(msg).some((b) => b.kind === 'tool_call')
 }
 
+/** 步骤摘要行文案：思考取首行截断，纯回答取首行，工具调用列名（最多两个 + 省略） */
+function stepSummary(step: ReActStep): string {
+  const blocks = toContentBlocks(step.ai)
+  const toolCalls = blocks.filter((b) => b.kind === 'tool_call')
+  const think = blocks.find((b) => b.kind === 'reasoning')
+  const text = blocks.find((b) => b.kind === 'text')
+  const parts: string[] = []
+  if (toolCalls.length) {
+    const names = toolCalls.map((b) => (b.kind === 'tool_call' ? b.name : ''))
+    parts.push(
+      names.length > 2 ? `调用 ${names.slice(0, 2).join('、')} 等 ${names.length} 个工具` : `调用 ${names.join('、')}`,
+    )
+  }
+  const firstLine = (source: string) => {
+    const line = source.trim().split('\n').find((l) => l.trim()) || ''
+    return line.length > 40 ? line.slice(0, 40) + '…' : line
+  }
+  if (think) parts.push(firstLine(think.text))
+  else if (text && !toolCalls.length) parts.push(firstLine(text.text))
+  return parts.join(' · ') || '思考中'
+}
+
 function formatToolArgs(args: string | undefined): string {
   // tool_calls.function.arguments 是 JSON 字符串，parse 后格式化展示
   if (!args) return ''
@@ -1434,9 +1549,14 @@ async function fetchModels() {
 onMounted(async () => {
   await agentStore.initForAgent(agentId.value)
   fetchModels()
+  // 进行中折叠条的实时秒数：每秒 tick 驱动「思考中 · Ns」刷新（仅流式期间有活跃轮）
+  elapsedTimer = window.setInterval(() => {
+    elapsedTick.value++
+  }, 1000)
 })
 
 onBeforeUnmount(() => {
+  if (elapsedTimer !== null) window.clearInterval(elapsedTimer)
   for (const url of imageBlobCache.values()) {
     URL.revokeObjectURL(url)
   }
@@ -1459,11 +1579,12 @@ onBeforeUnmount(() => {
    ======================================== */
 .chat-sidebar {
   width: 260px;
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border-light);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  background: var(--color-bg-card);
+  /* 与工作台目录栏同底色：左两栏（目录+会话）一体暖灰，聊天画布独白聚焦 */
+  background: var(--color-bg-sidebar);
 }
 
 .chat-sidebar.compact {
@@ -1489,7 +1610,7 @@ onBeforeUnmount(() => {
 
 .sidebar-top {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-border-light);
   display: flex;
   gap: var(--space-2);
   align-items: center;
@@ -1520,7 +1641,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text-secondary);
@@ -1531,7 +1652,7 @@ onBeforeUnmount(() => {
 }
 
 .back-btn:hover {
-  border-color: var(--color-text);
+  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
@@ -1542,9 +1663,9 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: none;
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  background: var(--color-primary-muted);
+  background: var(--color-bg-card);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-sm);
@@ -1554,7 +1675,8 @@ onBeforeUnmount(() => {
 }
 
 .new-chat-btn:hover {
-  background: var(--color-info-subtle);
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
 }
 
 .conversation-list {
@@ -1580,7 +1702,8 @@ onBeforeUnmount(() => {
 }
 
 .conv-item.active {
-  background: var(--color-primary-muted);
+  /* 与目录栏 list-item.active 同款中性选中语言（灰底+墨色指示条），两栏一体 */
+  background: var(--color-bg-hover);
 }
 
 .conv-item.active .conv-title {
@@ -1596,7 +1719,7 @@ onBeforeUnmount(() => {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: var(--color-btn-primary);
+  background: var(--color-text);
 }
 
 .conv-title {
@@ -1688,6 +1811,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .badge-avatar {
@@ -1701,24 +1831,32 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 .header-title {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 视图切换 tab（聊天 / 轨迹） */
+/* 视图切换 tab（聊天 / 轨迹）：分段控件，与左侧助手徽标分组留白 */
 .header-tabs {
   display: flex;
-  gap: var(--space-1);
-  margin-left: var(--space-3);
+  gap: 2px;
+  margin-left: var(--space-4);
+  padding: 2px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
 }
 
 .view-pill {
-  padding: 3px 12px;
-  border: 1px solid var(--color-border-light);
+  padding: 3px 14px;
+  border: none;
   border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-text-muted);
@@ -1726,16 +1864,16 @@ onBeforeUnmount(() => {
   font-family: var(--font-body);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
 .view-pill:hover {
-  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
 .view-pill.active {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-xs);
   color: var(--color-text);
   font-weight: var(--weight-medium);
 }
@@ -1839,6 +1977,31 @@ onBeforeUnmount(() => {
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
+/* 回到底部悬浮键：悬在输入卡上方，离开底部才出现 */
+.jump-to-bottom {
+  position: absolute;
+  right: 24px;
+  bottom: 140px;
+  z-index: 4;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.jump-to-bottom:hover {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
 .message-row {
   display: flex;
   margin-bottom: 28px;
@@ -1915,6 +2078,83 @@ onBeforeUnmount(() => {
   background: var(--color-bg-hover);
   border-color: var(--color-border);
   color: var(--color-text);
+}
+
+/* 进行中折叠条：主题色 + spinner，与已完成态区分 */
+.fold-line.running {
+  color: var(--color-primary, var(--color-text));
+  border-color: var(--color-border);
+}
+
+.fold-spinner {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: fold-spin 0.8s linear infinite;
+}
+
+@keyframes fold-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 轨迹内 AI 步骤：摘要行（默认收起）+ 展开详情 */
+.ai-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ai-step-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+  min-width: 0;
+}
+
+.ai-step-summary:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.ai-step-kind {
+  flex-shrink: 0;
+  font-weight: var(--weight-semibold);
+}
+
+.ai-step-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-step .expand-icon {
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: transform var(--transition-fast);
+  color: inherit;
+}
+
+.ai-step .expand-icon.expanded {
+  transform: rotate(180deg);
 }
 
 .fold-chevron {
