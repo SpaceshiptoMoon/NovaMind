@@ -122,20 +122,10 @@ class AppLifespanManager:
         # 启动嵌入式 arq Worker（任务函数从各 feature tasks 收集注入；shared/mq 只提供通用运行时）
         try:
             from arq import cron
+            from novamind.features.agent.tasks.memory_tasks import consolidate_memory_task
             from novamind.features.app.tasks.resume_tasks import (
                 process_resume_task,
                 recover_orphan_resume_sessions,
-            )
-            from novamind.features.knowledge_space.tasks.document_tasks import (
-                process_document_task,
-                recover_orphan_documents,
-            )
-            from novamind.features.knowledge_space.tasks.wiki_tasks import (
-                process_wiki_ingest_task,
-                process_wiki_retract_task,
-            )
-            from novamind.features.knowledge_space.services.chunk_upload_service import (
-                cleanup_stale_parts,
             )
             from novamind.features.knowledge_ops.tasks.attribution_worker import (
                 attribute_pending_events,
@@ -149,6 +139,17 @@ class AppLifespanManager:
             from novamind.features.knowledge_ops.tasks.weekly_digest import (
                 send_weekly_kb_ops_digest,
             )
+            from novamind.features.knowledge_space.services.chunk_upload_service import (
+                cleanup_stale_parts,
+            )
+            from novamind.features.knowledge_space.tasks.document_tasks import (
+                process_document_task,
+                recover_orphan_documents,
+            )
+            from novamind.features.knowledge_space.tasks.wiki_tasks import (
+                process_wiki_ingest_task,
+                process_wiki_retract_task,
+            )
             from novamind.features.qa.tasks import cleanup_orphan_attachments
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
@@ -157,6 +158,8 @@ class AppLifespanManager:
                     process_resume_task,
                     process_wiki_ingest_task,
                     process_wiki_retract_task,
+                    # agent 压缩时记忆提取（agent.memory.on_turn_done 开关控制投递）
+                    consolidate_memory_task,
                     # kb-ops A1：失败问答归因（cron 驱动，见下）
                     attribute_pending_events,
                     # kb-ops A2：知识运营周报（cron 驱动，见下）

@@ -66,7 +66,8 @@ async def test_anthropic_default_model_rejected_at_assembly():
     chat.model_config_service = svc
 
     with pytest.raises(ModelConfigNotFoundError, match="anthropic"):
-        await chat._build_memory_reconciler(
+        await ChatService._build_memory_reconciler(
+            model_config_service=svc,
             user_id=1, agent_id=11, memory_store=None, memory_search=None,
         )
 
@@ -81,7 +82,8 @@ async def test_embedding_protocol_mismatch_also_rejected():
     chat.model_config_service = svc
 
     with pytest.raises(ModelConfigNotFoundError, match="embedding"):
-        await chat._build_memory_reconciler(
+        await ChatService._build_memory_reconciler(
+            model_config_service=svc,
             user_id=1, agent_id=11, memory_store=None, memory_search=None,
         )
 
@@ -96,7 +98,8 @@ async def test_openai_compatible_passes_guard_and_builds():
     chat.model_config_service = svc
 
     store = __import__("types").SimpleNamespace()
-    reconciler = await chat._build_memory_reconciler(
+    reconciler = await ChatService._build_memory_reconciler(
+        model_config_service=svc,
         user_id=1, agent_id=11, memory_store=store, memory_search=None,
     )
 

@@ -1,4 +1,5 @@
 """五阶段结构化上下文压缩器（剪枝/预算保护/LLM 摘要/迭代融合/工具对清理），带反抖动、降级与冷却容错。"""
+import dataclasses
 import hashlib
 import html
 import json
@@ -103,8 +104,13 @@ class ContextCompressor(ICompressionStrategy):
         agent_id: int | None = None,
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
+        model: str = "gpt-4",
     ):
-        """注入 LLM 工厂、摘要/任务存储等依赖，并初始化迭代摘要与反抖动、冷却状态。"""
+        """注入 LLM 工厂、摘要/任务存储等依赖，并初始化迭代摘要与反抖动、冷却状态。
+
+        Args:
+            model: 对话主模型名（记忆异步提取入队参数，决定任务侧 token 计数口径）。
+        """
         self._llm_factory = llm_client_factory
         self._aux_llm_factory = auxiliary_llm_factory
         self._tail_ratio = tail_ratio
@@ -114,6 +120,7 @@ class ContextCompressor(ICompressionStrategy):
         self._long_term = long_term_memory
         self._agent_id = agent_id
         self._user_id = user_id
+        self._model = model
 
         # 迭代摘要状态
         self._previous_summary: str | None = None
@@ -1122,9 +1129,39 @@ class ContextCompressor(ICompressionStrategy):
         turns: list[MemoryMessage],
         conversation_id: int | None,
     ) -> None:
-        """从即将被压缩丢弃的轮次中提取长期记忆（write-before-compaction）"""
+        """从即将被压缩丢弃的轮次中提取长期记忆（write-before-compaction）。
+
+        on_turn_done 开启时投递 arq 后台任务（不入压缩关键路径）；入队失败或
+        任务被拒时退回同步提取——能力降级而非丢失。
+        """
         if not self._long_term or not self._agent_id or not self._user_id:
             return
+        from novamind.setting.yaml_config import get_config
+
+        if get_config().agent.memory.on_turn_done:
+            try:
+                from novamind.shared.mq import get_arq_pool
+
+                pool = await get_arq_pool()
+                job = await pool.enqueue_job(
+                    "consolidate_memory_task",
+                    agent_id=self._agent_id,
+                    user_id=self._user_id,
+                    conversation_id=conversation_id or 0,
+                    turns=[dataclasses.asdict(t) for t in turns],
+                    model=self._model,
+                )
+                if job is not None:
+                    logger.info(
+                        "压缩时记忆提取已入队",
+                        agent_id=self._agent_id,
+                        conversation_id=conversation_id,
+                        turns=len(turns),
+                    )
+                    return
+                logger.warning("记忆提取任务入队被拒，退回同步提取")
+            except Exception as e:
+                logger.warning("记忆提取入队失败，退回同步提取", error=str(e))
         try:
             stored = await self._long_term.consolidate(
                 agent_id=self._agent_id,

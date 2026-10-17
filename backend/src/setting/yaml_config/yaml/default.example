@@ -213,7 +213,7 @@ agent:
     es_collection: "novamind_mem0"
     # 调和时参考的存量相似记忆条数
     history_size: 5
-    # 每轮对话结束异步巩固（默认关：行为变化大，仅压缩时触发巩固）
+    # 压缩时记忆提取投递 arq 后台任务（true=异步，不入压缩关键路径，队列不可用自动退回同步；false=同步提取）
     on_turn_done: false
     # AsyncMemory 实例 LRU 缓存数
     lru_size: 16

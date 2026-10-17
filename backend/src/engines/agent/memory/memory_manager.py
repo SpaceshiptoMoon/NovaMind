@@ -112,6 +112,7 @@ class MemoryManager:
             agent_id=agent_id,
             user_id=user_id,
             auxiliary_llm_factory=auxiliary_llm_factory,
+            model=model,
         )
 
         short_term = ShortTermMemory(

@@ -586,7 +586,8 @@ class AgentChatService:
         reconciler = None
         if get_config().agent.memory.backend == "mem0":
             try:
-                reconciler = await self._build_memory_reconciler(
+                reconciler = await AgentChatService._build_memory_reconciler(
+                    model_config_service=self.model_config_service,
                     user_id=user_id,
                     agent_id=agent.id,
                     memory_store=memory_store,
@@ -617,8 +618,9 @@ class AgentChatService:
             reconciler=reconciler,
         )
 
+    @staticmethod
     async def _build_memory_reconciler(
-        self,
+        model_config_service: ModelConfigService,
         user_id: int,
         agent_id: int,
         memory_store: HostMemoryStorePort,
@@ -631,6 +633,7 @@ class AgentChatService:
         内部按参数指纹 LRU，避免同用户反复握手。
 
         Args:
+            model_config_service: 模型配置服务（绑定任务/请求各自的新 session）。
             user_id: 用户 ID（决定 LLM/embedding 连接参数）。
             agent_id: Agent ID（Mem0 agent_id 命名空间）。
             memory_store: MySQL 真源读写端口。
@@ -643,10 +646,10 @@ class AgentChatService:
         Raises:
             Exception: mem0ai 缺失在首次 reconcile 才暴露；模型配置缺失此处即抛。
         """
-        llm_params = await self.model_config_service.get_model_connection_params(
+        llm_params = await model_config_service.get_model_connection_params(
             user_id, "llm"
         )
-        embedding_params = await self.model_config_service.get_model_connection_params(
+        embedding_params = await model_config_service.get_model_connection_params(
             user_id, "embedding"
         )
         # Mem0 只有 openai 兼容 provider；anthropic 等其他协议端点用 OpenAI SDK
