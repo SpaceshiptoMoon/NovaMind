@@ -326,6 +326,9 @@ class AgentMemoryConfigYaml:
     history_size: int = 5
     # 每轮对话结束后异步巩固（行为变化大，默认关，P3 再启用）
     on_turn_done: bool = False
+    # 压缩摘要生成投递 arq 后台任务（true=主循环不等 LLM 摘要走静态占位降级，
+    # 任务落库后下轮请求生效；false=同步生成，阻塞压缩关键路径）
+    compaction_async: bool = False
     # AsyncMemory 实例 LRU 缓存数（按 base_url/model/api_key 指纹为键）
     lru_size: int = 16
 

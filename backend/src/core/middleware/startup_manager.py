@@ -123,6 +123,9 @@ class AppLifespanManager:
         try:
             from arq import cron
             from novamind.features.agent.attachments.cleanup import cleanup_orphan_attachments
+            from novamind.features.agent.tasks.compaction_tasks import (
+                generate_compaction_summary_task,
+            )
             from novamind.features.agent.tasks.memory_tasks import consolidate_memory_task
             from novamind.features.app.tasks.resume_tasks import (
                 process_resume_task,
@@ -160,6 +163,8 @@ class AppLifespanManager:
                     process_wiki_retract_task,
                     # agent 压缩时记忆提取（agent.memory.on_turn_done 开关控制投递）
                     consolidate_memory_task,
+                    # agent 压缩摘要生成（agent.memory.compaction_async 开关控制投递）
+                    generate_compaction_summary_task,
                     # kb-ops A1：失败问答归因（cron 驱动，见下）
                     attribute_pending_events,
                     # kb-ops A2：知识运营周报（cron 驱动，见下）

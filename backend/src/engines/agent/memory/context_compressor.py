@@ -207,10 +207,20 @@ class ContextCompressor(ICompressionStrategy):
         new_resource_lines = self._extract_resource_usages(turns_to_compress)
 
         # Phase 3/4: 结构化 LLM 摘要（前缀缓存对齐优先，降级独立 prompt）
-        summary = await self._generate_summary(
-            turns_to_compress, token_budget, conversation_id,
-            system_prompt=system_prompt, tools=tools,
-        )
+        # compaction_async 开启时优先投递 arq 后台任务：主循环不等 LLM，
+        # 走静态占位降级；任务落库后下轮 build_context 经 get_latest_summary
+        # 生效（异步窗口内重复触发的压缩走零 LLM 静态路径，任务完成后自愈）。
+        # 入队失败/开关关退回同步摘要——能力降级而非丢失。
+        summary = None
+        if self._compaction_async_enabled() and await self._enqueue_summary(
+            turns_to_compress, conversation_id, token_budget, original_tokens, tail,
+        ):
+            logger.info("摘要生成已投递后台任务，主循环走静态降级")
+        else:
+            summary = await self._generate_summary(
+                turns_to_compress, token_budget, conversation_id,
+                system_prompt=system_prompt, tools=tools,
+            )
         summary_content = summary or self._static_fallback(len(turns_to_compress))
 
         # 摘要尾部追加跨代资源清单段（摘要成功时才携带；静态降级不带——
@@ -1123,6 +1133,79 @@ class ContextCompressor(ICompressionStrategy):
         return self._sanitise_tool_pairs_mem(messages)
 
     # ==================== 静态降级 ====================
+
+    @staticmethod
+    def _compaction_async_enabled() -> bool:
+        """压缩摘要异步投递开关（agent.memory.compaction_async，默认关）。"""
+        try:
+            from novamind.setting.yaml_config import get_config
+
+            return bool(get_config().agent.memory.compaction_async)
+        except Exception:
+            return False
+
+    async def _enqueue_summary(
+        self,
+        turns: list[MemoryMessage],
+        conversation_id: int | None,
+        token_budget: TokenBudget,
+        original_tokens: int,
+        tail: list[MemoryMessage],
+    ) -> bool:
+        """把摘要生成投递为 arq 后台任务。
+
+        Args:
+            turns: 被压缩区消息序列。
+            conversation_id: 会话 ID，None 时无法持久化（直接放弃投递）。
+            token_budget: 主循环 token 计数器（压缩率预计算口径）。
+            original_tokens: 压缩前消息总 token。
+            tail: 保留区消息（用于估计压缩后 token）。
+
+        Returns:
+            True=已入队（调用方走静态降级）；False=未投递（退回同步摘要）。
+        """
+        cid = conversation_id or self._conversation_id
+        if not cid or not self._agent_id or not self._user_id:
+            return False
+        try:
+            from novamind.shared.mq import get_arq_pool
+
+            pool = await get_arq_pool()
+            job = await pool.enqueue_job(
+                "generate_compaction_summary_task",
+                conversation_id=cid,
+                turns=[dataclasses.asdict(t) for t in turns],
+                previous_summary=self._previous_summary,
+                # 任务侧无法重算完整压缩结果，压缩率用当前静态降级形态估计——
+                # 仅作持久化元数据，不参与任何判流逻辑
+                compressed_count=len(turns),
+                compression_ratio=self._estimate_ratio(
+                    turns, tail, token_budget, original_tokens
+                ),
+                agent_id=self._agent_id,
+                user_id=self._user_id,
+                model=self._model,
+            )
+            return job is not None
+        except Exception as e:
+            logger.warning("摘要任务入队失败，退回同步摘要", error=str(e))
+            return False
+
+    @staticmethod
+    def _estimate_ratio(
+        turns: list[MemoryMessage],
+        tail: list[MemoryMessage],
+        token_budget: TokenBudget,
+        original_tokens: int,
+    ) -> float:
+        """按静态降级形态估计压缩率（持久化元数据用，非判流依据）。"""
+        if original_tokens <= 0:
+            return 1.0
+        placeholder = ContextCompressor._static_fallback(len(turns))
+        estimated = token_budget.count_messages_tokens(
+            [MemoryMessage(role="user", content=placeholder)] + tail
+        )
+        return estimated / original_tokens
 
     async def _extract_memories(
         self,

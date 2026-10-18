@@ -219,5 +219,7 @@ agent:
     history_size: 5
     # 压缩时记忆提取投递 arq 后台任务（true=异步，不入压缩关键路径，队列不可用自动退回同步；false=同步提取）
     on_turn_done: false
+    # 压缩摘要生成投递 arq 后台任务（true=主循环不等 LLM 摘要走静态占位降级，任务落库后下轮请求生效；false=同步生成）
+    compaction_async: false
     # AsyncMemory 实例 LRU 缓存数
     lru_size: 16

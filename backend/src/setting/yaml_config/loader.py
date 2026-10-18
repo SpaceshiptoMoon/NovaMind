@@ -385,6 +385,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             es_collection=memory.get("es_collection", "novamind_mem0"),
             history_size=memory.get("history_size", 5),
             on_turn_done=memory.get("on_turn_done", False),
+            compaction_async=memory.get("compaction_async", False),
             lru_size=memory.get("lru_size", 16),
         ),
     )
