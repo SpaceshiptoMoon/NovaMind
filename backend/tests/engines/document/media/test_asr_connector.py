@@ -233,7 +233,11 @@ def test_transcribe_openai_hotwords_warned_not_blocking(monkeypatch):
 
 
 def test_transcribe_with_route_lock_held_no_reacquire(monkeypatch):
-    """lock_held=True：不重复拿锁（调用方自管持有期），转写后仍由连接器释放。"""
+    """lock_held=True：连接器完全不碰锁（获取与释放全归调用方）——防双重释放。
+
+    全局单例锁的 force_release 不区分持有者：连接器若再释放一次，竞态窗口内
+    可能放掉后续任务的锁。调用方（音频文档/视频音轨）在自己 finally 释放。
+    """
     import novamind.engines.document.media.audio as audio_pkg
 
     calls = []
@@ -261,7 +265,7 @@ def test_transcribe_with_route_lock_held_no_reacquire(monkeypatch):
     ))
     assert result == [{"text": "hi"}]
     assert calls == ["transcribe"]  # 未 acquire
-    assert released == [True]  # finally 仍释放
+    assert released == []  # 连接器不释放——调用方全权负责
 
 
 def test_transcribe_engine_error_still_releases_slot(monkeypatch):

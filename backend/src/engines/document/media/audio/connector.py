@@ -64,8 +64,8 @@ class AsrConnector:
       拿锁、转写、释放全部在连接器内完成；
     - 两阶段（锁敏感场景，如视频音轨需先探锁再提取音轨）：调用方先
       ``resolve_route`` 并自行 ``acquire_local_slot``，再调
-      ``transcribe_with_route(route, lock_held=True)``——锁的持有期由调用方
-      控制（如覆盖 ffmpeg 提取段），释放仍归连接器 finally。
+      ``transcribe_with_route(route, lock_held=True)``——锁的获取与释放
+      全归调用方（连接器不碰锁），调用方在覆盖 ffmpeg 提取段后自行 finally 释放。
     """
 
     # wait_local_slot=True 时的轮询间隔（秒）。本地转写分钟级起，1s 轮询
@@ -220,14 +220,15 @@ class AsrConnector:
         """按已解析路由分发转写（两阶段入口，供调用方自管锁的持有期）。
 
         典型用法：视频音轨先 resolve_route + acquire_local_slot（锁内含
-        ffmpeg 提取），成功后调用本方法并传 ``lock_held=True``——连接器只在
-        finally 释放、不再重复拿锁；音频文档等一次性场景直接用 transcribe()。
+        ffmpeg 提取），成功后调用本方法并传 ``lock_held=True``——锁的获取
+        与释放全归调用方（全局单例锁的 force_release 不区分持有者，连接器
+        若再释放一次，竞态窗口内可能放掉后续任务的锁），本方法只做协议分发。
 
         Args:
             route: resolve_route 返回的路由（协议/模型/凭证）。
-            lock_held: True = 调用方已持本地锁（仅 local 协议有意义），连接器
-                不再拿锁、仍在 finally 释放；False = 由本方法按
-                wait_local_slot/wait_timeout 语义拿锁（云端协议忽略此参）。
+            lock_held: True = 调用方已持本地锁且负责释放（仅 local 协议有
+                意义），本方法完全不碰锁；False = 由本方法拿锁并在 finally
+                释放（云端协议忽略此参）。
 
         其余参数同 transcribe()。
 
@@ -247,30 +248,59 @@ class AsrConnector:
                 minio_client=minio_client,
             )
 
-        from novamind.engines.document.media.audio import (
-            transcribe_audio_local,
-        )
-
         if not lock_held:
             await self._acquire_local_slot_or_wait(
                 wait_local_slot=wait_local_slot, wait_timeout=wait_timeout
             )
-        try:
-            if diarization_enabled:
-                logger.warning(
-                    "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），"
-                    "忽略 diarization 配置, document_id=%s",
-                    document.id,
+            try:
+                return await self._transcribe_local_locked(
+                    file_content=file_content,
+                    file_type=file_type,
+                    document=document,
+                    language=language,
+                    engine_audio_config=engine_audio_config,
+                    hotwords=hotwords,
+                    diarization_enabled=diarization_enabled,
                 )
-            return await transcribe_audio_local(
-                file_content=file_content,
-                file_type=file_type,
-                language=language,
-                audio_config=engine_audio_config,
-                hotwords=hotwords,
+            finally:
+                self.release_local_slot()
+        return await self._transcribe_local_locked(
+            file_content=file_content,
+            file_type=file_type,
+            document=document,
+            language=language,
+            engine_audio_config=engine_audio_config,
+            hotwords=hotwords,
+            diarization_enabled=diarization_enabled,
+        )
+
+    async def _transcribe_local_locked(
+        self,
+        *,
+        file_content: bytes,
+        file_type: str,
+        document: _RouteDocument,
+        language: str | None,
+        engine_audio_config: Any,
+        hotwords: list[str] | None,
+        diarization_enabled: bool | None,
+    ) -> list[dict[str, Any]]:
+        """本地协议转写本体（调用方须已持锁或已确认锁策略）。"""
+        from novamind.engines.document.media.audio import transcribe_audio_local
+
+        if diarization_enabled:
+            logger.warning(
+                "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），"
+                "忽略 diarization 配置, document_id=%s",
+                document.id,
             )
-        finally:
-            self.release_local_slot()
+        return await transcribe_audio_local(
+            file_content=file_content,
+            file_type=file_type,
+            language=language,
+            audio_config=engine_audio_config,
+            hotwords=hotwords,
+        )
 
     async def _acquire_local_slot_or_wait(
         self, *, wait_local_slot: bool, wait_timeout: float | None

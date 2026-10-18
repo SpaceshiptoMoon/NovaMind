@@ -178,6 +178,19 @@ async def test_asr_local_bare_tier_resolves(monkeypatch):
     assert captured["slug"] == "small"  # 裸档位直接作为 slug
 
 
+@pytest.mark.asyncio
+async def test_asr_unknown_protocol_raises_not_silent_openai():
+    """未知协议（anthropic/ollama 等）显式报错，不静默按 openai 测试假成功。
+
+    与运行时 AsrConnector 的协议白名单对齐——配置层放行自由字符串协议，
+    两处消费端都必须 fail fast，否则用户配错协议要等真实解析才暴露。
+    """
+    with pytest.raises(ValueError, match="不支持协议"):
+        await _tester().test(
+            protocol="anthropic", model="some-asr", api_key="k", base_url=None,
+        )
+
+
 # ========== 3. _test_llm 空 content 判失败 ==========
 
 
