@@ -228,62 +228,25 @@ async def _run_asr_transcription(
 ) -> list:
     """按协议分发执行一次 ASR 转写（连接器委托薄壳，存量测试桩沿用此入口）。
 
-    本地锁/失败语义归调用方；热词仅本地协议生效，说话人分离仅 DashScope
-    生效——能力边界告警在连接器内统一处理。
+    本地锁由调用方持有（音频文档/视频音轨均先 acquire 再进本函数），故
+    ``lock_held=True``——连接器只负责 finally 释放与协议分发；热词仅本地
+    协议生效，说话人分离仅 DashScope 生效——能力边界告警在连接器内统一处理。
     """
     connector = _get_asr_connector()
     route = AsrRoute(
         protocol=protocol, model=model, api_key=api_key, base_url=base_url
     )
-    if protocol == "local":
-        return await _transcribe_local_via_connector(
-            file_content=file_content,
-            file_type=file_type,
-            language=language,
-            engine_audio_config=engine_audio_config,
-            document=document,
-            hotwords=hotwords,
-            diarization_enabled=diarization_enabled,
-            logger=logger,
-        )
-    return await connector._transcribe_remote(
+    return await connector.transcribe_with_route(
+        route,
         file_content=file_content,
         file_type=file_type,
-        route=route,
         document=document,
         language=language,
+        engine_audio_config=engine_audio_config,
         hotwords=hotwords,
         diarization_enabled=diarization_enabled,
         speaker_count=speaker_count,
-        minio_client=None,
-    )
-
-
-async def _transcribe_local_via_connector(
-    *,
-    file_content: bytes,
-    file_type: str,
-    language: str | None,
-    engine_audio_config: AudioConfig,
-    document: Document,
-    hotwords: list[str] | None,
-    diarization_enabled: bool | None,
-    logger,
-) -> list:
-    """本地协议转写（调用方已持锁场景）：直连引擎函数，锁管理不重复。"""
-    from novamind.engines.document.media.audio import transcribe_audio_local
-
-    if diarization_enabled:
-        logger.warning(
-            "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），忽略 diarization 配置",
-            document_id=document.id,
-        )
-    return await transcribe_audio_local(
-        file_content=file_content,
-        file_type=file_type,
-        language=language,
-        audio_config=engine_audio_config,
-        hotwords=hotwords,
+        lock_held=True,
     )
 
 

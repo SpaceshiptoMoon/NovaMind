@@ -57,7 +57,20 @@ class _RouteDocument(Protocol):
 
 
 class AsrConnector:
-    """ASR 连接器：按模型名自动路由本地/远程转写，后续 ASR 需求直接调用本类。"""
+    """ASR 连接器：按模型名自动路由本地/远程转写，后续 ASR 需求直接调用本类。
+
+    两种使用形态：
+    - 一次性（简单场景）：``await connector.transcribe(...)``——路由解析、
+      拿锁、转写、释放全部在连接器内完成；
+    - 两阶段（锁敏感场景，如视频音轨需先探锁再提取音轨）：调用方先
+      ``resolve_route`` 并自行 ``acquire_local_slot``，再调
+      ``transcribe_with_route(route, lock_held=True)``——锁的持有期由调用方
+      控制（如覆盖 ffmpeg 提取段），释放仍归连接器 finally。
+    """
+
+    # wait_local_slot=True 时的轮询间隔（秒）。本地转写分钟级起，1s 轮询
+    # 足够灵敏且不空转。
+    _WAIT_POLL_INTERVAL_S = 1.0
 
     def __init__(self, credentials_port: _CredentialsPort | None = None):
         """
@@ -138,6 +151,7 @@ class AsrConnector:
         speaker_count: int | None = None,
         minio_client: Any = None,
         wait_local_slot: bool = False,
+        wait_timeout: float | None = None,
     ) -> tuple[list[dict[str, Any]], AsrRoute]:
         """统一转写入口：路由解析 + 协议分发 + 本地忙碌锁。
 
@@ -156,6 +170,8 @@ class AsrConnector:
             wait_local_slot: True 时本地忙碌在连接器内等待重试获取（视频旁白等
                 可等待场景）；False（默认）忙碌即抛 AsrBusyError（音频文档
                 场景由调用方转译为延后重入队）。
+            wait_timeout: 等待锁的超时上限（秒）；None 不限时。超时抛
+                AsrBusyError——防 wait 模式在锁泄漏时永久自旋。
 
         Returns:
             (segments, route)：segments 为统一段落字典列表；route 为实际生效
@@ -163,43 +179,82 @@ class AsrConnector:
 
         Raises:
             AsrCredentialsMissingError: 本地档位非法或云端凭证缺失。
-            AsrBusyError: 本地忙碌且 wait_local_slot=False。
+            AsrBusyError: 本地忙碌且 wait_local_slot=False，或等待超时。
             AudioFileInvalidError: 文件损坏/过小/格式不支持（永久性）。
             RuntimeError: 模型缺失/云端调用失败（瞬时性，可重试）。
         """
         route = await self.resolve_route(document, asr_model)
+        segments = await self.transcribe_with_route(
+            route,
+            file_content=file_content,
+            file_type=file_type,
+            document=document,
+            language=language,
+            engine_audio_config=engine_audio_config,
+            hotwords=hotwords,
+            diarization_enabled=diarization_enabled,
+            speaker_count=speaker_count,
+            minio_client=minio_client,
+            wait_local_slot=wait_local_slot,
+            wait_timeout=wait_timeout,
+        )
+        return segments, route
 
+    async def transcribe_with_route(
+        self,
+        route: AsrRoute,
+        *,
+        file_content: bytes,
+        file_type: str,
+        document: _RouteDocument,
+        language: str | None = None,
+        engine_audio_config: Any = None,
+        hotwords: list[str] | None = None,
+        diarization_enabled: bool | None = None,
+        speaker_count: int | None = None,
+        minio_client: Any = None,
+        lock_held: bool = False,
+        wait_local_slot: bool = False,
+        wait_timeout: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """按已解析路由分发转写（两阶段入口，供调用方自管锁的持有期）。
+
+        典型用法：视频音轨先 resolve_route + acquire_local_slot（锁内含
+        ffmpeg 提取），成功后调用本方法并传 ``lock_held=True``——连接器只在
+        finally 释放、不再重复拿锁；音频文档等一次性场景直接用 transcribe()。
+
+        Args:
+            route: resolve_route 返回的路由（协议/模型/凭证）。
+            lock_held: True = 调用方已持本地锁（仅 local 协议有意义），连接器
+                不再拿锁、仍在 finally 释放；False = 由本方法按
+                wait_local_slot/wait_timeout 语义拿锁（云端协议忽略此参）。
+
+        其余参数同 transcribe()。
+
+        Raises:
+            同 transcribe()。
+        """
         if route.protocol != "local":
-            return (
-                await self._transcribe_remote(
-                    file_content=file_content,
-                    file_type=file_type,
-                    route=route,
-                    document=document,
-                    language=language,
-                    hotwords=hotwords,
-                    diarization_enabled=diarization_enabled,
-                    speaker_count=speaker_count,
-                    minio_client=minio_client,
-                ),
-                route,
+            return await self._transcribe_remote(
+                file_content=file_content,
+                file_type=file_type,
+                route=route,
+                document=document,
+                language=language,
+                hotwords=hotwords,
+                diarization_enabled=diarization_enabled,
+                speaker_count=speaker_count,
+                minio_client=minio_client,
             )
 
         from novamind.engines.document.media.audio import (
             transcribe_audio_local,
         )
 
-        if wait_local_slot:
-            acquired = await self.acquire_local_slot()
-            while not acquired:
-                import asyncio
-
-                await asyncio.sleep(1.0)
-                acquired = await self.acquire_local_slot()
-        else:
-            acquired = await self.acquire_local_slot()
-            if not acquired:
-                raise AsrBusyError()
+        if not lock_held:
+            await self._acquire_local_slot_or_wait(
+                wait_local_slot=wait_local_slot, wait_timeout=wait_timeout
+            )
         try:
             if diarization_enabled:
                 logger.warning(
@@ -207,16 +262,34 @@ class AsrConnector:
                     "忽略 diarization 配置, document_id=%s",
                     document.id,
                 )
-            segments = await transcribe_audio_local(
+            return await transcribe_audio_local(
                 file_content=file_content,
                 file_type=file_type,
                 language=language,
                 audio_config=engine_audio_config,
                 hotwords=hotwords,
             )
-            return segments, route
         finally:
             self.release_local_slot()
+
+    async def _acquire_local_slot_or_wait(
+        self, *, wait_local_slot: bool, wait_timeout: float | None
+    ) -> None:
+        """获取本地锁：非等待模式忙碌即抛；等待模式轮询直至拿到或超时。"""
+        import asyncio
+
+        acquired = await self.acquire_local_slot()
+        if wait_local_slot:
+            waited = 0.0
+            while not acquired:
+                if wait_timeout is not None and waited >= wait_timeout:
+                    raise AsrBusyError(defer_seconds=int(wait_timeout))
+                await asyncio.sleep(self._WAIT_POLL_INTERVAL_S)
+                waited += self._WAIT_POLL_INTERVAL_S
+                acquired = await self.acquire_local_slot()
+            return
+        if not acquired:
+            raise AsrBusyError()
 
     async def _transcribe_remote(
         self,

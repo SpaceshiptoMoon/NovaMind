@@ -227,3 +227,130 @@ def test_transcribe_openai_hotwords_warned_not_blocking(monkeypatch):
         logging.getLogger("novamind.engines.document.media.audio.connector").removeHandler(handler)
     assert called == {} or called.get("model") == "whisper-1"
     assert any("热词" in w for w in warnings)
+
+
+# ==================== 完善：两阶段入口 / 锁边界 / 等待超时 ====================
+
+
+def test_transcribe_with_route_lock_held_no_reacquire(monkeypatch):
+    """lock_held=True：不重复拿锁（调用方自管持有期），转写后仍由连接器释放。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
+    calls = []
+    released = []
+
+    async def fake_acquire():
+        calls.append("acquire")
+        return True
+
+    def fake_release():
+        released.append(True)
+
+    async def fake_local(**kwargs):
+        calls.append("transcribe")
+        return [{"text": "hi"}]
+
+    monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
+    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_local)
+
+    route = AsrRoute(protocol="local", model="faster-whisper-tiny")
+    result = asyncio.run(AsrConnector().transcribe_with_route(
+        route, file_content=b"a" * 2048, file_type="mp3",
+        document=_document(), lock_held=True,
+    ))
+    assert result == [{"text": "hi"}]
+    assert calls == ["transcribe"]  # 未 acquire
+    assert released == [True]  # finally 仍释放
+
+
+def test_transcribe_engine_error_still_releases_slot(monkeypatch):
+    """引擎转写抛异常：锁经 finally 释放，异常原样上抛（不吞）。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
+    released = []
+
+    async def fake_acquire():
+        return True
+
+    def fake_release():
+        released.append(True)
+
+    async def fake_boom(**kwargs):
+        raise RuntimeError("模型缺失")
+
+    monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
+    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_boom)
+
+    with pytest.raises(RuntimeError, match="模型缺失"):
+        asyncio.run(AsrConnector().transcribe(
+            file_content=b"a" * 2048, file_type="mp3",
+            asr_model="faster-whisper-tiny", document=_document(),
+        ))
+    assert released == [True]
+
+
+def test_transcribe_wait_slot_succeeds_after_retry(monkeypatch):
+    """wait_local_slot=True：忙碌轮询后拿到锁 → 转写成功。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
+    state = {"attempts": 0}
+    calls = []
+
+    async def fake_acquire():
+        state["attempts"] += 1
+        calls.append("acquire")
+        return state["attempts"] >= 2  # 第一次忙碌，第二次空闲
+
+    async def fake_local(**kwargs):
+        calls.append("transcribe")
+        return []
+
+    monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
+    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", lambda: None)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_local)
+    monkeypatch.setattr(AsrConnector, "_WAIT_POLL_INTERVAL_S", 0.01)
+
+    result, _ = asyncio.run(AsrConnector().transcribe(
+        file_content=b"a" * 2048, file_type="mp3",
+        asr_model="faster-whisper-tiny", document=_document(),
+        wait_local_slot=True,
+    ))
+    assert result == []
+    assert calls == ["acquire", "acquire", "transcribe"]
+
+
+def test_transcribe_wait_slot_timeout_raises_busy(monkeypatch):
+    """wait_local_slot=True + wait_timeout：持续忙碌超时 → AsrBusyError。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
+    calls = []
+
+    async def fake_acquire():
+        calls.append("acquire")
+        return False
+
+    async def _should_not_run(**kwargs):
+        raise AssertionError("超时后不应进入引擎转写")
+
+    monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", _should_not_run)
+    monkeypatch.setattr(AsrConnector, "_WAIT_POLL_INTERVAL_S", 0.01)
+
+    with pytest.raises(AsrBusyError):
+        asyncio.run(AsrConnector().transcribe(
+            file_content=b"a" * 2048, file_type="mp3",
+            asr_model="faster-whisper-tiny", document=_document(),
+            wait_local_slot=True, wait_timeout=0.015,
+        ))
+    # 首次探测 + 至少一轮轮询；引擎从未被调用
+    assert len(calls) >= 2
+    assert "transcribe" not in calls
+
+
+def test_asr_route_is_frozen():
+    """AsrRoute frozen：路由凭证在转写途中不可被意外篡改。"""
+    route = AsrRoute(protocol="local", model="faster-whisper-tiny")
+    with pytest.raises(Exception):
+        route.protocol = "openai"
