@@ -283,6 +283,9 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== SSE 流式对话 =====================
 
+  // 运行中插话发送通道（sendMessageStream 的 onReady 注入；连接结束在 finally 置空）
+  let wsSendRef: ((msg: unknown) => void) | null = null
+
   /**
    * 流式发送消息并按事件增量渲染：正文/思考流式累积、工具卡片插到当前决策消息之后、
    * 计划卡按 plan.* 事件原位更新状态。多轮工具调用时每轮决策文本单独成消息，最终回答取最后一轮。
@@ -520,12 +523,31 @@ export const useAgentStore = defineStore('agent', () => {
               extra: { notice: true, iteration: d.iteration },
             })
           },
+          onSteering(d) {
+            // 运行中插话已被引擎注入：本地同步 push user 气泡（后端已落库，
+            // 刷新后历史回放同样可见）
+            messages.value.push({
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'user',
+              content: d.content,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: new Date().toISOString(),
+              extra: { steering: true, iteration: d.iteration },
+            })
+          },
           onError(err) {
             error.value = err.content
             ensureAssistant()
             if (!assistantMsg!.content) {
               assistantMsg!.content = `[错误] ${err.content}`
             }
+          },
+          // 握手完成后保存发送通道，供 steer() 在 agent 运行中插话
+          onReady(send) {
+            wsSendRef = send
           },
         },
       )
@@ -547,7 +569,20 @@ export const useAgentStore = defineStore('agent', () => {
       streamingReasoning.value = ''
       streamingSources.value = []
       abortController.value = null
+      wsSendRef = null
     }
+  }
+
+  /**
+   * 运行中插话（steering）：agent 流式执行期间把用户消息发给后端，
+   * 在下一轮 ReAct 迭代顶部注入上下文。仅流式路径可用（wsSendRef 由
+   * sendMessageStream 的 onReady 注入）；非流式或空闲时返回 false。
+   */
+  function steer(content: string): boolean {
+    const text = content.trim()
+    if (!text || !wsSendRef) return false
+    wsSendRef({ action: 'message', content: text })
+    return true
   }
 
   // ===================== 非流式对话 =====================
@@ -936,6 +971,7 @@ export const useAgentStore = defineStore('agent', () => {
     deleteConversation,
     sendMessage,
     sendMessageStream,
+    steer,
     cancelStream,
     clearChat,
     fetchMcpServers,

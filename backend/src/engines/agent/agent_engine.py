@@ -72,12 +72,15 @@ class AgentEngine:
         enable_thinking: bool = False,
         stream: bool = True,
         compress_fn: Any | None = None,
+        steering_queue: Any | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         """执行 Agent 对话循环，产出事件流
 
         Args:
             compress_fn: 可选的异步回调，签名 async (messages) -> new_messages。
                          上下文溢出时调用以压缩消息列表。
+            steering_queue: 可选的运行中插话队列（SteeringQueue），每轮迭代顶部
+                         drain 并注入 user 消息，模型下轮可见可调整方向。
         """
         total_tokens = 0
         total_usage = CanonicalUsage()
@@ -107,6 +110,14 @@ class AgentEngine:
 
         while iteration < max_iterations:
             iteration += 1
+            # 运行中插话（steering）：本轮工具已跑完、下一轮 LLM 调用之前注入，
+            # 模型能看到插话后调整方向；事件供 chat_service 落库 user 消息
+            if steering_queue is not None and not steering_queue.empty():
+                for steer_text in steering_queue.drain():
+                    messages.append({"role": "user", "content": steer_text})
+                    yield AgentEvent("steering", {
+                        "content": steer_text, "iteration": iteration,
+                    })
             if pending_warning:
                 messages.append({"role": "user", "content": pending_warning})
                 # 通知 features 层落库 role='notice' 纠偏警告（engines 层不落库，

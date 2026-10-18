@@ -20,6 +20,7 @@ from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
 from novamind.engines.search.ports import WebSearchPort
+from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
@@ -43,7 +44,6 @@ from novamind.features.agent.services.host_memory_store import (
     HostMemoryStorePort,
 )
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
-from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.setting.yaml_config.loader import get_config
@@ -126,6 +126,7 @@ class AgentChatService:
         attachment_ids: list[int] | None = None,
         approval_registry: Any | None = None,
         event_sink: Any | None = None,
+        steering_queue: Any | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）。
 
@@ -141,6 +142,8 @@ class AgentChatService:
             attachment_ids: 随消息引用的附件 ID 列表。
             approval_registry: 异步审批注册表（WS 端点注入，DANGEROUS 工具需用户决策）。
             event_sink: 审批请求等旁路事件的接收器。
+            steering_queue: 运行中插话队列（WS 端点注入；agent 执行期间用户插话
+                在 ReAct 轮边界注入上下文，作为 user 消息落库）。
 
         Returns:
             事件字典异步生成器，涵盖 session/context_usage/compaction/content/reasoning/
@@ -353,6 +356,7 @@ class AgentChatService:
                     temperature=agent.temperature,
                     top_p=agent.top_p,
                     compress_fn=_compress_on_overflow,
+                    steering_queue=steering_queue,
                 )
             async for event in event_gen:
                 # 跟踪最新 ReAct 轮号：每条携带 iteration 的事件都更新 current_iteration，
@@ -395,6 +399,16 @@ class AgentChatService:
                     yield self._emit("plan.completed", event.data)
                 elif event.event_type.startswith("plan."):
                     yield self._emit(event.event_type, event.data)
+                elif event.event_type == "steering":
+                    # 运行中插话注入：作为 user 消息落库（与首条 user 同构），
+                    # 历史回放可还原插话位置；引擎已把同文本注入内存上下文
+                    await self.agent_service.save_message(
+                        conversation_id=conv.id,
+                        role="user",
+                        content=event.data.get("content"),
+                        extra={"steering": True, "iteration": event.data.get("iteration")},
+                    )
+                    yield self._emit("steering", event.data)
                 elif event.event_type == "loop_warning":
                     # loop_detection 注入的纠偏警告：落库 role='notice'，轨迹可见
                     await self.agent_service.save_message(

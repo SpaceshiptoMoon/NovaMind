@@ -119,8 +119,11 @@ export const agentApi = {
       onPlan?: (type: string, d: PlanData) => void
       onLoopWarning?: (d: LoopWarningData) => void
       onResearchProgress?: (d: ResearchProgressData) => void
+      onSteering?: (d: { content: string; iteration: number }) => void
       onError?: (err: { content: string }) => void
       signal?: AbortSignal
+      /** 握手完成后的发送通道（双向）：store 可发 {action:'message', content} 运行中插话 */
+      onReady?: (send: (msg: unknown) => void) => void
     },
   ) {
     return createWebSocketStream(`/agent/agents/${agentId}/ws`, data, {
@@ -172,6 +175,9 @@ export const agentApi = {
           case 'research_progress':
             callbacks.onResearchProgress?.(e.data as ResearchProgressData)
             break
+          case 'steering':
+            callbacks.onSteering?.(e.data as { content: string; iteration: number })
+            break
           case 'error':
             callbacks.onError?.(e.data as { content: string })
             break
@@ -179,6 +185,9 @@ export const agentApi = {
       },
       onError: callbacks.onError ? (msg) => callbacks.onError!({ content: msg }) : undefined,
       signal: callbacks.signal,
+      // 运行中插话通道：chatStream 不直接用，store 拿到 send 后可随时发
+      // {action: 'message', content: '...'}（agent 执行期间在 ReAct 轮边界注入）
+      onReady: callbacks.onReady,
     })
   },
 

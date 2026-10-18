@@ -11,7 +11,7 @@ from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
-from novamind.engines.agent.safety import ApprovalRegistry
+from novamind.engines.agent.safety import ApprovalRegistry, SteeringQueue
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
     build_agent_chat_service,
@@ -48,15 +48,14 @@ from novamind.features.agent.schemas.agent_schema import (
     ToolFunctionResponse,
     ToolProviderResponse,
 )
-from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
-from novamind.features.agent.services.mcp_server_service import McpServerService
-
 from novamind.features.agent.schemas.feedback import (
     CitationClickRequest,
     MessageFeedbackRequest,
     MessageFeedbackResponse,
 )
+from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.user_service import UserService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
@@ -221,8 +220,9 @@ async def chat_ws(
     )
 
     # E5 异步审批：ApprovalRegistry + locked send（并发 send 经 lock）+ 双 task
-    # （send 推送事件流，recv 收用户 approval 决策）
+    # （send 推送事件流，recv 收用户 approval 决策）；steering 收运行中插话
     registry = ApprovalRegistry()
+    steering_queue = SteeringQueue()
     send_lock = asyncio.Lock()
 
     async def locked_send(event):
@@ -241,24 +241,31 @@ async def chat_ws(
         attachment_ids=data.attachment_ids,
         approval_registry=registry,
         event_sink=locked_send,
+        steering_queue=steering_queue,
     )
 
-    async def recv_approvals():
-        """并发收用户 WS 消息（approval 决策 → registry.resolve）。"""
+    async def recv_client_messages():
+        """并发收用户 WS 消息：approval 决策 → registry.resolve；message → steering 队列。"""
         while True:
             try:
                 msg = await websocket.receive_json()
             except (WebSocketDisconnect, OSError):
                 break
-            if isinstance(msg, dict) and msg.get("action") == "approval":
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("action") == "approval":
                 registry.resolve(
                     msg.get("approval_id", ""), msg.get("decision", "deny")
                 )
+            elif msg.get("action") == "message":
+                # 运行中插话：排队等引擎轮边界注入（agent 未运行时队列残留无害，
+                # 连接结束即弃）
+                steering_queue.put(str(msg.get("content") or ""))
 
     send_task = asyncio.create_task(
         run_stream_to_ws(websocket, gen, send_fn=locked_send)
     )
-    recv_task = asyncio.create_task(recv_approvals())
+    recv_task = asyncio.create_task(recv_client_messages())
     try:
         await send_task
     finally:
