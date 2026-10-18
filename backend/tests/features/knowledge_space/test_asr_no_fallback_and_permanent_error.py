@@ -11,11 +11,9 @@ P2 永久错误：PermanentProcessingError 子类化的确定性失败（配置�
 P2 TTL：取消标记 TTL 从 1h 提到 4h（≥ job_timeout 7200s 的一半以上），
 防长任务处理途中标记过期、取消静默失效。
 """
-import ast
 from pathlib import Path
 
 import pytest
-
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     PermanentProcessingError,
@@ -70,6 +68,8 @@ def test_audio_unconfigured_model_defaults_to_local(monkeypatch):
                     local_whisper_cpu_threads=1, local_whisper_device=None,
                     local_whisper_compute_type=None, local_whisper_beam_size=None,
                     local_whisper_vad_enabled=True,
+                    local_whisper_min_speech_dbfs=None,
+                    local_whisper_empty_result_retry_language=None,
                 )
             )
         ),
@@ -96,7 +96,9 @@ def test_audio_unconfigured_model_defaults_to_local(monkeypatch):
         from novamind.engines.document.media.audio import AudioFileInvalidError
         raise AudioFileInvalidError("（测试探针）停止在转写入口")
 
-    monkeypatch.setattr(mp, "transcribe_audio_local", _fake_local)
+    # 连接器化后 transcribe_audio_local 经 audio 包延迟 import，打桩打在来源模块
+    import novamind.engines.document.media.audio as audio_pkg
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", _fake_local)
 
     # 凭证查找不应被触达（本地模型不查凭证）
     async def _creds_should_not_be_called(*a, **kw):
@@ -134,6 +136,8 @@ def test_cloud_model_missing_credentials_still_raises_permanent(monkeypatch):
                     local_whisper_cpu_threads=1, local_whisper_device=None,
                     local_whisper_compute_type=None, local_whisper_beam_size=None,
                     local_whisper_vad_enabled=True,
+                    local_whisper_min_speech_dbfs=None,
+                    local_whisper_empty_result_retry_language=None,
                 )
             )
         ),

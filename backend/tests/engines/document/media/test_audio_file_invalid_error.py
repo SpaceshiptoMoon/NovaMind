@@ -125,9 +125,12 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
     )
 
     # mock transcribe_audio_local：抛 AudioFileInvalidError（文件损坏）
+    # 连接器化后该函数经 audio 包延迟 import，打桩打在来源模块
+    import novamind.engines.document.media.audio as audio_engine
+
     async def _raise_invalid(*a, **kw):
         raise AudioFileInvalidError("音频文件过小 (486 bytes)，本地 ASR 要求至少 1024 bytes")
-    monkeypatch.setattr(media_processing, "transcribe_audio_local", _raise_invalid)
+    monkeypatch.setattr(audio_engine, "transcribe_audio_local", _raise_invalid)
 
     # _find_cloud_asr_credentials 已随「本地失败回退云端」一并移除（no-fallback，
     # 审计 P1#8）；文件损坏路径现在直接抛 DocumentProcessingError，云端不应被触碰。

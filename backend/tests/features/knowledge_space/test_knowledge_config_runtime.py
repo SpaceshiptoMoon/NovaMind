@@ -573,7 +573,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.transcribe_audio_with_timestamps",
+        "novamind.engines.document.media.audio.transcribe_audio_with_timestamps",
         fake_transcribe,
     )
     monkeypatch.setattr(
@@ -689,7 +689,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         return [("audio semantic chunk", {})]
 
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.transcribe_audio_with_timestamps",
+        "novamind.engines.document.media.audio.transcribe_audio_with_timestamps",
         fake_transcribe,
     )
     monkeypatch.setattr(

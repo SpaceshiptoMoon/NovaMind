@@ -1,14 +1,15 @@
 """音视频文档处理管道：视频走关键帧提取加 VLM 逐帧描述，音频走 ASR 转写，之后统一文本切分、embedding 与 ES 入库。"""
 
 import asyncio
+import logging
 import re
 from typing import Any
 
 from novamind.engines.document.media.audio import (
+    AsrConnector,
+    AsrCredentialsMissingError,
+    AsrRoute,
     AudioFileInvalidError,
-    transcribe_audio_local,
-    transcribe_audio_with_timestamps,
-    transcribe_audio_with_dashscope,
 )
 from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
@@ -63,7 +64,6 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.shared.config import AudioConfig
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
-
 
 # VLM 配额/鉴权类错误的特征串。这类错误通常不会因重试而恢复，应触发回退或跳过降级，
 # 而不是让整个文档任务失败后还被 arq 重试 N 次。
@@ -141,56 +141,33 @@ def _probe_audio_duration(segments: list[dict[str, Any]]) -> float | None:
     return round(max(ends), 2) if ends else None
 
 
+def _get_asr_connector(
+    model_config_port: ModelConfigService | None = None,
+) -> AsrConnector:
+    """构造 ASR 连接器（每次调用即用即建——连接器无状态，构造零成本）。"""
+    return AsrConnector(credentials_port=model_config_port)
+
+
 async def _resolve_asr_route(
     document: Document,
     model_config_port: ModelConfigService,
     asr_model: str,
 ) -> tuple[str, str, str | None, str | None]:
-    """解析 ASR 模型名到实际路由（协议/模型/API 凭证）。
+    """解析 ASR 模型名到实际路由（连接器薄壳，视频音轨旧签名沿用）。
 
-    本地 faster-whisper 家族（faster-whisper-tiny/base/small/medium/large-v2/
-    large-v3）不查凭证——协议恒为 local；云端模型凭证按名字精确匹配，找不到
-    即抛错，不取「该用户第一个 ASR 配置」串用（审计 P1#8：用户选了 A 模型
-    可能被静默换成 B 模型/他家凭证，不可追踪）。
-
-    Args:
-        document: 文档（uploader_id 用于凭证查询）。
-        model_config_port: 模型配置端口。
-        asr_model: 显式配置的 ASR 模型名（空串/None 由调用方归一为本地默认）。
-
-    Returns:
-        (protocol, model, api_key, base_url) 四元组。
+    本地 faster-whisper 家族不查凭证；云端模型凭证按名字精确匹配，找不到
+    即抛错，不取「该用户第一个 ASR 配置」串用（审计 P1#8）。
 
     Raises:
-        PermanentProcessingError: 云端模型凭证缺失。
-        PermanentProcessingError: 本地模型档位非法（配置错误，fail fast）。
+        PermanentProcessingError: 云端模型凭证缺失或本地档位非法（配置错误）。
     """
-    from novamind.engines.document.media.audio import split_local_whisper_model_name
-
     try:
-        if split_local_whisper_model_name(asr_model) is not None:
-            return "local", asr_model, None, None
-    except ValueError as exc:
-        raise PermanentProcessingError(
-            document_id=document.id,
-            error_message=str(exc),
-        ) from exc
-
-    asr_creds = await model_config_port.get_credentials_by_model(
-        document.uploader_id, "asr", asr_model
-    )
-    if not asr_creds:
-        raise PermanentProcessingError(
-            document_id=document.id,
-            error_message=(
-                f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
-                f"API 配置，或将知识库音频解析配置切回本地"
-                f"（asr_model 填 faster-whisper-<档位>，留空 = 部署默认档）"
-            ),
+        route = await _get_asr_connector(model_config_port).resolve_route(
+            document, asr_model
         )
-    protocol = asr_creds.protocol or "openai"
-    model = asr_creds.model or asr_model
-    return protocol, model, asr_creds.api_key, asr_creds.base_url
+    except AsrCredentialsMissingError as exc:
+        raise PermanentProcessingError(document_id=document.id, error_message=str(exc)) from exc
+    return route.protocol, route.model, route.api_key, route.base_url
 
 
 def _build_engine_audio_config() -> AudioConfig:
@@ -247,65 +224,66 @@ async def _run_asr_transcription(
     hotwords: list[str] | None = None,
     diarization_enabled: bool | None = None,
     speaker_count: int | None = None,
+    logger=logging.getLogger(__name__),
 ) -> list:
-    """按协议分发执行一次 ASR 转写（不含本地锁/失败语义——归调用方）。
+    """按协议分发执行一次 ASR 转写（连接器委托薄壳，存量测试桩沿用此入口）。
 
-    音频文档与视频音轨共用同一路由：openai → Whisper / dashscope →
-    Paraformer（MinIO 中转）/ local → faster-whisper（须持有 ASR 锁）。
-
-    热词仅本地协议生效；云端协议显式告警忽略（DashScope 录音文件识别仅支持
-    控制台预注册 phrase_id，OpenAI 协议无热词参数）——不静默丢弃，行为可追踪。
-    说话人分离仅 DashScope 协议生效（批次④）；本地协议告警忽略（需 pyannote
-    额外模型，未实施）。
+    本地锁/失败语义归调用方；热词仅本地协议生效，说话人分离仅 DashScope
+    生效——能力边界告警在连接器内统一处理。
     """
+    connector = _get_asr_connector()
+    route = AsrRoute(
+        protocol=protocol, model=model, api_key=api_key, base_url=base_url
+    )
     if protocol == "local":
-        if diarization_enabled:
-            logger.warning(
-                "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），忽略 diarization 配置",
-                document_id=document.id,
-            )
-        return await transcribe_audio_local(
+        return await _transcribe_local_via_connector(
             file_content=file_content,
             file_type=file_type,
             language=language,
-            audio_config=engine_audio_config,
+            engine_audio_config=engine_audio_config,
+            document=document,
             hotwords=hotwords,
-        )
-    if protocol == "dashscope":
-        from novamind.shared.storage.client_factory import ClientFactory
-
-        if hotwords:
-            logger.warning(
-                "DashScope ASR 暂不支持自由热词（仅控制台预注册 phrase_id），忽略 %d 个热词",
-                len(hotwords), document_id=document.id,
-            )
-        minio_client = await ClientFactory.get_minio_client()
-        storage_info = document.get_storage_info()
-        language_hints = [language] if language else None
-        return await transcribe_audio_with_dashscope(
-            file_content=file_content,
-            file_type=file_type,
-            model=model,
-            api_key=api_key,
-            base_url=base_url,
-            minio_bucket=storage_info.get("minio_bucket"),
-            language_hints=language_hints,
             diarization_enabled=diarization_enabled,
-            speaker_count=speaker_count,
-            minio_client=minio_client,
+            logger=logger,
         )
-    if hotwords:
-        logger.warning(
-            "OpenAI 协议 ASR 暂不支持热词，忽略 %d 个热词",
-            len(hotwords), document_id=document.id,
-        )
-    return await transcribe_audio_with_timestamps(
+    return await connector._transcribe_remote(
         file_content=file_content,
         file_type=file_type,
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
+        route=route,
+        document=document,
         language=language,
+        hotwords=hotwords,
+        diarization_enabled=diarization_enabled,
+        speaker_count=speaker_count,
+        minio_client=None,
+    )
+
+
+async def _transcribe_local_via_connector(
+    *,
+    file_content: bytes,
+    file_type: str,
+    language: str | None,
+    engine_audio_config: AudioConfig,
+    document: Document,
+    hotwords: list[str] | None,
+    diarization_enabled: bool | None,
+    logger,
+) -> list:
+    """本地协议转写（调用方已持锁场景）：直连引擎函数，锁管理不重复。"""
+    from novamind.engines.document.media.audio import transcribe_audio_local
+
+    if diarization_enabled:
+        logger.warning(
+            "本地 ASR 暂不支持说话人分离（需 pyannote 额外模型），忽略 diarization 配置",
+            document_id=document.id,
+        )
+    return await transcribe_audio_local(
+        file_content=file_content,
+        file_type=file_type,
+        language=language,
+        audio_config=engine_audio_config,
+        hotwords=hotwords,
     )
 
 
@@ -479,6 +457,7 @@ async def _transcribe_video_audio(
                 engine_audio_config=engine_audio_config,
                 document=document,
                 hotwords=hotwords,
+                logger=logger,
             )
         except AudioTrackExtractionError as exc:
             logger.warning(
@@ -1658,6 +1637,7 @@ async def process_audio_document(
             hotwords=asr_hotwords,
             diarization_enabled=asr_diarization,
             speaker_count=asr_speaker_count,
+            logger=logger,
         )
 
     if task:
@@ -1812,9 +1792,6 @@ async def process_audio_document(
             )
             clean_full_text = "\n".join(cleaned_lines)
             if clean_full_text.strip() and clean_full_text != full_text:
-                from novamind.engines.document.media.audio import (
-                    upload_parsed_text_to_minio,
-                )
                 from novamind.shared.storage.client_factory import ClientFactory as _CFC
 
                 try:

@@ -17,7 +17,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-import novamind.features.knowledge_space.services.media_processing as mp
 from novamind.features.knowledge_space.exceptions import PermanentProcessingError
 from novamind.features.knowledge_space.services.media_processing import (
     _resolve_asr_route,
@@ -66,14 +65,20 @@ def test_resolve_missing_credentials_raises_permanent():
 
 
 def test_run_asr_dispatches_local(monkeypatch):
-    """协议分发：local → transcribe_audio_local（收 AudioConfig 注入）。"""
+    """协议分发：local → transcribe_audio_local（收 AudioConfig 注入）。
+
+    连接器化后引擎函数在 media_processing 内延迟 import（真实来源 audio 包），
+    打桩打在来源模块。
+    """
+    import novamind.engines.document.media.audio as audio_pkg
+
     called = {}
 
     async def fake_local(**kwargs):
         called.update(kwargs)
         return [{"start": 0.0, "text": "hi"}]
 
-    monkeypatch.setattr(mp, "transcribe_audio_local", fake_local)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_local)
     audio_cfg = AudioConfig(local_whisper_model_dir="/models/w")
     result = asyncio.run(_run_asr_transcription(
         file_content=b"audio-bytes", file_type="mp3", protocol="local",
@@ -87,13 +92,15 @@ def test_run_asr_dispatches_local(monkeypatch):
 
 def test_run_asr_dispatches_openai(monkeypatch):
     """协议分发：openai → transcribe_audio_with_timestamps。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
     called = {}
 
     async def fake_openai(**kwargs):
         called.update(kwargs)
         return []
 
-    monkeypatch.setattr(mp, "transcribe_audio_with_timestamps", fake_openai)
+    monkeypatch.setattr(audio_pkg, "transcribe_audio_with_timestamps", fake_openai)
     asyncio.run(_run_asr_transcription(
         file_content=b"audio-bytes", file_type="mp3", protocol="openai",
         model="whisper-1", api_key="sk-x", base_url=None,
