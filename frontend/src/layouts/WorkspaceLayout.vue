@@ -547,12 +547,25 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/agents')) activeChannelKey.value = 'chat'
 }
 
-// 按频道执行「新建/开启」动作：对话经入口页解析默认助手
+// 按频道执行「新建/开启」动作：对话经入口页解析默认助手。
+// 例外：已处于默认助手对话页时 router.push 同路由会被静默忽略（入口页解析后
+// 又跳回原页，视觉即「点了没反应」），改为原地开新对话——与页内「新对话」同语义。
 function handleNew(key: string = activeChannelKey.value) {
   switch (key) {
-    case 'chat':
-      router.push('/home/workspace/chat')
+    case 'chat': {
+      const cur = agentStore.currentAgent
+      if (
+        route.name === 'WorkspaceAgentChat' &&
+        cur?.extra_config?.is_default === true &&
+        Number(route.params.agentId) === cur.id
+      ) {
+        agentStore.clearChat()
+        workbench.resetSelection()
+      } else {
+        router.push('/home/workspace/chat')
+      }
       break
+    }
   }
 }
 
