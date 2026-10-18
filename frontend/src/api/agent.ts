@@ -182,6 +182,14 @@ export const agentApi = {
     })
   },
 
+  /** 跨全部 Agent 的会话列表（分页，created_at 倒序） */
+  listAllSessions(params?: { limit?: number; offset?: number }) {
+    return request.get<AgentConversationListResponse>(
+      '/agent/sessions',
+      params as Record<string, unknown>,
+    )
+  },
+
   /** 指定 Agent 的会话列表（分页） */
   listSessions(agentId: number, params?: { limit?: number; offset?: number }) {
     return request.get<AgentConversationListResponse>(

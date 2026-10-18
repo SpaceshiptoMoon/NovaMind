@@ -12,13 +12,6 @@ from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalRegistry
-# 反馈/引用点击 schema 复用 qa 公共面（同名类会让 FastAPI 的 OpenAPI 组件名
-# 消歧前缀随 import 顺序漂移，破坏契约快照确定性——两处语义本就相同，只留一份）
-from novamind.features.qa.schemas.qa import (
-    CitationClickRequest,
-    MessageFeedbackRequest,
-    MessageFeedbackResponse,
-)
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
     build_agent_chat_service,
@@ -58,6 +51,14 @@ from novamind.features.agent.schemas.agent_schema import (
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
+
+# 反馈/引用点击 schema 复用 qa 公共面（同名类会让 FastAPI 的 OpenAPI 组件名
+# 消歧前缀随 import 顺序漂移，破坏契约快照确定性——两处语义本就相同，只留一份）
+from novamind.features.qa.schemas.qa import (
+    CitationClickRequest,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
+)
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.user_service import UserService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
@@ -264,6 +265,21 @@ async def chat_ws(
         await send_task
     finally:
         recv_task.cancel()
+
+
+@router.get(
+    "/sessions",
+    response_model=AgentSessionListResponse,
+    summary="列出全部对话",
+    description="获取当前用户跨全部 Agent 的对话会话列表（created_at 倒序）",
+)
+async def list_all_sessions(
+    limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
+    offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.list_sessions(user_id, None, limit, offset)
 
 
 @router.get(

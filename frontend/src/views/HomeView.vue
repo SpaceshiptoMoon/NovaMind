@@ -42,7 +42,7 @@
         >
         <span class="stat-divider" />
         <span class="stat-item"
-          ><strong>{{ qaSessionCount }}</strong> 段对话</span
+          ><strong>{{ sessionCount }}</strong> 段对话</span
         >
         <span class="stat-divider" />
         <span class="stat-item"
@@ -71,8 +71,8 @@ import { useRouter } from 'vue-router'
 import { Promotion, ArrowRight } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 import { useAgentStore } from '@/stores/agent'
+import { agentApi } from '@/api/agent'
 import { usePermissionStore } from '@/stores/permission'
-import { sessionApi } from '@/api/session'
 import { wikiApi } from '@/api/knowledge'
 import NavIcon from '@/components/common/NavIcon.vue'
 
@@ -81,8 +81,8 @@ const spaceStore = useSpaceStore()
 const agentStore = useAgentStore()
 const permStore = usePermissionStore()
 
-// QA 历史会话总数（数据条展示；QA 对话已归档，仅统计不再新增入口）
-const qaSessionCount = ref(0)
+// 对话总数（agent 会话，数据条展示）
+const sessionCount = ref(0)
 
 // 当前空间的 Wiki 资产概览（跨 KB 聚合）；零页/无空间时不占位
 const wikiPagesLabel = ref('')
@@ -151,8 +151,8 @@ function goChat() {
 
 onMounted(() => {
   // 数据条数据源（已有智能体缓存时静默跳过）
-  sessionApi.getSessions({ limit: 1 }).then((d) => {
-    qaSessionCount.value = d.total
+  agentApi.listAllSessions({ limit: 1 }).then((d) => {
+    sessionCount.value = d.total
   }).catch(() => {})
   if (agentStore.agents.length === 0) agentStore.fetchAgents().catch(() => {})
   void loadWikiOverview()
