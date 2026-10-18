@@ -210,6 +210,8 @@ def _build_engine_audio_config() -> AudioConfig:
         local_whisper_compute_type=parsing.local_whisper_compute_type,
         local_whisper_beam_size=parsing.local_whisper_beam_size,
         local_whisper_vad_enabled=parsing.local_whisper_vad_enabled,
+        local_whisper_min_speech_dbfs=parsing.local_whisper_min_speech_dbfs,
+        local_whisper_empty_result_retry_language=parsing.local_whisper_empty_result_retry_language,
     )
 
 
@@ -1509,6 +1511,10 @@ def _audio_asr_fingerprint_params(
                                 None),
         "beam_size": getattr(engine_audio_config, "local_whisper_beam_size", None),
         "vad_enabled": getattr(engine_audio_config, "local_whisper_vad_enabled", True),
+        "min_speech_dbfs": getattr(engine_audio_config, "local_whisper_min_speech_dbfs", None),
+        "empty_result_retry_language": getattr(
+            engine_audio_config, "local_whisper_empty_result_retry_language", None
+        ),
         "hotwords": sorted(hotwords or []),
         "diarization_enabled": diarization_enabled,
         "speaker_count": speaker_count,

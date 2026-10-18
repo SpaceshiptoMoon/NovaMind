@@ -301,6 +301,10 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             local_whisper_compute_type=parsing.get("local_whisper_compute_type", None),
             local_whisper_beam_size=parsing.get("local_whisper_beam_size", None),
             local_whisper_vad_enabled=parsing.get("local_whisper_vad_enabled", True),
+            local_whisper_min_speech_dbfs=parsing.get("local_whisper_min_speech_dbfs", -40.0),
+            local_whisper_empty_result_retry_language=parsing.get(
+                "local_whisper_empty_result_retry_language", None
+            ),
             video_vlm_concurrency=parsing.get("video_vlm_concurrency", 4),
             max_upload_size_mb=parsing.get("max_upload_size_mb", 2048),
             download_tmp_dir=parsing.get("download_tmp_dir", None),

@@ -98,6 +98,8 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
                     local_whisper_compute_type=None,
                     local_whisper_beam_size=None,
                     local_whisper_vad_enabled=True,
+                    local_whisper_min_speech_dbfs=None,
+                    local_whisper_empty_result_retry_language=None,
                 )
             )
         ),

@@ -150,6 +150,13 @@ knowledge_base:
     local_whisper_beam_size:
     # silero VAD 前置过滤（切静音/噪声段，省算力 + 抑制静音段幻觉），默认开。
     local_whisper_vad_enabled: true
+    # 段级声学能量下限（RMS dBFS）。低于该值且文本很短（≤15 字符）的段视为
+    # 底噪/静音残留幻觉丢弃。量级依据：正常语音约 -30~-20 dBFS，底噪约
+    # -45~-40，-40 取两者分界；置空禁用该校验。
+    local_whisper_min_speech_dbfs: -40
+    # 空结果重试语言：转写结果为空且首跑语言置信度 <0.5 时按此语言重试一次。
+    # 空则不重试。tiny/small 档对短中文音频常误判语言导致空结果，可配 zh。
+    local_whisper_empty_result_retry_language:
     # 上传流式读取的全局字节硬顶（MB）：流式 sha256+计数边读边检，超限即断流拒收。
     # 须 >= 各模态上限（video 默认 2000MB）；与 nginx NGINX_MAX_BODY_SIZE 联动
     # （nginx 值应为本值 + multipart 头部裕量）。

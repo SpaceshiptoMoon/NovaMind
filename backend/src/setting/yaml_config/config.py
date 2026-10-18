@@ -110,6 +110,12 @@ class ParsingConfig:
     local_whisper_beam_size: int | None = None
     # silero VAD 前置过滤（切静音/噪声段，省算力 + 抑制静音段幻觉），默认开。
     local_whisper_vad_enabled: bool = True
+    # 段级声学能量下限（RMS dBFS）。低于该值且文本 ≤15 字符的段视为非语音丢弃；
+    # None = 禁用。正常语音约 -30~-20 dBFS，底噪约 -45~-40，默认 -40 取分界。
+    local_whisper_min_speech_dbfs: float | None = -40.0
+    # 空结果重试语言：首跑结果为空且语言置信度 <0.5 时按此语言重试一次。
+    # None = 不重试；tiny/small 档短中文音频易误判语言，可配 "zh"。
+    local_whisper_empty_result_retry_language: str | None = None
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
     # 耗时可逼近 arq job_timeout（默认 7200s），有界并发降时延；过高可能触发 VLM
     # 配额限流，配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。

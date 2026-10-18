@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import functools
 import logging
 import multiprocessing as mp
 import os
@@ -125,6 +126,94 @@ def split_local_whisper_model_name(model_name: str | None) -> str | None:
 # 阈值取上游同款依据，非本地案例拟合。
 _HALLUCINATION_NO_SPEECH_PROB = 0.6
 _HALLUCINATION_AVG_LOGPROB = -1.0
+
+# 声学能量交叉验证参数。
+# 短文本段的能量判据：Whisper 在近静音段编造的文本几乎总是极短的套话
+# （「谢谢观看」「Bye.」），真实语音段很少有 <15 字符的孤立短段落在纯底噪上；
+# 长短语文本大概率是真实轻声/远场内容，能量判据只对短文本做交叉验证，
+# 避免误伤。
+_HALLUCINATION_SHORT_TEXT_CHARS = 15
+
+
+def _segment_rms_dbfs(
+    audio: Any,
+    start: float,
+    end: float,
+    sample_rate: int = 16000,
+) -> float | None:
+    """计算音频某一时间窗的 RMS 电平（dBFS）。
+
+    dBFS = 20*log10(sqrt(mean(x^2)))，满幅正弦为 0。量级参考：正常语音
+    -30~-20 dBFS，底噪 -45~-40 dBFS，数字静音段为 -inf（均值 0）。
+
+    Args:
+        audio: float32/int32 ndarray（faster-whisper decode_audio 输出，单声道）。
+        start: 窗口起点（秒）。
+        end: 窗口终点（秒）。
+        sample_rate: 采样率（Hz），默认 16000（faster-whisper 解码约定）。
+
+    Returns:
+        RMS dBFS 值；窗口越界/空窗/数值异常时返回 None（调用方按「无法验证」
+        处理，不丢弃——失败方向安全：能力缺失优于错误结果）。
+    """
+    try:
+        import numpy as np
+
+        if audio is None or getattr(audio, "size", 0) == 0:
+            return None
+        lo = max(0, int(start * sample_rate))
+        hi = min(len(audio), int(end * sample_rate))
+        if hi <= lo:
+            return None
+        window = np.asarray(audio[lo:hi], dtype=np.float64)
+        rms = float(np.sqrt(np.mean(np.square(window))))
+        if rms <= 0.0:
+            return float("-inf")
+        return 20.0 * float(np.log10(rms))
+    except Exception:  # noqa: BLE001 - 能量校验失败按「无法验证」处理，绝不抛错阻断转写
+        return None
+
+
+def _filter_low_energy_segments(
+    segments: list[dict],
+    audio: Any,
+    min_dbfs: float,
+    sample_rate: int = 16000,
+) -> tuple[list[dict], int]:
+    """声学能量交叉验证：丢弃「短文本 + 能量低于阈值」的段。
+
+    只对 ≤``_HALLUCINATION_SHORT_TEXT_CHARS`` 字符的段做能量验证——长文本
+    即使能量低也保留（真实轻声内容优先保真）。能量无法计算（窗口越界/
+    解码失败）时保留段，失败方向安全。
+
+    Args:
+        segments: 已归一的 segment 字典列表（含 start/end）。
+        audio: 已解码 PCM ndarray（None 时跳过校验，全部保留）。
+        min_dbfs: RMS dBFS 下限，低于该值判为非语音。
+        sample_rate: 采样率。
+
+    Returns:
+        (过滤后的 segments, 丢弃的段数)。
+    """
+    if audio is None or min_dbfs is None:
+        return segments, 0
+    kept: list[dict] = []
+    dropped = 0
+    for seg in segments:
+        text = seg.get("text") or ""
+        if len(text) > _HALLUCINATION_SHORT_TEXT_CHARS:
+            kept.append(seg)
+            continue
+        dbfs = _segment_rms_dbfs(audio, seg.get("start", 0.0), seg.get("end", 0.0), sample_rate)
+        if dbfs is not None and dbfs < min_dbfs:
+            dropped += 1
+            logger.info(
+                "声学能量过滤: 丢弃低能量短段 (%.2f dBFS < %.2f), text=%r, [%.2f-%.2f]",
+                dbfs, min_dbfs, text[:20], seg.get("start", 0.0), seg.get("end", 0.0),
+            )
+            continue
+        kept.append(seg)
+    return kept, dropped
 
 # faster-whisper 通过 PyAV (FFmpeg) 解码，支持的音频格式
 # 参考: https://github.com/SYSTRAN/faster-whisper
@@ -313,6 +402,34 @@ def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:
 _subprocess_models: dict[tuple[str, str, str], Any] = {}
 
 
+def _precheck_hotwords(model: Any, hotwords: str | None) -> str | None:
+    """热词 tokenizer 预检：热词含模型词表无法编码的字符时降级丢弃。
+
+    faster-whisper 经 tokenizer 编码热词注入解码 prompt，热词含生僻符号/乱码
+    字符时部分版本会在编码层抛异常直接打断转写。预检只探测不拦截正常输入——
+    预检失败降级为不注入热词（能力缺失），绝不让可选增强阻断主流程。
+
+    Args:
+        model: WhisperModel 实例（探测 ``hf_tokenizer``/``tokenizer`` 属性）。
+        hotwords: 热词串（空格分隔），None 直接透传。
+
+    Returns:
+        原热词串（可正常编码）或 None（预检失败/无法探测/热词为空）。
+    """
+    if not hotwords:
+        return hotwords
+    tokenizer = getattr(model, "hf_tokenizer", None) or getattr(model, "tokenizer", None)
+    if tokenizer is None:
+        # 无法探测 tokenizer（版本差异）：不预检，交由 faster-whisper 原行为
+        return hotwords
+    try:
+        tokenizer.encode(hotwords)
+    except Exception as e:  # noqa: BLE001 - 热词编码失败必须降级而非阻断转写
+        logger.warning("热词编码预检失败，本次转写不注入热词: %s, hotwords=%r", e, hotwords[:50])
+        return None
+    return hotwords
+
+
 def _transcribe_in_subprocess(
     tmp_path: str,
     language: str | None,
@@ -324,6 +441,7 @@ def _transcribe_in_subprocess(
     beam_size: int = 5,
     vad_enabled: bool = True,
     hotwords: str | None = None,
+    min_speech_dbfs: float | None = -40.0,
 ) -> dict[str, Any]:
     """子进程内执行：加载模型（子进程键控缓存）+ transcribe + 返回可 pickle 结果。
 
@@ -347,6 +465,8 @@ def _transcribe_in_subprocess(
         beam_size: 束搜索宽度
         vad_enabled: 是否启用 silero VAD 前置过滤
         hotwords: 热词串（空格分隔），None 表示不注入
+        min_speech_dbfs: 段级声学能量下限（RMS dBFS），低于该值的短文本段判为
+            幻觉丢弃；None 表示禁用能量交叉验证
 
     Returns:
         {"segments": [{"text","start","end","avg_logprob","no_speech_prob"},...],
@@ -377,8 +497,20 @@ def _transcribe_in_subprocess(
         "子进程 ASR 转写开始, file=%s, vad=%s, hotwords=%d词, beam_size=%d",
         tmp_path, vad_enabled, len((hotwords or "").split()), beam_size,
     )
+    hotwords = _precheck_hotwords(model, hotwords)
+    # 解码一次两用：transcribe 直接吃 PCM ndarray（省一次 PyAV 解码），
+    # 同时给能量交叉验证提供波形。解码失败（PyAV 不认的容器等）不阻断转写——
+    # 回退传文件路径由 faster-whisper 自行解码，能量校验自动跳过（失败方向安全）。
+    audio_pcm = None
+    if min_speech_dbfs is not None:
+        try:
+            from faster_whisper.audio import decode_audio
+
+            audio_pcm = decode_audio(tmp_path, sampling_rate=16000)
+        except Exception:  # noqa: BLE001 - 解码失败仅放弃能量校验，不放弃转写
+            logger.warning("音频预解码失败，跳过声学能量校验, file=%s", tmp_path)
     segments_result, info = model.transcribe(
-        tmp_path,
+        audio_pcm if audio_pcm is not None else tmp_path,
         beam_size=beam_size,
         word_timestamps=False,
         language=language,
@@ -396,6 +528,20 @@ def _transcribe_in_subprocess(
         logger.info(
             "子进程 ASR 幻觉段过滤: 丢弃 %d/%d 段", filtered_count, len(raw_segments),
         )
+    segments, phrase_dropped = _filter_stock_phrase_segments(segments)
+    if phrase_dropped:
+        filtered_count += phrase_dropped
+        logger.info("子进程 ASR 套话过滤: 丢弃 %d 段", phrase_dropped)
+    if min_speech_dbfs is not None:
+        segments, energy_dropped = _filter_low_energy_segments(
+            segments, audio_pcm, min_speech_dbfs
+        )
+        if energy_dropped:
+            filtered_count += energy_dropped
+            logger.info(
+                "子进程 ASR 能量过滤: 丢弃 %d 段 (阈值 %.1f dBFS)",
+                energy_dropped, min_speech_dbfs,
+            )
     return {
         "segments": segments,
         "language": info.language,
@@ -434,6 +580,123 @@ def _filter_hallucinated_segments(
         if kept and seg.get("text") == kept[-1].get("text"):
             dropped += 1
             continue
+        kept.append(seg)
+    return kept, dropped
+
+
+# 幻觉短语双门控参数。
+# 结构门控阈值：Whisper 幻觉套话几乎总发生在片头/片尾的静音/音乐残留上，特征是
+# 「很短的时长 + 很短的文本 + 与相邻段之间有大段空白」。三项同时满足才进入
+# 短语比对，正常视频/播客里的口头禅（如剪辑师真说了「谢谢观看」）因上下文
+# 密集不满足结构条件，不会被误伤。
+# 量级依据：典型幻觉段 <4s（片尾曲残留窗口），套话本身 <30 字，幻觉与正片
+# 之间的静音/音乐间隔普遍 >2s（远大于正常段间 0.2~1s 换气停顿）。
+_PHRASE_GATE_MAX_DUR_S = 4.0
+_PHRASE_GATE_MAX_CHARS = 30
+_PHRASE_GATE_MIN_GAP_S = 2.0
+
+# 幻觉套话短语表（仅作结构门控命中后的二次确认，不单独构成丢弃依据）。
+# 来源：HF sachaarbonel/whisper-hallucinations 与 r/LocalLLama 社区高频反馈
+# 汇总（中英都收），均为 Whisper 训练数据（字幕/YouTube）尾部残留的高频套话。
+# 未列入的罕见套话由统计判据（no_speech_prob/avg_logprob）与能量判据兜底。
+_HALLUCINATION_PHRASES: tuple[str, ...] = (
+    # 中文
+    "谢谢观看",
+    "谢谢收看",
+    "谢谢大家",
+    "感谢观看",
+    "感谢收看",
+    "下期再见",
+    "我们下期再见",
+    "拜拜",
+    "请订阅",
+    "订阅频道",
+    "关注我们",
+    "点赞关注",
+    "字幕",
+    "字幕由",
+    "字幕提供",
+    "翻译",
+    "以下是字幕",
+    "明镜需要您的支持",
+    "明镜与您不再分离",
+    "订阅我们的频道",
+    # 英文
+    "thanks for watching",
+    "thank you for watching",
+    "thanks for listening",
+    "see you next time",
+    "subscribe",
+    "please subscribe",
+    "don't forget to subscribe",
+    "like and subscribe",
+    "bye",
+    "bye bye",
+    "goodbye",
+    "amara.org community",
+    "subtitles by",
+    "subtitles by the amara.org community",
+    "transcription by",
+    "english subtitles by",
+)
+
+
+def _is_phrase_gate_structural_hit(seg: dict, prev: dict | None, nxt: dict | None) -> bool:
+    """结构门控：段是否满足「孤立超短段」的幻觉形态（三项判据与短语无关）。
+
+    Args:
+        seg: 当前段（含 text/start/end）。
+        prev: 前一个相邻段（无则视为边界静音，满足间隔条件）。
+        nxt: 后一个相邻段（无则视为边界静音，满足间隔条件）。
+
+    Returns:
+        True 表示结构形态符合幻觉段特征，可进入短语二次确认。
+    """
+    text = (seg.get("text") or "").strip()
+    duration = float(seg.get("end", 0.0)) - float(seg.get("start", 0.0))
+    if duration > _PHRASE_GATE_MAX_DUR_S or len(text) > _PHRASE_GATE_MAX_CHARS:
+        return False
+    for neighbor in (prev, nxt):
+        if neighbor is None:
+            continue
+        gap = (
+            float(seg.get("start", 0.0)) - float(neighbor.get("end", 0.0))
+            if float(neighbor.get("start", 0.0)) <= float(seg.get("start", 0.0))
+            else float(neighbor.get("start", 0.0)) - float(seg.get("end", 0.0))
+        )
+        if gap < _PHRASE_GATE_MIN_GAP_S:
+            return False
+    return True
+
+
+def _filter_stock_phrase_segments(segments: list[dict]) -> tuple[list[dict], int]:
+    """幻觉套话双门控过滤：结构形态命中后才查短语表，子串匹配丢弃。
+
+    判据分两层，避免黑名单误伤正常内容：
+      1. 结构门控（与内容无关）：时长 ≤4s 且文本 ≤30 字且与两侧相邻段间隔
+         ≥2s（边界段视为邻接静音）——孤立超短段才是幻觉形态；
+      2. 短语确认（内容相关）：文本（小写归一）包含短语表条目即丢弃。
+
+    Args:
+        segments: 已归一的 segment 字典列表（须按时间顺序）。
+
+    Returns:
+        (过滤后的 segments, 丢弃的段数)。
+    """
+    kept: list[dict] = []
+    dropped = 0
+    for i, seg in enumerate(segments):
+        prev = kept[-1] if kept else None
+        nxt = segments[i + 1] if i + 1 < len(segments) else None
+        if _is_phrase_gate_structural_hit(seg, prev, nxt):
+            normalized = (seg.get("text") or "").strip().lower()
+            if any(phrase in normalized for phrase in _HALLUCINATION_PHRASES):
+                dropped += 1
+                logger.info(
+                    "幻觉套话过滤: 丢弃孤立短语段, text=%r, [%.2f-%.2f]",
+                    normalized[:30], seg.get("start", 0.0), seg.get("end", 0.0),
+                )
+                continue
         kept.append(seg)
     return kept, dropped
 
@@ -556,6 +819,7 @@ async def transcribe_audio_local(
         beam_size = getattr(audio_config, "local_whisper_beam_size", None) or 5
         vad_enabled = getattr(audio_config, "local_whisper_vad_enabled", True)
         hotwords_str = " ".join(hotwords) if hotwords else None
+        min_speech_dbfs = getattr(audio_config, "local_whisper_min_speech_dbfs", -40.0)
 
         logger.info(
             "本地 ASR 转写开始, file=%s, size=%d, model_dir=%s, device=%s, "
@@ -568,21 +832,27 @@ async def transcribe_audio_local(
         loop = asyncio.get_running_loop()
 
         def _invoke_subprocess(lang: str | None):
-            """以当前引擎参数向子进程提交一次转写（首次与 zh 重试共用）。"""
+            """以当前引擎参数向子进程提交一次转写（首次与重试共用）。
+
+            用 partial + 关键字传参：``_transcribe_in_subprocess`` 在
+            ``cpu_threads`` 之后是 keyword-only 签名，位置实参传 dict 会
+            TypeError（且 spawn 子进程经 pickle 引用 partial，仍需模块级函数）。
+            """
             return loop.run_in_executor(
                 _asr_executor,
-                _transcribe_in_subprocess,
-                tmp_path,
-                lang,
-                str(model_dir),
-                cpu_threads,
-                {
-                    "device": device,
-                    "compute_type": compute_type,
-                    "beam_size": beam_size,
-                    "vad_enabled": vad_enabled,
-                    "hotwords": hotwords_str,
-                },
+                functools.partial(
+                    _transcribe_in_subprocess,
+                    tmp_path,
+                    lang,
+                    str(model_dir),
+                    cpu_threads,
+                    device=device,
+                    compute_type=compute_type,
+                    beam_size=beam_size,
+                    vad_enabled=vad_enabled,
+                    hotwords=hotwords_str,
+                    min_speech_dbfs=min_speech_dbfs,
+                ),
             )
 
         try:
@@ -602,23 +872,34 @@ async def transcribe_audio_local(
         # 4. 结果格式已由子进程归一为 segments dict
         segments = result["segments"]
 
-        # 5. 结果为空且语言自动检测置信度低时，用中文重试
-        #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
-        #    显式指定 zh 可以大幅提升中文识别率。
+        # 5. 结果为空且语言自动检测置信度低时，按配置的重试语言重试一次。
+        #    tiny/small 档容易把短中文音频误判为英语（probability < 0.5），
+        #    导致转写为空；显式指定语言可大幅提升识别率。
+        #    默认 None = 不重试（与上游 faster-whisper 行为一致）；配置
+        #    local_whisper_empty_result_retry_language（如 zh）后启用。
         #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 子进程。
-        if not segments and language is None and result["language_probability"] < 0.5:
+        retry_lang = getattr(
+            audio_config, "local_whisper_empty_result_retry_language", None
+        )
+        if (
+            not segments
+            and language is None
+            and retry_lang
+            and result["language_probability"] < 0.5
+        ):
             logger.warning(
-                "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
-                result["language"], result["language_probability"],
+                "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，按 %s 重试",
+                result["language"], result["language_probability"], retry_lang,
             )
             try:
-                result = await _invoke_subprocess("zh")
+                result = await _invoke_subprocess(retry_lang)
             except BrokenProcessPool:
                 await _rebuild_asr_executor()
                 raise
             logger.info(
-                "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
-                result["language"], result["language_probability"], result["duration"],
+                "本地 ASR %s 重试完成, language=%s, probability=%.2f, duration=%.1fs",
+                retry_lang, result["language"], result["language_probability"],
+                result["duration"],
             )
             segments = result["segments"]
 

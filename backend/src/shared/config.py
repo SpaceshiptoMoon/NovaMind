@@ -44,6 +44,15 @@ class AudioConfig:
     local_whisper_beam_size: int | None = None
     # silero VAD 前置过滤（切静音/噪声段，省算力且抑制幻觉），默认开。
     local_whisper_vad_enabled: bool = True
+    # 段级声学能量下限（RMS dBFS）。低于该值的段视为非语音（底噪/静音残留），
+    # 仅当段文本 ≤15 字符时丢弃（长短语可能是真实轻声内容，能量判据只做交叉
+    # 验证）。None = 禁用该过滤。正常语音约 -30~-20 dBFS，底噪约 -45~-40，
+    # 默认 -40 取两者分界；阈值越低越宽松。调 None 关闭校验。
+    local_whisper_min_speech_dbfs: float | None = -40.0
+    # 转写结果为空且首跑语言置信度低时的重试语言。None = 不重试（默认，行为
+    # 与上游 faster-whisper 一致）；典型配置 "zh"——tiny/small 档对短中文音频
+    # 常误判语言导致空结果，按此语言重试一次。
+    local_whisper_empty_result_retry_language: str | None = None
 
 
 # ==================== 外部搜索（联网搜索）====================

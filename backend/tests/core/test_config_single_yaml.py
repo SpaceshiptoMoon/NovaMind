@@ -146,3 +146,37 @@ def test_cors_origins_default_wildcard_and_explicit_override(config_dir, monkeyp
     monkeypatch.setenv("CORS_ORIGINS", "https://a.example.com,https://b.example.com")
     raw = ConfigLoader(config_dir=config_dir).load()
     assert create_config_from_dict(raw).cors_origins == "https://a.example.com,https://b.example.com"
+
+
+def test_parsing_local_whisper_quality_keys_defaults_and_explicit(config_dir):
+    """本地 ASR 质量两键：缺失 → dataclass 默认（能量校验开/重试关）；显式 → 透传。
+
+    正反两用：local_whisper_min_speech_dbfs 默认 -40.0（能量过滤默认启用）、
+    local_whisper_empty_result_retry_language 默认 None（不重试，与上游一致）；
+    YAML 显式给值时必须逐字透传，含置 None 关闭能量过滤的负向路径。
+    """
+    # 缺省：knowledge_base 段整体缺失 → 默认值
+    cfg = create_config_from_dict({"knowledge_base": {}})
+    parsing = cfg.knowledge_base.parsing
+    assert parsing.local_whisper_min_speech_dbfs == -40.0
+    assert parsing.local_whisper_empty_result_retry_language is None
+
+    # 显式：透传 + 显式关闭能量过滤（None）不被默认值覆盖
+    cfg2 = create_config_from_dict(
+        {
+            "knowledge_base": {
+                "parsing": {
+                    "local_whisper_min_speech_dbfs": -50.5,
+                    "local_whisper_empty_result_retry_language": "zh",
+                }
+            }
+        }
+    )
+    parsing2 = cfg2.knowledge_base.parsing
+    assert parsing2.local_whisper_min_speech_dbfs == -50.5
+    assert parsing2.local_whisper_empty_result_retry_language == "zh"
+
+    cfg3 = create_config_from_dict(
+        {"knowledge_base": {"parsing": {"local_whisper_min_speech_dbfs": None}}}
+    )
+    assert cfg3.knowledge_base.parsing.local_whisper_min_speech_dbfs is None

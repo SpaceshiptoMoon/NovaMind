@@ -63,7 +63,7 @@ def _make_fake_transcribe():
     events: list[tuple[int, str, float]] = []
     counter = [0]
 
-    def _fake(tmp_path, language, model_dir, cpu_threads, transcribe_kwargs=None):
+    def _fake(tmp_path, language, model_dir, cpu_threads, **kwargs):
         idx = counter[0]
         counter[0] += 1
         events.append((idx, "start", time.monotonic()))
