@@ -2,13 +2,13 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- 顶栏：全宽置顶（全局导航 + 全局项；频道分段在侧栏，折叠切换经 prop 传入） -->
+    <!-- 顶栏：全宽置顶（全局导航 + 全局项） -->
     <AppHeader
       :sidebar-collapsed="isWorkspaceRoute ? sidebarCollapsed : undefined"
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />
 
-    <!-- 下方：侧栏（频道分段 + 上下文列表，可折叠；仅工作台路由） + 主内容。
+    <!-- 下方：侧栏（上下文列表，可折叠；仅工作台路由） + 主内容。
          侧栏在全部工作台路由（含 agent 对话页）常驻文档流：对话页呈
          「目录 + 会话 + 聊天」三栏 -->
     <div class="workspace-body">
@@ -19,28 +19,6 @@
         role="navigation"
         aria-label="工作台侧边栏"
       >
-        <!-- 频道分段（侧栏顶部，展开态显示） -->
-        <nav
-          v-if="!sidebarCollapsed"
-          class="channel-segments"
-          role="tablist"
-          aria-label="工作台频道"
-        >
-          <button
-            v-for="ch in channels"
-            :key="ch.key"
-            class="channel-seg"
-            :class="{ active: activeChannelKey === ch.key }"
-            role="tab"
-            :aria-selected="activeChannelKey === ch.key"
-            :title="ch.label"
-            @click="activateChannel(ch.key)"
-          >
-            <NavIcon :name="ch.icon" :size="15" />
-            <span class="channel-seg-label">{{ ch.label }}</span>
-          </button>
-        </nav>
-
         <!-- 展开模式：上下文列表 -->
         <template v-if="!sidebarCollapsed">
           <!-- Chat(对话): agent list（统一对话面——侧栏承担 agent 切换，页面内承担会话切换） -->
@@ -101,22 +79,6 @@
                 <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
               </div>
             </div>
-          </div>
-        </template>
-
-        <!-- 折叠模式：频道 icon 列表 -->
-        <template v-else>
-          <div class="channel-icons">
-            <button
-              v-for="ch in channels"
-              :key="ch.key"
-              class="channel-icon-btn"
-              :class="{ active: activeChannelKey === ch.key }"
-              :title="ch.label"
-              @click="activateChannel(ch.key)"
-            >
-              <NavIcon :name="ch.icon" :size="20" />
-            </button>
           </div>
         </template>
 
@@ -437,9 +399,9 @@
 /**
  * 工作台主布局：全宽顶栏 + 可折叠侧栏 + 主内容区
  *
- * 侧栏仅在工作台路由渲染（频道分段 + 上下文列表）；skip-link 供键盘导航。
+ * 侧栏仅在工作台路由渲染（上下文列表）；skip-link 供键盘导航。
  */
-import { ref, reactive, computed, onMounted, provide, watch } from 'vue'
+import { ref, reactive, computed, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -455,9 +417,7 @@ import {
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
-import { usePermissionStore } from '@/stores/permission'
 import { agentApi } from '@/api/agent'
-import NavIcon from '@/components/common/NavIcon.vue'
 import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import type {
@@ -477,33 +437,9 @@ provide('isInWorkspace', true)
 
 const sidebarCollapsed = ref(false)
 
-const permStore = usePermissionStore()
-
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
 
-// 路由切换：同步频道高亮（此前只在 onMounted 调，路由变后高亮滞留）
-watch(
-  () => route.name,
-  () => {
-    syncChannelFromRoute()
-  },
-)
-
-// 频道清单：app 键对应应用门禁代码（AppCode）；统一对话面后 chat 即 agent 聊天（含默认助手），
-// 智能体管理与深度研究不再是频道（agent 列表收进 chat 侧栏；web 研究页批4 已清退）；
-// 技能广场已迁入应用中心（/home/apps/skills），不再是工作台频道
-const allChannels = [
-  { key: 'chat', label: '对话', icon: 'chat', group: 'primary', app: 'agent' },
-] as const
-
-// 应用级权限过滤（admin 短路全过；被禁应用的频道不渲染）
-const channels = computed(() =>
-  allChannels.filter((c) => c.app === null || permStore.hasApp(c.app)),
-)
-
-const activeChannelKey = ref('chat')
-
-// 下方列表的折叠态：每个频道独立记忆
+// 下方列表的折叠态
 const sectionCollapsed = reactive({
   chat: false,
 })
@@ -516,7 +452,6 @@ function toggleSection(key: 'chat') {
 // 统一对话面后所有聊天数据都在 agentStore：来源在 messages[].sources（SourceRef[]），
 // 工具记录在 toolCalls。chat 频道（即 agent 聊天）与 agents 频道共用同一份数据。
 const drawerSources = computed<SourceRef[]>(() => {
-  if (activeChannelKey.value !== 'chat' && activeChannelKey.value !== 'agents') return []
   const out: SourceRef[] = []
   for (const m of agentStore.messages) {
     if (m.sources) out.push(...m.sources)
@@ -524,50 +459,7 @@ const drawerSources = computed<SourceRef[]>(() => {
   return out
 })
 
-const drawerToolCalls = computed<ToolCallRecord[]>(() => {
-  if (activeChannelKey.value === 'chat' || activeChannelKey.value === 'agents') {
-    return agentStore.toolCalls
-  }
-  return []
-})
-
-// 点 tab 即「激活并新建/开启」该频道：对话开新对话、智能体进入创建、其余跳转
-function activateChannel(key: string) {
-  activeChannelKey.value = key
-  handleNew(key)
-}
-
-// 切换频道时重置抽屉选中态，避免残留上一频道工具结果
-watch(activeChannelKey, () => workbench.resetSelection())
-
-// Sync activeChannelKey with route
-function syncChannelFromRoute() {
-  const path = route.path
-  if (path.includes('/workspace/chat')) activeChannelKey.value = 'chat'
-  else if (path.includes('/workspace/agents')) activeChannelKey.value = 'chat'
-}
-
-// 按频道执行「新建/开启」动作：对话经入口页解析默认助手。
-// 例外：已处于默认助手对话页时 router.push 同路由会被静默忽略（入口页解析后
-// 又跳回原页，视觉即「点了没反应」），改为原地开新对话——与页内「新对话」同语义。
-function handleNew(key: string = activeChannelKey.value) {
-  switch (key) {
-    case 'chat': {
-      const cur = agentStore.currentAgent
-      if (
-        route.name === 'WorkspaceAgentChat' &&
-        cur?.extra_config?.is_default === true &&
-        Number(route.params.agentId) === cur.id
-      ) {
-        agentStore.clearChat()
-        workbench.resetSelection()
-      } else {
-        router.push('/home/workspace/chat')
-      }
-      break
-    }
-  }
-}
+const drawerToolCalls = computed<ToolCallRecord[]>(() => agentStore.toolCalls)
 
 // ===================== Agents =====================
 
@@ -774,7 +666,6 @@ const orderedTools = computed(() => {
 // ===================== Init =====================
 
 onMounted(async () => {
-  syncChannelFromRoute()
   // 窄视口（开发者工具/小窗）默认折叠侧栏，避免遮挡内容
   if (window.innerWidth < 900) sidebarCollapsed.value = true
   await Promise.all([
@@ -870,63 +761,6 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Channel Segments — 侧栏顶部横向分段（双胶囊并排，类 segmented control）
-   ======================================== */
-.channel-segments {
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border-light);
-  flex-shrink: 0;
-}
-
-.channel-seg {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-body);
-  cursor: pointer;
-  min-width: 0;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.channel-seg:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-
-/* 选中态：中性深灰实底（与 ChatInput mode-chip.active 同款选中语言，
-   未选中仅 hover 浅灰底，选中/未选中一眼可分；不用主 CTA 墨黑防对撞） */
-.channel-seg.active {
-  background: var(--color-chip-active);
-  color: var(--color-chip-active-text);
-  font-weight: var(--weight-medium, 500);
-  box-shadow: var(--shadow-sm);
-}
-
-.channel-seg.active :deep(svg) {
-  color: var(--color-chip-active-text);
-}
-
-.channel-seg-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ========================================
    可折叠列表分组
    ======================================== */
 .list-section {
@@ -1008,43 +842,6 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-/* ========================================
-   Channel Icon Buttons (collapsed mode)
-   ======================================== */
-.channel-icons {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
-  width: 100%;
-}
-
-.channel-icon-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.channel-icon-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-
-.channel-icon-btn.active {
-  background: var(--color-chip-active);
-  color: var(--color-chip-active-text);
-  box-shadow: var(--shadow-sm);
-}
-
 /* Sidebar body */
 .sidebar-body {
   flex: 1;
@@ -1052,7 +849,7 @@ onMounted(async () => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding-top: var(--space-2); /* 频道 tabs 与上下文列表的分区呼吸感 */
+  padding-top: var(--space-2);
 }
 
 .list-area {
