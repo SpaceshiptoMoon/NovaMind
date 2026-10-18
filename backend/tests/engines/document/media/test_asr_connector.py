@@ -354,3 +354,26 @@ def test_asr_route_is_frozen():
     route = AsrRoute(protocol="local", model="faster-whisper-tiny")
     with pytest.raises(Exception):
         route.protocol = "openai"
+
+
+def test_transcribe_unsupported_protocol_raises_not_silent_openai(monkeypatch):
+    """未知协议（如 anthropic/ollama）：显式报错，不静默当 openai 烧请求。"""
+    import novamind.engines.document.media.audio as audio_pkg
+
+    async def _should_not_run(**kwargs):
+        raise AssertionError("未知协议不应落到任何引擎函数")
+
+    monkeypatch.setattr(
+        audio_pkg, "transcribe_audio_with_timestamps", _should_not_run
+    )
+    monkeypatch.setattr(
+        audio_pkg, "transcribe_audio_with_dashscope", _should_not_run
+    )
+    mcs = SimpleNamespace(get_credentials_by_model=AsyncMock(return_value=SimpleNamespace(
+        api_key="k", base_url=None, protocol="anthropic", model="some-asr",
+    )))
+    with pytest.raises(AsrCredentialsMissingError, match="不受支持"):
+        asyncio.run(AsrConnector(mcs).transcribe(
+            file_content=b"a" * 2048, file_type="mp3",
+            asr_model="some-asr", document=_document(),
+        ))

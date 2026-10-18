@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class AsrCredentialsMissingError(RuntimeError):
-    """云端 ASR 模型凭证缺失或本地档位非法（配置错误，重试不可能成功）。"""
+    """云端 ASR 模型凭证缺失、本地档位非法或协议不支持（配置错误，重试不可能成功）。"""
 
 
 class AsrBusyError(RuntimeError):
@@ -304,12 +304,24 @@ class AsrConnector:
         speaker_count: int | None,
         minio_client: Any,
     ) -> list[dict[str, Any]]:
-        """云端协议分发：dashscope → Paraformer（MinIO 中转）/ openai → Whisper。"""
+        """云端协议分发：dashscope → Paraformer（MinIO 中转）/ openai → Whisper。
+
+        Raises:
+            AsrCredentialsMissingError: 凭证记录的协议不在 ASR 支持面
+                （openai/dashscope）内——不静默当 openai 兜底，那会把
+                anthropic/ollama 等配置以错误协议烧请求。
+        """
         from novamind.engines.document.media.audio import (
             transcribe_audio_with_dashscope,
             transcribe_audio_with_timestamps,
         )
 
+        if route.protocol not in ("openai", "dashscope"):
+            raise AsrCredentialsMissingError(
+                f"ASR 模型「{route.model}」配置的协议「{route.protocol}」不受支持："
+                f"音频转写仅支持 openai / dashscope 协议，请在模型管理中修正该 "
+                f"ASR 配置的协议，或改用本地 faster-whisper 档位"
+            )
         if route.protocol == "dashscope":
             if hotwords:
                 logger.warning(
