@@ -546,8 +546,8 @@ import type { Component } from 'vue'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
+import { knowledgeBaseApi } from '@/api/knowledge/knowledgeBase'
 import { useUserStore } from '@/stores/user'
-import { normalizeSpaceTypes } from '@/components/knowledge'
 import { copyToClipboard } from '@/utils/clipboard'
 import type {
   SpaceConfigResponse,
@@ -580,6 +580,8 @@ const infoSaving = ref(false)
 
 // === 模型配置 ===
 
+// 空间模态 = 该空间下各 KB 的 space_type 并集（space_type 是 KB 级配置，
+// 空间 config 里没有此字段；含任一 KB 未显式配置时的 text 兜底）。
 const spaceTypes = ref<string[]>(['text'])
 const hasImageModality = computed(() => spaceTypes.value.includes('image'))
 const hasVideo = computed(() => spaceTypes.value.includes('video'))
@@ -606,6 +608,20 @@ function modalityIcon(mt: string): Component {
 
 function modalityLabel(mt: string): string {
   return modalityLabels[mt] ?? mt
+}
+
+/** 空间模态 = 各 KB space_type 并集；任一 KB 未显式配置视为含 text 兜底。 */
+function deriveSpaceTypesFromKbs(kbs: { config: { space_type?: string[] } | null }[]): string[] {
+  const types = new Set<string>()
+  for (const kb of kbs) {
+    const st = kb.config?.space_type
+    if (st && st.length > 0) {
+      st.forEach((t) => types.add(t))
+    } else {
+      types.add('text')
+    }
+  }
+  return types.size > 0 ? [...types] : ['text']
 }
 
 // Embedding 表单
@@ -930,9 +946,10 @@ watch(activeTab, (tab) => {
 async function fetchConfig() {
   loading.value = true
   try {
-    const [config, modelData] = await Promise.all([
+    const [config, modelData, kbList] = await Promise.all([
       spaceApi.getConfig(spaceId.value),
       userApi.getAvailableModelDetails(),
+      knowledgeBaseApi.getKnowledgeBases(spaceId.value, { limit: 100 }),
     ])
     configData.value = config
     stats.value = config.stats
@@ -948,7 +965,7 @@ async function fetchConfig() {
 
     // 填充 Embedding
     const emb = config.config?.embedding
-    spaceTypes.value = normalizeSpaceTypes(config.config)
+    spaceTypes.value = deriveSpaceTypesFromKbs(kbList.items)
     embeddingForm.model = emb?.model || ''
     embeddingForm.dimension = emb?.dimension ?? 1024
     embeddingForm.batch_size = emb?.batch_size ?? 32
