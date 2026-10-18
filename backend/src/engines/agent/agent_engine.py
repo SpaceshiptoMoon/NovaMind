@@ -578,37 +578,39 @@ class AgentEngine:
         call_id: str,
         context: dict[str, Any],
     ) -> tuple[AgentEvent, AgentEvent, dict[str, Any], dict[str, Any]]:
-        """执行单个工具调用（含 JSON 解析守卫 + 异常隔离）
+        """执行单个工具调用（含 JSON 解析守卫 + 参数校验 + 异常隔离）
 
         Returns: (tool_call_event, tool_result_event, assistant_tc_dict, tool_result_msg)
         """
-        # JSON 解析守卫
-        try:
-            args = (
-                json.loads(raw_arguments)
-                if isinstance(raw_arguments, str)
-                else raw_arguments
+        # 解析守卫：JSON 畸形/非对象不再静默置空参执行（错误结果优于失败的旧路），
+        # 生成带修正指引的错误回喂，模型下轮自纠
+        from novamind.engines.agent.tool.validation import parse_tool_arguments
+
+        args, parse_error = parse_tool_arguments(tool_name, raw_arguments)
+        if parse_error is not None:
+            result = ToolResult(
+                status=ToolResultStatus.ERROR,
+                content=parse_error,
+                error_message=parse_error,
             )
-        except json.JSONDecodeError:
             args = {}
-            logger.warning("工具参数 JSON 解析失败", tool_name=tool_name, raw=repr(raw_arguments)[:200])
+        else:
+            # 单工具异常隔离
+            try:
+                result = await self.tool_executor.execute(
+                    tool_name=tool_name, arguments=args, context=context,
+                )
+            except Exception as e:
+                logger.error("工具执行异常，隔离跳过", tool_name=tool_name, error=str(e))
+                result = ToolResult(
+                    status=ToolResultStatus.ERROR,
+                    content=str(e),
+                    error_message=str(e),
+                )
 
         call_event = AgentEvent("tool_call", {
             "tool_name": tool_name, "arguments": args, "call_id": call_id,
         })
-
-        # 单工具异常隔离
-        try:
-            result = await self.tool_executor.execute(
-                tool_name=tool_name, arguments=args, context=context,
-            )
-        except Exception as e:
-            logger.error("工具执行异常，隔离跳过", tool_name=tool_name, error=str(e))
-            result = ToolResult(
-                status=ToolResultStatus.ERROR,
-                content=str(e),
-                error_message=str(e),
-            )
 
         # SSE 前端用预览，DB 用完整结果
         oversized = result.metadata.get("_oversized", False)

@@ -65,6 +65,13 @@ class ToolExecutor:
         tool_def = self._resolve_tool_definition(tool_name)
         timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
 
+        # 参数 schema 校验（钩子链之前）：畸形参数不进入执行，错误回喂模型自纠
+        from novamind.engines.agent.tool.validation import validate_tool_arguments
+
+        validation_error = validate_tool_arguments(tool_def, arguments)
+        if validation_error is not None:
+            return validation_error
+
         start = time.time()
         try:
             # before hooks（在 try 内，异常不逃逸）
@@ -260,7 +267,6 @@ class ToolExecutor:
         from novamind.shared.prompts.sanitize import escape_system_tags
 
         func = raw_tool.get("function", {})
-        name = func.get("name", "")
         params_schema = func.get("parameters", {})
         properties = params_schema.get("properties", {})
         required = params_schema.get("required", [])
