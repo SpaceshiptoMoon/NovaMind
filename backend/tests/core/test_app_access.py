@@ -22,7 +22,6 @@ class TestMatchAppCode:
     def test_exact_and_subpath_match(self):
         assert match_app_code("/api/v1/agent") == "agent"
         assert match_app_code("/api/v1/agent/1/chat") == "agent"
-        assert match_app_code("/api/v1/qa/sessions") == "qa"
         assert match_app_code("/api/v1/skills") == "skill"
         assert match_app_code("/api/v1/apps/resume") == "app"
         assert match_app_code("/api/v1/ai-chat/history") == "qa"

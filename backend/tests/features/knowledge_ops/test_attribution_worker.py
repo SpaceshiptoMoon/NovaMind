@@ -15,7 +15,7 @@
 """
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -325,7 +325,6 @@ async def test_valueerror_on_missing_or_invalid_message(attr_db):
 async def test_idempotent_existing_attribution_skips_replay(attr_db):
     """幂等：已有 attribution 直接返回且不跑重放检索。"""
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
-        ATTR_CONTENT_GAP,
         attribute_single_event,
     )
 
@@ -418,7 +417,6 @@ async def test_batch_skips_healthy_answers(attr_db):
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_pending_events,
     )
-    from novamind.features.qa.models.question_answer import QuestionAnswer
 
     factory, _ = attr_db
     # 失败候选：零命中

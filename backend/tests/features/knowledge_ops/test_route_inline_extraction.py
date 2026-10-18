@@ -7,7 +7,6 @@ GapToTestSetService：空窗口拒绝、query→用例映射语义。
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.knowledge_ops.exceptions import (
     KbOpsError,
     KbOpsNotFoundError,
@@ -64,7 +63,6 @@ async def test_resolve_accept_new_version_triggers_supersede(monkeypatch):
     )
     svc = _make_resolve_service(suggestion)
 
-    import novamind.features.knowledge_ops.services.suggestion_resolve_service as mod
 
     class _FakeLifecycle:
         def __init__(self, session):

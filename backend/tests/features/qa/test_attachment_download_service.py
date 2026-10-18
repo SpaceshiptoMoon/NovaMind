@@ -6,7 +6,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.qa.exceptions import ChatAttachmentNotFoundError
 from novamind.features.qa.services.ai_chat_service import AIChatService
 

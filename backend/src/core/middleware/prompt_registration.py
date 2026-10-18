@@ -12,17 +12,17 @@ def register_all_prompt_templates() -> int:
     注册幂等：合并到同一 dict，键不跨 feature 冲突；重复调用无副作用。
     注册顺序不影响结果。
     """
-    # 各 feature 的提示词数据源（纯数据模块，零 novamind 导入）
+    # 各模块的提示词数据源（纯数据模块，零 novamind 导入）
+    from novamind.engines.rag.prompts import TEMPLATES as _rag
     from novamind.features.agent.agent_prompts import TEMPLATES as _ag
     from novamind.features.app.app_prompts import TEMPLATES as _app
     from novamind.features.deep_research.deep_research_prompts import TEMPLATES as _dr
     from novamind.features.evaluation.evaluation_prompts import TEMPLATES as _ev
     from novamind.features.knowledge_space.prompts import TEMPLATES as _ks
-    from novamind.features.qa.qa_prompts import TEMPLATES as _qa
     from novamind.features.skill.skill_prompts import TEMPLATES as _sk
 
     count = 0
-    for templates in [_ks, _dr, _qa, _ev, _app, _ag, _sk]:
+    for templates in [_ks, _dr, _rag, _ev, _app, _ag, _sk]:
         PromptManager.register(templates)
         count += len(templates)
     return count

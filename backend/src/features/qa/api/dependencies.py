@@ -1,116 +1,30 @@
-"""QA 依赖注入装配：service/processor 等 FastAPI Depends 工厂。"""
+"""QA 依赖注入装配：AIChatService（聊天附件共享链）FastAPI Depends 工厂。"""
 from fastapi import Depends
 from novamind.core.database.database import get_db
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.services.instrumented_search_service import (
     InstrumentedSearchService as SearchService,
 )
-from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
-from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from novamind.features.qa.services.ai_chat_service import AIChatService
-from novamind.features.qa.services.qa_cache_service import QACacheService
-from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.features.user.services.search_config_service import SearchConfigService
-from novamind.shared.cache.cache_service import CacheService
 from novamind.shared.storage.client_factory import get_elasticsearch_client, get_minio_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = get_logger(__name__)
-
-
-async def get_minio_client_for_presign():
-    """获取 MinIO 客户端（路由层附件预签名用）"""
-    try:
-        return await get_minio_client()
-    except Exception:
-        return None
-
-
-async def get_qa_repository(db: AsyncSession = Depends(get_db)):
-    """获取 QARespository 请求级实例。
-
-    Args:
-        db: 请求级数据库会话（FastAPI Depends 注入）。
-
-    Returns:
-        QA 仓储实例。
-    """
-    return QuestionAnswerRepository(db)
-
-
-async def get_session_config_repository(db: AsyncSession = Depends(get_db)):
-    """获取 SessionConfigRepository 请求级实例。
-
-    Args:
-        db: 请求级数据库会话（FastAPI Depends 注入）。
-
-    Returns:
-        会话配置仓储实例。
-    """
-    return SessionConfigRepository(db)
-
-
-async def get_session_summary_repository(db: AsyncSession = Depends(get_db)):
-    """获取 SessionSummaryRepository 请求级实例。
-
-    Args:
-        db: 请求级数据库会话（FastAPI Depends 注入）。
-
-    Returns:
-        会话摘要仓储实例。
-    """
-    return SessionSummaryRepository(db)
-
-
-async def get_qa_cache_service() -> QACacheService:
-    """获取 QACacheService 实例（委托 CacheService 实现 L1+L2）"""
-    return QACacheService(cache_service=CacheService())
-
-
-async def get_qa_service(
-    repository: QuestionAnswerRepository = Depends(get_qa_repository),
-    session_config_repo: SessionConfigRepository = Depends(get_session_config_repository),
-    session_summary_repo: SessionSummaryRepository = Depends(get_session_summary_repository),
-    cache_service: QACacheService = Depends(get_qa_cache_service),
-    model_config_service=Depends(get_model_config_service),
-) -> QAService:
-    """装配 QAService（各仓储共享同一 DB 会话保证事务原子性）。
-
-    Args:
-        repository: QA 消息仓储。
-        session_config_repo: 会话配置仓储。
-        session_summary_repo: 会话摘要仓储。
-        cache_service: QA 缓存服务。
-        model_config_service: 用户模型配置服务。
-
-    Returns:
-        装配完成的 QAService。
-    """
-    return QAService(
-        repository=repository,
-        session_config_repo=session_config_repo,
-        session_summary_repo=session_summary_repo,
-        cache_service=cache_service,
-        model_config_service=model_config_service,
-    )
-
 
 async def get_aichat_service(
-    qa_service: QAService = Depends(get_qa_service),
     model_config_service=Depends(get_model_config_service),
     db: AsyncSession = Depends(get_db),
 ) -> AIChatService:
-    """
-    获取 AI Chat 服务
+    """装配 AIChatService（聊天附件服务）。
 
-    通过 ModelConfigService 动态获取模型客户端。
-    llm_model 为 None 时使用用户默认模型。
+    Args:
+        model_config_service: 模型配置服务（models 端点经路由层直用；
+            注入 service 保留装配面）。
+        db: 请求级数据库会话（附件记录读写）。
 
-    装配点（批次 5-B2）：检索服务与文档处理器在此构造后注入，
-    AIChatService 不再内部懒构造。
+    Returns:
+        装配完成的 AIChatService。
     """
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
@@ -118,7 +32,6 @@ async def get_aichat_service(
     document_processor = DocumentProcessor()
     search_config_service = SearchConfigService(db)
     return AIChatService(
-        qa_service=qa_service,
         model_config_service=model_config_service,
         db=db,
         minio_client=minio_client,

@@ -11,8 +11,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import BigInteger, select
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
@@ -110,7 +109,6 @@ async def test_attribution_permission_boundary_branch():
 
     _replay_search 全桩（记录 bypass 参数），判定逻辑真跑（SQLite 造消息对）。
     """
-    from datetime import datetime
 
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         ATTR_PERMISSION_BOUNDARY,

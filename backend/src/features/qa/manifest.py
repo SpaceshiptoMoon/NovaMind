@@ -1,4 +1,4 @@
-"""qa feature manifest"""
+"""qa feature manifest（聊天附件共享链 + 归档只读模型）。"""
 from __future__ import annotations
 
 from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, RouterSpec
@@ -6,29 +6,20 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     """懒加载本 feature 全部 ORM 模型，供建表注册扫描。"""
+    from novamind.features.qa.models.chat_attachment import ChatAttachment  # noqa: F401
     from novamind.features.qa.models.qa_feedback import MessageFeedback  # noqa: F401
     from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
-    from novamind.features.qa.models.session_summary import SessionSummary  # noqa: F401
 
 
 def manifest() -> FeatureManifest:
     """声明 qa feature 的路由、依赖与加载顺序。"""
     from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
-    from novamind.features.qa.api.qa_routes import router as qa_router
-    from novamind.features.qa.api.session_config_routes import router as session_config_router
 
     return FeatureManifest(
         name="qa",
         routers=[
-            RouterSpec("qa", qa_router, f"{API_V1_PREFIX}/qa", "智能问答"),
-            RouterSpec("ai_chat", ai_chat_router, f"{API_V1_PREFIX}/ai-chat", "AI 聊天"),
-            RouterSpec(
-                "session_config",
-                session_config_router,
-                f"{API_V1_PREFIX}/sessions/{{session_id}}/config",
-                "会话配置",
-            ),
+            RouterSpec("ai_chat", ai_chat_router, f"{API_V1_PREFIX}/ai-chat", "AI 聊天附件"),
         ],
         depends_on=["knowledge_space"],
         order=25,

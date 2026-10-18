@@ -6,13 +6,13 @@
 系统注入（压缩摘要/计划上下文/todo）一律 <system-*> 标签包裹，组装透传。
 """
 import pytest
+from novamind.engines.agent.memory.context_compressor import SUMMARY_PREFIX
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.short_term import (
     ShortTermMemory,
     _escape_user_content,
     sanitize_user_content,
 )
-from novamind.engines.agent.memory.context_compressor import SUMMARY_PREFIX
 
 pytestmark = pytest.mark.unit
 
@@ -182,28 +182,15 @@ def test_system_role_message_passthrough() -> None:
     }
 
 
-# ==================== qa 摘要块标签化 ====================
-
-
-def test_qa_summary_block_tagged() -> None:
-    """qa 摘要注入块经 <system-compaction> 包裹，与 agent 频道格式统一"""
-    from novamind.features.qa.services.qa_service import QAService
-
-    block = QAService._summary_block("用户此前讨论了 RAG 架构")
-    assert block["role"] == "system"
-    assert block["content"].startswith("<system-compaction>")
-    assert "RAG 架构" in block["content"]
-    assert block["content"].rstrip().endswith("</system-compaction>")
-
-
 # ==================== system prompt 标签约定层 ====================
 
 
 @pytest.mark.asyncio
 async def test_prompt_builder_tag_convention_always_present() -> None:
     """标签约定层恒注入且优先级最高：预算紧张时其他层可丢、它不丢"""
-    from novamind.engines.agent.prompt_builder import SystemPromptBuilder
     from unittest.mock import MagicMock
+
+    from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(MagicMock())
     # 极小预算：identity 等层被丢，tag_convention 仍在
@@ -221,8 +208,9 @@ async def test_prompt_builder_tag_convention_always_present() -> None:
 @pytest.mark.asyncio
 async def test_prompt_builder_tag_convention_first() -> None:
     """正常预算下标签约定层排在最前（模型先学会规则再看内容）"""
-    from novamind.engines.agent.prompt_builder import SystemPromptBuilder
     from unittest.mock import MagicMock
+
+    from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 
     builder = SystemPromptBuilder(MagicMock())
     result = await builder.build(

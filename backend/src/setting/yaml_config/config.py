@@ -369,10 +369,6 @@ class DeepResearchConfig:
 class KnowledgeOpsConfig:
     """知识运营（kb-ops）feature 的 YAML 配置段。"""
 
-    # 会话内改写检测：时间窗（秒）与字符 3-gram 相似度阈值。
-    # 判定保守：宁可漏标不可误标（误标会污染 gap 统计）。
-    reformulate_window_seconds: int = 120
-    reformulate_similarity_threshold: float = 0.5
     # 归因流水线（A1）：低分阈值与批次 2b 看板同口径；降级阈值用于区分
     # content_gap vs retrieval_failure；回溯窗与批上限控制追赶成本。
     attribution_low_score_threshold: float = 0.35

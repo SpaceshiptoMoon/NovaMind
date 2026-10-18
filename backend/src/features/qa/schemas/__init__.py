@@ -1,23 +1,23 @@
-"""
-QA模式定义 - 数据传输对象和验证模型（简化版本）
-"""
+"""QA schema 聚合导出（聊天附件链 + agent 复用的反馈/引用契约）。"""
 
 from .ai_chat import (
-    ChatRequest,
-    ChatResponse,
+    ChatAvailableModelsResponse,
+    HealthCheckResponse,
+    ModelInfoResponse,
+    UploadChatAttachmentResponse,
 )
-from .qa import QARequest, QAResponse, QAUpdateRequest
-from .session_config import (
-    SessionConfigCreate,
-    SessionConfigResponse,
+from .qa import (
+    CitationClickRequest,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
 )
 
 __all__ = [
-    "QARequest",
-    "QAResponse",
-    "QAUpdateRequest",
-    "ChatRequest",
-    "ChatResponse",
-    "SessionConfigCreate",
-    "SessionConfigResponse",
+    "CitationClickRequest",
+    "MessageFeedbackRequest",
+    "MessageFeedbackResponse",
+    "ChatAvailableModelsResponse",
+    "HealthCheckResponse",
+    "ModelInfoResponse",
+    "UploadChatAttachmentResponse",
 ]

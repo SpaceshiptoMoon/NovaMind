@@ -171,12 +171,4 @@ class LRUCache[T]:
 
 
 # 预定义的缓存实例
-# 会话配置缓存：5 分钟 TTL，最多 1000 个会话
-session_config_cache = LRUCache[dict](max_size=1000, default_ttl=300)
-
-# 摘要缓存：10 分钟 TTL，最多 500 个会话
-session_summary_cache = LRUCache[dict](max_size=500, default_ttl=600)
-
-# 消息列表缓存：30 秒 TTL（变化频繁），最多 200 个会话
-session_messages_cache = LRUCache[list](max_size=200, default_ttl=30)
 default_cache = LRUCache[Any](max_size=2000, default_ttl=300)
