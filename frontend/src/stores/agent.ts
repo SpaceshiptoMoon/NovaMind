@@ -806,7 +806,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ========== 附件管理 ==========
 
-  /** 上传附件（共享 /ai-chat/chat-attachments 端点），成功后加入待发队列 */
+  /** 上传附件（共享 /agent/attachments 端点），成功后加入待发队列 */
   async function uploadAttachment(
     file: File,
     onProgress?: (percent: number) => void,

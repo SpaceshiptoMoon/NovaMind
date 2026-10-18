@@ -34,7 +34,7 @@ async def ops_db():
     """SQLite 内存库（StaticPool 跨会话可见）：kb_events + question_answers。"""
     from novamind.core.database.base import Base
     from novamind.features.knowledge_ops.models.kb_event import KbEvent
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool

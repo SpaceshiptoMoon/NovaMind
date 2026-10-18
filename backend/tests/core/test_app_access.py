@@ -24,7 +24,7 @@ class TestMatchAppCode:
         assert match_app_code("/api/v1/agent/1/chat") == "agent"
         assert match_app_code("/api/v1/skills") == "skill"
         assert match_app_code("/api/v1/apps/resume") == "app"
-        assert match_app_code("/api/v1/ai-chat/history") == "qa"
+        assert match_app_code("/api/v1/agent/attachments/1/download") == "agent"
 
     def test_segment_boundary_not_prefix(self):
         # 段边界匹配：/api/v1/agentx 不能误命中 agent

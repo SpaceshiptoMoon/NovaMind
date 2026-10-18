@@ -20,7 +20,7 @@ def _build_openapi_components() -> set:
     return set(spec.get("components", {}).get("schemas", {}).keys())
 
 
-# 5 个历史裸名（跨 feature 同名）——重命名后必须全部消失
+# 4 个历史裸名（跨 feature 同名）——重命名后必须全部消失
 _BARE_COLLIDING_NAMES = {
     "MessageResponse",
     "AvailableModelsResponse",
@@ -28,7 +28,10 @@ _BARE_COLLIDING_NAMES = {
     "SessionListResponse",
 }
 
-# 10 个 feature 限定新名——必须全部出现在 openapi 组件中
+# 8 个 feature 限定新名——必须全部出现在 openapi 组件中。
+# 历史成员 ResearchLLMConfig / ChatSessionListResponse 随 ccd3ce4c QA 对话清退
+# 消亡（前者是 deep_research 请求体嵌套配置不直出响应，后者是 qa 死 schema），
+# 断言随宿主类移除。
 _FEATURE_QUALIFIED_NAMES = {
     "UserMessageResponse",
     "AgentMessageResponse",
@@ -37,8 +40,6 @@ _FEATURE_QUALIFIED_NAMES = {
     "MemberActionResponse",
     "AgentActionResponse",
     "SearchLLMConfig",
-    "ResearchLLMConfig",
-    "ChatSessionListResponse",
     "AgentSessionListResponse",
 }
 

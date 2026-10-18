@@ -59,12 +59,11 @@ export interface MyPermissionsResponse {
 }
 
 // 可门禁的应用代码（与后端 core/authorization/app_codes.AppCode 对齐）
-export const APP_CODES = ['qa', 'agent', 'skill', 'app'] as const
+export const APP_CODES = ['agent', 'skill', 'app'] as const
 export type AppCodeType = (typeof APP_CODES)[number]
 
 // 应用显示名（用户管理页勾选弹窗与侧边栏共用）
 export const APP_CODE_LABELS: Record<AppCodeType, string> = {
-  qa: 'AI 对话',
   agent: '智能体',
   skill: '技能广场',
   app: '应用中心（简历挖掘）',

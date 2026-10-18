@@ -30,9 +30,9 @@ async def cleanup_orphan_attachments(ctx: dict[str, Any] | None = None) -> int:
     cron 周期调用；任何一步失败都不中断整体（逐条容错）。
     """
     from novamind.core.database.database import get_db_session
+    from novamind.features.agent.attachments.models import ChatAttachment
     from novamind.features.agent.models.message import AgentMessage
-    from novamind.features.qa.models.chat_attachment import ChatAttachment
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     cutoff = datetime.now(UTC) - timedelta(days=ORPHAN_CUTOFF_DAYS)
 

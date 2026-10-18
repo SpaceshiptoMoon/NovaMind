@@ -293,14 +293,14 @@ export const agentApi = {
     return request.get<ToolProvider>(`/agent/tools/${toolName}`)
   },
 
-  /** 可用模型清单（/ai-chat/models 共享端点，附件下载同源） */
+  /** 可用模型清单（/agent/models 共享端点，附件下载同源） */
   getModels() {
     return request.get<{
       models: Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
-    }>('/ai-chat/models')
+    }>('/agent/models')
   },
 
-  /** 上传对话附件（共享 /ai-chat/chat-attachments 端点，带上传进度回调） */
+  /** 上传对话附件（共享 /agent/attachments 端点，带上传进度回调） */
   uploadAttachment(file: File, onProgress?: (percent: number) => void) {
     return request.upload<{
       attachment_id: number
@@ -308,7 +308,7 @@ export const agentApi = {
       file_type: string
       file_size: number
     }>(
-      '/ai-chat/chat-attachments',
+      '/agent/attachments',
       file,
       onProgress,
     )
@@ -316,14 +316,14 @@ export const agentApi = {
 
   /** 拼接附件下载 URL（不带鉴权头，直接给 <a href> 用） */
   downloadAttachment(attachmentId: number) {
-    return `/ai-chat/chat-attachments/${attachmentId}/download`
+    return `/agent/attachments/${attachmentId}/download`
   },
 
   /** 带鉴权头 fetch 附件并以浏览器下载方式保存（下载失败抛错） */
   async downloadAttachmentFile(attachmentId: number, filename: string) {
     const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
     const token = tokenManager.getToken()
-    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attachmentId}/download`, {
+    const res = await fetch(`${baseURL}/agent/attachments/${attachmentId}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!res.ok) throw new Error('下载失败')

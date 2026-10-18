@@ -1122,7 +1122,7 @@ async function loadAttachmentImage(attId: number) {
   if (imageBlobCache.has(attId)) return
   try {
     const token = localStorage.getItem('access_token')
-    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attId}/download`, {
+    const res = await fetch(`${baseURL}/agent/attachments/${attId}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!res.ok) return

@@ -54,6 +54,13 @@ def _build_llm_client(caps: LLMCapabilities):
 def _build_svc_for_context(llm_client) -> AgentChatService:
     """绕过 __init__ 构造仅覆盖 _build_context 依赖的最小桩。"""
     svc = AgentChatService.__new__(AgentChatService)
+    # 附件清单纯构建依赖（_build_attachment_manifest）：空 DB → manifest 为
+    # None，不影响本文件 _build_context 协商语义的断言
+    empty_db = AsyncMock()
+    empty_db.execute = AsyncMock(return_value=SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: []),
+    ))
+    svc.db = empty_db
     svc.model_config_service = SimpleNamespace(
         get_llm_client_by_model=AsyncMock(return_value=llm_client),
         get_vlm_client_by_model=AsyncMock(),

@@ -10,6 +10,7 @@ from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.features.agent.attachments.service import AttachmentService
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
@@ -127,7 +128,7 @@ async def build_agent_chat_service(
         HostMemorySearchPort(repo=memory_search_repo) if memory_search_repo else None
     )
     knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
-    from novamind.features.qa.services.attachment_text_reader import AttachmentTextReader
+    from novamind.features.agent.attachments.text_reader import AttachmentTextReader
     attachment_read_port = AttachmentTextReader(db)
     prompt_provider = PromptManager()
 
@@ -182,6 +183,20 @@ async def get_agent_chat_service(
         db, user_id, agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, minio_client,
     )
+
+
+async def get_attachment_service(
+    db: AsyncSession = Depends(get_db),
+) -> AttachmentService:
+    """装配附件服务（MinIO 客户端懒取；请求级 db 会话用于附件记录读写）。"""
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    minio_client = None
+    try:
+        minio_client = await ClientFactory.get_minio_client()
+    except Exception:
+        pass
+    return AttachmentService(db=db, minio_client=minio_client)
 
 
 async def get_mcp_server_service(

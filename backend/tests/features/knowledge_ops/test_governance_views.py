@@ -37,8 +37,8 @@ async def gov_db():
     from novamind.core.database.base import Base
     from novamind.features.knowledge_ops.models.kb_event import KbEvent
     from novamind.features.knowledge_space.models.document import Document
-    from novamind.features.qa.models.question_answer import QuestionAnswer
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool
@@ -148,7 +148,7 @@ async def test_support_stats_aggregation(gov_db):
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = gov_db
     async with factory() as session:
@@ -191,7 +191,7 @@ async def test_citation_stats_with_session_fallback(gov_db):
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = gov_db
     async with factory() as session:
@@ -235,7 +235,7 @@ async def test_citation_stats_excludes_unresolvable_and_other_space(gov_db):
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = gov_db
     async with factory() as session:

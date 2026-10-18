@@ -13,12 +13,11 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.qa.exceptions import (
-    ChatAttachmentNotFoundError,
-    InvalidMessageContentError,
-    LLMServiceError,
+from novamind.features.agent.exceptions import (
+    AttachmentNotFoundError,
+    AttachmentUploadError,
 )
-from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
@@ -30,8 +29,8 @@ if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
 
 
-class AIChatService:
-    """聊天附件服务：上传（类型/魔数校验 + MinIO 存储 + 文本提取）与归属下载。"""
+class AttachmentService:
+    """附件服务：上传（类型/魔数校验 + MinIO 存储 + 文本提取）与归属下载。"""
 
     # 允许的文件类型及扩展名
     ALLOWED_FILE_TYPES = {"pdf", "docx", "txt", "md", "markdown", "jpg", "jpeg", "png", "gif", "webp"}
@@ -79,15 +78,15 @@ class AIChatService:
             (attachment, file_content) 二元组，附件记录与 MinIO 原始字节。
 
         Raises:
-            LLMServiceError: 附件服务未初始化。
-            ChatAttachmentNotFoundError: 附件不存在或不属于该用户。
+            AttachmentUploadError: 附件服务未初始化。
+            AttachmentNotFoundError: 附件不存在或不属于该用户。
         """
         if not self.attachment_repo or not self.minio_client:
-            raise LLMServiceError("附件服务未初始化")
+            raise AttachmentUploadError("附件服务未初始化")
 
         attachment = await self.attachment_repo.get_by_id(attachment_id)
         if not attachment or attachment.user_id != user_id:
-            raise ChatAttachmentNotFoundError(attachment_id)
+            raise AttachmentNotFoundError(attachment_id)
 
         file_content = await self.minio_client.download_document(
             self.minio_client.default_bucket,
@@ -111,7 +110,7 @@ class AIChatService:
             上传结果（attachment_id, filename, file_type, file_size, status, message）
         """
         if not self.db or not self.minio_client:
-            raise LLMServiceError("附件上传服务未初始化")
+            raise AttachmentUploadError("附件上传服务未初始化")
 
         # 验证文件类型
         filename = file.filename or "unknown"

@@ -1,8 +1,8 @@
-"""消息反馈与引用点击 schema（agent 对话面复用；QA 归档链的稳定契约）。
+"""消息反馈与引用点击 schema（kb-ops O2 契约）。
 
-历史包袱说明：反馈/引用点击的 schema 定义在 qa 侧、被 agent 路由跨包
-import——早期 QA 对话与 agent 对话共用反馈端点的产物，组件名已进
-OpenAPI 快照，迁移会破坏契约确定性，故保留在 qa.schemas.qa。
+历史：原 features/qa/schemas/qa.py（早期 QA 对话与 agent 对话共用反馈端点
+的产物），组件名 MessageFeedback*/CitationClickRequest 已进 OpenAPI 快照，
+随 QA 清退归位 agent 原文迁移——迁移保持类名不变以维持契约确定性。
 """
 
 from typing import Literal

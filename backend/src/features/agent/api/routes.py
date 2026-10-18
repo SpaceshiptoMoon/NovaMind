@@ -52,9 +52,7 @@ from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 
-# 反馈/引用点击 schema 复用 qa 公共面（同名类会让 FastAPI 的 OpenAPI 组件名
-# 消歧前缀随 import 顺序漂移，破坏契约快照确定性——两处语义本就相同，只留一份）
-from novamind.features.qa.schemas.qa import (
+from novamind.features.agent.schemas.feedback import (
     CitationClickRequest,
     MessageFeedbackRequest,
     MessageFeedbackResponse,

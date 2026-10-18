@@ -30,7 +30,6 @@ from novamind.features.knowledge_space.api.startup import (
 from novamind.features.notification.api.exception_handlers import (
     setup_notification_exception_handlers,
 )
-from novamind.features.qa.api.startup import setup_qa_exception_handlers
 from novamind.features.skill.api.exception_handlers import (
     setup_skill_exception_handlers,
 )
@@ -48,9 +47,6 @@ def setup_exception_handlers(app: FastAPI):
 
     # 用户模块异常处理器
     setup_user_exception_handlers(app)
-
-    # QA 模块异常处理器
-    setup_qa_exception_handlers(app)
 
     # 知识空间异常处理器
     setup_knowledge_space_exception_handlers(app)

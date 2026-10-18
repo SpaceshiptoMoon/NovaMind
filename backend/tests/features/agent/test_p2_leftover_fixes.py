@@ -1,12 +1,13 @@
 """遗留 P2 修复回归测试（红队审计批次三）。
 
-覆盖四项：
-- P2-a qa 附件注入确定性 per-message 分配：历史消息注入形态不随新增附件漂移
-  （prompt cache 前缀稳定），超预算时最老消息静态降级头部保底。
-- P2-b frozen_memory 类级 TTL 缓存：同 agent+user 在 TTL 窗口内命中同一字节
+覆盖三项：
+- frozen_memory 类级 TTL 缓存：同 agent+user 在 TTL 窗口内命中同一字节
   （记忆写入不即时反映——冻结语义）。
-- P2-c escape_system_tags 助手 + 技能片段/MCP 工具定义接入。
-- P2-d deep_research 消毒对齐：用户查询与第三方搜索结果的 <system- 转义。
+- escape_system_tags 助手 + 技能片段/MCP 工具定义接入。
+- deep_research 消毒对齐：用户查询与第三方搜索结果的 <system- 转义。
+
+历史：P2-a 附件注入确定性测试随附件清单注入重构（_build_attachment_manifest
+取代 _inject_attachments_to_context）删除。
 """
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -14,144 +15,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 pytestmark = pytest.mark.unit
-
-
-# ==================== P2-a 附件注入确定性 ====================
-
-
-def _att(attachment_id, filename, file_type="pdf", file_size=2048):
-    """惯例桩：构造消息 extra.attachments 元素（dict 形态）。"""
-    return {"id": attachment_id, "filename": filename, "file_type": file_type, "file_size": file_size}
-
-
-def _att_record(attachment_id, filename, extracted_text):
-    """惯例桩：构造附件 DB 行 stub（repository.get_by_ids 返回形态）。"""
-    return SimpleNamespace(
-        id=attachment_id, filename=filename, file_type="pdf",
-        file_size=2048, extracted_text=extracted_text,
-    )
-
-
-def _svc(db_msgs, att_records):
-    """惯例桩：构造注入了 stub 依赖的 AIChatService 空壳实例。"""
-    from novamind.features.qa.services.ai_chat_service import AIChatService
-    svc = AIChatService.__new__(AIChatService)
-    from novamind.core.middleware.structured_logging import get_logger
-    svc.logger = get_logger(__name__)
-    from novamind.shared.utils.text_utils.token_counter import TokenCounter
-    svc._token_counter = TokenCounter()
-    db_result = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: db_msgs))
-    svc.db = AsyncMock()
-    svc.db.execute = AsyncMock(return_value=db_result)
-    svc.attachment_repo = SimpleNamespace(
-        get_by_ids=AsyncMock(return_value=att_records),
-        get_by_ids_and_user=AsyncMock(return_value=att_records),
-    )
-    svc.minio_client = None
-    return svc
-
-
-def _qa_item(msg_id, content):
-    """惯例桩：构造上下文消息 dict（role 固定 user）。"""
-    return {"id": msg_id, "role": "user", "content": content}
-
-
-@pytest.mark.asyncio
-async def test_attachment_injection_stable_across_new_attachment():
-    """P2-a 核心：历史消息的注入形态不因新增附件漂移（cache 前缀稳定）。
-
-    第一拍：会话有一条带大附件的消息 M1 → M1 注入截断形态 A。
-    第二拍：新增带大附件的消息 M2 → M1 的注入形态必须与第一拍**字节一致**
-    （旧实现按剩余预算反向分配，M2 到达会改变 M1 的截断量）。
-    """
-    big_text = "甲" * 8000  # 远超 per-message 预算，必然截断
-
-    # ---- 第一拍：只有 M1 ----
-    m1 = SimpleNamespace(
-        id=101, role="user", extra={"attachments": [_att(1, "旧文档.pdf")]},
-        get_attachments=lambda: [_att(1, "旧文档.pdf")],
-    )
-    svc1 = _svc([m1], [_att_record(1, "旧文档.pdf", big_text)])
-    ctx1 = [_qa_item(101, "问题一")]
-    ctx1 = await svc1._inject_attachments_to_context("s", ctx1, user_id=1)
-    m1_injected_1 = ctx1[0]["content"]
-    assert isinstance(m1_injected_1, list), "大附件应注入并转为 parts"
-    m1_doc_text_1 = m1_injected_1[0]["text"]
-
-    # ---- 第二拍：M1 + 新增 M2（同款大附件） ----
-    m1 = SimpleNamespace(
-        id=101, role="user", extra={"attachments": [_att(1, "旧文档.pdf")]},
-        get_attachments=lambda: [_att(1, "旧文档.pdf")],
-    )
-    m2 = SimpleNamespace(
-        id=102, role="user", extra={"attachments": [_att(2, "新文档.pdf")]},
-        get_attachments=lambda: [_att(2, "新文档.pdf")],
-    )
-    svc2 = _svc(
-        [m1, m2],
-        [
-            _att_record(1, "旧文档.pdf", big_text),
-            _att_record(2, "新文档.pdf", big_text),
-        ],
-    )
-    ctx2 = [_qa_item(101, "问题一"), _qa_item(102, "问题二")]
-    ctx2 = await svc2._inject_attachments_to_context("s", ctx2, user_id=1)
-    m1_doc_text_2 = ctx2[0]["content"][0]["text"]
-
-    # 关键断言：M1 两拍的文档注入字节一致
-    assert m1_doc_text_1 == m1_doc_text_2, (
-        "历史消息附件注入形态随新增附件漂移——撕裂 prompt cache 前缀"
-    )
-
-
-@pytest.mark.asyncio
-async def test_attachment_injection_oldest_beyond_slots_gets_head_keep():
-    """超总预算槽位的最老消息静态降级头部保底（确定性：按 id 序位划定）"""
-    big_text = "乙" * 30000
-    from novamind.features.qa.services.ai_chat_service import AIChatService
-    # full_slots = 20000 // 5000 = 4：造 8 条大附件消息，最老 4 条走 HEAD_KEEP
-    db_msgs, records, ctx = [], [], []
-    for i in range(8):
-        mid, aid = 400 + i, 500 + i
-        msg = SimpleNamespace(
-            id=mid, role="user",
-            extra={"attachments": [_att(aid, f"文档{i}.pdf")]},
-            get_attachments=lambda aid=aid, i=i: [_att(aid, f"文档{i}.pdf")],
-        )
-        db_msgs.append(msg)
-        records.append(_att_record(aid, f"文档{i}.pdf", big_text))
-        ctx.append(_qa_item(mid, f"问题{i}"))
-    svc = _svc(db_msgs, records)
-    ctx = await svc._inject_attachments_to_context("s", ctx, user_id=1)
-
-    full_slots = AIChatService.ATTACHMENT_TOKEN_BUDGET // AIChatService.ATTACHMENT_MSG_BUDGET
-    head_texts = [ctx[i]["content"][0]["text"] for i in range(8 - full_slots)]
-    full_texts = [ctx[i]["content"][0]["text"] for i in range(8 - full_slots, 8)]
-    # 最老侧（超出槽位）为头部保底形态，明显短于最新侧的常量截断形态
-    assert all(len(t) < len(f) for t, f in zip(head_texts, full_texts)), (
-        "最老侧应为更短的头部保底形态"
-    )
-    # 最新侧全部为同一常量预算的截断形态（彼此等长——确定性佐证）
-    assert len({len(t) for t in full_texts}) == 1
-
-
-@pytest.mark.asyncio
-async def test_attachment_injection_small_attachments_untouched():
-    """相邻正常场景：小附件全量注入，零截断"""
-    m1 = SimpleNamespace(
-        id=101, role="user", extra={"attachments": [_att(1, "小文档.pdf")]},
-        get_attachments=lambda: [_att(1, "小文档.pdf")],
-    )
-    svc = _svc([m1], [_att_record(1, "小文档.pdf", "短正文")])
-    ctx = await svc._inject_attachments_to_context(
-        "s", [_qa_item(101, "问题")], user_id=1
-    )
-    text = ctx[0]["content"][0]["text"]
-    assert "短正文" in text
-    assert "已截断" not in text
-
-
-# ==================== P2-b frozen_memory 类级缓存 ====================
 
 
 @pytest.mark.asyncio

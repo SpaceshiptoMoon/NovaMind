@@ -165,3 +165,22 @@ class MemoryNotFoundError(AgentError):
             code="MEMORY_NOT_FOUND",
         )
         self.memory_id = memory_id
+
+
+class AttachmentNotFoundError(AgentError):
+    """聊天附件不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("attachment_id",)
+
+    def __init__(self, attachment_id: int):
+        super().__init__(
+            message=f"附件 {attachment_id} 不存在",
+            code="ATTACHMENT_NOT_FOUND",
+        )
+        self.attachment_id = attachment_id
+
+
+class AttachmentUploadError(AgentError):
+    """附件上传/读取失败（服务未初始化、类型不支持、超限、内容不匹配）"""
+
+    def __init__(self, message: str):
+        super().__init__(f"附件处理失败: {message}", "ATTACHMENT_ERROR")

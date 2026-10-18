@@ -25,7 +25,7 @@ describe('permission store — hasApp（应用级权限 deny-list）', () => {
     })
     const store = usePermissionStore()
     await store.fetchPermissions()
-    expect(store.hasApp('qa')).toBe(true)
+    expect(store.hasApp('skill')).toBe(true)
     expect(store.hasApp('agent')).toBe(true)
   })
 
@@ -39,7 +39,7 @@ describe('permission store — hasApp（应用级权限 deny-list）', () => {
     await store.fetchPermissions()
     expect(store.hasApp('agent')).toBe(false)
     expect(store.hasApp('skill')).toBe(false)
-    expect(store.hasApp('qa')).toBe(true)
+    expect(store.hasApp('skill')).toBe(true)
     expect(store.hasApp('app')).toBe(true)
   })
 
@@ -59,14 +59,14 @@ describe('permission store — hasApp（应用级权限 deny-list）', () => {
     getMyPermissions.mockResolvedValue({
       permissions: [],
       role_code: 'viewer',
-      disabled_apps: ['qa'],
+      disabled_apps: ['skill'],
     })
     const store = usePermissionStore()
     await store.fetchPermissions()
-    expect(store.hasApp('qa')).toBe(false)
+    expect(store.hasApp('skill')).toBe(false)
     store.clear()
     expect(store.disabledApps).toEqual([])
     // clear 后无角色信息 → isAdmin=false，deny-list 空 → 可用
-    expect(store.hasApp('qa')).toBe(true)
+    expect(store.hasApp('skill')).toBe(true)
   })
 })

@@ -122,6 +122,7 @@ class AppLifespanManager:
         # 启动嵌入式 arq Worker（任务函数从各 feature tasks 收集注入；shared/mq 只提供通用运行时）
         try:
             from arq import cron
+            from novamind.features.agent.attachments.cleanup import cleanup_orphan_attachments
             from novamind.features.agent.tasks.memory_tasks import consolidate_memory_task
             from novamind.features.app.tasks.resume_tasks import (
                 process_resume_task,
@@ -150,7 +151,6 @@ class AppLifespanManager:
                 process_wiki_ingest_task,
                 process_wiki_retract_task,
             )
-            from novamind.features.qa.tasks import cleanup_orphan_attachments
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
                 functions=[

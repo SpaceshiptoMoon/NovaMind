@@ -35,8 +35,8 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 async def gap_db():
     """SQLite 内存库：question_answers + qa_message_feedback（StaticPool）。"""
     from novamind.core.database.base import Base
-    from novamind.features.qa.models.qa_feedback import MessageFeedback
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool
@@ -63,7 +63,7 @@ async def _seed_failure(
     user_id: int = 1,
 ):
     """插入 (user 提问, assistant 失败回答) 对，answer extra 可注入 attribution。"""
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     base_extra = {"retrieval": {"result_count": 0, "max_score": None}, "answer_status": "answered"}
     if extra:
@@ -139,7 +139,7 @@ async def test_gap_items_excludes_other_attributions(gap_db):
 async def test_space_isolation_and_feedback_channel(gap_db):
     """空间隔离（他空间数据不可见）+ 反馈表通道（消息行 space 为空靠点踩命中）。"""
     from novamind.features.knowledge_ops.repository.gap_repository import GapRepository
-    from novamind.features.qa.models.qa_feedback import MessageFeedback
+    from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
 
     factory, _ = gap_db
     # 空间 10 的 content_gap

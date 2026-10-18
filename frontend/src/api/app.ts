@@ -132,7 +132,7 @@ export interface ModelsResponse {
 export const appApi = {
   /** 可用 LLM 模型清单（含各模型 max_tokens/temperature/top_p 默认参数） */
   getModels() {
-    return request.get<ModelsResponse>('/ai-chat/models')
+    return request.get<ModelsResponse>('/agent/models')
   },
 
   // 上传简历（使用 axios 实例，自动处理 token 刷新）

@@ -40,9 +40,9 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 async def attr_db():
     """SQLite 内存库：question_answers + session_configs + qa_message_feedback。"""
     from novamind.core.database.base import Base
-    from novamind.features.qa.models.qa_feedback import MessageFeedback
-    from novamind.features.qa.models.question_answer import QuestionAnswer
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool
@@ -74,7 +74,7 @@ async def _insert_pair(
     role: str = "assistant",
 ):
     """插入 (user 提问, assistant 回答) 相邻对，user 消息 id = answer_id - 1。"""
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     async with factory() as session:
         session.add(QuestionAnswer(
@@ -233,7 +233,7 @@ async def test_space_anchored_to_message_row_not_session_config(attr_db):
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = attr_db
     # 消息 space_id=None（收口前存量），但会话绑定了 space 10
@@ -261,7 +261,7 @@ async def test_space_from_message_row_with_session_config_for_replay_params(attr
         ATTR_RETRIEVAL_FAILURE,
         attribute_single_event,
     )
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2, session_id="s-row", space_id=10)
@@ -298,7 +298,7 @@ async def test_valueerror_on_missing_or_invalid_message(attr_db):
     # 无 space_id 的 assistant 消息
     await _insert_pair(factory, answer_id=4, session_id="s2", space_id=None)
     # 无相邻 user 查询（直接插 assistant，user id=4 不存在——answer=6 的前一条是 5）
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     async with factory() as session:
         session.add(QuestionAnswer(
@@ -355,7 +355,7 @@ async def test_write_back_extra_fields(attr_db):
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2, extra={"sources": []})
@@ -386,7 +386,7 @@ async def test_replay_total_failure_raises_not_content_gap(attr_db):
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2)

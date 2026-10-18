@@ -102,8 +102,8 @@ class GapRepository:
         attribution_filter: 'content_gap' 只取该归因；''（空串）只取未归因；
         None 全取（归因分布用）。
         """
-        from novamind.features.qa.models.qa_feedback import MessageFeedback
-        from novamind.features.qa.models.question_answer import QuestionAnswer
+        from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+        from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
         extra = QuestionAnswer.extra
         max_score = func.cast(extra["retrieval"]["max_score"].as_string(), Numeric(10, 6))
@@ -172,7 +172,7 @@ class GapRepository:
         """逐行取相邻 user 查询（每行一次索引查询，批量页面可接受）。"""
         from sqlalchemy import and_, select
 
-        from novamind.features.qa.models.question_answer import QuestionAnswer
+        from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
         for r in rows:
             q = (await self.session.execute(

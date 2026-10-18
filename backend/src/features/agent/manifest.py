@@ -6,6 +6,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     """导入全部 ORM 模型供 create_all 建表注册（仅副作用，不显式使用）。"""
+    from novamind.features.agent.attachments.models import ChatAttachment  # noqa: F401
     from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
     from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
     from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
@@ -25,12 +26,19 @@ async def _init(app) -> None:
 
 def manifest() -> FeatureManifest:
     """声明 agent feature 的路由、依赖与加载顺序（依赖 knowledge_space 与 user）。"""
+    from novamind.features.agent.api.attachment_routes import router as attachment_router
     from novamind.features.agent.api.routes import router as agent_router
 
     return FeatureManifest(
         name="agent",
         routers=[
             RouterSpec("agent", agent_router, f"{API_V1_PREFIX}/agent", "Agent 智能体"),
+            RouterSpec(
+                "agent_attachments",
+                attachment_router,
+                f"{API_V1_PREFIX}/agent",
+                "Agent 聊天附件",
+            ),
         ],
         depends_on=["knowledge_space", "user"],
         order=30,

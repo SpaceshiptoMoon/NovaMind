@@ -7,8 +7,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from novamind.features.qa.models.qa_feedback import MessageFeedback
-from novamind.features.qa.models.question_answer import QuestionAnswer
+from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 from sqlalchemy import Numeric, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

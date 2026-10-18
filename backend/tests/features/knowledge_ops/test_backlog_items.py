@@ -115,8 +115,8 @@ async def test_attribution_permission_boundary_branch():
         attribute_single_event,
     )
     from novamind.features.knowledge_space.models.document import Document
-    from novamind.features.qa.models.question_answer import QuestionAnswer
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
     from novamind.core.database.base import Base

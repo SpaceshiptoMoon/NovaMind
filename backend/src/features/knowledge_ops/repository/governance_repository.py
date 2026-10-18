@@ -109,7 +109,7 @@ class GovernanceRepository:
             [{document_id, kb_id, click_count}] 按点击降序。
         """
         from novamind.features.knowledge_ops.models.kb_event import KbEvent
-        from novamind.features.qa.models.session_config import SessionConfig
+        from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
         rows = (await self.session.execute(
             select(
@@ -159,8 +159,8 @@ class GovernanceRepository:
         空间归属：消息行 space_id 常为空（不回填，O2 起的五处同根因），空则经
         会话 RAG 绑定兜底（与 citation_click/归因/gap 同款兜底链）。
         """
-        from novamind.features.qa.models.question_answer import QuestionAnswer
-        from novamind.features.qa.models.session_config import SessionConfig
+        from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
+        from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
         rows = (await self.session.execute(
             select(

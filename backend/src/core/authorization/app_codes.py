@@ -17,10 +17,6 @@ class AppCode:
 
 # 应用代码 → 该应用的 API 路由前缀（含 manifest 挂载的 API_V1_PREFIX）
 GATED_APP_PREFIXES: dict[str, tuple[str, ...]] = {
-    AppCode.QA: (
-        "/api/v1/ai-chat",
-        "/api/v1/sessions",
-    ),
     AppCode.AGENT: ("/api/v1/agent",),
     AppCode.SKILL: ("/api/v1/skills",),
     AppCode.APP: ("/api/v1/apps",),

@@ -1,13 +1,13 @@
 """附件下载业务下沉回归测试（get_attachment_content）。
 
 正例：归属匹配 → 返回附件记录 + MinIO 原始字节；
-反例：附件不存在 / 他人附件 → ChatAttachmentNotFoundError（不泄漏存在性）。
+反例：附件不存在 / 他人附件 → AttachmentNotFoundError（不泄漏存在性）。
 """
 from types import SimpleNamespace
 
 import pytest
-from novamind.features.qa.exceptions import ChatAttachmentNotFoundError
-from novamind.features.qa.services.ai_chat_service import AIChatService
+from novamind.features.agent.exceptions import AttachmentNotFoundError
+from novamind.features.agent.attachments.service import AttachmentService
 
 pytestmark = pytest.mark.unit
 
@@ -19,7 +19,7 @@ def _make_service(repo_attachment, downloaded):
     async def _download(_bucket, _path):
         return downloaded
 
-    svc = AIChatService.__new__(AIChatService)
+    svc = AttachmentService.__new__(AttachmentService)
     svc.logger = SimpleNamespace(warning=lambda *a, **k: None)
     svc.attachment_repo = SimpleNamespace(get_by_id=_get_by_id)
     svc.minio_client = SimpleNamespace(
@@ -44,7 +44,7 @@ async def test_get_attachment_content_returns_record_and_bytes():
 async def test_get_attachment_content_missing_raises():
     svc = _make_service(None, b"")
 
-    with pytest.raises(ChatAttachmentNotFoundError):
+    with pytest.raises(AttachmentNotFoundError):
         await svc.get_attachment_content(404, user_id=1)
 
 
@@ -54,5 +54,5 @@ async def test_get_attachment_content_other_user_raises_not_leaks():
     attachment = SimpleNamespace(id=9, user_id=2, filename="b.pdf", storage_path="p/9.pdf")
     svc = _make_service(attachment, b"secret")
 
-    with pytest.raises(ChatAttachmentNotFoundError):
+    with pytest.raises(AttachmentNotFoundError):
         await svc.get_attachment_content(9, user_id=1)

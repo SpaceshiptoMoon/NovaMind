@@ -1,8 +1,6 @@
-"""会话附件文本分片读取（原 agent HostAttachmentReadPort 语义归位 qa）。
+"""会话附件文本分片读取。
 
-归属校验 + offset/limit 分片，供 agent 引擎 read_attachment 工具消费
-（跨 feature 走 qa 公共面，R2）。
-"""
+归属校验 + offset/limit 分片，供 agent 引擎 read_attachment 工具消费。"""
 from __future__ import annotations
 
 from novamind.engines.agent.context_types import AttachmentTextChunk
@@ -32,7 +30,7 @@ class AttachmentTextReader:
         Raises:
             KeyError: 附件不存在或不属于该用户。
         """
-        from novamind.features.qa.repository.chat_attachment_repository import (
+        from novamind.features.agent.attachments.repository import (
             ChatAttachmentRepository,
         )
 

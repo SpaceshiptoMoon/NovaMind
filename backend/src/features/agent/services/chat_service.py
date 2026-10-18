@@ -43,7 +43,7 @@ from novamind.features.agent.services.host_memory_store import (
     HostMemoryStorePort,
 )
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
-from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.setting.yaml_config.loader import get_config

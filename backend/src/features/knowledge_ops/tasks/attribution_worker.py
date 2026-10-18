@@ -66,8 +66,8 @@ async def attribute_pending_events(ctx: dict | None = None) -> dict[str, int]:
     from sqlalchemy import and_, func, or_, select
 
     from novamind.core.database.database import get_db_session
-    from novamind.features.qa.models.qa_feedback import MessageFeedback
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     cfg = _load_config()
     counts: dict[str, int] = {}
@@ -139,7 +139,7 @@ async def attribute_single_event(db, message_id: int) -> str:
     """
     from sqlalchemy import select
 
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     row = (await db.execute(
         select(QuestionAnswer).where(QuestionAnswer.id == message_id)
@@ -231,11 +231,11 @@ async def attribute_single_event(db, message_id: int) -> str:
 async def _load_session_rag_config(db, session_id: str) -> dict[str, Any]:
     """读会话 RAG 配置（kb_ids/search_mode/top_k），配置缺失回退空 dict。
 
-    R2 防环：qa → knowledge_ops 单向，worker 读 qa.models 直查不 import qa services。
+    R2 防环：knowledge_space → knowledge_ops 单向，worker 读 qa.models 直查不 import qa services。
     """
     from sqlalchemy import select
 
-    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     row = (await db.execute(
         select(SessionConfig).where(SessionConfig.session_id == session_id)
@@ -255,7 +255,7 @@ async def _get_user_query_for_answer(db, session_id: str, message_id: int) -> st
     """取 assistant 消息前最近一条 user 消息文本（与看板「零命中问题」取法一致）。"""
     from sqlalchemy import and_, select
 
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     row = (await db.execute(
         select(QuestionAnswer.content)
@@ -378,7 +378,7 @@ async def _write_back_attribution(
     """把归因结果写回 assistant 消息 extra.attribution（SAVEPOINT 保护，幂等不覆盖）。"""
     from sqlalchemy import select
 
-    from novamind.features.qa.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     row = (await db.execute(
         select(QuestionAnswer).where(QuestionAnswer.id == message_id)
