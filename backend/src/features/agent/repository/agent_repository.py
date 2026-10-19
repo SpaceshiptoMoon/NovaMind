@@ -119,7 +119,11 @@ class SessionRepository:
         self.session = session
 
     async def create(
-        self, user_id: int, agent_id: int, session_id: str | None = None
+        self,
+        user_id: int,
+        agent_id: int,
+        session_id: str | None = None,
+        extra_config: dict | None = None,
     ) -> AgentSession:
         """创建会话并返回实体，session_id 缺省自动生成 UUID（flush 不 commit）。
 
@@ -127,6 +131,8 @@ class SessionRepository:
             user_id: 属主用户 ID。
             agent_id: Agent 主键 ID。
             session_id: 业务会话 ID；None 自动生成 UUID。
+            extra_config: 会话初始扩展配置（如从 Agent 默认知识范围 seed 的
+                knowledge_bindings）；None 存 NULL。
 
         Returns:
             已 flush 的会话实体。
@@ -135,6 +141,7 @@ class SessionRepository:
             user_id=user_id,
             agent_id=agent_id,
             session_id=session_id or str(uuid.uuid4()),
+            extra_config=extra_config,
         )
         self.session.add(conv)
         await self.session.flush()

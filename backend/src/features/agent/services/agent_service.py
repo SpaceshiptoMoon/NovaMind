@@ -424,7 +424,17 @@ class AgentService:
                 raise SessionNotFoundError(session_id)
             return conv
 
-        conv = await self.session_repo.create(user_id=user_id, agent_id=agent_id)
+        # 新会话 seed Agent 级默认知识范围：extra_config.knowledge_bindings
+        # 复制为会话初值（会话内仍可改，改写只影响该会话）。Agent 未配置
+        # 范围时会话保持 NULL（不限定），不造空容器。
+        agent_row = await self.agent_repo.get_by_id(agent_id)
+        agent_bindings = (agent_row.extra_config or {}).get("knowledge_bindings") if agent_row else None
+        seed_config = (
+            {"knowledge_bindings": agent_bindings} if agent_bindings else None
+        )
+        conv = await self.session_repo.create(
+            user_id=user_id, agent_id=agent_id, extra_config=seed_config
+        )
         await self.db.commit()
         return conv
 
