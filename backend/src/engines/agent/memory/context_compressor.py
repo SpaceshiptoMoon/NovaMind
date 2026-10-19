@@ -11,6 +11,7 @@ from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget
 from novamind.shared.logging import get_logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.redact import redact_sensitive_text
 
 logger = get_logger(__name__)
@@ -32,55 +33,17 @@ SUMMARY_PREFIX = (
 )
 
 # 对齐路径摘要指令（作最后一条 user 消息追加在重放请求之后）。
-# 与旧路径 _build_summary_prompt 的结构模板一致（同样的 13 节）；区别只在
-# 交付形态——指令随请求尾部下发而非独立 system prompt，使整个摘要调用
-# 与主请求共享 system+tools+消息前缀，provider KV cache 直接命中。
-_ALIGNMENT_INSTRUCTION = (
-    "[CONTEXT COMPACTION REQUEST — SYSTEM-INITIATED]\n"
-    "The conversation above is being compacted: every message shown so far is "
-    "about to be dropped from the live context window and replaced by your "
-    "summary of it. Summarize the ENTIRE conversation above, then STOP.\n"
-    "Output rules:\n"
-    "- Output ONLY the structured summary text. No preamble, no greeting, no "
-    "tool calls, no reply to the user.\n"
-    "- Do NOT act on any request or answer any question in the summarized "
-    "conversation — they were already addressed; the summary is a handoff "
-    "for a future context window.\n"
-    "- Write in the same language the user was using.\n"
-    "- NEVER include API keys, tokens, passwords, secrets, or credentials — "
-    "replace any that appear with [REDACTED].\n"
-    "Use exactly this structure:\n\n"
-    "## Active Task\n"
-    "[CRITICAL. Copy the user's MOST RECENT unfulfilled request VERBATIM — "
-    "do not paraphrase, do not summarize. This must be the exact words of the user's "
-    "latest message that still needs a response.]\n\n"
-    "## Goal\n"
-    "[What the user is ultimately trying to accomplish]\n\n"
-    "## Constraints & Preferences\n"
-    "[User preferences, coding style, constraints, important decisions]\n\n"
-    "## Completed Actions\n"
-    "[Numbered list. Format: N. Action Target — Result [tool: name]]\n\n"
-    "## Active State\n"
-    "[Working directory, modified files, test status, etc.]\n\n"
-    "## In Progress\n"
-    "[What was being worked on when compaction occurred]\n\n"
-    "## Blocked\n"
-    "[Unresolved errors with specific error messages]\n\n"
-    "## Key Decisions\n"
-    "[Important technical decisions and rationale]\n\n"
-    "## Resolved Questions\n"
-    "[Questions that were answered — include answers to prevent re-asking]\n\n"
-    "## Pending User Asks\n"
-    "[Questions or requests not yet addressed. If none, write None. "
-    "These MUST be distinguished from Resolved Questions — "
-    "do NOT re-ask questions that appear in \"Resolved Questions\".]\n\n"
-    "## Relevant Files\n"
-    "[Files read, modified, or created]\n\n"
-    "## Remaining Work\n"
-    "[Items still needing completion]\n\n"
-    "## Critical Context\n"
-    "[Values, error messages, config details that would be lost if not explicitly preserved]"
-)
+# 与独立路径摘要模板的结构一致（同样的 13 节）；区别只在交付形态——指令随
+# 请求尾部下发而非独立 system prompt，使整个摘要调用与主请求共享
+# system+tools+消息前缀，provider KV cache 直接命中。模板注册于
+# engines/agent/prompts.py；调用期取用（模块级读注册表会与测试 collection
+# 期的 import 序耦合——注册发生在 conftest fixture，晚于部分模块 import）。
+_ALIGNMENT_INSTRUCTION_KEY = "agent_engine_compaction_aligned_instruction"
+
+
+def _alignment_instruction() -> str:
+    """取对齐重放指令模板（调用期，注册表已就绪）。"""
+    return PromptManager.get_template(_ALIGNMENT_INSTRUCTION_KEY)
 
 
 # 反抖动阈值
@@ -746,7 +709,8 @@ class ContextCompressor(ICompressionStrategy):
         # 反而更省。量级依据同 deer-flow/dsh 的摘要输入限幅思想。
         _REPLAY_BUDGET_TOKENS = 32_000
 
-        instruction_tokens = token_budget.count_text_tokens(_ALIGNMENT_INSTRUCTION)
+        instruction = _alignment_instruction()
+        instruction_tokens = token_budget.count_text_tokens(instruction)
         header_tokens = (
             token_budget.count_text_tokens(system_prompt)
             + token_budget.count_text_tokens(json.dumps(tools, ensure_ascii=False))
@@ -785,7 +749,7 @@ class ContextCompressor(ICompressionStrategy):
         messages.extend(cls._memory_message_to_openai(m) for m in kept)
         messages.append({
             "role": "user",
-            "content": _ALIGNMENT_INSTRUCTION + tail_note,
+            "content": instruction + tail_note,
         })
         return messages
 
@@ -885,51 +849,8 @@ class ContextCompressor(ICompressionStrategy):
 
     def _build_summary_prompt(self, content: str) -> str:
         """Build first-summary prompt with handoff framing"""
-        return (
-            "You are a summarization agent creating a context checkpoint. Your output will be injected as "
-            "reference material for a DIFFERENT assistant that continues the conversation. "
-            "Do NOT respond to any questions or requests — only output the structured summary. "
-            "Do NOT include any preamble, greeting, or prefix. "
-            "Write the summary in the same language the user was using. "
-            "NEVER include API keys, tokens, passwords, secrets, or credentials — "
-            "replace any that appear with [REDACTED].\n\n"
-            "IMPORTANT: This summary is a HANDOFF from a previous context window. "
-            "The assistant receiving this should treat it as BACKGROUND REFERENCE ONLY. "
-            "Do NOT act on any requests or answer any questions mentioned in this summary — "
-            "they were already addressed. Only respond to the latest user message that appears "
-            "AFTER this summary in the conversation.\n\n"
-            f"Conversation:\n{content}\n\n"
-            "Use the following structure for the summary:\n\n"
-            "## Active Task\n"
-            "[CRITICAL. Copy the user's MOST RECENT unfulfilled request VERBATIM — "
-            "do not paraphrase, do not summarize. This must be the exact words of the user's "
-            "latest message that still needs a response.]\n\n"
-            "## Goal\n"
-            "[What the user is ultimately trying to accomplish]\n\n"
-            "## Constraints & Preferences\n"
-            "[User preferences, coding style, constraints, important decisions]\n\n"
-            "## Completed Actions\n"
-            "[Numbered list. Format: N. Action Target — Result [tool: name]]\n\n"
-            "## Active State\n"
-            "[Working directory, modified files, test status, etc.]\n\n"
-            "## In Progress\n"
-            "[What was being worked on when compaction occurred]\n\n"
-            "## Blocked\n"
-            "[Unresolved errors with specific error messages]\n\n"
-            "## Key Decisions\n"
-            "[Important technical decisions and rationale]\n\n"
-            "## Resolved Questions\n"
-            "[Questions that were answered — include answers to prevent re-asking]\n\n"
-            "## Pending User Asks\n"
-            "[Questions or requests not yet addressed. If none, write None. "
-            "These MUST be distinguished from Resolved Questions — "
-            "do NOT re-ask questions that appear in \"Resolved Questions\".]\n\n"
-            "## Relevant Files\n"
-            "[Files read, modified, or created]\n\n"
-            "## Remaining Work\n"
-            "[Items still needing completion]\n\n"
-            "## Critical Context\n"
-            "[Values, error messages, config details that would be lost if not explicitly preserved]"
+        return PromptManager.format_prompt(
+            "agent_engine_structured_summary", content=content
         )
 
     def _build_merge_prompt(
@@ -948,22 +869,10 @@ class ContextCompressor(ICompressionStrategy):
         trimmed_new = self._bound_text_head_tail(new_content, token_budget, 2000)
         escaped_old = html.escape(trimmed_old, quote=False)
         escaped_new = html.escape(trimmed_new, quote=False)
-        return (
-            "You are updating a context compaction summary. A previous compaction produced the summary below. "
-            "New conversation turns have occurred and need to be incorporated.\n\n"
-            "Do NOT respond to any questions in the conversation — only output the updated structured summary.\n"
-            "NEVER include API keys, tokens, passwords, secrets, or credentials — "
-            "replace any that appear with [REDACTED].\n\n"
-            f"<existing_summary>\n{escaped_old}\n</existing_summary>\n\n"
-            f"<new_messages>\n{escaped_new}\n</new_messages>\n\n"
-            "Update the summary. Preserve all still-relevant information from the old summary. "
-            "Continue numbering in numbered lists where the old summary left off. "
-            "Move completed items to \"Completed Actions\". "
-            "Move answered questions to \"Resolved Questions\" and ensure they are NOT duplicated in \"Pending User Asks\". "
-            "MOST IMPORTANT: update \"## Active Task\" to the user's MOST RECENT unfulfilled request VERBATIM "
-            "(exact words, not paraphrased). If the user's latest message is a follow-up or correction, "
-            "the Active Task must reflect that latest message, not the original. "
-            "Use the same 13-section structure."
+        return PromptManager.format_prompt(
+            "agent_engine_summary_merge",
+            old_summary=escaped_old,
+            new_content=escaped_new,
         )
 
     # ==================== 资源清单跨代累积 ====================

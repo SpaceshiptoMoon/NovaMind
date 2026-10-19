@@ -7,15 +7,6 @@ from novamind.engines.agent.loop_detection import LoopDetectionConfig
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalHook
-from novamind.engines.agent.tool.builtins import (
-    CodeExecutionTool,
-    KnowledgeSearchTool,
-    MemoryTool,
-    ReadAttachmentTool,
-    TaskTool,
-    TodoTool,
-    WebSearchTool,
-)
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.hooks import (
     LoggingHook,
@@ -23,21 +14,14 @@ from novamind.engines.agent.tool.hooks import (
     ToolOutputBudgetHook,
     ToolResultSanitizeHook,
 )
-from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.features.agent.tool.builtins import PlanOutputTool, ReadToolResultTool
+from novamind.features.agent.tool.registry_setup import build_tool_registry
 
 logger = get_logger(__name__)
 
 
 async def init_agent_components(app):
     """初始化 Agent 模块组件"""
-    # 1. 创建工具注册表并注册内置工具
-    registry = ToolRegistry()
-    registry.register(KnowledgeSearchTool())
-    registry.register(WebSearchTool())
-    registry.register(MemoryTool())
-
-    # 2. 初始化代码执行沙箱（如果启用）
+    # 1. 初始化代码执行沙箱（如果启用；失败只降级不注册 code_execution 工具）
     sandbox = None
     try:
         from novamind.features.agent.sandbox.config import SandboxConfig
@@ -47,41 +31,22 @@ async def init_agent_components(app):
         if sandbox_config.enabled:
             sandbox = DockerSandbox(sandbox_config)
             await sandbox.start()
-            if sandbox.is_started:
-                registry.register(CodeExecutionTool(sandbox))
-                logger.info("代码执行工具已注册")
-            else:
+            if not sandbox.is_started:
+                sandbox = None
                 logger.warning("沙箱启动失败，代码执行工具不可用")
     except Exception as e:
+        sandbox = None
         logger.warning("代码执行沙箱初始化跳过", error=str(e))
 
-    # 3. 创建 TodoStore + TodoTool
+    # 2. 创建 TodoStore，装配内置工具注册表（清单声明见 registry_setup）
     todo_store = TodoStore()
-    registry.register(TodoTool(todo_store))
-
-    # 4. 注册工具结果读取工具（始终可用）
-    registry.register(ReadToolResultTool())
-    registry.register(TaskTool())
-    # 计划步骤产出回查工具（无状态；仅 plan_mode 会话由 chat_service 注入工具列表）
-    registry.register(PlanOutputTool())
-
-    # 4.1 注册 Wiki 工具（读取/搜索/撰写/问题标记，权限在工具内校验）
-    from novamind.features.agent.tool.builtins import WikiTool
-    registry.register(WikiTool())
-
-    # 4.2 注册深度研究工具（长任务 15min 超时；进度经 event_sink 旁路推 WS）
-    from novamind.features.agent.tool.builtins import ResearchTool
-    registry.register(ResearchTool())
-
-    # 5. 注册会话附件按需读取工具（始终可用；正文不注入上下文，靠本工具读取）
-    registry.register(ReadAttachmentTool())
-
+    registry = build_tool_registry(todo_store=todo_store, sandbox=sandbox)
     logger.info("内置工具已注册", tools=registry.list_tool_names())
 
-    # 4. 创建 MCP 客户端管理器
+    # 3. 创建 MCP 客户端管理器
     mcp_manager = McpClientManager()
 
-    # 5. 创建工具执行器（含 Hook 链）+ Agent 引擎
+    # 4. 创建工具执行器（含 Hook 链）+ Agent 引擎
     # 消毒钩子在截断/预算钩子之前：SSE 预览与 metadata 基于消毒后内容生成
     hooks = [
         LoggingHook(),
@@ -93,7 +58,7 @@ async def init_agent_components(app):
     tool_executor = ToolExecutor(registry, mcp_manager, hooks=hooks)
     engine = AgentEngine(tool_executor, loop_detection=LoopDetectionConfig())
 
-    # 6. 存储到 app.state
+    # 5. 存储到 app.state
     app.state.agent_tool_registry = registry
     app.state.agent_mcp_manager = mcp_manager
     app.state.agent_engine = engine
@@ -101,11 +66,11 @@ async def init_agent_components(app):
     if sandbox:
         app.state.agent_sandbox = sandbox
 
-    # 7. 注册异常处理器
+    # 6. 注册异常处理器
     from novamind.features.agent.api.exception_handlers import setup_agent_exception_handlers
     setup_agent_exception_handlers(app)
 
-    # 8. 异步连接系统级 MCP 服务器（如果有）
+    # 7. 异步连接系统级 MCP 服务器（如果有）
     try:
         from novamind.core.database.database import get_db_session
         from novamind.engines.agent.mcp.config import McpConnectionConfig
@@ -132,7 +97,7 @@ async def init_agent_components(app):
     except Exception as e:
         logger.warning("系统级 MCP 服务器初始化跳过", error=str(e))
 
-    # 9. 注册应用关闭事件，清理沙箱容器
+    # 8. 注册应用关闭事件，清理沙箱容器
     if sandbox:
         async def _cleanup_sandbox():
             try:

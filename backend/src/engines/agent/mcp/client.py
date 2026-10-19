@@ -309,6 +309,22 @@ class McpClientManager:
         """
         return server_id in self._sessions
 
+    @property
+    def connected_server_ids(self) -> list[int]:
+        """当前已连接的服务器 ID 列表（观测面只读，稳定顺序）。"""
+        return sorted(self._sessions.keys())
+
+    def get_server_name(self, server_id: int) -> str | None:
+        """按服务器 ID 取注册名。
+
+        Args:
+            server_id: 服务器 ID。
+
+        Returns:
+            注册名；未知 ID 为 None。
+        """
+        return self._server_names.get(server_id)
+
     async def refresh_tools(self, server_id: int) -> list[dict]:
         """重新获取 MCP 服务器的工具列表。
 

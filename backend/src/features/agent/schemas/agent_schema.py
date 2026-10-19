@@ -293,6 +293,13 @@ class ToolProviderResponse(BaseModel):
     system_prompt_fragment: str = ""
 
 
+class ToolRuntimeStatusResponse(BaseModel):
+    """工具运行时诊断响应（admin 观测面：清单 + 超时 + MCP 连接态）"""
+    builtin_tools: list[dict[str, Any]]
+    mcp_servers: list[dict[str, Any]]
+    total_functions: int
+
+
 # ==================== 通用操作响应 ====================
 
 class AgentActionResponse(BaseModel):

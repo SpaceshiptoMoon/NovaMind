@@ -11927,6 +11927,38 @@
         "title": "ToolProviderResponse",
         "type": "object"
       },
+      "ToolRuntimeStatusResponse": {
+        "description": "工具运行时诊断响应（admin 观测面：清单 + 超时 + MCP 连接态）",
+        "properties": {
+          "builtin_tools": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Builtin Tools",
+            "type": "array"
+          },
+          "mcp_servers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Mcp Servers",
+            "type": "array"
+          },
+          "total_functions": {
+            "title": "Total Functions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "builtin_tools",
+          "mcp_servers",
+          "total_functions"
+        ],
+        "title": "ToolRuntimeStatusResponse",
+        "type": "object"
+      },
       "UnreadCountResponse": {
         "description": "未读数响应",
         "properties": {
@@ -15991,6 +16023,33 @@
           }
         ],
         "summary": "列出可用工具",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
+    "/api/v1/agent/tools-runtime": {
+      "get": {
+        "description": "内置工具清单（含超时元数据）+ 已连接 MCP 服务器及其工具解析结果",
+        "operationId": "get_tools_runtime_status_api_v1_agent_tools_runtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolRuntimeStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "工具运行时诊断（管理员）",
         "tags": [
           "Agent 智能体"
         ]

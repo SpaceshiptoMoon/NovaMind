@@ -7,9 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
 from novamind.core.auth import get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.authorization.dependencies import require_permission
+from novamind.core.authorization.permission_codes import SystemPermission
 from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalRegistry, SteeringQueue
 from novamind.engines.agent.tool.registry import ToolRegistry
@@ -18,6 +21,7 @@ from novamind.features.agent.api.dependencies import (
     get_agent_chat_service,
     get_agent_engine_ws,
     get_agent_service,
+    get_mcp_client_manager,
     get_mcp_server_service,
     get_memory_search_repo,
     get_minio_client_for_presign,
@@ -47,6 +51,7 @@ from novamind.features.agent.schemas.agent_schema import (
     SystemPromptResponse,
     ToolFunctionResponse,
     ToolProviderResponse,
+    ToolRuntimeStatusResponse,
 )
 from novamind.features.agent.schemas.feedback import (
     CitationClickRequest,
@@ -616,6 +621,48 @@ async def get_tool(
             for t in tools
         ],
         system_prompt_fragment=tool.get_system_prompt_fragment(),
+    )
+
+
+@router.get(
+    "/tools-runtime",
+    response_model=ToolRuntimeStatusResponse,
+    summary="工具运行时诊断（管理员）",
+    description="内置工具清单（含超时元数据）+ 已连接 MCP 服务器及其工具解析结果",
+    dependencies=[Depends(require_permission(SystemPermission.AGENT_MANAGE_SYSTEM))],
+)
+async def get_tools_runtime_status(
+    registry: ToolRegistry = Depends(get_tool_registry),
+    mcp_manager: McpClientManager = Depends(get_mcp_client_manager),
+):
+    builtin_tools = []
+    total_functions = 0
+    for info in registry.list_tools():
+        functions = [
+            item.get("function", {}).get("name", "") for item in info.tools
+        ]
+        total_functions += len(functions)
+        provider = registry.get_tool(info.name)
+        builtin_tools.append({
+            "provider": info.name,
+            "description": info.description,
+            "functions": functions,
+            "default_timeout_ms": provider.default_timeout_ms if provider else None,
+        })
+
+    mcp_servers = []
+    for server_id in mcp_manager.connected_server_ids:
+        mcp_servers.append({
+            "server_id": server_id,
+            "name": mcp_manager.get_server_name(server_id) or str(server_id),
+            "connected": True,
+            "tool_count": len(mcp_manager.get_tools_for_servers([server_id])),
+        })
+
+    return ToolRuntimeStatusResponse(
+        builtin_tools=builtin_tools,
+        mcp_servers=mcp_servers,
+        total_functions=total_functions,
     )
 
 

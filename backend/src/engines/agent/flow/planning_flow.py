@@ -6,8 +6,6 @@ plan 在本流内存维护，不暴露 PlanningTool 给 LLM（动态重规划留
 """
 from __future__ import annotations
 
-import json
-import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -15,6 +13,7 @@ from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.usage import CanonicalUsage, normalize_usage
 from novamind.shared.logging import get_logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 logger = get_logger(__name__)
 
@@ -28,17 +27,6 @@ BLOCKED = "blocked"
 # 省略的中间部分不丢失——chat_service 已把全文落库，模型可经 plan_output 工具按步骤号回查。
 _STEP_OUTPUT_HEAD_CHARS = 400
 _STEP_OUTPUT_TAIL_CHARS = 1000
-
-_PLAN_SYSTEM = (
-    "你是一个规划助手。把用户任务拆成简洁可执行的步骤列表。\n"
-    '返回 JSON: {"title": "计划标题", "steps": ["步骤1", "步骤2", ...]}\n'
-    "步骤要清晰、可执行、有明确产出，避免过细。3-7 步为宜。只返回 JSON。"
-)
-
-_FINALIZE_SYSTEM = (
-    "你是一个总结助手。基于用户任务、计划步骤及各步骤的实际产出，给出最终答案。"
-    "直接回答用户原始问题，整合各步骤结果；若计划被中断，基于已完成的部分作答并说明未完成项。"
-)
 
 
 class PlanningFlow:
@@ -261,7 +249,7 @@ class PlanningFlow:
         try:
             raw = await llm_client.generate_text(
                 prompt=[
-                    {"role": "system", "content": _PLAN_SYSTEM},
+                    {"role": "system", "content": PromptManager.get_template("agent_engine_plan_system")},
                     {"role": "user", "content": query},
                 ],
                 # 规划输出固定小预算 + 低温度：计划是短 JSON，不需要跟随主生成参数
@@ -307,7 +295,7 @@ class PlanningFlow:
         try:
             return await llm_client.generate_text(
                 prompt=[
-                    {"role": "system", "content": _FINALIZE_SYSTEM},
+                    {"role": "system", "content": PromptManager.get_template("agent_engine_plan_finalize_system")},
                     {"role": "user", "content": user_content},
                 ],
                 max_tokens=max_tokens,

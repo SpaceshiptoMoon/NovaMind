@@ -14,11 +14,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-# 模块内私有常量，测试同包约定允许直接 import
+# 模块内私有符号，测试同包约定允许直接 import
 from novamind.engines.agent.memory.context_compressor import (
-    _ALIGNMENT_INSTRUCTION,
-    ContextCompressor,
     SUMMARY_PREFIX,
+    ContextCompressor,
+    _alignment_instruction,
 )
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget
@@ -82,7 +82,7 @@ async def test_aligned_path_replays_region_verbatim() -> None:
     # region 中段零变换（对比 _serialize_turns 的 [USER]: 前缀形态）
     assert "用户问题2" in prompt[-2]["content"] or prompt[-2]["content"] == "助手回答2"
     # 指令不含转义污染（原样注入）
-    assert _ALIGNMENT_INSTRUCTION.split("\n")[0] in prompt[-1]["content"]
+    assert _alignment_instruction().split("\n")[0] in prompt[-1]["content"]
 
 
 @pytest.mark.asyncio
