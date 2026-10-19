@@ -511,9 +511,19 @@
                         暂无可见空间
                       </div>
                       <div class="kb-scope-actions">
-                        <button class="kb-scope-btn" @click="clearKnowledgeScope">全部</button>
-                        <button class="kb-scope-btn primary" @click="saveKnowledgeScope">
-                          应用{{ selectedSpaceIds.length ? `（${selectedSpaceIds.length}）` : '' }}
+                        <button
+                          class="kb-scope-btn"
+                          title="清除限定，检索全部可见空间"
+                          @click="clearKnowledgeScope"
+                        >
+                          不限范围
+                        </button>
+                        <button
+                          class="kb-scope-btn primary"
+                          :disabled="scopeSaving"
+                          @click="saveKnowledgeScope"
+                        >
+                          {{ scopeSaving ? '保存中…' : `应用${selectedSpaceIds.length ? `（${selectedSpaceIds.length}）` : ''}` }}
                         </button>
                       </div>
                     </div>
@@ -682,6 +692,8 @@ function toggleDeepResearch() {
 const spaces = ref<Space[]>([])
 const selectedSpaceIds = ref<number[]>([])
 const knowledgeBindingsLoaded = ref(false)
+// 应用按钮保存中态：防连点重复提交
+const scopeSaving = ref(false)
 
 const knowledgeScopeActive = computed(() => selectedSpaceIds.value.length > 0)
 const knowledgeScopeLabel = computed(() =>
@@ -714,27 +726,42 @@ async function loadKnowledgeBindings(sessionId: string | null) {
 }
 
 async function saveKnowledgeScope() {
-  scopePopoverVisible.value = false
+  if (scopeSaving.value) return
   const sessionId = agentStore.currentSessionId
   if (!sessionId) {
     // 新会话尚无 session_id：选择已暂存，首条消息建立会话后自动应用
+    scopePopoverVisible.value = false
     ElMessage.info('将在发送首条消息后自动应用')
     return
   }
+  scopeSaving.value = true
   const bindings: KnowledgeBindings | null =
     selectedSpaceIds.value.length > 0 ? { space_ids: [...selectedSpaceIds.value] } : null
   try {
     await agentApi.updateKnowledgeBindings(sessionId, bindings)
+    scopePopoverVisible.value = false
     ElMessage.success('知识范围已更新')
   } catch {
     ElMessage.error('知识范围保存失败')
+  } finally {
+    scopeSaving.value = false
   }
 }
 
-function clearKnowledgeScope() {
+async function clearKnowledgeScope() {
   selectedSpaceIds.value = []
-  // 「全部」= 放弃限定检索全部可见空间，选完即收起
+  // 「全部」= 清空服务端绑定、检索全部可见空间。必须真实落库：
+  // 只清本地会让已有会话的绑定残留（UI 显示未限定但检索仍受限，
+  // 切回会话选择还会"复活"）。
   scopePopoverVisible.value = false
+  const sessionId = agentStore.currentSessionId
+  if (!sessionId) return
+  try {
+    await agentApi.updateKnowledgeBindings(sessionId, null)
+    ElMessage.success('已清除范围限定，检索全部可见空间')
+  } catch {
+    ElMessage.error('知识范围保存失败')
+  }
 }
 // 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
 const selectedModel = ref('')
@@ -1286,16 +1313,21 @@ const scopePopoverWidth = computed(() => Math.min(320, window.innerWidth - 24))
 const scopePopoverVisible = ref(false)
 
 // 列表视口自适应高度：popper 向上弹出（top-start），列表过高会把标题/首项
-// 顶出视口上缘被裁。弹出时按「chip 上缘到视口顶的可用空间 − 面板其余部分
-// 固定高度（壳内距+标题+说明+操作行+间隙 ≈ 152px）− 8px 余量」精确钳制；
-// CSS 拿不到 chip 位置，只能在 show 时量。下限 120px 保证至少可见数项。
+// 顶出视口上缘被固定顶栏（--header-height，弹层 teleported=false 挂组件内，
+// z-index 低于顶栏）盖住。弹出时按「chip 上缘到视口顶的可用空间 − 顶栏高度
+// − 面板其余部分固定高度（壳内距+标题+说明+操作行+间隙 ≈ 152px）− 8px 余量」
+// 精确钳制；CSS 拿不到 chip 位置，只能在 show 时量。下限 120px 保证至少可见数项。
 function onScopePopoverShow() {
   ensureSpacesLoaded()
   nextTick(() => {
     const chip = document.querySelector<HTMLElement>('.kb-scope-trigger')
     const list = document.querySelector<HTMLElement>('.kb-scope-list')
     if (!chip || !list) return
-    const available = chip.getBoundingClientRect().top - 8 - 152
+    const headerH = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--header-height'),
+    ) || 56
+    const available =
+      chip.getBoundingClientRect().top - headerH - 8 - 152
     list.style.maxHeight = `${Math.max(120, Math.min(224, available))}px`
   })
 }
