@@ -2,7 +2,11 @@
 工具注册表
 
 管理所有已注册的工具，提供工具发现和路由功能。
+注册期对每个工具的 parameters schema 做 JSON Schema 合法性验证，非法定义
+fail-fast（启动期暴露而非执行期才炸）。
 """
+
+import jsonschema
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -32,16 +36,55 @@ class ToolRegistry:
     def register(self, tool: BaseTool) -> None:
         """注册工具并建 OpenAI tool 名 → 提供者的二级索引。
 
+        逐个验证 function 定义：function 名必填且不重复；parameters schema
+        须经 JSON Schema 元校验（check_schema）。非法定义直接抛
+        ValueError——坏 schema 注册成功后要到执行期才会暴露，且模型看到的
+        tools 契约是坏的。
+
         Args:
             tool: 工具提供者实例（BaseTool 子类）。
+
+        Raises:
+            ValueError: function 名缺失/重复，或 parameters schema 非法。
         """
         self._tools[tool.name] = tool
         for tool_def in tool.get_tools():
             func = tool_def.get("function", {})
             tool_name = func.get("name", "")
-            if tool_name:
-                self._tool_name_to_provider[tool_name] = tool.name
+            if not tool_name:
+                raise ValueError(f"工具 '{tool.name}' 存在缺 name 的 function 定义")
+            if tool_name in self._tool_name_to_provider:
+                raise ValueError(
+                    f"function 名 '{tool_name}' 重复注册"
+                    f"（'{self._tool_name_to_provider[tool_name]}' 与 '{tool.name}'）"
+                )
+            self._validate_parameters_schema(tool.name, tool_name, func.get("parameters"))
+            self._tool_name_to_provider[tool_name] = tool.name
         logger.info("工具已注册", tool_name=tool.name)
+
+    @staticmethod
+    def _validate_parameters_schema(
+        provider_name: str, tool_name: str, parameters: dict | None
+    ) -> None:
+        """校验单个 function 的 parameters schema（JSON Schema 元验证）。
+
+        Args:
+            provider_name: 提供者名（报错定位用）。
+            tool_name: function 名（报错定位用）。
+            parameters: parameters schema（None/空视为无参工具，放行）。
+
+        Raises:
+            ValueError: schema 不是合法 JSON Schema。
+        """
+        if not parameters:
+            return
+        try:
+            jsonschema.Draft202012Validator.check_schema(parameters)
+        except jsonschema.SchemaError as e:
+            raise ValueError(
+                f"工具 '{provider_name}' 的 function '{tool_name}' "
+                f"parameters schema 非法: {e.message}"
+            ) from e
 
     def get_tool(self, name: str) -> BaseTool | None:
         """按提供者名取工具实例。

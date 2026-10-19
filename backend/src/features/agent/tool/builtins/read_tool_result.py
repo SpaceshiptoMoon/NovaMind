@@ -29,9 +29,22 @@ class ReadToolResultTool(BaseTool):
                 "function": {
                     "name": "read_tool_result",
                     "description": (
-                        "Retrieve the full output of a previous tool call that was truncated. "
-                        "Use this when you see a truncation notice referencing a tool_call_id. "
-                        "Supports pagination via offset and limit parameters for very large results."
+                        "Retrieve the FULL output of a PREVIOUS tool call in this session "
+                        "that was truncated by the output budget.\n\n"
+                        "DEPENDS ON:\n"
+                        "- A prior tool call whose result was truncated. The required "
+                        "tool_call_id appears in the truncation notice "
+                        "('[... chars omitted ...]') attached to that tool result. "
+                        "You CANNOT call this without such an id — there is nothing to look up.\n\n"
+                        "WHEN TO USE:\n"
+                        "- A truncation notice referenced a tool_call_id AND the omitted "
+                        "middle section matters for the current step\n\n"
+                        "NOT FOR:\n"
+                        "- Reading user-uploaded files (use read_attachment)\n"
+                        "- Re-reading plan step outputs (use plan_output in plan mode)\n"
+                        "- Speculative re-reads: injected excerpts are usually enough\n\n"
+                        "Large results support pagination via offset/limit; the response "
+                        "carries has_more so you can continue reading."
                     ),
                     "parameters": {
                         "type": "object",

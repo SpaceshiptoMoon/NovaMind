@@ -38,8 +38,19 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_read_page",
                     "description": (
-                        "Read wiki pages by slug. Returns each page's metadata and full "
-                        "markdown content. Use wiki_search first if you don't know slugs."
+                        "Read wiki pages by slug: metadata + full markdown per page "
+                        "(up to 5 slugs per call).\n\n"
+                        "DEPENDS ON:\n"
+                        "- kb_id AND page slugs. If you don't know slugs, call "
+                        "wiki_search first — guessing slugs wastes a call.\n\n"
+                        "WHEN TO USE:\n"
+                        "- You have (or found) exact slugs and need full page content "
+                        "for analysis, verification, or as the base of an edit\n\n"
+                        "NOT FOR:\n"
+                        "- Browsing/discovery (use wiki_search)\n"
+                        "- Regular KB documents (use knowledge_search)\n\n"
+                        "Write-path companions: wiki_write_page (create/overwrite), "
+                        "wiki_replace_text (spot fix), wiki_rename_page (change slug)."
                     ),
                     "parameters": {
                         "type": "object",
@@ -61,8 +72,19 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_search",
                     "description": (
-                        "Search wiki pages by keyword (matches title, summary and slug). "
-                        "Returns lightweight entries; follow up with wiki_read_page for full content."
+                        "Search wiki pages by keyword (matches title, summary, and "
+                        "slug). Returns lightweight entries.\n\n"
+                        "DEPENDS ON:\n"
+                        "- kb_id. Nothing else; this is the wiki entry point when "
+                        "slugs are unknown.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Discovery step before wiki_read_page / wiki_flag_issue / "
+                        "wiki_replace_text\n\n"
+                        "NOT FOR:\n"
+                        "- Full-text content retrieval (entries are previews — follow "
+                        "up with wiki_read_page)\n"
+                        "- Non-wiki knowledge bases (use knowledge_search)\n\n"
+                        "limit defaults to 10, max 30."
                     ),
                     "parameters": {
                         "type": "object",
@@ -80,11 +102,24 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_write_page",
                     "description": (
-                        "Create or fully overwrite ONE wiki page. Only page_type "
-                        "'synthesis' (cross-document analysis) or 'comparison' (entity/concept "
-                        "comparison) may be written by agents. Ground every claim in retrieved "
-                        "knowledge; cite source chunk_ids in the page body as [doc:chunk_id] "
-                        "markers only when they add verifiability."
+                        "Create or FULLY overwrite ONE wiki page. Agents may only "
+                        "write page_type 'synthesis' (cross-document analysis) or "
+                        "'comparison' (entity/concept comparison).\n\n"
+                        "DEPENDS ON:\n"
+                        "- Prior wiki_read_page/wiki_search on the KB: pages must "
+                        "ground every claim in retrieved knowledge, citing source "
+                        "chunk_ids as [doc:chunk_id] markers where they add "
+                        "verifiability.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Synthesizing multiple read pages into a new analysis or "
+                        "comparison page\n\n"
+                        "NOT FOR:\n"
+                        "- Small fixes to existing pages (wiki_replace_text — avoids "
+                        "clobbering unrelated content)\n"
+                        "- Moving/renaming (wiki_rename_page)\n"
+                        "- Reporting a problem instead of fixing it (wiki_flag_issue)\n\n"
+                        "Slug format: synthesis/<topic> or comparison/<a>-vs-<b>. "
+                        "Overwrites bump the version; old content is snapshotted."
                     ),
                     "parameters": {
                         "type": "object",
@@ -111,9 +146,23 @@ class WikiTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "wiki_flag_issue",
-                    "description": (                        "Report a content problem on a wiki page, e.g. mixed_entities "
-                        "(page mixes two similarly-named things), contradictory_facts, "
-                        "out_of_date. Issues are surfaced to humans for review."
+                    "description": (
+                        "Report a content problem on a wiki page for human review — "
+                        "does NOT modify the page.\n\n"
+                        "DEPENDS ON:\n"
+                        "- kb_id + slug of the problematic page (via wiki_search/"
+                        "wiki_read_page). issue_id is NOT needed; this creates a new "
+                        "issue.\n\n"
+                        "WHEN TO USE:\n"
+                        "- mixed_entities (page conflates two similarly-named things), "
+                        "contradictory_facts, out_of_date — anything you can't or "
+                        "shouldn't fix yourself\n\n"
+                        "NOT FOR:\n"
+                        "- Fixable issues within your write permission (use "
+                        "wiki_replace_text, then wiki_update_issue to resolve)\n"
+                        "- Checking existing reports (wiki_read_issue)\n\n"
+                        "issue_type enum: mixed_entities / contradictory_facts / "
+                        "out_of_date / other. Describe the problem specifically."
                     ),
                     "parameters": {
                         "type": "object",
@@ -136,9 +185,21 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_replace_text",
                     "description": (
-                        "Replace ALL occurrences of exact text in ONE wiki page. Ideal for "
-                        "consistent minor corrections (renamed terms, fixed numbers). The "
-                        "page version is bumped and old content snapshotted."
+                        "Replace ALL occurrences of exact text in ONE wiki page. "
+                        "Version bumps; old content snapshotted.\n\n"
+                        "DEPENDS ON:\n"
+                        "- Exact current text from a fresh wiki_read_page — if "
+                        "old_text matches nothing (or matches the wrong places) the "
+                        "edit fails or corrupts the page. Don't guess wording.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Consistent minor corrections: renamed terms, fixed "
+                        "numbers, updated links\n\n"
+                        "NOT FOR:\n"
+                        "- Rewriting the page wholesale (wiki_write_page)\n"
+                        "- Slug changes (wiki_rename_page)\n"
+                        "- Problems you can't fix yourself (wiki_flag_issue)\n\n"
+                        "old_text is literal, not regex — include enough surrounding "
+                        "context to be unique when the string is short."
                     ),
                     "parameters": {
                         "type": "object",
@@ -157,9 +218,18 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_rename_page",
                     "description": (
-                        "Rename a wiki page to a new slug. All pages linking to the old slug "
-                        "have their [[old]] / [[old|display]] links rewritten to the new slug "
-                        "automatically. Use for merging conventions or fixing wrong slugs."
+                        "Rename a wiki page to a new slug; [[old]] / [[old|display]] "
+                        "links across the KB are rewritten automatically.\n\n"
+                        "DEPENDS ON:\n"
+                        "- kb_id + current slug (via wiki_search/wiki_read_page). "
+                        "new_slug must keep the same type prefix (synthesis/ or "
+                        "comparison/).\n\n"
+                        "WHEN TO USE:\n"
+                        "- Fixing wrong slugs, merging naming conventions\n\n"
+                        "NOT FOR:\n"
+                        "- Editing page content (wiki_replace_text / wiki_write_page)\n\n"
+                        "Reads on the old slug will 404 afterward — update any "
+                        "instructions or references you control."
                     ),
                     "parameters": {
                         "type": "object",
@@ -177,8 +247,20 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_read_issue",
                     "description": (
-                        "Read wiki issues: one by id, or list pending issues (optionally for "
-                        "one page slug). Use before fixing to understand what was reported."
+                        "Read wiki issues: one by issue_id, or list pending issues "
+                        "(optionally filtered by page slug).\n\n"
+                        "DEPENDS ON:\n"
+                        "- kb_id, plus either issue_id (from wiki_flag_issue output "
+                        "or a prior listing) or a slug. If neither id nor slug is "
+                        "known, list by kb_id alone first.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Before wiki_update_issue: understand what was reported\n"
+                        "- Picking up pending issues to fix on a page you're editing\n\n"
+                        "NOT FOR:\n"
+                        "- Creating issues (wiki_flag_issue)\n"
+                        "- Page content (wiki_read_page)\n\n"
+                        "issue_id is a UUID string; id and slug are mutually "
+                        "exclusive locators."
                     ),
                     "parameters": {
                         "type": "object",
@@ -196,8 +278,19 @@ class WikiTool(BaseTool):
                 "function": {
                     "name": "wiki_update_issue",
                     "description": (
-                        "Update a wiki issue's status: 'resolved' (fixed), 'ignored' "
-                        "(won't fix), or 'pending' (reopen). Complete the loop after fixing a page."
+                        "Update a wiki issue's status, closing the review loop.\n\n"
+                        "DEPENDS ON:\n"
+                        "- An existing issue_id (UUID, from wiki_flag_issue or "
+                        "wiki_read_issue). Status enum: resolved (fixed), ignored "
+                        "(won't fix), pending (reopen).\n\n"
+                        "WHEN TO USE:\n"
+                        "- After fixing a page problem via wiki_replace_text: mark "
+                        "the issue resolved\n"
+                        "- After reviewing a report you judge won't-fix: mark ignored\n\n"
+                        "NOT FOR:\n"
+                        "- Creating or reading issues (wiki_flag_issue / "
+                        "wiki_read_issue)\n"
+                        "- Editing page content\n"
                     ),
                     "parameters": {
                         "type": "object",

@@ -34,12 +34,22 @@ class TaskTool(BaseTool):
                     "name": "task",
                     "description": (
                         "Delegate a sub-task to an independent sub-agent that runs in "
-                        "isolation (no parent conversation context). Use for parallelizable "
-                        "or independent sub-tasks. The sub-agent cannot delegate further "
-                        "(no recursion). Returns the sub-agent's final answer summary.\n\n"
-                        "When to use: complex multi-step research, multiple independent "
-                        "queries, divide-and-conquer. Launch multiple task calls in one "
-                        "message for parallelism."
+                        "isolation and returns only its final summary.\n\n"
+                        "DEPENDS ON:\n"
+                        "- Nothing upstream, but the prompt is all the sub-agent sees: "
+                        "it does NOT inherit this conversation. Write a complete brief "
+                        "(context, goal, expected output format).\n\n"
+                        "WHEN TO USE:\n"
+                        "- Independent sub-tasks that would flood this context with "
+                        "intermediate output (multi-file exploration, batches of "
+                        "independent lookups)\n"
+                        "- Parallelism: launch several task calls in one message\n\n"
+                        "NOT FOR:\n"
+                        "- Steps that depend on each other's results (run them here "
+                        "instead — the sub-agent can't call back)\n"
+                        "- Quick lookups (one knowledge_search / web_search is cheaper)\n"
+                        "- Interactive work: the sub-agent cannot ask the user questions\n\n"
+                        "The sub-agent cannot delegate further (no recursion)."
                     ),
                     "parameters": {
                         "type": "object",

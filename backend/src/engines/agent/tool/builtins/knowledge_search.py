@@ -30,10 +30,16 @@ class KnowledgeSearchTool(BaseTool):
                 "function": {
                     "name": "list_spaces",
                     "description": (
-                        "List all knowledge spaces the user can access. "
-                        "Returns space ID, name, and description. "
-                        "If the session has a knowledge scope configured, only in-scope spaces are listed. "
-                        "Call this first when you need to discover what knowledge resources are available."
+                        "List all knowledge spaces the user can access (entry point "
+                        "of the KB discovery chain). Returns space ID, name, and "
+                        "description. In-scope only, if the session has a knowledge "
+                        "scope configured.\n\n"
+                        "DEPENDS ON: nothing — call this first when IDs are unknown.\n\n"
+                        "WHEN TO USE: user references 'my docs'/'the knowledge base' "
+                        "without an ID; you need a space_id for knowledge_search or "
+                        "list_knowledge_bases.\n\n"
+                        "NOT FOR: quick full KB listing (list_all_knowledge_bases "
+                        "skips the space hop); web content (web_search)."
                     ),
                     "parameters": {
                         "type": "object",
@@ -47,9 +53,14 @@ class KnowledgeSearchTool(BaseTool):
                 "function": {
                     "name": "list_knowledge_bases",
                     "description": (
-                        "List all knowledge bases under a specific space. "
-                        "Returns KB ID, name, and description. "
-                        "Use after list_spaces to find relevant knowledge bases for the user's query."
+                        "List all knowledge bases under ONE space. Returns KB ID, "
+                        "name, and description.\n\n"
+                        "DEPENDS ON:\n"
+                        "- space_id from list_spaces. Its kb_id output feeds "
+                        "knowledge_search / document_list.\n\n"
+                        "WHEN TO USE: you know the space but not which KB holds the "
+                        "answer.\n\n"
+                        "NOT FOR: cross-space overview (use list_all_knowledge_bases)."
                     ),
                     "parameters": {
                         "type": "object",
@@ -69,9 +80,13 @@ class KnowledgeSearchTool(BaseTool):
                     "name": "list_all_knowledge_bases",
                     "description": (
                         "List ALL knowledge bases across ALL spaces in one call. "
-                        "If the session has a knowledge scope configured, only in-scope KBs are listed. "
-                        "Use this when you're unsure which space contains the relevant KB, "
-                        "or when you want a quick overview without browsing spaces first."
+                        "In-scope only, if the session has a knowledge scope.\n\n"
+                        "DEPENDS ON: nothing — this is the shortcut when unsure "
+                        "which space holds the relevant KB.\n\n"
+                        "WHEN TO USE: one-shot overview to pick a kb_id without "
+                        "browsing space by space.\n\n"
+                        "NOT FOR: space-level management context (use list_spaces + "
+                        "list_knowledge_bases when structure matters)."
                     ),
                     "parameters": {
                         "type": "object",
@@ -85,16 +100,25 @@ class KnowledgeSearchTool(BaseTool):
                 "function": {
                     "name": "knowledge_search",
                     "description": (
-                        "Search document content within a knowledge space. "
-                        "Returns the most relevant text chunks with scores.\n\n"
-                        "USAGE:\n"
-                        "- Always provide space_id and query\n"
-                        "- Provide kb_id for precise results within a specific knowledge base\n"
-                        "- Omit kb_id to search across all KBs in the space (top 3 KBs)\n"
-                        "- Default search_mode 'content_hybrid' (vector + BM25) works well for most cases\n"
-                        "- Try different keywords if initial results aren't relevant\n\n"
-                        "TIP: Use kb_id when you know which KB is relevant. "
-                        "Without kb_id, results may be diluted across unrelated KBs."
+                        "Search the user's own knowledge bases (uploaded documents, "
+                        "internal docs). Returns the most relevant text chunks with "
+                        "scores.\n\n"
+                        "DEPENDS ON:\n"
+                        "- A space_id. Discover it via list_spaces (or "
+                        "list_all_knowledge_bases for a flat view); kb_id comes from "
+                        "list_knowledge_bases. Call discovery first when IDs are unknown.\n\n"
+                        "WHEN TO USE:\n"
+                        "- The question may be answered by the user's stored documents\n"
+                        "- kb_id narrows results when you know the relevant KB; omit it "
+                        "to search the top KBs across the space\n\n"
+                        "NOT FOR:\n"
+                        "- Public web information (use web_search)\n"
+                        "- Uploaded attachments in THIS conversation (use "
+                        "read_attachment)\n"
+                        "- Wiki pages (use wiki_search)\n\n"
+                        "Default search_mode 'content_hybrid' (vector + BM25) fits most "
+                        "queries; retry with different keywords before concluding the "
+                        "info is absent."
                     ),
                     "parameters": {
                         "type": "object",
@@ -131,9 +155,15 @@ class KnowledgeSearchTool(BaseTool):
                 "function": {
                     "name": "document_list",
                     "description": (
-                        "List documents in a knowledge base. "
-                        "Returns document ID, filename, status, and chunk count. "
-                        "Useful to understand what content is available before searching."
+                        "List documents in ONE knowledge base: document ID, filename, "
+                        "status, and chunk count.\n\n"
+                        "DEPENDS ON:\n"
+                        "- space_id AND kb_id (from list_spaces / "
+                        "list_knowledge_bases).\n\n"
+                        "WHEN TO USE: checking what content exists before searching, "
+                        "or locating a document's ID/name.\n\n"
+                        "NOT FOR: content retrieval (use knowledge_search); wiki "
+                        "pages (wiki_search)."
                     ),
                     "parameters": {
                         "type": "object",

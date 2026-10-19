@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 import jsonschema
-from novamind.engines.agent.tool.definition import ToolDefinition
+from novamind.engines.agent.tool.definition import ToolDefinition, ToolParameter
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.shared.logging import get_logger
 
@@ -19,6 +19,30 @@ logger = get_logger(__name__)
 _RECTIFY_SUFFIX = (
     "\n\n工具未执行。请根据上方错误修正参数后重新调用该工具。"
 )
+
+# ToolParameter 字段 → JSON Schema 键的投影表（与 ToolParameter 定义同步维护）
+_PARAM_FIELDS_TO_SCHEMA_KEYS: tuple[tuple[str, str], ...] = (
+    ("minimum", "minimum"),
+    ("maximum", "maximum"),
+    ("min_length", "minLength"),
+    ("max_length", "maxLength"),
+    ("min_items", "minItems"),
+    ("max_items", "maxItems"),
+)
+
+
+def _param_to_schema(param: ToolParameter) -> dict[str, Any]:
+    """ToolParameter → JSON Schema 属性投影（校验口径与模型可见口径同源）。"""
+    prop: dict[str, Any] = {"type": param.type, "description": param.description}
+    if param.enum:
+        prop["enum"] = param.enum
+    if param.items is not None:
+        prop["items"] = param.items
+    for field_name, schema_key in _PARAM_FIELDS_TO_SCHEMA_KEYS:
+        value = getattr(param, field_name)
+        if value is not None:
+            prop[schema_key] = value
+    return prop
 
 
 def validate_tool_arguments(
@@ -41,8 +65,7 @@ def validate_tool_arguments(
     schema: dict[str, Any] = {
         "type": "object",
         "properties": {
-            name: {"type": p.type, "description": p.description,
-                   **({"enum": p.enum} if p.enum else {})}
+            name: _param_to_schema(p)
             for name, p in tool_def.parameters.items()
         },
         "required": list(tool_def.required),

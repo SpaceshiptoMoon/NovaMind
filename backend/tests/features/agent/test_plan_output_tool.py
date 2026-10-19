@@ -186,4 +186,5 @@ def test_plan_output_schema_shape() -> None:
     assert params["properties"]["offset"]["default"] == 0
     assert params["properties"]["limit"]["default"] == 10000
     # description 含使用时机约束（防每步投机调用撑 token）
-    assert "ONLY" in func["description"]
+    assert "NOT FOR" in func["description"]
+    assert "Speculative re-reads" in func["description"]

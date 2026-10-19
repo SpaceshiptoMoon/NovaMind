@@ -41,18 +41,22 @@ class ResearchTool(BaseTool):
                 "function": {
                     "name": "research",
                     "description": (
-                        "Run deep research on a complex topic. Plans the investigation, "
-                        "searches internal knowledge bases and/or the web over multiple "
-                        "iterations, then synthesizes a cited research report. "
-                        "Takes several minutes; progress is streamed to the user.\n\n"
-                        "USAGE:\n"
-                        "- Use ONLY for complex, multi-facet questions that need broad "
-                        "investigation (surveys, comparisons, state-of-the-art reviews)\n"
-                        "- Do NOT use for simple factual questions (answer directly or "
-                        "use knowledge_search / web_search)\n"
-                        "- Write a self-contained research query; the user's context is "
-                        "NOT carried over automatically\n"
-                        "- Report progress to the user before calling this tool"
+                        "Deep research: autonomously plans an investigation, runs multiple "
+                        "rounds of search over internal knowledge bases and/or the web, "
+                        "and synthesizes a cited research report. Takes SEVERAL MINUTES — "
+                        "tell the user before calling.\n\n"
+                        "DEPENDS ON:\n"
+                        "- Nothing external; the query you write is the sub-agent's entire "
+                        "brief. Make it self-contained (background + goal + scope) — the "
+                        "user's conversation context is NOT carried over.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Complex, multi-facet topics needing broad investigation and "
+                        "synthesis: surveys, comparisons, state-of-the-art reviews\n\n"
+                        "NOT FOR:\n"
+                        "- Single factual questions — answer directly, or use web_search "
+                        "(public web) / knowledge_search (user's KBs); this tool is "
+                        "overkill and blocks for minutes\n"
+                        "- Questions answerable from one uploaded file (use read_attachment)"
                     ),
                     "parameters": {
                         "type": "object",

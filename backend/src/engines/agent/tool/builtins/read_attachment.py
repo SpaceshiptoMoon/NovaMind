@@ -35,14 +35,23 @@ class ReadAttachmentTool(BaseTool):
                 "function": {
                     "name": "read_attachment",
                     "description": (
-                        "Read the extracted text of a user-uploaded attachment "
-                        "in the current conversation.\n\n"
-                        "USAGE:\n"
-                        "- attachment_id comes from the <system-uploaded-files> manifest "
-                        "prepended to the user's message\n"
-                        "- Start with offset=0; if has_more is true, continue "
-                        "reading with offset += limit\n"
-                        "- limit is in characters (default 8000, max 20000)"
+                        "Read the extracted text of a user-uploaded attachment in the "
+                        "current conversation, in slices.\n\n"
+                        "DEPENDS ON:\n"
+                        "- The user uploaded at least one file this conversation. The "
+                        "required attachment_id is listed in the <system-uploaded-files> "
+                        "manifest prepended to the user's message. If no manifest exists, "
+                        "there are no attachments — do not call this.\n\n"
+                        "WHEN TO USE:\n"
+                        "- The user's question needs the full content of an uploaded file "
+                        "beyond the manifest's short preview\n"
+                        "- Long documents: start with offset=0, continue with offset += "
+                        "limit while has_more is true\n\n"
+                        "NOT FOR:\n"
+                        "- Re-reading previous tool outputs (use read_tool_result)\n"
+                        "- Web pages or knowledge-base documents (use web_search or "
+                        "knowledge_search)\n\n"
+                        "limit is in characters (default 8000, max 20000)."
                     ),
                     "parameters": {
                         "type": "object",

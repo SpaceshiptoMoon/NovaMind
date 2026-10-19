@@ -15,6 +15,19 @@ logger = get_logger(__name__)
 
 MCP_PREFIX = "mcp__"
 
+# 执行失败（非参数校验失败）的纠错指引：带工具用途摘要，模型可对照自查参数
+_FAILURE_HINT = (
+    "\n\n[工具执行失败，未产生结果。该工具的用途：{desc_summary} "
+    "请对照用途检查参数取值是否合理，修正后可重试一次。]"
+)
+# 连续失败升级指引：同一 (会话, 工具) 连败达到阈值后替换普通指引，
+# 阻断「同参数无限重试」循环——这是 agent 失败循环最常见的形态
+_ESCALATION_THRESHOLD = 3
+_ESCALATION_HINT = (
+    "\n\n[该工具在本次会话已连续失败 {count} 次。请勿以相同方式重试："
+    "改用其他工具、调整思路达成同一目标，或直接向用户说明该操作无法完成。]"
+)
+
 
 class ToolExecutor:
     """
@@ -41,6 +54,9 @@ class ToolExecutor:
         self._hooks = hooks or []
         self._tool_defs: OrderedDict[str, ToolDefinition] = OrderedDict()
         self._tool_defs_max = 256
+        # (session_id, tool_name) → 连续执行失败次数；成功即清零。
+        # 只统计执行期失败（参数校验失败不走这里），用于升级纠错指引。
+        self._consecutive_failures: dict[tuple[str, str], int] = {}
 
     @property
     def tool_registry(self) -> ToolRegistry:
@@ -64,6 +80,7 @@ class ToolExecutor:
         """
         tool_def = self._resolve_tool_definition(tool_name)
         timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
+        session_id = str(context.get("session_id") or "")
 
         # 参数 schema 校验（钩子链之前）：畸形参数不进入执行，错误回喂模型自纠
         from novamind.engines.agent.tool.validation import validate_tool_arguments
@@ -89,6 +106,7 @@ class ToolExecutor:
             )
             status = ToolResultStatus.SUCCESS
             error_message = None
+            self._consecutive_failures.pop((session_id, tool_name), None)
         except TimeoutError:
             raw_result = f"工具执行超时（{timeout_sec:.1f}s）"
             status = ToolResultStatus.TIMEOUT
@@ -97,6 +115,14 @@ class ToolExecutor:
             raw_result = str(e)
             status = ToolResultStatus.ERROR
             error_message = str(e)
+
+        if status is not ToolResultStatus.SUCCESS:
+            raw_result = self._with_failure_guidance(
+                tool_def, str(raw_result), status, session_id
+            )
+            error_message = raw_result if isinstance(error_message, str) else None
+            if error_message is not None:
+                error_message = raw_result
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -118,6 +144,44 @@ class ToolExecutor:
                 logger.warning("after_hook 执行失败", hook=type(hook).__name__, error=str(e))
 
         return result
+
+    def _with_failure_guidance(
+        self,
+        tool_def: ToolDefinition,
+        raw_error: str,
+        status: ToolResultStatus,
+        session_id: str,
+    ) -> str:
+        """执行失败时给错误附加模型可读的纠错指引。
+
+        首次失败带工具用途摘要（模型对照参数自查）；同一 (会话, 工具) 连败
+        达阈值后切换为升级指引，阻断同参数无限重试循环。
+
+        Args:
+            tool_def: 工具定义（取描述摘要）。
+            raw_error: 原始错误文本。
+            status: 失败状态（ERROR/TIMEOUT）。
+            session_id: 会话 ID（连败计数键的一部分）。
+
+        Returns:
+            附加指引后的错误文本。
+        """
+        key = (session_id, tool_def.name)
+        count = self._consecutive_failures.get(key, 0) + 1
+        self._consecutive_failures[key] = count
+        if count >= _ESCALATION_THRESHOLD:
+            guidance = _ESCALATION_HINT.format(count=count)
+        else:
+            desc = tool_def.description.strip()
+            summary = desc.split("\n")[0][:120] if desc else "（无描述）"
+            guidance = _FAILURE_HINT.format(desc_summary=summary)
+        logger.info(
+            "工具执行失败，附加纠错指引",
+            tool_name=tool_def.name,
+            status=status.value,
+            consecutive_failures=count,
+        )
+        return f"{raw_error}{guidance}"
 
     def resolve_tools(
         self,
@@ -206,10 +270,20 @@ class ToolExecutor:
         """查找或推断工具定义"""
         if tool_name in self._tool_defs:
             return self._tool_defs[tool_name]
+        provider = self._tool_registry.find_tool_provider(tool_name)
+        source = ToolSource.MCP if tool_name.startswith(MCP_PREFIX) else ToolSource.BUILTIN
+        if provider is not None:
+            for raw_tool in provider.get_tools():
+                func = raw_tool.get("function", {})
+                if func.get("name") == tool_name:
+                    tool_def = self._raw_to_definition(
+                        raw_tool, source, timeout_ms=self._provider_timeout_ms(tool_name)
+                    )
+                    return self._cache_tool_def(tool_name, tool_def)
         return ToolDefinition(
             name=tool_name,
             description="",
-            source=ToolSource.MCP if tool_name.startswith(MCP_PREFIX) else ToolSource.BUILTIN,
+            source=source,
         )
 
     async def _route_and_execute(
@@ -253,6 +327,12 @@ class ToolExecutor:
             raise ValueError(f"未找到工具 '{tool_name}'")
         return await tool.execute_tool(tool_name, arguments, context)
 
+    # ToolParameter 支持的 schema 约束键（透传给模型 + 校验器；其余键丢弃）
+    _SCHEMA_CONSTRAINT_KEYS = (
+        "items", "minimum", "maximum", "minLength", "maxLength",
+        "minItems", "maxItems",
+    )
+
     @staticmethod
     def _raw_to_definition(
         raw_tool: dict[str, Any], source: ToolSource, timeout_ms: int | None = None
@@ -261,7 +341,9 @@ class ToolExecutor:
 
         MCP 工具的 description/参数描述由外部服务器提供（用户自选启用，仍属
         不可信面）——转义 <system- 前缀，防恶意服务器借 description 下伪系统
-        指令（tools schema 在请求头部，权威位置高于消息体）。
+        指令（tools schema 在请求头部，权威位置高于消息体）。约束键（items/
+        minimum/…）逐键防御性吸收：外部服务器给出畸形值时丢弃该键而非让整个
+        工具注册失败（能力缺失优于报错）。
         """
         from novamind.engines.agent.tool.definition import ToolParameter
         from novamind.shared.prompts.sanitize import escape_system_tags
@@ -271,13 +353,33 @@ class ToolExecutor:
         properties = params_schema.get("properties", {})
         required = params_schema.get("required", [])
 
-        parameters = {
-            name: ToolParameter(**{
-                **prop,
+        parameters: dict[str, ToolParameter] = {}
+        for name, prop in properties.items():
+            if not isinstance(prop, dict):
+                continue
+            kwargs: dict[str, Any] = {
+                "type": prop.get("type", "string"),
                 "description": escape_system_tags(prop.get("description", "")),
-            })
-            for name, prop in properties.items()
-        }
+            }
+            if prop.get("enum"):
+                kwargs["enum"] = prop["enum"]
+            if prop.get("default") is not None:
+                kwargs["default"] = prop["default"]
+            for key in ToolExecutor._SCHEMA_CONSTRAINT_KEYS:
+                value = prop.get(key)
+                if value is None:
+                    continue
+                try:
+                    # 值类型不对（如 items 给了字符串）就丢弃该键，不影响其他参数
+                    if key == "items":
+                        kwargs["items"] = dict(value) if isinstance(value, dict) else None
+                        if kwargs["items"] is None:
+                            del kwargs["items"]
+                    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                        kwargs[key] = value
+                except (TypeError, ValueError):
+                    continue
+            parameters[name] = ToolParameter(**kwargs)
 
         return ToolDefinition(
             name=func.get("name", ""),

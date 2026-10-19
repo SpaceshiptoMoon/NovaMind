@@ -31,15 +31,24 @@ class WebSearchTool(BaseTool):
                 "function": {
                     "name": "web_search",
                     "description": (
-                        "Search the web using a search engine. Returns page titles, URLs, and snippets.\n\n"
+                        "Search the public web with a search engine. Returns page titles, "
+                        "URLs, and snippets in ONE call per query.\n\n"
+                        "DEPENDS ON: nothing — safe to call anytime.\n\n"
                         "WHEN TO USE:\n"
-                        "- User asks about current events, news, or recent information\n"
-                        "- You need to verify a fact or find up-to-date data\n"
-                        "- User explicitly asks you to search the internet\n\n"
+                        "- Current events, news, or information that may postdate your "
+                        "training data\n"
+                        "- Public facts, documentation, prices, versions, releases\n"
+                        "- The user explicitly asks to search the internet\n\n"
+                        "NOT FOR:\n"
+                        "- The user's own documents and knowledge bases (use "
+                        "knowledge_search)\n"
+                        "- Complex multi-facet topics needing a synthesized, cited "
+                        "report (use research)\n"
+                        "- Files uploaded to this conversation (use read_attachment)\n\n"
                         "TIPS:\n"
-                        "- Use specific, targeted queries for better results\n"
-                        "- If the first search doesn't find what you need, try different keywords\n"
-                        "- You can search multiple times with different queries for comprehensive coverage"
+                        "- Specific, targeted queries beat broad ones\n"
+                        "- Retry with different keywords if results miss; for exhaustive "
+                        "coverage make several differently-worded calls"
                     ),
                     "parameters": {
                         "type": "object",

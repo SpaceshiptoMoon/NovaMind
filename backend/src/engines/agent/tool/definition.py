@@ -18,11 +18,26 @@ class ToolSource(str, Enum):
 
 
 class ToolParameter(BaseModel):
-    """工具参数定义"""
+    """工具参数定义
+
+    仅声明工具 schema 实际用到的 JSON Schema 子集；新增约束字段时须同步
+    ``validate_tool_arguments`` 的 schema 构造，否则校验口径与模型可见口径漂移。
+    """
     type: str = "string"
     description: str = ""
     enum: list[str] | None = None
     default: Any | None = None
+    # 数组元素 schema（type=array 时）：如 todo 的 items 每项结构
+    items: dict[str, Any] | None = None
+    # 数值/长度边界（type=integer/number/array/string 时生效）
+    minimum: float | None = None
+    maximum: float | None = None
+    min_length: int | None = Field(default=None, alias="minLength")
+    max_length: int | None = Field(default=None, alias="maxLength")
+    min_items: int | None = Field(default=None, alias="minItems")
+    max_items: int | None = Field(default=None, alias="maxItems")
+
+    model_config = {"populate_by_name": True}
 
 
 class ToolDefinition(BaseModel):
@@ -53,6 +68,20 @@ class ToolDefinition(BaseModel):
                 prop["enum"] = param.enum
             if param.default is not None:
                 prop["default"] = param.default
+            if param.items is not None:
+                prop["items"] = param.items
+            if param.minimum is not None:
+                prop["minimum"] = param.minimum
+            if param.maximum is not None:
+                prop["maximum"] = param.maximum
+            if param.min_length is not None:
+                prop["minLength"] = param.min_length
+            if param.max_length is not None:
+                prop["maxLength"] = param.max_length
+            if param.min_items is not None:
+                prop["minItems"] = param.min_items
+            if param.max_items is not None:
+                prop["maxItems"] = param.max_items
             properties[name] = prop
 
         return {

@@ -33,12 +33,19 @@ class PlanOutputTool(BaseTool):
                 "function": {
                     "name": "plan_output",
                     "description": (
-                        "Retrieve the FULL output of a completed plan step. The context "
-                        "only injects each step's head+tail excerpt. Call this ONLY when "
-                        "the current work needs details from an earlier step that the "
-                        "excerpt doesn't cover. Do NOT call speculatively every step — "
-                        "injected excerpts are sufficient for most steps. Steps are "
-                        "1-based (step 1 = the first step of the plan)."
+                        "Retrieve the FULL output of a completed plan step (plan mode only).\n\n"
+                        "DEPENDS ON:\n"
+                        "- Plan mode active AND the plan has been created with at least one "
+                        "completed step. Each injected step excerpt (head+tail) carries its "
+                        "step number — use THAT number as 'step'. Steps are 1-based.\n\n"
+                        "WHEN TO USE:\n"
+                        "- The current step needs details from an EARLIER step that its "
+                        "injected excerpt doesn't cover (a file path, a number, a decision)\n\n"
+                        "NOT FOR:\n"
+                        "- Reading tool outputs (use read_tool_result when a truncation "
+                        "notice references a tool_call_id)\n"
+                        "- Speculative re-reads every step: excerpts are sufficient for "
+                        "most steps; calling this per-step wastes context budget"
                     ),
                     "parameters": {
                         "type": "object",
