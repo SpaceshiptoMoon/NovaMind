@@ -97,13 +97,13 @@
       <el-dialog
         v-model="agentDialogVisible"
         :title="agentEditingId ? '编辑智能体' : '创建智能体'"
-        width="640px"
-        top="6vh"
+        width="880px"
+        top="7vh"
         class="agent-form-dialog"
         destroy-on-close
         append-to-body
       >
-        <el-scrollbar class="agent-form-scroll">
+        <div class="agent-form-scroll">
           <el-form
             :model="agentForm"
             :rules="agentFormRules"
@@ -111,185 +111,204 @@
             label-position="top"
             class="agent-form"
           >
-            <div class="form-section">
-              <h4>基本信息</h4>
-              <el-form-item label="名称" prop="name">
-                <el-input v-model="agentForm.name" placeholder="为智能体起个名字" maxlength="50" />
-              </el-form-item>
-              <el-form-item label="描述">
-                <el-input
-                  v-model="agentForm.description"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="简要描述智能体的用途"
-                  maxlength="200"
-                />
-              </el-form-item>
-              <el-form-item label="系统提示词" prop="system_prompt">
-                <el-input
-                  v-model="agentForm.system_prompt"
-                  type="textarea"
-                  :rows="5"
-                  placeholder="定义智能体的行为、角色和能力"
-                  maxlength="4000"
-                />
-              </el-form-item>
-            </div>
+            <div class="agent-form-columns">
+              <!-- 左列：身份设定 -->
+              <div class="agent-form-col">
+                <div class="form-section">
+                  <h4>身份设定</h4>
+                  <el-form-item label="名称" prop="name">
+                    <el-input
+                      v-model="agentForm.name"
+                      placeholder="为智能体起个名字"
+                      maxlength="50"
+                    />
+                  </el-form-item>
+                  <el-form-item label="描述">
+                    <el-input
+                      v-model="agentForm.description"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="简要描述智能体的用途"
+                      maxlength="200"
+                    />
+                  </el-form-item>
+                  <el-form-item label="系统提示词" prop="system_prompt">
+                    <el-input
+                      v-model="agentForm.system_prompt"
+                      type="textarea"
+                      :rows="14"
+                      placeholder="定义智能体的行为、角色和能力"
+                      maxlength="4000"
+                      class="prompt-textarea"
+                    />
+                    <div class="field-hint">描述角色、语气、边界与输出格式，越具体越好</div>
+                  </el-form-item>
+                </div>
+              </div>
 
-            <div class="form-section">
-              <h4>模型与生成参数</h4>
-              <el-form-item label="LLM 模型">
-                <el-select
-                  v-model="agentForm.llm_model"
-                  placeholder="留空使用默认模型"
-                  clearable
-                  style="width: 100%"
-                >
-                  <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
-                    <el-option
-                      v-for="name in llmModelNames"
-                      :key="name"
-                      :label="name"
-                      :value="name"
-                    />
-                  </el-option-group>
-                  <el-option-group v-if="vlmModelNames.length" label="VLM 视觉模型">
-                    <el-option
-                      v-for="name in vlmModelNames"
-                      :key="name"
-                      :label="name"
-                      :value="name"
-                    />
-                  </el-option-group>
-                </el-select>
-              </el-form-item>
-              <el-form-item label="Temperature">
-                <div class="param-row">
-                  <el-slider
-                    v-model="agentForm.temperature"
-                    :min="0"
-                    :max="2"
-                    :step="0.1"
-                    class="param-slider"
-                  />
-                  <el-input-number
-                    v-model="agentForm.temperature"
-                    :min="0"
-                    :max="2"
-                    :step="0.1"
-                    :controls="false"
-                    size="small"
-                    class="param-number"
-                  />
+              <!-- 右列：模型参数 + 能力扩展 -->
+              <div class="agent-form-col">
+                <div class="form-section">
+                  <h4>模型与生成参数</h4>
+                  <el-form-item label="LLM 模型">
+                    <el-select
+                      v-model="agentForm.llm_model"
+                      placeholder="留空使用默认模型"
+                      clearable
+                      style="width: 100%"
+                    >
+                      <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
+                        <el-option
+                          v-for="name in llmModelNames"
+                          :key="name"
+                          :label="name"
+                          :value="name"
+                        />
+                      </el-option-group>
+                      <el-option-group v-if="vlmModelNames.length" label="VLM 视觉模型">
+                        <el-option
+                          v-for="name in vlmModelNames"
+                          :key="name"
+                          :label="name"
+                          :value="name"
+                        />
+                      </el-option-group>
+                    </el-select>
+                  </el-form-item>
+                  <div class="param-twin">
+                    <el-form-item label="Temperature">
+                      <div class="param-row">
+                        <el-slider
+                          v-model="agentForm.temperature"
+                          :min="0"
+                          :max="2"
+                          :step="0.1"
+                          class="param-slider"
+                        />
+                        <el-input-number
+                          v-model="agentForm.temperature"
+                          :min="0"
+                          :max="2"
+                          :step="0.1"
+                          :controls="false"
+                          size="small"
+                          class="param-number"
+                        />
+                      </div>
+                      <div class="param-hint">越高越发散，越低越确定</div>
+                    </el-form-item>
+                    <el-form-item label="Top P">
+                      <div class="param-row">
+                        <el-slider
+                          v-model="agentForm.top_p"
+                          :min="0"
+                          :max="1"
+                          :step="0.1"
+                          class="param-slider"
+                        />
+                        <el-input-number
+                          v-model="agentForm.top_p"
+                          :min="0"
+                          :max="1"
+                          :step="0.1"
+                          :controls="false"
+                          size="small"
+                          class="param-number"
+                        />
+                      </div>
+                      <div class="param-hint">核采样阈值，与温度二选一</div>
+                    </el-form-item>
+                  </div>
+                  <div class="param-grid">
+                    <el-form-item label="最大生成 Token">
+                      <el-input-number
+                        v-model="agentForm.max_tokens"
+                        :min="1"
+                        :max="32768"
+                        :step="256"
+                        :controls="false"
+                        class="param-input-number"
+                      />
+                    </el-form-item>
+                    <el-form-item label="上下文窗口">
+                      <el-input-number
+                        v-model="agentForm.context_window"
+                        :min="2048"
+                        :max="1048576"
+                        :step="4096"
+                        :controls="false"
+                        class="param-input-number"
+                      />
+                    </el-form-item>
+                    <el-form-item label="工具调用上限">
+                      <el-input-number
+                        v-model="agentForm.max_tool_calls_per_turn"
+                        :min="1"
+                        :max="50"
+                        :controls="false"
+                        class="param-input-number"
+                      />
+                    </el-form-item>
+                  </div>
                 </div>
-                <div class="param-hint">值越高生成越发散，越低越确定；一般 0.7 上下</div>
-              </el-form-item>
-              <el-form-item label="Top P">
-                <div class="param-row">
-                  <el-slider
-                    v-model="agentForm.top_p"
-                    :min="0"
-                    :max="1"
-                    :step="0.1"
-                    class="param-slider"
-                  />
-                  <el-input-number
-                    v-model="agentForm.top_p"
-                    :min="0"
-                    :max="1"
-                    :step="0.1"
-                    :controls="false"
-                    size="small"
-                    class="param-number"
-                  />
+
+                <div class="form-section">
+                  <h4>能力扩展</h4>
+                  <el-form-item label="计划模式">
+                    <div class="plan-mode-switch">
+                      <el-switch v-model="agentForm.plan_mode" />
+                      <span class="plan-mode-tip"
+                        >开启后按「计划 → 逐步执行 → 总结」的 Plan-and-Execute 流程工作</span
+                      >
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="启用工具">
+                    <el-select
+                      v-model="agentForm.enabled_tools"
+                      multiple
+                      placeholder="选择要启用的工具"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="tool in orderedTools"
+                        :key="tool.name"
+                        :label="tool.name"
+                        :value="tool.name"
+                      >
+                        <span>{{ tool.name }}</span>
+                        <span
+                          style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px"
+                          >{{ tool.description }}</span
+                        >
+                      </el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="MCP 服务器">
+                    <el-select
+                      v-model="agentForm.enabled_mcp_servers"
+                      multiple
+                      placeholder="选择要启用的 MCP 服务器"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="server in agentStore.mcpServers"
+                        :key="server.id"
+                        :label="server.name"
+                        :value="server.id"
+                      >
+                        <span>{{ server.name }}</span>
+                        <span
+                          style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px"
+                          >{{ server.status }}</span
+                        >
+                      </el-option>
+                    </el-select>
+                  </el-form-item>
                 </div>
-                <div class="param-hint">核采样阈值，与 Temperature 二选一调节即可</div>
-              </el-form-item>
-              <div class="param-grid">
-                <el-form-item label="最大生成 Token">
-                  <el-input-number
-                    v-model="agentForm.max_tokens"
-                    :min="1"
-                    :max="32768"
-                    :step="256"
-                    class="param-input-number"
-                  />
-                </el-form-item>
-                <el-form-item label="上下文窗口">
-                  <el-input-number
-                    v-model="agentForm.context_window"
-                    :min="2048"
-                    :max="1048576"
-                    :step="4096"
-                    class="param-input-number"
-                  />
-                </el-form-item>
-                <el-form-item label="最大工具调用 / 轮">
-                  <el-input-number
-                    v-model="agentForm.max_tool_calls_per_turn"
-                    :min="1"
-                    :max="50"
-                    class="param-input-number"
-                  />
-                </el-form-item>
               </div>
             </div>
-
-            <div class="form-section">
-              <h4>能力扩展</h4>
-              <el-form-item label="计划模式">
-                <div class="plan-mode-switch">
-                  <el-switch v-model="agentForm.plan_mode" />
-                  <span class="plan-mode-tip"
-                    >开启后按「计划 → 逐步执行 → 总结」的 Plan-and-Execute 流程工作</span
-                  >
-                </div>
-              </el-form-item>
-              <el-form-item label="启用工具">
-                <el-select
-                  v-model="agentForm.enabled_tools"
-                  multiple
-                  placeholder="选择要启用的工具"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="tool in orderedTools"
-                    :key="tool.name"
-                    :label="tool.name"
-                    :value="tool.name"
-                  >
-                    <span>{{ tool.name }}</span>
-                    <span
-                      style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px"
-                      >{{ tool.description }}</span
-                    >
-                  </el-option>
-                </el-select>
-              </el-form-item>
-              <el-form-item label="MCP 服务器">
-                <el-select
-                  v-model="agentForm.enabled_mcp_servers"
-                  multiple
-                  placeholder="选择要启用的 MCP 服务器"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="server in agentStore.mcpServers"
-                    :key="server.id"
-                    :label="server.name"
-                    :value="server.id"
-                  >
-                    <span>{{ server.name }}</span>
-                    <span
-                      style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px"
-                      >{{ server.status }}</span
-                    >
-                  </el-option>
-                </el-select>
-              </el-form-item>
-            </div>
           </el-form>
-        </el-scrollbar>
+        </div>
         <template #footer>
           <el-button @click="agentDialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="agentSubmitLoading" @click="handleAgentSubmit"
@@ -1193,9 +1212,23 @@ onMounted(async () => {
   word-break: break-word;
 }
 
-/* ===== Agent 创建/编辑弹窗：按意图分组 + 内嵌滚动 ===== */
+/* ===== Agent 创建/编辑弹窗：双列布局 + 紧凑参数区 ===== */
 .agent-form {
   padding: 0 var(--space-1);
+}
+
+/* 双列：左列身份设定（占略宽——提示词是核心输入），右列参数与能力 */
+.agent-form-columns {
+  display: grid;
+  grid-template-columns: 11fr 9fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.agent-form-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .agent-form .form-section {
@@ -1206,32 +1239,80 @@ onMounted(async () => {
   margin-bottom: 0;
 }
 
+/* 小节标题：弱化为分组标签，不用竖线装饰 */
 .agent-form .form-section h4 {
   margin: 0 0 var(--space-3);
-  padding-left: var(--space-3);
-  border-left: 3px solid var(--color-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--color-text);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   line-height: 1.4;
 }
 
-/* 滑杆 + 只读数字框同排：滑杆占满剩余宽度，数字收窄定宽 */
+/* 系统提示词：等宽字体 + 更舒展的行高，暗示「这是给模型读的」 */
+.agent-form .prompt-textarea :deep(textarea),
+.agent-form .prompt-textarea textarea {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.field-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint, var(--color-text-muted));
+  margin-top: var(--space-1);
+  line-height: 1.4;
+}
+
+/* Temperature / Top P 双列并排，收窄滑杆整体宽度 */
+.param-twin {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4);
+}
+
+/* 滑杆 + 数字框同排：滑杆占满剩余宽度，数字收窄定宽 */
 .param-row {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   width: 100%;
 }
 
 .param-row .param-slider {
   flex: 1;
   min-width: 0;
+  margin: 0 var(--space-1);
+}
+
+/* 紧凑滑杆：跑道更细、按钮更小（覆盖 el-slider 默认的大胖样式） */
+.param-row .param-slider :deep(.el-slider__runway) {
+  height: 4px;
+}
+
+.param-row .param-slider :deep(.el-slider__bar) {
+  height: 4px;
+}
+
+.param-row .param-slider :deep(.el-slider__button-wrapper) {
+  top: -14px;
+}
+
+.param-row .param-slider :deep(.el-slider__button) {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-primary);
 }
 
 .param-row .param-number {
-  width: 64px;
+  width: 56px;
   flex-shrink: 0;
+}
+
+/* 数字框文字居中，去步进器后更像「值展示」而非表格控件 */
+.param-row .param-number :deep(.el-input__inner) {
+  text-align: center;
 }
 
 .param-hint {
@@ -1252,9 +1333,17 @@ onMounted(async () => {
   width: 100%;
 }
 
+.param-grid .param-input-number :deep(.el-input__inner) {
+  text-align: center;
+}
+
 @media (max-width: 560px) {
   .param-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .param-twin {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1263,18 +1352,40 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   max-width: 94vw;
-  height: 84vh;
+  height: auto;
+  max-height: 86vh;
   margin-bottom: 6vh;
 }
 
 .agent-form-dialog .el-dialog__body {
   flex: 1;
   min-height: 0;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-2) var(--space-6) var(--space-4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
+/* 原生滚动区：el-scrollbar 在 max-height 弹窗里百分比高度链解析不出，
+   弃用之，body 内直接 overflow-y:auto（滚动条样式全局已有 webkit 定制） */
 .agent-form-scroll {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+}
+
+/* 双列以下（<880 视口）纵向堆叠，弹窗回退为可滚动窄形态 */
+@media (max-width: 920px) {
+  .agent-form-dialog {
+    width: 94vw !important;
+  }
+
+  .agent-form-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .config-drawer-body .system-prompt {
