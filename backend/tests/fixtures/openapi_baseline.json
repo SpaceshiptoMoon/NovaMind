@@ -12223,7 +12223,6 @@
           },
           "email": {
             "description": "用户邮箱",
-            "format": "email",
             "title": "Email",
             "type": "string"
           },

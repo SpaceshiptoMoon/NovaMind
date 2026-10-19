@@ -303,7 +303,9 @@ class UserResponse(BaseModel):
     """
     id: int = Field(..., description="用户唯一ID")
     username: str = Field(..., description="用户名")
-    email: EmailStr = Field(..., description="用户邮箱")
+    # str 而非 EmailStr：响应侧不做输入校验，历史脏数据（如保留域名邮箱）
+    # 不得让整个用户列表 500；格式校验是 UserBase 等输入边界的职责
+    email: str = Field(..., description="用户邮箱")
     phone: str | None = Field(None, description="用户手机号码")
     role: RoleBrief = Field(..., description="用户系统角色")
     is_admin: bool = Field(default=False, description="是否系统管理员（从 role 派生）")
