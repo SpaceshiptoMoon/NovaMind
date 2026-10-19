@@ -12,7 +12,6 @@ import type {
   SystemPromptResponse,
   AgentConversation,
   AgentConversationListResponse,
-  KnowledgeBindings,
   ResearchProgressData,
   AgentMessageListResponse,
   OpenAICompatToolCall,
@@ -210,14 +209,6 @@ export const agentApi = {
   /** 会话详情（标题/状态/消息数/累计 token） */
   getSession(sessionId: string) {
     return request.get<AgentConversation>(`/agent/sessions/${sessionId}`)
-  },
-
-  /** 更新会话知识绑定（整体替换；传 null 清除恢复不限定） */
-  updateKnowledgeBindings(sessionId: string, bindings: KnowledgeBindings | null) {
-    return request.put<AgentConversation>(
-      `/agent/sessions/${sessionId}/knowledge-bindings`,
-      { knowledge_bindings: bindings },
-    )
   },
 
   /** 会话消息历史（分页） */

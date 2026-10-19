@@ -469,73 +469,6 @@
                     <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
                     <span>深度研究</span>
                   </button>
-                  <!-- teleported=false：popper 留在组件 DOM 内，scoped 样式直接生效；
-                       宽度响应式：320px 满宽在极窄视口会溢出（抗压缩三档规范） -->
-                  <el-popover
-                    v-model:visible="scopePopoverVisible"
-                    placement="top-start"
-                    :width="scopePopoverWidth"
-                    trigger="click"
-                    :teleported="false"
-                    popper-class="kb-scope-popper"
-                    @show="onScopePopoverShow"
-                  >
-                    <template #reference>
-                      <button
-                        class="mode-chip kb-scope-trigger"
-                        :class="{ active: knowledgeScopeActive }"
-                        title="限定知识工具与深度研究的检索范围"
-                      >
-                        <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
-                        <span>{{
-                          knowledgeScopeLabel
-                        }}</span>
-                      </button>
-                    </template>
-                    <div class="kb-scope-panel">
-                      <div class="kb-scope-title">知识检索范围</div>
-                      <div class="kb-scope-hint">
-                        限定知识工具与深度研究的检索范围；不选则检索全部可见空间。
-                      </div>
-                      <el-checkbox-group v-model="selectedSpaceIds" class="kb-scope-list">
-                        <el-checkbox
-                          v-for="sp in spaces"
-                          :key="sp.id"
-                          :value="sp.id"
-                          class="kb-scope-item"
-                        >
-                          <span class="kb-scope-item-name">{{ sp.name }}</span>
-                        </el-checkbox>
-                      </el-checkbox-group>
-                      <div v-if="spaces.length === 0" class="kb-scope-empty">
-                        暂无可见空间
-                      </div>
-                      <div class="kb-scope-actions">
-                        <button
-                          class="kb-scope-btn"
-                          title="清除限定，检索全部可见空间"
-                          @click="clearKnowledgeScope"
-                        >
-                          不限范围
-                        </button>
-                        <button
-                          class="kb-scope-btn"
-                          title="勾选全部可见空间"
-                          :disabled="spaces.length === 0"
-                          @click="selectAllKnowledgeScope"
-                        >
-                          全选
-                        </button>
-                        <button
-                          class="kb-scope-btn primary"
-                          :disabled="scopeSaving"
-                          @click="saveKnowledgeScope"
-                        >
-                          {{ scopeSaving ? '保存中…' : `应用${selectedSpaceIds.length ? `（${selectedSpaceIds.length}）` : ''}` }}
-                        </button>
-                      </div>
-                    </div>
-                  </el-popover>
                 </div>
               </div>
               <div class="input-trailing">
@@ -638,15 +571,12 @@ import {
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
-import { spaceApi } from '@/api/space'
 import type {
   AgentMessage,
   AgentCompactionData,
   ContentBlock,
-  KnowledgeBindings,
   OpenAICompatToolCall,
   ResearchProgressData,
-  Space,
 } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
@@ -696,86 +626,6 @@ function toggleDeepResearch() {
   }
 }
 
-// ===================== 知识范围绑定（会话级，批2 extra_config.knowledge_bindings） =====================
-const spaces = ref<Space[]>([])
-const selectedSpaceIds = ref<number[]>([])
-const knowledgeBindingsLoaded = ref(false)
-// 应用按钮保存中态：防连点重复提交
-const scopeSaving = ref(false)
-
-const knowledgeScopeActive = computed(() => selectedSpaceIds.value.length > 0)
-const knowledgeScopeLabel = computed(() =>
-  knowledgeScopeActive.value ? `知识范围 ${selectedSpaceIds.value.length}` : '知识范围',
-)
-
-async function ensureSpacesLoaded() {
-  if (spaces.value.length) return
-  try {
-    const res = await spaceApi.getSpaces({ skip: 0, limit: 50 })
-    spaces.value = res.items
-  } catch {
-    spaces.value = []
-  }
-}
-
-async function loadKnowledgeBindings(sessionId: string | null) {
-  if (!sessionId) {
-    selectedSpaceIds.value = []
-    knowledgeBindingsLoaded.value = true
-    return
-  }
-  try {
-    const conv = await agentApi.getSession(sessionId)
-    selectedSpaceIds.value = [...(conv.extra_config?.knowledge_bindings?.space_ids ?? [])]
-  } catch {
-    selectedSpaceIds.value = []
-  }
-  knowledgeBindingsLoaded.value = true
-}
-
-async function saveKnowledgeScope() {
-  if (scopeSaving.value) return
-  const sessionId = agentStore.currentSessionId
-  if (!sessionId) {
-    // 新会话尚无 session_id：选择已暂存，首条消息建立会话后自动应用
-    scopePopoverVisible.value = false
-    ElMessage.info('将在发送首条消息后自动应用')
-    return
-  }
-  scopeSaving.value = true
-  const bindings: KnowledgeBindings | null =
-    selectedSpaceIds.value.length > 0 ? { space_ids: [...selectedSpaceIds.value] } : null
-  try {
-    await agentApi.updateKnowledgeBindings(sessionId, bindings)
-    scopePopoverVisible.value = false
-    ElMessage.success('知识范围已更新')
-  } catch {
-    ElMessage.error('知识范围保存失败')
-  } finally {
-    scopeSaving.value = false
-  }
-}
-
-async function clearKnowledgeScope() {
-  selectedSpaceIds.value = []
-  // 「全部」= 清空服务端绑定、检索全部可见空间。必须真实落库：
-  // 只清本地会让已有会话的绑定残留（UI 显示未限定但检索仍受限，
-  // 切回会话选择还会"复活"）。
-  scopePopoverVisible.value = false
-  const sessionId = agentStore.currentSessionId
-  if (!sessionId) return
-  try {
-    await agentApi.updateKnowledgeBindings(sessionId, null)
-    ElMessage.success('已清除范围限定，检索全部可见空间')
-  } catch {
-    ElMessage.error('知识范围保存失败')
-  }
-}
-
-function selectAllKnowledgeScope() {
-  // 仅勾选本地，不落库——用户还需点「应用」确认
-  selectedSpaceIds.value = spaces.value.map((s) => s.id)
-}
 // 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
 const selectedModel = ref('')
 const availableModels = ref<
@@ -1288,63 +1138,6 @@ watch(
   },
 )
 
-// 会话切换时同步知识范围绑定（新会话/未加载时重置为不限定）。
-// pendingScopeApply：发送首条消息建立会话后，watch 触发的加载会 GET 到
-// extra_config=null 并清空用户刚勾选的范围——跳过这一次，保留选择等流结束后自动应用
-//（流式对话期间会话行被 chat 事务锁定，流中 PUT 绑定会 1205 锁超时）。
-let pendingScopeApply = false
-watch(
-  () => agentStore.currentSessionId,
-  (sid) => {
-    if (pendingScopeApply) {
-      pendingScopeApply = false
-      return
-    }
-    loadKnowledgeBindings(sid)
-  },
-  { immediate: true },
-)
-
-async function applyKnowledgeScope() {
-  const sessionId = agentStore.currentSessionId
-  if (!sessionId) return
-  const bindings: KnowledgeBindings | null =
-    selectedSpaceIds.value.length > 0 ? { space_ids: [...selectedSpaceIds.value] } : null
-  try {
-    await agentApi.updateKnowledgeBindings(sessionId, bindings)
-    ElMessage.success('知识范围已应用')
-  } catch {
-    ElMessage.error('知识范围保存失败')
-  }
-}
-
-// 知识范围 popover 宽度：桌面 320，窄视口收进边距（teleported=false 下
-// overflow:hidden 祖先会裁切溢出部分）
-const scopePopoverWidth = computed(() => Math.min(320, window.innerWidth - 24))
-
-// 受控开关：应用/全部后主动收起面板
-const scopePopoverVisible = ref(false)
-
-// 列表视口自适应高度：popper 向上弹出（top-start），列表过高会把标题/首项
-// 顶出视口上缘被固定顶栏（--header-height，弹层 teleported=false 挂组件内，
-// z-index 低于顶栏）盖住。弹出时按「chip 上缘到视口顶的可用空间 − 顶栏高度
-// − 面板其余部分固定高度（壳内距+标题+说明+操作行+间隙 ≈ 152px）− 8px 余量」
-// 精确钳制；CSS 拿不到 chip 位置，只能在 show 时量。下限 120px 保证至少可见数项。
-function onScopePopoverShow() {
-  ensureSpacesLoaded()
-  nextTick(() => {
-    const chip = document.querySelector<HTMLElement>('.kb-scope-trigger')
-    const list = document.querySelector<HTMLElement>('.kb-scope-list')
-    if (!chip || !list) return
-    const headerH = parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--header-height'),
-    ) || 56
-    const available =
-      chip.getBoundingClientRect().top - headerH - 8 - 152
-    list.style.maxHeight = `${Math.max(120, Math.min(224, available))}px`
-  })
-}
-
 function goBack() {
   // 广场页已删：工作台内返回智能体占位页，否则回首页
   if (isInWorkspace) {
@@ -1428,23 +1221,10 @@ async function handleSend() {
       llm_model: selectedModel.value || undefined,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
-    // 新会话 + 已勾选范围：会话建立后 watch 跳过清空（pendingScopeApply），
-    // 流结束后再 PUT——流中会话行被 chat 事务锁定，流中写绑定会锁超时
-    const shouldApplyScope =
-      !agentStore.currentSessionId && selectedSpaceIds.value.length > 0
-    const sessionAtSend = agentStore.currentSessionId
-    pendingScopeApply = shouldApplyScope
-    try {
-      if (useStream.value) {
-        await agentStore.sendMessageStream(agentId.value, sendContent, opts)
-      } else {
-        await agentStore.sendMessage(agentId.value, sendContent, opts)
-      }
-      if (shouldApplyScope) await applyKnowledgeScope()
-    } finally {
-      // 复位绑定发送生命周期：失败/中止时不能让标记挂着——否则 watch 会把
-      // 下一次会话切换的绑定加载跳过，残留勾选可写错其他会话
-      if (agentStore.currentSessionId === sessionAtSend) pendingScopeApply = false
+    if (useStream.value) {
+      await agentStore.sendMessageStream(agentId.value, sendContent, opts)
+    } else {
+      await agentStore.sendMessage(agentId.value, sendContent, opts)
     }
   } catch {
     ElMessage.error('发送失败，请重试')
@@ -2942,112 +2722,6 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-/* 知识范围弹层面板（el-popover 内，非 scoped 生效域需 :global） */
-.kb-scope-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.kb-scope-title {
-  font-size: 13px;
-  font-weight: var(--weight-semibold, 600);
-  color: var(--color-text);
-}
-
-.kb-scope-hint {
-  font-size: 12px;
-  color: var(--color-text-tertiary, #a1a1aa);
-  line-height: 1.5;
-  margin-top: -6px;
-}
-
-.kb-scope-list {
-  display: flex;
-  flex-direction: column;
-  /* 动态上限由 onScopePopoverShow 按 chip 到视口顶的可用空间精确设置；
-     此处 160px 仅作 CSS 加载先于 show 测量的保底，防极端场景顶出视口 */
-  max-height: 160px;
-  overflow-y: auto;
-  margin: 0 -6px;
-  padding: 0 6px;
-  /* 窄列表滚动条贴边难点中：留出右缘呼吸空隙 */
-  scrollbar-gutter: stable;
-}
-
-.kb-scope-item {
-  height: 30px;
-  /* flex column 列表内禁收缩：不禁则超容器高的项被均摊压扁（20px），
-     scrollHeight==clientHeight 永不滚动 */
-  flex-shrink: 0;
-  margin-right: 0;
-  padding: 0 8px;
-  border-radius: var(--radius-md, 8px);
-  transition: background var(--transition-fast);
-}
-
-.kb-scope-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.kb-scope-item-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 240px;
-  display: inline-block;
-  vertical-align: bottom;
-  font-size: 13px;
-  color: var(--color-text);
-}
-
-.kb-scope-empty {
-  font-size: 12px;
-  color: var(--color-text-tertiary, #a1a1aa);
-  padding: 8px 0;
-  text-align: center;
-}
-
-.kb-scope-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid var(--color-border-light);
-  padding-top: 10px;
-}
-
-.kb-scope-btn {
-  height: 28px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md, 8px);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.kb-scope-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-  border-color: var(--color-border);
-}
-
-.kb-scope-btn.primary {
-  background: var(--color-chip-active);
-  border-color: var(--color-chip-active);
-  color: var(--color-chip-active-text);
-  font-weight: var(--weight-medium, 500);
-}
-
-.kb-scope-btn.primary:hover {
-  background: var(--color-send-active-hover, #52525b);
-  border-color: var(--color-send-active-hover, #52525b);
-  color: var(--color-chip-active-text);
-}
-
 /* 发送 / 停止主按钮（34px 圆形，active 纯黑） */
 .send-primary {
   display: grid;
@@ -3240,17 +2914,5 @@ onBeforeUnmount(() => {
 .file-image {
   background: var(--color-file-image-bg);
   color: var(--color-file-image);
-}
-</style>
-
-<style>
-/* 知识范围 popper 外壳（teleported=false 留在组件内，但 popper 类不在任何
-   scoped 作用域，需全局穿透对齐输入卡设计语言：大圆角 + 精修阴影 + 呼吸感内距） */
-.kb-scope-popper.el-popover.el-popper {
-  padding: 14px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
-  background: var(--color-bg-card);
-  box-shadow: var(--shadow-lg);
 }
 </style>
