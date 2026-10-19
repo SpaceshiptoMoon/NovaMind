@@ -519,6 +519,14 @@
                           不限范围
                         </button>
                         <button
+                          class="kb-scope-btn"
+                          title="勾选全部可见空间"
+                          :disabled="spaces.length === 0"
+                          @click="selectAllKnowledgeScope"
+                        >
+                          全选
+                        </button>
+                        <button
                           class="kb-scope-btn primary"
                           :disabled="scopeSaving"
                           @click="saveKnowledgeScope"
@@ -762,6 +770,11 @@ async function clearKnowledgeScope() {
   } catch {
     ElMessage.error('知识范围保存失败')
   }
+}
+
+function selectAllKnowledgeScope() {
+  // 仅勾选本地，不落库——用户还需点「应用」确认
+  selectedSpaceIds.value = spaces.value.map((s) => s.id)
 }
 // 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
 const selectedModel = ref('')
