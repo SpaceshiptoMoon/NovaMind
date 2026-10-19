@@ -35,6 +35,10 @@
                   <ArrowDown />
                 </el-icon>
               </button>
+              <button class="section-new-btn" @click="openAgentDialog()">
+                <el-icon :size="14"><Plus /></el-icon>
+                <span>创建智能体</span>
+              </button>
               <div v-show="!sectionCollapsed.chat" class="list-area">
                 <div
                   v-for="agent in agentStore.agents"
