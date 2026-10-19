@@ -35,10 +35,6 @@
                   <ArrowDown />
                 </el-icon>
               </button>
-              <button class="section-new-btn" @click="openAgentDialog()">
-                <el-icon :size="14"><Plus /></el-icon>
-                <span>创建智能体</span>
-              </button>
               <div v-show="!sectionCollapsed.chat" class="list-area">
                 <div
                   v-for="agent in agentStore.agents"
@@ -81,6 +77,33 @@
             </div>
           </div>
         </template>
+
+        <!-- 折叠模式：图标栏（新建 + agent 首字头像快捷切换），填满 48px 空白柱 -->
+        <div v-else class="sidebar-rail" role="toolbar" aria-label="智能体快捷操作">
+          <button class="rail-btn rail-new" title="创建智能体" @click="openAgentDialog()">
+            <el-icon :size="16"><Plus /></el-icon>
+          </button>
+          <div class="rail-agents">
+            <button
+              v-for="agent in agentStore.agents"
+              :key="agent.id"
+              class="rail-btn rail-agent"
+              :class="{ active: isAgentChatRoute(agent.id) }"
+              :title="agent.name"
+              @click="handleSelectAgent(agent)"
+            >
+              {{ agent.name.charAt(0) }}
+            </button>
+          </div>
+          <button
+            class="rail-btn rail-expand"
+            title="展开侧边栏"
+            aria-expanded="false"
+            @click="sidebarCollapsed = false"
+          >
+            <el-icon :size="14"><ArrowRight /></el-icon>
+          </button>
+        </div>
 
         <!-- 右缘吸附折叠手柄：展开态 ‹ 收起 / 折叠态 › 展开（悬停浮现，吸附在边框线上） -->
         <button
@@ -859,6 +882,97 @@ onMounted(async () => {
 .list-section > .list-area {
   flex: 1;
   overflow-y: auto;
+}
+
+/* ========================================
+   折叠态图标栏：新建 + agent 头像快捷切换 + 展开按钮
+   ======================================== */
+.sidebar-rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--space-2);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all var(--transition-fast);
+}
+
+.rail-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.rail-new {
+  color: var(--color-text-muted);
+}
+
+.rail-new:hover {
+  color: var(--color-primary);
+  border-color: var(--color-border);
+  background: var(--color-primary-muted);
+}
+
+.rail-agents {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+  width: 100%;
+  /* 隐藏滚动条但保留滚动：头像列是视觉条，不露轨道 */
+  scrollbar-width: none;
+}
+
+.rail-agents::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-agent {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.rail-agent:hover {
+  background: var(--color-bg-card, #fff);
+  color: var(--color-text);
+  box-shadow: var(--shadow-xs);
+}
+
+.rail-agent.active {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+.rail-expand {
+  color: var(--color-text-muted);
+}
+
+.rail-expand:hover {
+  color: var(--color-primary);
+  border-color: var(--color-border-focus);
 }
 
 /* Sidebar body */
