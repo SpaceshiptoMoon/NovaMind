@@ -6,6 +6,8 @@ import type {
   CreateAgentGroupRequest,
   UpdateAgentGroupRequest,
   AgentMessageListResponse,
+  GroupSession,
+  GroupSessionListResponse,
   GroupSpeakerData,
   GroupRunDoneData,
 } from './types'
@@ -15,8 +17,8 @@ import type {
 /**
  * 群聊 API
  *
- * 群 CRUD、群会话（每群单会话 get_or_create 语义）、时间线消息、
- * WS 一响对话流（bearer.<jwt> subprotocol 认证，协议与单聊一致）
+ * 群 CRUD、群会话（一群多会话：POST 显式新建 / GET 列表 / DELETE 删除）、
+ * 时间线消息、WS 一响对话流（bearer.<jwt> subprotocol 认证，协议与单聊一致）
  */
 export const agentGroupApi = {
   /** 创建群聊（成员 ≥2；consult 模式 host_agent_id 必填且须在成员内） */
@@ -44,9 +46,24 @@ export const agentGroupApi = {
     return request.delete<{ success: boolean; message: string }>(`/agent/groups/${groupId}`)
   },
 
-  /** 取/建群会话（每群单会话），返回时间线载体 session_id */
+  /** 显式新建群会话（一群多会话），返回完整会话信息 */
   createGroupSession(groupId: number) {
-    return request.post<{ session_id: string }>(`/agent/groups/${groupId}/sessions`)
+    return request.post<GroupSession>(`/agent/groups/${groupId}/sessions`)
+  },
+
+  /** 群会话列表（id 倒序=最新在前） */
+  listGroupSessions(groupId: number, params?: { limit?: number; offset?: number }) {
+    return request.get<GroupSessionListResponse>(
+      `/agent/groups/${groupId}/sessions`,
+      params as Record<string, unknown>,
+    )
+  },
+
+  /** 删除群会话（关联成员私有会话与运行记录一并清理；讨论中拒绝删除） */
+  deleteGroupSession(groupId: number, sessionId: string) {
+    return request.delete<{ success: boolean; message: string }>(
+      `/agent/groups/${groupId}/sessions/${sessionId}`,
+    )
   },
 
   /** 群时间线消息（时间线投影：用户消息 + 成员公开发言） */

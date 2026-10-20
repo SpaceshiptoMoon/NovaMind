@@ -20,8 +20,29 @@
         </span>
       </div>
 
-      <!-- 工作过程：工具卡列表（执行状态实时翻转；点开看参数与结果） -->
-      <div v-if="entry.toolCalls?.length" class="work-trail">
+      <!-- 工作过程折叠条（制度同单聊 fold-line）：默认折叠，轨迹不抢正文视觉焦点；
+           进行中由 spinner+主题色表达，展开后看思考流与工具卡（工具卡仍逐个展开看参数与结果） -->
+      <button
+        v-if="hasTrail"
+        class="fold-line"
+        :class="{ running: entry.streaming }"
+        @click="trailOpen = !trailOpen"
+      >
+        <span v-if="entry.streaming" class="fold-spinner" aria-hidden="true"></span>
+        <span class="fold-status">{{ trailLabel }}</span>
+        <span class="expand-chevron" :class="{ expanded: trailOpen }" aria-hidden="true">
+          <svg viewBox="0 0 12 12" width="10" height="10">
+            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </span>
+      </button>
+
+      <div v-if="hasTrail" v-show="trailOpen" class="work-trail">
+        <!-- 思考流（时间序在工具调用之前） -->
+        <div v-if="entry.reasoning" class="reasoning-block">
+          <MarkdownRenderer :content="entry.reasoning" />
+        </div>
+        <!-- 工具卡列表（执行状态实时翻转；点开看参数与结果） -->
         <div
           v-for="tool in entry.toolCalls"
           :key="tool.callId"
@@ -60,21 +81,6 @@
         </div>
       </div>
 
-      <!-- 思考过程：默认折叠（发言中自动展开跟随，出正文后自动收起） -->
-      <div v-if="entry.reasoning" class="reasoning-section">
-        <button class="reasoning-header" @click="reasoningOpen = !reasoningOpen">
-          <span class="reasoning-label">{{ reasoningLabel }}</span>
-          <span class="expand-chevron" :class="{ expanded: reasoningOpen }" aria-hidden>
-            <svg viewBox="0 0 12 12" width="10" height="10">
-              <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-            </svg>
-          </span>
-        </button>
-        <div v-show="reasoningOpen" class="reasoning-body">
-          <MarkdownRenderer :content="entry.reasoning" />
-        </div>
-      </div>
-
       <div v-if="entry.content" class="bubble-body" :class="{ 'is-streaming': entry.streaming }">
         <MarkdownRenderer :content="entry.content" />
       </div>
@@ -84,14 +90,14 @@
 
 <script setup lang="ts">
 /**
- * 成员发言气泡：成员色头像/名字 + 工具卡 + 思考折叠区 + 正文
+ * 成员发言气泡：成员色头像/名字 + 工作过程折叠条 + 正文
  *
  * 区分度制度（参考 Muse 的多 Agent 身份感）：成员名散列色相，头像底/名字
- * 文字全程同色，不同成员一眼可分。工作过程借鉴单聊 work-trail 的
- * 「overview first, details on demand」：工具卡摘要行默认收起，思考区
- * 发言中自动展开、出正文后收起——过程可见但不抢正文的视觉焦点。
+ * 文字全程同色，不同成员一眼可分。工作过程制度同单聊 fold-line：思考流+
+ * 工具卡收进一条折叠条默认收起（轨迹不抢正文焦点），进行中状态由
+ * spinner+主题色表达，展开才见轨迹（工具卡仍逐个展开看参数与结果）。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { GroupTimelineEntry } from '@/api/types'
 import { memberAvatarStyle, memberNameColor } from '@/utils/memberColor'
@@ -106,7 +112,7 @@ const avatarStyle = computed(() => memberAvatarStyle(props.entry.name || ''))
 const nameColor = computed(() => memberNameColor(props.entry.name || ''))
 
 const expandedTools = ref(new Set<string>())
-const reasoningOpen = ref(false)
+const trailOpen = ref(false)
 
 function toggleTool(callId: string) {
   const next = new Set(expandedTools.value)
@@ -115,29 +121,15 @@ function toggleTool(callId: string) {
   expandedTools.value = next
 }
 
-/** 还没有任何正文 = 纯思考阶段（自动展开思考区） */
+/** 还没有任何正文 = 纯思考阶段（名字头提示文案区分） */
 const thinkingOnly = computed(() => !props.entry.content.trim())
 
-const reasoningLabel = computed(() =>
-  props.entry.streaming && thinkingOnly.value ? '思考中' : '思考过程',
-)
+/** 有思考流或工具轨迹即显示折叠条 */
+const hasTrail = computed(() => Boolean(props.entry.reasoning?.trim()) || Boolean(props.entry.toolCalls?.length))
 
-// 发言中的纯思考阶段（有思考流、无正文）：自动展开跟随；出正文后自动收起
-// （用户手动开合过则尊重，不再自动翻转）
-const expandedManually = ref(false)
-watch(
-  () => [props.entry.streaming, (props.entry.reasoning || '').length > 0, props.entry.content.trim().length > 0] as const,
-  ([streaming, hasReasoning, hasContent]) => {
-    if (expandedManually.value) return
-    if (streaming && hasReasoning && !hasContent) reasoningOpen.value = true
-    if (hasContent) reasoningOpen.value = false
-  },
-)
-watch(reasoningOpen, (open) => {
-  // 自动翻转的稳态（正文后收起 / 发言中展开）之外的开合视为手动
-  const autoState = props.entry.content.trim().length > 0 ? false : props.entry.streaming && (props.entry.reasoning || '').length > 0
-  if (open !== autoState) expandedManually.value = true
-})
+// 折叠条状态标签：定长两段式「思考中/思考完成」（无秒数——群聊条目无单轮耗时数据，
+// 可变数字段禁入折叠除外），状态差异由 spinner+主题色+「中/完成」一词之差表达
+const trailLabel = computed(() => (props.entry.streaming ? '思考中' : '思考完成'))
 
 function toolStatusLabel(status: string) {
   if (status === 'running') return '执行中'
@@ -247,12 +239,71 @@ function truncate(text: string, max: number) {
   }
 }
 
-/* 工作过程：工具卡（制度同单聊 tool-card，宽度随内容收敛） */
+/* 工作过程折叠条（制度同单聊 fold-line：胶囊行 + spinner + 主题色） */
+.fold-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 3px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fold-line:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* 进行中折叠条：主题色 + spinner，与已完成态区分 */
+.fold-line.running {
+  color: var(--color-primary, var(--color-text));
+  border-color: var(--color-border);
+}
+
+.fold-spinner {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: fold-spin 0.8s linear infinite;
+}
+
+@keyframes fold-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 展开后的轨迹容器：左竖线时间线视觉（同单聊 work-trail），思考流+工具卡顺排 */
 .work-trail {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-1) var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border-left: 2px solid var(--color-border-light);
   min-width: 0;
+}
+
+.reasoning-block {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+  border-left: 2px solid var(--color-border-light);
+  padding-left: var(--space-2);
+  font-style: italic;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .tool-card {
@@ -362,53 +413,6 @@ function truncate(text: string, max: number) {
   overflow-wrap: anywhere;
   max-height: 220px;
   overflow-y: auto;
-}
-
-/* 思考折叠区（制度同单聊 reasoning-section） */
-.reasoning-section {
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
-  overflow: hidden;
-  width: fit-content;
-  max-width: 100%;
-  min-width: 260px;
-}
-
-.reasoning-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-}
-
-.reasoning-header:hover {
-  background: var(--color-bg-hover);
-}
-
-.reasoning-label {
-  font-weight: var(--weight-medium);
-}
-
-.reasoning-body {
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  border-top: 1px solid var(--color-border-light);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  line-height: var(--leading-relaxed);
-  max-height: 320px;
-  overflow-y: auto;
-  word-break: break-word;
-  overflow-wrap: anywhere;
 }
 
 .bubble-body {

@@ -6,21 +6,25 @@ import type {
   AgentGroupDetail,
   AgentMessage,
   GroupTimelineEntry,
+  GroupSession,
   GroupSpeakerData,
   GroupToolStep,
 } from '@/api/types'
 
 /**
- * 群聊 store：群列表/当前群/时间线/一响运行态
+ * 群聊 store：群列表/当前群/群会话列表/时间线/一响运行态
  *
- * 与单聊 agent store 并列不合并（领域边界）；WS 连接生命周期挂在
- * sendGroupMessage 的 await 区间内，run 结束（run_done/断连）自动收尾。
+ * 与单聊 agent store 并列不合并（领域边界）；一群可开多个会话
+ * （session），时间线按当前会话加载，切换会话即重放。WS 连接生命周期
+ * 挂在 sendGroupMessage 的 await 区间内，run 结束（run_done/断连）自动收尾。
  */
 export const useAgentGroupStore = defineStore('agentGroup', () => {
   const groups = ref<AgentGroup[]>([])
   const groupsLoading = ref(false)
   const currentGroup = ref<AgentGroupDetail | null>(null)
-  // 每群单会话（get_or_create 语义）：时间线载体
+  // 当前群的会话列表与当前会话（时间线按会话隔离）
+  const sessions = ref<GroupSession[]>([])
+  const sessionsLoading = ref(false)
   const currentSessionId = ref<string | null>(null)
   const timeline = ref<GroupTimelineEntry[]>([])
   const timelineLoading = ref(false)
@@ -41,22 +45,80 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
     }
   }
 
-  /** 进群入口：拉详情 + 取/建群会话 + 回放时间线 */
+  /** 进群入口：拉群详情 + 会话列表 + 回放默认（最新）会话时间线 */
   async function initForGroup(groupId: number) {
     timelineLoading.value = true
     error.value = null
     try {
-      const [detail, conv] = await Promise.all([
-        agentGroupApi.getGroup(groupId),
-        agentGroupApi.createGroupSession(groupId),
-      ])
+      const detail = await agentGroupApi.getGroup(groupId)
       currentGroup.value = detail
-      currentSessionId.value = conv.session_id
-      await replayTimeline(groupId, conv.session_id)
+      await fetchSessions(groupId)
+      const latest = sessions.value[0]
+      if (latest) {
+        await selectSession(latest.session_id)
+      } else {
+        // 群还没有任何会话：先建一个（首次进群的引导路径）
+        const conv = await agentGroupApi.createGroupSession(groupId)
+        sessions.value = [conv]
+        currentSessionId.value = conv.session_id
+        timeline.value = []
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载群聊失败'
     } finally {
       timelineLoading.value = false
+    }
+  }
+
+  /** 拉当前群的会话列表（id 倒序=最新在前） */
+  async function fetchSessions(groupId: number) {
+    sessionsLoading.value = true
+    try {
+      const data = await agentGroupApi.listGroupSessions(groupId)
+      sessions.value = data.items || []
+    } finally {
+      sessionsLoading.value = false
+    }
+  }
+
+  /** 切换会话：重放该会话时间线（切换前封口运行中的讨论） */
+  async function selectSession(sessionId: string) {
+    if (running.value) stopRun()
+    currentSessionId.value = sessionId
+    timelineLoading.value = true
+    try {
+      await replayTimeline(currentGroup.value!.id, sessionId)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '加载会话失败'
+    } finally {
+      timelineLoading.value = false
+    }
+  }
+
+  /** 新开会话：显式 POST（后端不复用不回退），并切换过去 */
+  async function newSession() {
+    const group = currentGroup.value
+    if (!group) return
+    const conv = await agentGroupApi.createGroupSession(group.id)
+    sessions.value = [conv, ...sessions.value]
+    await selectSession(conv.session_id)
+  }
+
+  /** 删除会话；删的是当前会话时切到列表首个（无会话则建新的） */
+  async function deleteSession(sessionId: string) {
+    const group = currentGroup.value
+    if (!group) return
+    await agentGroupApi.deleteGroupSession(group.id, sessionId)
+    sessions.value = sessions.value.filter((s) => s.session_id !== sessionId)
+    if (currentSessionId.value === sessionId) {
+      currentSessionId.value = null
+      timeline.value = []
+      const next = sessions.value[0]
+      if (next) {
+        await selectSession(next.session_id)
+      } else {
+        await newSession()
+      }
     }
   }
 
@@ -79,11 +141,31 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
         created_at: m.created_at,
       }
     }
+    // 历史回放过程档案（extra.process）：复原工具卡与思考折叠区，
+    // 与实时流式路径的条目形状一致（streaming 不置位，卡片即终态）
+    const process = (extra.process || {}) as {
+      tools?: Array<{
+        call_id?: string
+        tool_name?: string
+        arguments?: Record<string, unknown>
+        result?: string
+        status?: string
+      }>
+      reasoning?: string
+    }
     return {
       kind: 'member',
       member_agent_id: Number(extra.member_agent_id ?? 0),
       name: String(extra.name ?? '成员'),
       content: m.content || '',
+      reasoning: process.reasoning || undefined,
+      toolCalls: (process.tools || []).map((t) => ({
+        callId: t.call_id || '',
+        name: t.tool_name || '',
+        arguments: t.arguments,
+        result: t.result,
+        status: t.status === 'failed' ? 'failed' : 'completed',
+      })),
       created_at: m.created_at,
     }
   }
@@ -225,6 +307,7 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
   function clearChat() {
     abortController.value?.abort()
     currentGroup.value = null
+    sessions.value = []
     currentSessionId.value = null
     timeline.value = []
     running.value = false
@@ -251,6 +334,8 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
     groups,
     groupsLoading,
     currentGroup,
+    sessions,
+    sessionsLoading,
     currentSessionId,
     timeline,
     timelineLoading,
@@ -259,6 +344,10 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
     error,
     fetchGroups,
     initForGroup,
+    fetchSessions,
+    selectSession,
+    newSession,
+    deleteSession,
     sendGroupMessage,
     stopRun,
     clearChat,

@@ -2101,6 +2101,18 @@ export interface CreateAgentGroupRequest {
   rounds_per_turn?: number
 }
 
+// 群会话（时间线载体，一群可多会话）
+export interface GroupSession {
+  session_id: string
+  title: string | null
+  created_at: string | null
+}
+
+export interface GroupSessionListResponse {
+  items: GroupSession[]
+  total: number
+}
+
 export type UpdateAgentGroupRequest = Partial<CreateAgentGroupRequest>
 
 // 群时间线条目：user=用户消息 / member=成员公开发言 / notice=系统提示（错误/consult 徽标）
