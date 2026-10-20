@@ -180,20 +180,21 @@ function truncate(text: string, max: number) {
 }
 
 .name-avatar {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   flex-shrink: 0;
   user-select: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
 }
 
 .name-text {
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;

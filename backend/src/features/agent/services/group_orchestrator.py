@@ -415,9 +415,30 @@ class GroupOrchestrator:
         ).to_dict()
         context["conversation_id"] = conv.id
         context["tool_result_turn_budget"] = 100_000
-        # 群成员不接子代理/研究工厂（避免群聊嵌套放大与成本失控）；知识检索保留
-        context["subagent_runner"] = None
-        context["research_service_factory"] = None
+        # 成员能力与单聊全量对齐：勾了 task/research 就接子代理/研究工厂。
+        # 嵌套放大由 agent 自身 max_tool_calls_per_turn 与引擎迭代上限约束。
+        if "task" in (agent.enabled_tools or []):
+            from novamind.engines.agent.subagent import SubAgentRunner
+
+            context["subagent_runner"] = SubAgentRunner(
+                agent_engine=self.chat_service.agent_engine,
+                tool_executor=self.chat_service.agent_engine.tool_executor,
+                model_config_service=self.chat_service.model_config_service,
+                user_id=user_id,
+                model=model,
+                enabled_tools=agent.enabled_tools or [],
+                enabled_mcp_ids=await self.chat_service._filter_visible_mcp_ids(
+                    user_id, agent.enabled_mcp_servers or []
+                ),
+                parent_context=context,
+            )
+        else:
+            context["subagent_runner"] = None
+        context["research_service_factory"] = (
+            await self.chat_service._build_research_service_factory()
+            if "research" in (agent.enabled_tools or [])
+            else None
+        )
         context["web_search_port"] = self.chat_service._web_search_port
         context["knowledge_search_port"] = self.chat_service._knowledge_search_port
         context["knowledge_pipeline"] = {

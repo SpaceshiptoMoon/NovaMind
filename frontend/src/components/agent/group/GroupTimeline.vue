@@ -161,13 +161,13 @@ defineExpose({ scrollToBottom })
   color: var(--color-danger);
 }
 
-/* 成员发言间距 */
+/* 成员发言间距：不同 agent 之间留白拉大（32px），阅读节奏分明 */
 .timeline-inner > :nth-child(n + 2) {
   margin-top: 0;
 }
 
 .member-bubble {
-  margin-bottom: 20px;
+  margin-bottom: 32px;
 }
 
 @keyframes tlIn {
