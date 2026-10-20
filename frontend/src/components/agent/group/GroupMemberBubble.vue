@@ -1,77 +1,83 @@
 <template>
-  <div class="member-bubble" :class="{ 'is-thinking': thinkingOnly }">
-    <div v-if="showNameHead" class="name-head">
-      <div class="name-avatar" :style="avatarStyle" :title="entry.name">
+  <div class="member-bubble" :class="{ 'is-thinking': thinkingOnly, 'no-head': !showNameHead }">
+    <!-- 头像独立左列（经典 IM 布局）：同人连续发言留空占位对齐 -->
+    <div class="avatar-col">
+      <div v-if="showNameHead" class="name-avatar" :style="avatarStyle" :title="entry.name">
         {{ (entry.name || '成').charAt(0) }}
       </div>
-      <span class="name-text" :style="{ color: nameColor }">{{ entry.name }}</span>
-      <span v-if="entry.streaming && thinkingOnly" class="speaking-hint">
-        <span class="speaking-spinner" aria-hidden="true"></span>
-        思考中…
-      </span>
-      <span v-else-if="entry.streaming" class="speaking-hint">
-        <span class="speaking-spinner" aria-hidden="true"></span>
-        正在发言…
-      </span>
     </div>
 
-    <!-- 工作过程：工具卡列表（执行状态实时翻转；点开看参数与结果） -->
-    <div v-if="entry.toolCalls?.length" class="work-trail">
-      <div
-        v-for="tool in entry.toolCalls"
-        :key="tool.callId"
-        class="tool-card"
-      >
-        <button class="tool-header" @click="toggleTool(tool.callId)">
-          <span class="tool-icon" aria-hidden>
-            <svg viewBox="0 0 16 16" width="12" height="12">
-              <path
-                d="M9.6 1.6a4 4 0 0 0-4.4 5.2L1.4 10.6a1.6 1.6 0 1 0 2.3 2.3l3.8-3.8A4 4 0 0 0 12.7 4.7l-2 2-1.4-1.4 2-2a4 4 0 0 0-1.7-1.7z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </span>
-          <span class="tool-name">{{ tool.name || '工具' }}</span>
-          <span class="tool-status" :class="tool.status">{{ toolStatusLabel(tool.status) }}</span>
-          <span class="expand-chevron" :class="{ expanded: expandedTools.has(tool.callId) }" aria-hidden>
+    <div class="content-col">
+      <div v-if="showNameHead" class="name-head">
+        <span class="name-text" :style="{ color: nameColor }">{{ entry.name }}</span>
+        <span v-if="entry.streaming && thinkingOnly" class="speaking-hint">
+          <span class="speaking-spinner" aria-hidden="true"></span>
+          思考中…
+        </span>
+        <span v-else-if="entry.streaming" class="speaking-hint">
+          <span class="speaking-spinner" aria-hidden="true"></span>
+          正在发言…
+        </span>
+      </div>
+
+      <!-- 工作过程：工具卡列表（执行状态实时翻转；点开看参数与结果） -->
+      <div v-if="entry.toolCalls?.length" class="work-trail">
+        <div
+          v-for="tool in entry.toolCalls"
+          :key="tool.callId"
+          class="tool-card"
+        >
+          <button class="tool-header" @click="toggleTool(tool.callId)">
+            <span class="tool-icon" aria-hidden>
+              <svg viewBox="0 0 16 16" width="12" height="12">
+                <path
+                  d="M9.6 1.6a4 4 0 0 0-4.4 5.2L1.4 10.6a1.6 1.6 0 1 0 2.3 2.3l3.8-3.8A4 4 0 0 0 12.7 4.7l-2 2-1.4-1.4 2-2a4 4 0 0 0-1.7-1.7z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="tool-name">{{ tool.name || '工具' }}</span>
+            <span class="tool-status" :class="tool.status">{{ toolStatusLabel(tool.status) }}</span>
+            <span class="expand-chevron" :class="{ expanded: expandedTools.has(tool.callId) }" aria-hidden>
+              <svg viewBox="0 0 12 12" width="10" height="10">
+                <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </span>
+          </button>
+          <div v-if="expandedTools.has(tool.callId)" class="tool-body">
+            <div v-if="tool.arguments && Object.keys(tool.arguments).length" class="tool-section">
+              <div class="tool-section-label">参数</div>
+              <pre class="tool-json">{{ formatJson(tool.arguments) }}</pre>
+            </div>
+            <div v-if="tool.result" class="tool-section">
+              <div class="tool-section-label">结果</div>
+              <pre class="tool-json">{{ truncate(tool.result, 2000) }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 思考过程：默认折叠（发言中自动展开跟随，出正文后自动收起） -->
+      <div v-if="entry.reasoning" class="reasoning-section">
+        <button class="reasoning-header" @click="reasoningOpen = !reasoningOpen">
+          <span class="reasoning-label">{{ reasoningLabel }}</span>
+          <span class="expand-chevron" :class="{ expanded: reasoningOpen }" aria-hidden>
             <svg viewBox="0 0 12 12" width="10" height="10">
               <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
           </span>
         </button>
-        <div v-if="expandedTools.has(tool.callId)" class="tool-body">
-          <div v-if="tool.arguments && Object.keys(tool.arguments).length" class="tool-section">
-            <div class="tool-section-label">参数</div>
-            <pre class="tool-json">{{ formatJson(tool.arguments) }}</pre>
-          </div>
-          <div v-if="tool.result" class="tool-section">
-            <div class="tool-section-label">结果</div>
-            <pre class="tool-json">{{ truncate(tool.result, 2000) }}</pre>
-          </div>
+        <div v-show="reasoningOpen" class="reasoning-body">
+          <MarkdownRenderer :content="entry.reasoning" />
         </div>
       </div>
-    </div>
 
-    <!-- 思考过程：默认折叠（发言中自动展开跟随，出正文后自动收起） -->
-    <div v-if="entry.reasoning" class="reasoning-section">
-      <button class="reasoning-header" @click="reasoningOpen = !reasoningOpen">
-        <span class="reasoning-label">{{ reasoningLabel }}</span>
-        <span class="expand-chevron" :class="{ expanded: reasoningOpen }" aria-hidden>
-          <svg viewBox="0 0 12 12" width="10" height="10">
-            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          </svg>
-        </span>
-      </button>
-      <div v-show="reasoningOpen" class="reasoning-body">
-        <MarkdownRenderer :content="entry.reasoning" />
+      <div v-if="entry.content" class="bubble-body" :class="{ 'is-streaming': entry.streaming }">
+        <MarkdownRenderer :content="entry.content" />
       </div>
-    </div>
-
-    <div v-if="entry.content" class="bubble-body" :class="{ 'is-streaming': entry.streaming }">
-      <MarkdownRenderer :content="entry.content" />
     </div>
   </div>
 </template>
@@ -155,10 +161,24 @@ function truncate(text: string, max: number) {
 <style scoped>
 .member-bubble {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: var(--space-3);
   min-width: 0;
   animation: memberIn 0.3s ease forwards;
+}
+
+/* 头像独立左列：同人连续发言时留空占位，内容列仍对齐 */
+.avatar-col {
+  width: 30px;
+  flex-shrink: 0;
+}
+
+.content-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 @keyframes memberIn {
@@ -177,6 +197,7 @@ function truncate(text: string, max: number) {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  min-height: 30px;
 }
 
 .name-avatar {
