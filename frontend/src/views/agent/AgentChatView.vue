@@ -91,7 +91,7 @@
       <el-dialog
         v-model="workspaceDialogVisible"
         title="本地文件夹工作区"
-        width="520px"
+        width="560px"
         :close-on-click-modal="false"
         append-to-body
       >
@@ -100,18 +100,40 @@
             绑定后，智能体将以该文件夹为工作目录，自动获得
             read / glob / grep / bash 四个工具（无需在智能体设置中勾选），可直接读取和检索文件夹内的文件、运行命令。
           </p>
-          <el-input
-            v-model="workspaceRootInput"
-            placeholder="输入本机文件夹绝对路径，如 D:\projects\demo"
-            :disabled="workspaceBinding"
-          >
-            <template #append>
-              <el-button :loading="workspaceValidating" :disabled="workspaceBinding" @click="handleValidateRoot">
-                校验
+          <!-- 目录浏览器：逐层点选，选中层即为工作区根 -->
+          <div class="ws-browser">
+            <div class="ws-browser-toolbar">
+              <el-button
+                size="small"
+                :disabled="!browseParent"
+                @click="browseEnter(browseParent!)"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+                上级
               </el-button>
-            </template>
-          </el-input>
-          <div v-if="workspaceValidated" class="ws-dialog-ok">目录有效</div>
+              <span class="ws-browser-path" :title="browsePath || '此电脑'">
+                {{ browsePath || '此电脑' }}
+              </span>
+            </div>
+            <div v-loading="browseLoading" class="ws-browser-list">
+              <div
+                v-for="d in browseDirs"
+                :key="d.path"
+                class="ws-browser-item"
+                @click="browseEnter(d.path)"
+              >
+                <el-icon :size="14"><FolderOpened /></el-icon>
+                <span class="ws-browser-name">{{ d.name }}</span>
+              </div>
+              <div v-if="!browseLoading && browseDirs.length === 0" class="ws-browser-empty">
+                （无子文件夹）
+              </div>
+            </div>
+          </div>
+          <div class="ws-selected-row">
+            <span class="ws-selected-label">已选目录：</span>
+            <code class="ws-selected-path">{{ browsePath || '（请选择）' }}</code>
+          </div>
           <div v-if="isWorkspaceBound" class="ws-dialog-current">
             当前绑定：<code>{{ workspaceRoot }}</code>
           </div>
@@ -130,7 +152,7 @@
           <el-button
             type="primary"
             :loading="workspaceBinding"
-            :disabled="!workspaceValidated"
+            :disabled="!browsePath"
             @click="handleBindWorkspace"
           >
             绑定并启用本地模式
@@ -687,41 +709,38 @@ const workspacePillTitle = computed(() =>
 )
 
 const workspaceDialogVisible = ref(false)
-const workspaceRootInput = ref('')
-const workspaceValidated = ref(false)
-const workspaceValidating = ref(false)
 const workspaceBinding = ref(false)
+// 目录浏览态：path 空=此电脑（盘符列表），选中层即绑定目标
+const browsePath = ref('')
+const browseParent = ref<string | null>(null)
+const browseDirs = ref<{ name: string; path: string }[]>([])
+const browseLoading = ref(false)
+
+/** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
+async function browseEnter(path: string) {
+  browseLoading.value = true
+  try {
+    const data = await agentApi.browseWorkspaceDirs(path || undefined)
+    browsePath.value = data.path
+    browseParent.value = data.is_root ? null : (data.parent ?? null)
+    browseDirs.value = data.dirs || []
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
+  } finally {
+    browseLoading.value = false
+  }
+}
 
 async function openWorkspaceDialog() {
   workspaceDialogVisible.value = true
-  workspaceRootInput.value = workspaceRoot.value
-  workspaceValidated.value = isWorkspaceBound.value
+  // 打开即从已绑定目录（或根）开始浏览
+  await browseEnter(workspaceRoot.value)
 }
 
-/** 绑定前预检：目录存在才放行（后端绑定接口也会再校验一次） */
-async function handleValidateRoot() {
-  const root = workspaceRootInput.value.trim()
-  if (!root) {
-    ElMessage.warning('请输入文件夹路径')
-    return
-  }
-  workspaceValidating.value = true
-  try {
-    await agentApi.validateWorkspaceRoot(root)
-    workspaceValidated.value = true
-    ElMessage.success('目录有效')
-  } catch (e) {
-    workspaceValidated.value = false
-    ElMessage.error(e instanceof Error ? e.message : '目录校验失败')
-  } finally {
-    workspaceValidating.value = false
-  }
-}
-
-/** 绑定：写会话 workspace + 自动给 agent 并入 local_workspace 勾选（工具 schema 下发需要） */
+/** 绑定：选中层即根，写会话 workspace + 自动给 agent 并入 local_workspace 勾选 */
 async function handleBindWorkspace() {
-  if (!currentSessionId.value || !agentStore.currentAgent) return
-  const root = workspaceRootInput.value.trim()
+  if (!currentSessionId.value || !agentStore.currentAgent || !browsePath.value) return
+  const root = browsePath.value
   workspaceBinding.value = true
   try {
     await agentApi.updateSessionWorkspace(currentSessionId.value, { mode: 'local', root })
@@ -1888,9 +1907,89 @@ onBeforeUnmount(() => {
   line-height: 1.6;
 }
 
-.ws-dialog-ok {
+/* 目录浏览器 */
+.ws-browser {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border, #e4e7ed);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ws-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border, #e4e7ed);
+  background: var(--color-bg-elevated, #fafafa);
+}
+
+.ws-browser-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
-  color: var(--el-color-success);
+  color: var(--color-text-muted);
+  direction: rtl; /* 长路径从左截断，保尾部可见 */
+  text-align: left;
+}
+
+.ws-browser-list {
+  max-height: 260px;
+  overflow-y: auto;
+  min-height: 120px;
+}
+
+.ws-browser-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text);
+  transition: background var(--transition-fast);
+}
+
+.ws-browser-item:hover {
+  background: var(--color-bg-elevated, #f5f7fa);
+}
+
+.ws-browser-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-browser-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ws-selected-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ws-selected-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.ws-selected-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-bg-muted, rgba(0, 0, 0, 0.04));
+  font-size: 12px;
 }
 
 .ws-dialog-current {

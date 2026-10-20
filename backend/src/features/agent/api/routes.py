@@ -2,7 +2,7 @@
 Agent 模块 API 路由
 """
 import asyncio
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
 from novamind.core.auth import get_current_user, get_user_status_resolver
@@ -397,6 +397,47 @@ async def validate_workspace_root(
     if not p.is_dir():
         raise AgentError(f"目录不存在: {root}")
     return {"success": True, "message": "目录有效"}
+
+
+@router.get(
+    "/workspace/browse",
+    summary="浏览本机目录",
+    description="列出指定目录下的子文件夹（本地形态供前端文件夹选择弹窗用）；path 为空时列根（Windows 盘符）",
+)
+async def browse_workspace_dirs(
+    path: Annotated[str | None, Query(description="目录绝对路径；空=根")] = None,
+    user_id: int = Depends(get_current_user_id),
+):
+    from pathlib import Path
+
+    from novamind.features.agent.exceptions import AgentError
+
+    result: dict[str, Any] = {"path": path or "", "dirs": [], "parent": None}
+    if not path:
+        import string
+
+        # Windows 列盘符；POSIX 根即唯一起点
+        drives = [f"{l}:\\" for l in string.ascii_uppercase if Path(f"{l}:\\").exists()]
+        result["dirs"] = [{"name": d, "path": d} for d in drives]
+        result["is_root"] = True
+        return result
+
+    p = Path(path)
+    if not p.is_dir():
+        raise AgentError(f"目录不存在: {path}")
+    result["path"] = str(p)
+    result["parent"] = str(p.parent) if p.parent != p else None
+    dirs = []
+    for child in p.iterdir():
+        try:
+            # 单条目损坏（junction 断链/权限丢失）跳过，不拖垮整层列表
+            if child.is_dir() and not child.name.startswith("."):
+                dirs.append({"name": child.name, "path": str(child)})
+        except OSError:
+            continue
+    dirs.sort(key=lambda d: d["name"].lower())
+    result["dirs"] = dirs
+    return result
 
 
 @router.get(

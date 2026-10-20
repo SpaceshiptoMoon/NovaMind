@@ -17416,6 +17416,61 @@
         ]
       }
     },
+    "/api/v1/agent/workspace/browse": {
+      "get": {
+        "description": "列出指定目录下的子文件夹（本地形态供前端文件夹选择弹窗用）；path 为空时列根（Windows 盘符）",
+        "operationId": "browse_workspace_dirs_api_v1_agent_workspace_browse_get",
+        "parameters": [
+          {
+            "description": "目录绝对路径；空=根",
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "目录绝对路径；空=根",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "浏览本机目录",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/workspace/validate": {
       "post": {
         "description": "本地形态绑定前校验路径存在且为目录（后端与文件同机时可用）",

@@ -248,6 +248,16 @@ export const agentApi = {
     })
   },
 
+  /** 浏览本机目录（文件夹选择弹窗）：path 空=根（Windows 盘符） */
+  browseWorkspaceDirs(path?: string) {
+    return request.get<{
+      path: string
+      is_root?: boolean
+      parent: string | null
+      dirs: { name: string; path: string }[]
+    }>(`/agent/workspace/browse`, path ? { path } : undefined)
+  },
+
   // ===================== MCP 服务器 =====================
 
   /** 已配置的 MCP 服务器列表 */
