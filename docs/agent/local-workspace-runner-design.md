@@ -160,7 +160,7 @@ class WorkspaceBinding(Base):    # 会话/群 ↔ 工作区绑定
 
 加上已有的 `todo`（对应 TodoWrite）与 `read_tool_result`（长结果分页，已有），agent 在工作目录内的工具面与 Claude Code 单机端对齐。
 
-注册进现有体系（`features/agent/tool/registry_setup.py` 的 `build_tool_registry` 追加），工具定义格式照抄现有 builtins（OpenAI function calling schema）。Agent 勾选 `enabled_tools`（`bash`/`read`/`write`/`edit`/`glob`/`grep` 各自独立可勾）即获得能力——模型无感知、单聊群聊共用。
+注册进现有体系（`features/agent/tool/builtins/local_workspace.py` 的 `LocalWorkspaceTool`，`build_tool_registry` 已注册）。注意勾选粒度：引擎 `resolve_tools` 按**提供者名**（`tool.name`）匹配 `enabled_tools`，多函数工具不按函数名勾选——本地工具的勾选名是 `local_workspace` 一个（同 `group_messaging` 先例），勾上即获得 read/glob/grep 全部三个函数（P1 加 write/edit/bash 仍在同一提供者下，勾选粒度不随工具集扩大而变细）。
 
 ### 4.3 与会话的接线（ToolContext 端口）
 
@@ -168,14 +168,15 @@ class WorkspaceBinding(Base):    # 会话/群 ↔ 工作区绑定
 
 ```python
 # chat_service 装配点（单聊与群聊 orchestrator 同样注入）
-context["local_workspace_port"] = await build_local_workspace_port(db, user_id, conv)
+if "local_workspace" in (agent.enabled_tools or []):
+    context["local_workspace_port"] = await build_local_workspace_port(db, user_id, conv)
 ```
 
 `LocalWorkspacePort` 实现（`features/agent/services/local_workspace/`）：
 
 - 进程内形态：`InProcessExecutor`——直接调本地文件操作模块（与 runner 共享同一套校验库）
 - runner 形态：`RunnerExecutor`——查 `WorkspaceBinding` 找设备 → 设备在线？→ 经 RunnerRegistry 取连接 → 发 `call` 等对应 `call_id` 的 result（asyncio.Future 表）
-- 未绑定工作区的会话：port 为 None，工具注册表不注入这组工具（能力缺失优于报错，与 code_execution 的 sandbox 处理同款决策）
+- 未绑定工作区的会话：port 为 None，工具执行返回引导文案（能力缺失优于报错，与 code_execution 的 sandbox 处理同款决策）
 
 ### 4.4 提示词
 
@@ -262,7 +263,7 @@ workspace.file_changed       {path, op: write|edit}              # 变更视图�
 
 | 期 | 范围 | 验收 |
 |---|---|---|
-| **P0 骨架** | RunnerDevice 模型+配对状态机+WS 端点+心跳/重连；read/glob/grep 三个只读工具；单聊绑定工作区（手填路径）；本地形态 InProcessExecutor 同步实现 | 云端 NovaMind 单聊能读用户本机项目代码并答疑；本地形态同能力 |
+| **P0 骨架**（后端已落地，待实机 E2E） | RunnerDevice 模型+配对状态机+WS 端点+心跳/重连；read/glob/grep 三个只读工具；单聊绑定工作区（手填路径）；本地形态 InProcessExecutor 同步实现；runner 客户端骨架（`backend/src/runner/`，`python -m novamind.runner join`） | 云端 NovaMind 单聊能读用户本机项目代码并答疑；本地形态同能力 |
 | **P1 写入+命令+验收** | write/edit；bash（一次性命令版：每次独立子进程、cwd=工作区根）；变更审计+前端 diff 视图；workspace.file_changed 事件；审批流+会话授信（bash 首次审批） | agent 能改文件看 diff 验收；能跑 `pytest`/`git diff` 并把输出带回回答 |
 | **P2 持久会话+并行** | bash 升级持久 shell 会话（cd/export 跨调用保留）+后台模式；notebook_edit；worktree 建群编排；群聊审批信件；目录浏览式选择 | 开发群各成员在自己 worktree 干活并合并 |
 

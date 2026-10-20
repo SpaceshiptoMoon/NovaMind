@@ -208,3 +208,29 @@ class AttachmentUploadError(AgentError):
 
     def __init__(self, message: str):
         super().__init__(f"附件处理失败: {message}", "ATTACHMENT_ERROR")
+
+
+class RunnerDeviceError(AgentError):
+    """伴生 runner 设备异常基类"""
+
+    def __init__(self, message: str, code: str = "RUNNER_DEVICE_ERROR"):
+        super().__init__(message=message, code=code)
+
+
+class RunnerDeviceNotFoundError(RunnerDeviceError):
+    """设备不存在或不属于当前用户"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("device_id",)
+
+    def __init__(self, device_id: int):
+        super().__init__(
+            message=f"设备 {device_id} 不存在",
+            code="RUNNER_DEVICE_NOT_FOUND",
+        )
+        self.device_id = device_id
+
+
+class RunnerPairingError(RunnerDeviceError):
+    """配对失败（token 无效/过期/已用）"""
+
+    def __init__(self, message: str = "配对凭证无效或已过期"):
+        super().__init__(message, "RUNNER_PAIRING_ERROR")

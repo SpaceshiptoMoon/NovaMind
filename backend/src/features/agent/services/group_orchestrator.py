@@ -482,6 +482,17 @@ class GroupOrchestrator:
         )
         context["web_search_port"] = self.chat_service._web_search_port
         context["knowledge_search_port"] = self.chat_service._knowledge_search_port
+        # 本地工作区端口：群会话绑定工作区且成员勾了任一本地工具时注入
+        if "local_workspace" in (agent.enabled_tools or []):
+            from novamind.features.agent.services.local_workspace.assembly import (
+                build_local_workspace_port,
+            )
+
+            context["local_workspace_port"] = await build_local_workspace_port(
+                self.db, user_id, conv
+            )
+        else:
+            context["local_workspace_port"] = None
         context["knowledge_pipeline"] = {
             "llm_client": llm_client,
             "knowledge_bindings": (conv.extra_config or {}).get("knowledge_bindings"),

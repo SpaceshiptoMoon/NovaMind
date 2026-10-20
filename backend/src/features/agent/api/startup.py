@@ -66,6 +66,11 @@ async def init_agent_components(app):
     if sandbox:
         app.state.agent_sandbox = sandbox
 
+    # 本地工作区 runner 连接注册表（伴生 runner 出站连接的中枢）
+    from novamind.features.agent.services.local_workspace.runner_registry import RunnerRegistry
+
+    app.state.runner_registry = RunnerRegistry()
+
     # 6. 注册异常处理器
     from novamind.features.agent.api.exception_handlers import setup_agent_exception_handlers
     setup_agent_exception_handlers(app)

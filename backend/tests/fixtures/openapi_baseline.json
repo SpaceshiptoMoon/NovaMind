@@ -4511,6 +4511,65 @@
         "title": "GapReportResponse",
         "type": "object"
       },
+      "GroupSessionListResponse": {
+        "description": "群会话列表响应",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GroupSessionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "GroupSessionListResponse",
+        "type": "object"
+      },
+      "GroupSessionResponse": {
+        "description": "群会话响应（时间线载体，一群可多会话）",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "GroupSessionResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -15769,8 +15828,78 @@
       }
     },
     "/api/v1/agent/groups/{group_id}/sessions": {
+      "get": {
+        "description": "列出群的 active 会话（id 倒序=最新在前）",
+        "operationId": "list_group_sessions_api_v1_agent_groups__group_id__sessions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSessionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "群会话列表",
+        "tags": [
+          "Agent 群聊"
+        ]
+      },
       "post": {
-        "description": "取/建群会话（时间线载体），返回 session_id",
+        "description": "显式新建群会话（一群多会话），返回 session_id；进群未指定会话时用默认回退（见 GET sessions）",
         "operationId": "create_group_session_api_v1_agent_groups__group_id__sessions_post",
         "parameters": [
           {
@@ -15781,6 +15910,66 @@
               "exclusiveMinimum": 0,
               "title": "Group Id",
               "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "新建群会话",
+        "tags": [
+          "Agent 群聊"
+        ]
+      }
+    },
+    "/api/v1/agent/groups/{group_id}/sessions/{session_id}": {
+      "delete": {
+        "description": "软删群会话；关联成员私有会话与运行记录一并清理，讨论中的会话拒绝删除",
+        "operationId": "delete_group_session_api_v1_agent_groups__group_id__sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "群会话 UUID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "群会话 UUID",
+              "title": "Session Id",
+              "type": "string"
             }
           }
         ],
@@ -15809,7 +15998,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "开群会话",
+        "summary": "删除群会话",
         "tags": [
           "Agent 群聊"
         ]
@@ -16432,6 +16621,173 @@
         "summary": "获取可用模型",
         "tags": [
           "Agent 聊天附件"
+        ]
+      }
+    },
+    "/api/v1/agent/runner/devices": {
+      "get": {
+        "operationId": "list_devices_api_v1_agent_runner_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Devices Api V1 Agent Runner Devices Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "我的 runner 设备列表",
+        "tags": [
+          "Agent 本地 runner 设备"
+        ]
+      }
+    },
+    "/api/v1/agent/runner/devices/{device_id}": {
+      "delete": {
+        "operationId": "revoke_device_api_v1_agent_runner_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revoke Device Api V1 Agent Runner Devices  Device Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "吊销设备",
+        "tags": [
+          "Agent 本地 runner 设备"
+        ]
+      }
+    },
+    "/api/v1/agent/runner/devices/{device_id}/rename": {
+      "post": {
+        "operationId": "rename_device_api_v1_agent_runner_devices__device_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Rename Device Api V1 Agent Runner Devices  Device Id  Rename Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "重命名设备",
+        "tags": [
+          "Agent 本地 runner 设备"
+        ]
+      }
+    },
+    "/api/v1/agent/runner/pairing-token": {
+      "post": {
+        "description": "生成一次性配对 token（10 分钟有效），供 novamind-runner join 使用。",
+        "operationId": "create_pairing_token_api_v1_agent_runner_pairing_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Pairing Token Api V1 Agent Runner Pairing Token Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "生成本地 runner 配对凭证",
+        "tags": [
+          "Agent 本地 runner 设备"
         ]
       }
     },

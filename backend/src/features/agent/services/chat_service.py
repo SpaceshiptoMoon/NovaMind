@@ -232,6 +232,17 @@ class AgentChatService:
                 else None
             )
             context["knowledge_search_port"] = knowledge_search_port
+            # 本地工作区端口：会话绑定了工作区且 agent 勾了任一本地工具时注入
+            if "local_workspace" in (agent.enabled_tools or []):
+                from novamind.features.agent.services.local_workspace.assembly import (
+                    build_local_workspace_port,
+                )
+
+                context["local_workspace_port"] = await build_local_workspace_port(
+                    self.db, user_id, conv
+                )
+            else:
+                context["local_workspace_port"] = None
             # 知识检索管线配置（批2）：会话级知识绑定 + 会话模型 LLM。
             # llm_client 是 _build_context 已解析的会话模型客户端——改写/打分与主回答
             # 同模型，修掉 QA「改写固定用用户默认模型」的错位；会话无绑定时配置仍注入
