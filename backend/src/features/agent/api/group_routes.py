@@ -278,8 +278,14 @@ async def group_chat_ws(
                 group=group, group_session=conv, run=run,
                 user_content=content, steering_queue=steering_queue,
             )
-            async for event in gen:
-                await locked_send(event)
+            try:
+                async for event in gen:
+                    await locked_send(event)
+            finally:
+                # 断连/取消时必须显式关闭生成器：aclose 在挂起点向 run_round 抛
+                # GeneratorExit，触发其 except 分支把 run 置 cancelled——否则 run
+                # 永远卡 running，并发护栏从此拒绝该群的一切新消息
+                await gen.aclose()
         except AgentError as e:
             await locked_send({"type": "error", "data": {"content": e.message}})
         except Exception as e:

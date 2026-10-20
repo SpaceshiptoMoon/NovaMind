@@ -148,9 +148,15 @@ class GroupService:
         return await self.get_group(user_id, group_id)
 
     async def delete_group(self, user_id: int, group_id: int) -> None:
-        """解散群（成员级联删；成员私有会话保留——普通会话，用户可自行清理）。"""
-        await self._get_owned_group(user_id, group_id)
-        await self.group_repo.delete_group(group_id)
+        """解散群（成员级联删、运行审计连带清；群会话保留——普通会话，用户可自行清理）。"""
+        group = await self._get_owned_group(user_id, group_id)
+        from sqlalchemy import delete as sa_delete
+
+        from novamind.features.agent.models.group import AgentGroupRun
+
+        # runs 外键同时引用群与会话，留着即 1451；群是审计的根，随群消亡
+        await self.db.execute(sa_delete(AgentGroupRun).where(AgentGroupRun.group_id == group.id))
+        await self.group_repo.delete_group(group.id)
         await self.db.commit()
 
     # ==================== 群会话与一响触发 ====================
@@ -176,8 +182,11 @@ class GroupService:
         existing = await self._find_group_session(group.id)
         if existing is not None:
             return existing
+        agent_id = group.host_agent_id
+        if agent_id is None:
+            agent_id = await _first_member_agent_id(self.db, group.id)
         conv = await self.session_repo.create(
-            user_id=user_id, agent_id=group.host_agent_id or _first_member_agent_id(self.db, group.id),
+            user_id=user_id, agent_id=agent_id,
             extra_config={GROUP_SESSION_FLAG: {"group_id": group.id}},
         )
         await self.db.commit()

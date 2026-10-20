@@ -363,6 +363,8 @@ class AgentService:
         from novamind.features.agent.models.session import AgentSession
         from novamind.features.agent.models.tool_call import AgentToolCall
 
+        from novamind.features.agent.services.group_cleanup import cleanup_agent_group_refs
+
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
             raise AgentNotFoundError(agent_id)
@@ -372,6 +374,10 @@ class AgentService:
                 raise AgentNotFoundError(agent_id)
         elif agent.user_id != user_id:
             raise AgentNotFoundError(agent_id)
+
+        # 群侧引用先行清理：成员行删除/群解散/主持人与会话改锚（须在删会话前，
+        # 群会话此刻仍锚在被删 agent 上，改锚依赖原 agent_id 命中）
+        await cleanup_agent_group_refs(self.db, agent_id)
 
         # 级联删除关联数据
         from sqlalchemy import delete as sql_delete

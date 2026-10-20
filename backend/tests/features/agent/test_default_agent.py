@@ -38,9 +38,10 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 
 @pytest_asyncio.fixture
 async def agent_db():
-    """SQLite 内存库：agent_definitions + 级联删除触达的四张表（sessions/messages/tool_calls/memories）。"""
+    """SQLite 内存库：agent_definitions + 级联删除触达的表（sessions/messages/tool_calls/memories + 群侧三表）。"""
     from novamind.core.database.base import Base
     from novamind.features.agent.models.agent import AgentDefinition
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
     from novamind.features.agent.models.memory import AgentMemory
     from novamind.features.agent.models.message import AgentMessage
     from novamind.features.agent.models.session import AgentSession
@@ -59,6 +60,9 @@ async def agent_db():
                     AgentMessage.__table__,
                     AgentToolCall.__table__,
                     AgentMemory.__table__,
+                    AgentGroup.__table__,
+                    AgentGroupMember.__table__,
+                    AgentGroupRun.__table__,
                 ],
             )
         )

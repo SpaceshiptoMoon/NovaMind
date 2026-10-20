@@ -530,6 +530,131 @@ async def test_running_run_conflict_rejected(group_db):
     await session.close()
 
 
+@pytest.mark.asyncio
+async def test_group_session_agent_id_fallback_is_awaited(group_db):
+    """无主持人群开会话：agent_id 兜底取首个成员——协程对象落库即 DataError（漏 await 回归）。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.services.group_service import GroupService
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        await session.commit()
+        group_id = group.id
+
+    session = factory()
+    service = GroupService(session)
+    conv = await service.get_or_create_group_session(1, group_id)
+    assert isinstance(conv.agent_id, int)
+    assert conv.agent_id == ids[0]
+    # 幂等：再取仍是同一会话
+    again = await service.get_or_create_group_session(1, group_id)
+    assert again.id == conv.id
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_reanchors_group_refs(group_db):
+    """删成员 Agent：成员行删、主持人与群会话改锚到存活成员，群与 runs 存续。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import (
+        AgentGroup,
+        AgentGroupMember,
+        AgentGroupRun,
+    )
+    from novamind.features.agent.models.session import AgentSession
+    from novamind.features.agent.services.group_cleanup import (
+        GROUP_SESSION_FLAG,
+        cleanup_agent_group_refs,
+    )
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="consult", host_agent_id=ids[0])
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        conv = AgentSession(
+            user_id=1, agent_id=ids[0], session_id="s-reanchor", status="active",
+            extra_config={GROUP_SESSION_FLAG: {"group_id": group.id}},
+        )
+        session.add(conv)
+        await session.flush()
+        session.add(AgentGroupRun(
+            group_id=group.id, user_id=1, session_id="s-reanchor",
+            status="done", mode_snapshot="consult",
+        ))
+        await session.commit()
+        group_id = group.id
+
+    session = factory()
+    await cleanup_agent_group_refs(session, ids[0])
+    await session.commit()
+
+    # 成员行删、剩一员
+    members = (await session.execute(
+        select(AgentGroupMember).where(AgentGroupMember.group_id == group_id)
+    )).scalars().all()
+    assert [m.agent_id for m in members] == [ids[1]]
+    # 主持人与会话都改锚到存活成员
+    g = await session.get(AgentGroup, group_id)
+    assert g.host_agent_id == ids[1]
+    conv = await session.get(AgentSession, conv.id)
+    assert conv.agent_id == ids[1]
+    # 群与审计存续
+    assert g is not None
+    runs = (await session.execute(
+        select(AgentGroupRun).where(AgentGroupRun.group_id == group_id)
+    )).scalars().all()
+    assert len(runs) == 1
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_last_member_dissolves_group(group_db):
+    """删最后一个成员 Agent：群连带解散，runs 一并清空（无空群残留）。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
+    from novamind.features.agent.models.session import AgentSession
+    from novamind.features.agent.services.group_cleanup import cleanup_agent_group_refs
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        conv = AgentSession(
+            user_id=1, agent_id=ids[0], session_id="s-last", status="active",
+            extra_config={"group": {"group_id": group.id}},
+        )
+        session.add(conv)
+        await session.flush()
+        session.add(AgentGroupRun(
+            group_id=group.id, user_id=1, session_id="s-last",
+            status="done", mode_snapshot="brainstorm",
+        ))
+        await session.commit()
+        group_id = group.id
+
+    session = factory()
+    await cleanup_agent_group_refs(session, ids[0])
+    await session.commit()
+
+    assert await session.get(AgentGroup, group_id) is None
+    runs = (await session.execute(
+        select(AgentGroupRun).where(AgentGroupRun.group_id == group_id)
+    )).scalars().all()
+    assert runs == []
+    await session.close()
+
+
 # ==================== 工具：consult / messaging ====================
 
 
@@ -644,3 +769,88 @@ async def test_delivery_content_sanitized(group_db):
     assert "<system>" not in msg.content
     assert "&lt;system>" in msg.content
     assert msg.extra["delivery"]["from"] == "evil<agent"
+
+
+# ==================== 断连/取消收尾 ====================
+
+
+@pytest.mark.asyncio
+async def test_run_round_aclose_marks_cancelled(group_db):
+    """断连收尾：run_round 生成器被 aclose 时 run 置 cancelled（WS 端点 finally 路径）。
+
+    回归：WS 客户端断连后若不 aclose 生成器，run 永远卡 running，
+    并发护栏从此拒绝该群一切新消息。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    class _SlowEngine:
+        """首个事件后挂起：模拟成员 turn 进行中客户端断连。"""
+
+        def run(self, **kwargs):
+            from types import SimpleNamespace
+
+            async def _gen():
+                yield SimpleNamespace(event_type="content", data={"content": "半句话"})
+                await asyncio.Event().wait()  # 永久挂起（被 GeneratorExit 打断）
+            return _gen()
+
+    orchestrator, session = _make_orchestrator(factory, _SlowEngine())
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    gen = orchestrator.run_round(group, conv, run, "主题")
+    got = []
+    async for ev in gen:
+        got.append(ev)
+        break  # 消费一个事件后模拟客户端断连，直接关闭生成器
+    await gen.aclose()
+
+    await session.refresh(run)
+    assert run.status == "cancelled", "aclose 后 run 应收尾为 cancelled"
+
+
+@pytest.mark.asyncio
+async def test_run_round_normal_done_not_cancelled(group_db):
+    """相邻正常场景：完整消费事件流后 run=done，aclose 不误伤已完成状态。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    scripts = [
+        [("content", {"content": "完整发言"}), ("done", {"full_response": "完整发言", "total_tokens": 5})],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    async for _ in orchestrator.run_round(group, conv, run, "主题"):
+        pass
+
+    await session.refresh(run)
+    assert run.status == "done"
