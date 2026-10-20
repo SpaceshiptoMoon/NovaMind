@@ -1,4 +1,4 @@
-"""群聊管理服务：群 CRUD、成员校验、群会话 get_or_create、一响触发入口。"""
+"""群聊管理服务：群 CRUD、成员校验、群会话（一群多会话）、一响触发入口。"""
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -29,6 +29,9 @@ logger = get_logger(__name__)
 
 # 群会话 extra_config.group 标记键（时间线所在会话）
 GROUP_SESSION_FLAG = "group"
+# 成员私有会话 extra_config.group_member 标记键（与 orchestrator 同值；
+# 不从对方 import——两者互不依赖，同值约定见设计文档数据模型节）
+GROUP_MEMBER_FLAG = "group_member"
 
 
 class GroupService:
@@ -166,18 +169,16 @@ class GroupService:
     ) -> AgentSession:
         """取/建群会话（时间线载体，extra_config.group={group_id} 标记）。
 
+        未带 session_id 时返回该群最新 active 群会话，无则新建——供前端
+        未指定会话的进入路径与 WS 容错；多会话由 create_group_session
+        显式新建。
+
         Args:
-            session_id: 带值时校验归属与群匹配（一个群一个会话，P1 不做多会话）。
+            session_id: 带值时校验归属与群匹配（会话须属于该群）。
         """
         group = await self._get_owned_group(user_id, group_id)
         if session_id:
-            conv = await self.session_repo.get_by_session_id(session_id)
-            if (
-                conv is None or conv.user_id != user_id
-                or conv.status != "active"
-                or (conv.extra_config or {}).get(GROUP_SESSION_FLAG, {}).get("group_id") != group.id
-            ):
-                raise GroupNotFoundError(group_id)
+            conv = await self._get_group_session_or_fail(user_id, group_id, session_id)
             return conv
         existing = await self._find_group_session(group.id)
         if existing is not None:
@@ -190,6 +191,111 @@ class GroupService:
             extra_config={GROUP_SESSION_FLAG: {"group_id": group.id}},
         )
         await self.db.commit()
+        return conv
+
+    async def create_group_session(self, user_id: int, group_id: int) -> AgentSession:
+        """显式新建群会话（一群多会话：每次调用都是新会话，不复用不回退）。
+
+        Args:
+            user_id: 属主用户 ID。
+            group_id: 群 ID（须为属主的群）。
+
+        Returns:
+            新建的群会话（extra_config.group={group_id} 标记）。
+
+        Raises:
+            GroupNotFoundError: 群不存在或非属主。
+        """
+        group = await self._get_owned_group(user_id, group_id)
+        agent_id = group.host_agent_id
+        if agent_id is None:
+            agent_id = await _first_member_agent_id(self.db, group.id)
+        conv = await self.session_repo.create(
+            user_id=user_id, agent_id=agent_id,
+            extra_config={GROUP_SESSION_FLAG: {"group_id": group.id}},
+        )
+        await self.db.commit()
+        return conv
+
+    async def list_group_sessions(
+        self, user_id: int, group_id: int, limit: int = 50, offset: int = 0
+    ) -> tuple[list[AgentSession], int]:
+        """列出群的 active 会话（id 倒序=最新在前），供会话侧栏展示。"""
+        await self._get_owned_group(user_id, group_id)
+        from sqlalchemy import func, select
+
+        base = select(AgentSession).where(
+            AgentSession.user_id == user_id,
+            AgentSession.status == "active",
+            AgentSession.extra_config[GROUP_SESSION_FLAG]["group_id"].as_integer() == group_id,
+        )
+        total = (await self.db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+        result = await self.db.execute(
+            base.order_by(AgentSession.id.desc()).offset(offset).limit(limit)
+        )
+        return list(result.scalars().all()), total
+
+    async def delete_group_session(self, user_id: int, group_id: int, session_id: str) -> None:
+        """软删群会话；该会话关联的成员私有会话与 runs 一并清（隔离边界随之消亡）。
+
+        Raises:
+            GroupNotFoundError: 群或会话不存在/非属主/不属于该群。
+            AgentError: 该会话仍有 running run（先停止讨论再删）。
+        """
+        from novamind.features.agent.exceptions import AgentError
+        from novamind.features.agent.models.group import AgentGroupRun
+        from sqlalchemy import delete as sa_delete
+        from sqlalchemy import select
+
+        group = await self._get_owned_group(user_id, group_id)
+        conv = await self._get_group_session_or_fail(user_id, group.id, session_id)
+        running = await self.run_repo.get_running_run(group.id, conv.session_id)
+        if running is not None:
+            raise AgentError("该会话正在讨论中，请先停止再删除")
+        # 成员私有会话按 (group_id, group_session_id) 归属，随群会话一起软删
+        member_result = await self.db.execute(
+            select(AgentSession).where(
+                AgentSession.extra_config[GROUP_MEMBER_FLAG]["group_id"].as_integer() == group.id,
+                AgentSession.extra_config[GROUP_MEMBER_FLAG]["group_session_id"].as_string()
+                == conv.session_id,
+                AgentSession.status == "active",
+            )
+        )
+        from novamind.shared.utils.time_utils import now_china
+
+        from sqlalchemy import update as sa_update
+
+        now = now_china()
+        for member_conv in member_result.scalars().all():
+            await self.db.execute(
+                sa_update(AgentSession)
+                .where(AgentSession.id == member_conv.id)
+                .values(status="deleted", updated_at=now)
+            )
+        await self.db.execute(
+            sa_update(AgentSession)
+            .where(AgentSession.id == conv.id)
+            .values(status="deleted", updated_at=now)
+        )
+        await self.db.execute(
+            sa_delete(AgentGroupRun).where(
+                AgentGroupRun.group_id == group.id,
+                AgentGroupRun.session_id == conv.session_id,
+            )
+        )
+        await self.db.commit()
+
+    async def _get_group_session_or_fail(
+        self, user_id: int, group_id: int, session_id: str
+    ) -> AgentSession:
+        """取群会话并校验：存在、属主、active、且 extra_config.group.group_id 匹配。"""
+        conv = await self.session_repo.get_by_session_id(session_id)
+        if (
+            conv is None or conv.user_id != user_id
+            or conv.status != "active"
+            or (conv.extra_config or {}).get(GROUP_SESSION_FLAG, {}).get("group_id") != group_id
+        ):
+            raise GroupNotFoundError(group_id)
         return conv
 
     async def _find_group_session(self, group_id: int) -> AgentSession | None:

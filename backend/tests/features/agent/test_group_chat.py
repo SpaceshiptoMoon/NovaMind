@@ -856,6 +856,92 @@ async def test_run_round_normal_done_not_cancelled(group_db):
     assert run.status == "done"
 
 
+# ==================== 引擎 error 事件失败隔离 ====================
+
+
+@pytest.mark.asyncio
+async def test_engine_error_event_isolated_as_member_failure(group_db):
+    """引擎 yield error 事件时按成员失败隔离，不外抛中断整响。
+
+    回归：E2E 实测（模型额度 403）error 事件原先直透前端，前端 onError
+    断连 → GeneratorExit 收尾撞上已关闭事务 → run 永久卡 running，
+    并发护栏拒绝该群后续一切消息。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    scripts = [
+        [("error", {"content": "模型额度不可用（欠费或免费额度耗尽）"})],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    events = [ev async for ev in orchestrator.run_round(group, conv, run, "主题")]
+
+    # error 不外抛：事件流含失败 notice 与 run_done，run 正常收尾（failed=全员无有效发言）
+    types = [ev["type"] for ev in events]
+    assert "notice" in types, "成员失败应产出 notice 事件"
+    assert types[-1] == "group.run_done", "事件流应以 run_done 收尾"
+    await session.refresh(run)
+    assert run.status == "failed", "全员失败后 run 应收尾为 failed 而非卡 running"
+
+
+@pytest.mark.asyncio
+async def test_run_round_unexpected_exception_fails_run(group_db):
+    """引擎崩溃按成员失败隔离消化，run 收尾 failed 不卡 running。
+
+    相邻正常场景：成员 turn 正常完成时 run=done 不被隔离误伤（见上上例）。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    class _BoomEngine:
+        """run() 直接抛异常：模拟引擎层意外崩溃（被成员失败隔离消化）。"""
+
+        def run(self, **kwargs):
+            raise RuntimeError("意外崩溃")
+
+    orchestrator, session = _make_orchestrator(factory, _BoomEngine())
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    # 引擎崩溃=成员失败：不外抛，事件流以失败 notice + run_done 收尾
+    events = [ev async for ev in orchestrator.run_round(group, conv, run, "主题")]
+    types = [ev["type"] for ev in events]
+    assert "notice" in types
+    assert types[-1] == "group.run_done"
+
+    await session.refresh(run)
+    assert run.status == "failed", "全员失败后 run 应收尾为 failed 而非卡 running"
+
+
 @pytest.mark.asyncio
 async def test_tool_events_forwarded_with_member_marker(group_db):
     """工具事件落库后转发 WS（口径同单聊 chat_service）。
@@ -933,3 +1019,318 @@ async def test_tool_events_forwarded_with_member_marker(group_db):
     assert tcs[0].tool_name == "knowledge_search"
     assert tcs[0].status == "completed"
     assert tcs[0].result == "完整结果"
+
+
+@pytest.mark.asyncio
+async def test_timeline_projection_persists_process(group_db):
+    """时间线投影持久化过程档案（extra.process）：历史回放复原工具卡与思考区。
+
+    回归：投影原先只存最终发言文本，刷新后工具/思考过程全部丢失（前端
+    只能看见最终回答）。纯文本发言不写 process 键（无过程不污染投影）。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.models.message import AgentMessage
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    long_result = "长" * 3000
+    scripts = [
+        [
+            ("reasoning", {"content": "先想想"}),
+            ("tool_call", {"call_id": "c1", "tool_name": "knowledge_search", "arguments": {"query": "x"}}),
+            ("tool_result", {
+                "call_id": "c1", "tool_name": "knowledge_search",
+                "result": "预览", "full_result": long_result,
+                "status": "completed", "duration_ms": 10,
+            }),
+            ("content", {"content": "带过程的发言"}),
+            ("done", {"full_response": "带过程的发言", "total_tokens": 5}),
+        ],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    async for _ in orchestrator.run_round(group, conv, run, "主题"):
+        pass
+
+    timeline = (
+        await session.execute(
+            select(AgentMessage)
+            .where(
+                AgentMessage.conversation_id == conv.id,
+                AgentMessage.role == "assistant",
+            )
+        )
+    ).scalars().all()
+    assert len(timeline) == 1
+    process = timeline[0].extra["process"]
+    assert process["reasoning"] == "先想想"
+    assert len(process["tools"]) == 1
+    step = process["tools"][0]
+    assert step["call_id"] == "c1"
+    assert step["tool_name"] == "knowledge_search"
+    assert step["status"] == "completed"
+    # 超长结果按投影口径截断（全文在 AgentToolCall.result，不随投影膨胀）
+    assert step["result"].endswith("…（已截断）")
+    assert len(step["result"]) < len(long_result)
+
+
+@pytest.mark.asyncio
+async def test_timeline_projection_plain_speech_no_process_key(group_db):
+    """相邻正常场景：纯文本发言的时间线投影不含 process 键。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.models.message import AgentMessage
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    scripts = [
+        [("content", {"content": "纯文本"}), ("done", {"full_response": "纯文本", "total_tokens": 5})],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    async for _ in orchestrator.run_round(group, conv, run, "主题"):
+        pass
+
+    timeline = (
+        await session.execute(
+            select(AgentMessage)
+            .where(
+                AgentMessage.conversation_id == conv.id,
+                AgentMessage.role == "assistant",
+            )
+        )
+    ).scalars().all()
+    assert len(timeline) == 1
+    assert "process" not in (timeline[0].extra or {})
+
+
+# ==================== 一群多会话 ====================
+
+
+@pytest.mark.asyncio
+async def test_group_multi_sessions_create_and_list(group_db):
+    """一群多会话：create_group_session 两次得两个独立会话，列表可查且倒序。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.services.group_service import GroupService
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        await session.commit()
+        group_id = group.id
+
+    service_session = factory()
+    service = GroupService(service_session)
+    conv1 = await service.create_group_session(1, group_id)
+    conv2 = await service.create_group_session(1, group_id)
+    await service_session.commit()
+
+    assert conv1.session_id != conv2.session_id
+    assert conv1.extra_config["group"]["group_id"] == group_id
+    assert conv2.extra_config["group"]["group_id"] == group_id
+
+    items, total = await service.list_group_sessions(1, group_id)
+    assert total == 2
+    # id 倒序=最新在前
+    assert [c.session_id for c in items] == [conv2.session_id, conv1.session_id]
+
+    # get_or_create 回退到最新会话（进群未指定会话的默认路径）
+    fallback = await service.get_or_create_group_session(1, group_id)
+    assert fallback.session_id == conv2.session_id
+
+
+@pytest.mark.asyncio
+async def test_member_sessions_isolated_per_group_session(group_db):
+    """成员私有会话按 (group_id, group_session_id) 隔离：同一群两个会话各自独立。
+
+    回归：原实现成员会话只按 group_id 归属，一群多会话时成员上下文互相
+    串话。旧格式（仅 group_id 无 group_session_id）不匹配，触发新建。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.models.message import AgentMessage
+    from novamind.features.agent.models.session import AgentSession
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        await session.commit()
+        group_id = group.id
+
+    scripts = [
+        [("content", {"content": "s1-A"}), ("done", {"full_response": "s1-A", "total_tokens": 5})],
+        [("content", {"content": "s1-B"}), ("done", {"full_response": "s1-B", "total_tokens": 5})],
+        [("content", {"content": "s2-A"}), ("done", {"full_response": "s2-A", "total_tokens": 5})],
+        [("content", {"content": "s2-B"}), ("done", {"full_response": "s2-B", "total_tokens": 5})],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+
+    conv1 = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    conv2 = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run1 = await orchestrator.run_repo.create_run(group_id, 1, conv1.session_id, "brainstorm")
+    run2 = await orchestrator.run_repo.create_run(group_id, 1, conv2.session_id, "brainstorm")
+    await session.commit()
+
+    async for _ in orchestrator.run_round(group, conv1, run1, "会话一主题"):
+        pass
+    async for _ in orchestrator.run_round(group, conv2, run2, "会话二主题"):
+        pass
+
+    member_sessions = (
+        await session.execute(
+            select(AgentSession).where(
+                AgentSession.extra_config["group_member"]["group_id"].as_integer() == group_id
+            )
+        )
+    ).scalars().all()
+    # 2 成员 × 2 群会话 = 4 条，各自归属自己的群会话
+    assert len(member_sessions) == 4
+    by_gs: dict[str, list[AgentSession]] = {}
+    for s in member_sessions:
+        gs = s.extra_config["group_member"]["group_session_id"]
+        by_gs.setdefault(gs, []).append(s)
+    assert set(by_gs.keys()) == {conv1.session_id, conv2.session_id}
+    assert len(by_gs[conv1.session_id]) == 2
+    assert len(by_gs[conv2.session_id]) == 2
+
+    # 消息隔离：conv1 的成员会话只收 conv1 的投递
+    for s in by_gs[conv1.session_id]:
+        msgs = (
+            await session.execute(
+                select(AgentMessage).where(AgentMessage.conversation_id == s.id)
+            )
+        ).scalars().all()
+        contents = [m.content for m in msgs if m.extra and "delivery" in (m.extra or {})]
+        assert any("会话一主题" in c for c in contents)
+        assert not any("会话二主题" in c for c in contents)
+
+
+@pytest.mark.asyncio
+async def test_delete_group_session_cleans_member_sessions_and_runs(group_db):
+    """删群会话：成员私有会话随会话一起软删、runs 清除；另一会话不受影响。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
+    from novamind.features.agent.models.session import AgentSession
+    from novamind.features.agent.services.group_service import GroupService
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        await session.commit()
+        group_id = group.id
+
+    service_session = factory()
+    service = GroupService(service_session)
+    conv1 = await service.create_group_session(1, group_id)
+    conv2 = await service.create_group_session(1, group_id)
+    # conv1 挂两条成员私有会话 + 一条 run
+    for aid in ids:
+        await service.session_repo.create(
+            user_id=1, agent_id=aid,
+            extra_config={
+                "group_member": {
+                    "group_id": group_id, "group_session_id": conv1.session_id,
+                }
+            },
+        )
+    await service.run_repo.create_run(group_id, 1, conv1.session_id, "brainstorm")
+    await service_session.commit()
+
+    # running run 阻止删除
+    from novamind.features.agent.exceptions import AgentError
+
+    with pytest.raises(AgentError, match="讨论中"):
+        await service.delete_group_session(1, group_id, conv1.session_id)
+
+    # run 结束后删除放行：conv1 + 成员私有会话软删、runs 清除
+    run = (
+        await service_session.execute(select(AgentGroupRun))
+    ).scalars().one()
+    await service.run_repo.finish_run(run.id, "done")
+    await service_session.commit()
+    await service.delete_group_session(1, group_id, conv1.session_id)
+
+    sessions = (
+        await service_session.execute(select(AgentSession))
+    ).scalars().all()
+    alive = [s for s in sessions if s.status == "active"]
+    deleted = [s for s in sessions if s.status == "deleted"]
+    # 活着：conv2 群会话（成员私有会话都在 conv1 名下被软删）
+    assert len(alive) == 1 and alive[0].session_id == conv2.session_id
+    # 软删：conv1 群会话 + 2 条成员私有会话
+    assert len(deleted) == 3
+    # runs 全部随会话清除
+    assert (
+        await service_session.execute(select(AgentGroupRun))
+    ).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_single_chat_list_excludes_group_flagged_sessions(group_db):
+    """单聊会话列表过滤群标记会话：group/group_member 标记的会话不泄漏进单聊。"""
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.repository.agent_repository import SessionRepository
+
+    async with factory() as session:
+        repo = SessionRepository(session)
+        await repo.create(user_id=1, agent_id=ids[0])  # 普通单聊
+        await repo.create(
+            user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": 9}}
+        )
+        await repo.create(
+            user_id=1, agent_id=ids[0],
+            extra_config={"group_member": {"group_id": 9, "group_session_id": "s-x"}},
+        )
+        await session.commit()
+
+        convs, total = await repo.list_by_user(1)
+        assert total == 1
+        assert len(convs) == 1
+        assert (convs[0].extra_config or {}).get("group") is None
+        assert (convs[0].extra_config or {}).get("group_member") is None

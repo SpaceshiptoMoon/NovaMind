@@ -109,3 +109,20 @@ class AgentGroupRunResponse(BaseModel):
     error: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+
+
+class GroupSessionResponse(BaseModel):
+    """群会话响应（时间线载体，一群可多会话）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: str
+    title: str | None = None
+    created_at: datetime | None = None
+
+
+class GroupSessionListResponse(BaseModel):
+    """群会话列表响应"""
+
+    items: list[GroupSessionResponse]
+    total: int

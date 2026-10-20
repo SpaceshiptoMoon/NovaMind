@@ -32,6 +32,8 @@ from novamind.features.agent.schemas.group_schema import (
     AgentGroupListResponse,
     AgentGroupRunResponse,
     AgentGroupUpdate,
+    GroupSessionListResponse,
+    GroupSessionResponse,
 )
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.group_orchestrator import GroupOrchestrator
@@ -135,16 +137,51 @@ async def delete_group(
 
 @router.post(
     "/groups/{group_id}/sessions",
-    summary="开群会话",
-    description="取/建群会话（时间线载体），返回 session_id",
+    response_model=GroupSessionResponse,
+    summary="新建群会话",
+    description="显式新建群会话（一群多会话），返回 session_id；进群未指定会话时用默认回退（见 GET sessions）",
 )
 async def create_group_session(
     group_id: Annotated[int, Path(gt=0)],
     user_id: int = Depends(get_current_user_id),
     service: GroupService = Depends(get_group_service),
 ):
-    conv = await service.get_or_create_group_session(user_id, group_id)
-    return {"session_id": conv.session_id}
+    conv = await service.create_group_session(user_id, group_id)
+    return conv
+
+
+@router.get(
+    "/groups/{group_id}/sessions",
+    response_model=GroupSessionListResponse,
+    summary="群会话列表",
+    description="列出群的 active 会话（id 倒序=最新在前）",
+)
+async def list_group_sessions(
+    group_id: Annotated[int, Path(gt=0)],
+    user_id: int = Depends(get_current_user_id),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    service: GroupService = Depends(get_group_service),
+):
+    convs, total = await service.list_group_sessions(user_id, group_id, limit, offset)
+    return GroupSessionListResponse(
+        items=[GroupSessionResponse.model_validate(c) for c in convs], total=total
+    )
+
+
+@router.delete(
+    "/groups/{group_id}/sessions/{session_id}",
+    summary="删除群会话",
+    description="软删群会话；关联成员私有会话与运行记录一并清理，讨论中的会话拒绝删除",
+)
+async def delete_group_session(
+    group_id: Annotated[int, Path(gt=0)],
+    session_id: Annotated[str, Path(description="群会话 UUID")],
+    user_id: int = Depends(get_current_user_id),
+    service: GroupService = Depends(get_group_service),
+):
+    await service.delete_group_session(user_id, group_id, session_id)
+    return {"success": True, "message": "会话已删除"}
 
 
 @router.get(

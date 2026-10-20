@@ -187,6 +187,10 @@ class SessionRepository:
     ) -> tuple[list[AgentSession], int]:
         """列出用户仅 active 状态的会话，可按 Agent 过滤，created_at 倒序分页并返回总数。
 
+        排除带群标记的会话（extra_config.group / extra_config.group_member）
+        ——群时间线会话归群聊侧栏管，成员私有会话是编排内部载体，都不属于
+        单聊会话列表。
+
         Args:
             user_id: 属主用户 ID。
             agent_id: 按 Agent 过滤；None 不过滤。
@@ -199,6 +203,10 @@ class SessionRepository:
         base = select(AgentSession).where(
             AgentSession.user_id == user_id,
             AgentSession.status == "active",
+            # JSON 路径不存在（普通单聊会话）才入选；SQLite/MySQL JSON 路径
+            # 缺失时比较结果为 NULL，IS NULL 恰好放行，两方言语义一致
+            AgentSession.extra_config["group"].as_integer().is_(None),
+            AgentSession.extra_config["group_member"].as_integer().is_(None),
         )
         if agent_id:
             base = base.where(AgentSession.agent_id == agent_id)

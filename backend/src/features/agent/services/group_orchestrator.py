@@ -6,8 +6,9 @@
   consult_member_{id} 工具按需拉起。
 
 上下文模型：每 (群会话, 成员) 一条私有 AgentSession（extra_config.group_member
-标记），投递=向成员会话 append user 消息（extra.delivery 标注来源与可见性）；
-群时间线是投影（仅渲染/审计），不参与成员上下文组装。
+={group_id, group_session_id} 标记），投递=向成员会话 append user 消息
+（extra.delivery 标注来源与可见性）；群时间线是投影（仅渲染/审计），不参与
+成员上下文组装。一群可开多个群会话，各会话的成员上下文互不可见。
 """
 import asyncio
 import json
@@ -49,6 +50,10 @@ from novamind.shared.prompts.prompt_manager import PromptManager
 
 logger = get_logger(__name__)
 
+
+class MemberTurnError(Exception):
+    """单成员 turn 执行失败（引擎 error 事件转译），由调用方失败隔离消化。"""
+
 # 编排参数默认值（extra_config 可覆盖；上限为设计硬约束非资源假设）
 DEFAULT_ROUNDS_PER_TURN = 1
 MAX_ROUNDS_PER_TURN = 3
@@ -60,6 +65,16 @@ GROUP_MEMBER_FLAG = "group_member"
 GROUP_FLAG = "group"
 # 头脑风暴发信工具名（事件分流用）
 MESSAGING_TOOL_NAMES = ("send_group_message", "send_direct_message")
+# 时间线投影 extra 内工具结果的截断上限（字符）：与前端显示截断同口径，信息零损失；
+# 全文以 AgentToolCall.result 为准。思考流不截断——投影是其唯一持久化副本。
+TIMELINE_TOOL_RESULT_MAX_CHARS = 2000
+
+
+def _cap_tool_result(text: str) -> str:
+    """工具结果按投影显示口径截断（标记样式与前端 truncate 一致）。"""
+    if len(text) <= TIMELINE_TOOL_RESULT_MAX_CHARS:
+        return text
+    return text[:TIMELINE_TOOL_RESULT_MAX_CHARS] + "\n…（已截断）"
 
 
 class GroupOrchestrator:
@@ -111,7 +126,7 @@ class GroupOrchestrator:
         members = await self._load_members(group.id)
         config = group.extra_config or {}
         try:
-            members = await self._attach_sessions(group, members)
+            members = await self._attach_sessions(group, members, group_session.session_id)
             # wave 0：用户消息广播全员私有会话（纯 DB append，无 LLM）
             for m in members:
                 await self._deliver(
@@ -140,12 +155,27 @@ class GroupOrchestrator:
                 ):
                     yield ev
         except (asyncio.CancelledError, GeneratorExit):
-            # 客户端断连/取消：run 置 cancelled，回滚未提交事务
+            # 客户端断连/取消：run 置 cancelled。rollback 会 expire 全部已加载
+            # 实例（后续 run.id 属性访问触发同步 IO 报 MissingGreenlet），先取 id
+            run_id = run.id
+            await self.db.rollback()
             try:
-                await self.run_repo.finish_run(run.id, "cancelled")
+                await self.run_repo.finish_run(run_id, "cancelled")
                 await self.db.commit()
             except Exception as cleanup_err:
                 logger.warning("取消时 run 收尾失败", error=str(cleanup_err))
+                await self.db.rollback()
+            raise
+        except Exception as e:
+            # 通用兜底：编排层未捕获异常同样收尾 run，防其永久卡 running
+            # 阻塞并发护栏（该群从此无法再发起讨论）
+            run_id = run.id
+            await self.db.rollback()
+            try:
+                await self.run_repo.finish_run(run_id, "failed", error=str(e))
+                await self.db.commit()
+            except Exception as cleanup_err:
+                logger.warning("异常时 run 收尾失败", error=str(cleanup_err))
                 await self.db.rollback()
             raise
 
@@ -196,9 +226,11 @@ class GroupOrchestrator:
                 })
                 speech = ""
                 failed = False
+                process: dict[str, Any] = {}
                 try:
                     async for ev, acc in self._run_member_turn(
-                        group, run, m, members, steering_queue=steering_queue
+                        group, run, m, members,
+                        steering_queue=steering_queue, process_out=process,
                     ):
                         yield ev
                         speech = acc
@@ -212,6 +244,9 @@ class GroupOrchestrator:
                     failed = True
 
                 if failed:
+                    # 不回滚：失败 turn 的半程落库（工具卡/消息）是真实发生的
+                    # 历史，与失败 notice 原子提交；rollback 会 expire 已加载
+                    # 实例，后续 ORM 访问在 async 下触发 sync IO（MissingGreenlet）
                     text = f"成员「{m['name']}」发言失败，已跳过"
                     await self._append_timeline(group_session, m, text, extra={"error": True})
                     yield self._emit("notice", {"content": text, "run_id": run.id})
@@ -227,7 +262,7 @@ class GroupOrchestrator:
                 speech_log.append({
                     "member_agent_id": m["agent_id"], "name": m["name"], "wave": wave + 1,
                 })
-                await self._append_timeline(group_session, m, speech)
+                await self._append_timeline(group_session, m, speech, process=process)
                 # 公开发言广播其他成员（纯 DB append，无 LLM）
                 for other in members:
                     if other["agent_id"] != m["agent_id"]:
@@ -286,8 +321,10 @@ class GroupOrchestrator:
                 return f"错误：成员 {member_id} 不在本群成员名单内"
             try:
                 speech = ""
+                process: dict[str, Any] = {}
                 async for ev, acc in self._run_member_turn(
-                    group, run, member, members, extra_user_content=question,
+                    group, run, member, members,
+                    extra_user_content=question, process_out=process,
                 ):
                     self._consult_events.append(ev)
                     speech = acc
@@ -303,7 +340,7 @@ class GroupOrchestrator:
             answer = speech.strip() or "（成员未给出文本答复）"
             # 成员答复上时间线 + 广播其他成员（含主持人——主持人会在自身
             # 会话里看到成员发言全文，与 tool_result 互为备份）
-            await self._append_timeline(group_session, member, answer)
+            await self._append_timeline(group_session, member, answer, process=process)
             for other in members:
                 if other["agent_id"] != member_id:
                     await self._deliver(
@@ -328,11 +365,12 @@ class GroupOrchestrator:
             "member_agent_id": host["agent_id"], "name": host["name"],
             "wave": 1, "run_id": run.id,
         })
+        host_process: dict[str, Any] = {}
         try:
             async for ev, acc in self._run_member_turn(
                 group, run, host, members,
                 consult_bundle=bundle, consultable=consultable,
-                steering_queue=steering_queue,
+                steering_queue=steering_queue, process_out=host_process,
             ):
                 yield ev
                 speech = acc
@@ -349,7 +387,7 @@ class GroupOrchestrator:
             return
 
         if speech.strip():
-            await self._append_timeline(group_session, host, speech)
+            await self._append_timeline(group_session, host, speech, process=host_process)
         await self.run_repo.finish_run(
             run.id, "done", orchestration_meta={"consulted": consulted},
         )
@@ -368,6 +406,7 @@ class GroupOrchestrator:
         consult_bundle: dict[str, Any] | None = None,
         consultable: list[dict[str, Any]] | None = None,
         steering_queue: Any | None = None,
+        process_out: dict[str, Any] | None = None,
     ) -> AsyncGenerator[tuple[dict[str, Any], str], None]:
         """拉起单成员一次完整 ReAct turn（复用 AgentEngine.run），落库照抄 chat_service。
 
@@ -378,6 +417,8 @@ class GroupOrchestrator:
             consult_bundle: 非空时本成员为主持人，注入 consult_member 工具与回调。
             consultable: 主持人可咨询成员清单（动态工具 schema 生成源）。
             steering_queue: 运行中插话队列。
+            process_out: 非空 dict 时在 done 处装配过程档案（tools/reasoning），
+                供调用方并入时间线投影（历史回放复原工具卡与思考区）。
 
         Yields:
             (事件字典, 累计最终答复) 二元组；done 事件对应的累计值即最终发言。
@@ -488,6 +529,9 @@ class GroupOrchestrator:
         scrubber = StreamingContextScrubber()
         speech = ""
         assistant_msg_id: int | None = None
+        # 本轮发言的过程档案：工具步骤与思考流，随时间线投影持久化（历史回放复原用）
+        turn_tools: list[dict[str, Any]] = []
+        turn_reasoning = ""
 
         async def _compress_on_overflow(msgs):
             """溢出兜底压缩回调（透传 tools，照抄 chat_service）。"""
@@ -534,6 +578,12 @@ class GroupOrchestrator:
                         iteration=context.get("current_iteration"),
                     )
                     context[f"tc_{event.data.get('call_id')}"] = tc.id
+                    turn_tools.append({
+                        "call_id": event.data.get("call_id") or "",
+                        "tool_name": event.data.get("tool_name", ""),
+                        "arguments": event.data.get("arguments", {}),
+                        "status": "running",
+                    })
                     # 落库后转发给 WS（口径同单聊 chat_service）：前端工具卡实时翻转状态
                     yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "tool_result":
@@ -554,6 +604,13 @@ class GroupOrchestrator:
                         tool_name=event.data.get("tool_name"),
                         iteration=context.get("current_iteration"),
                     )
+                    for step in reversed(turn_tools):
+                        if step["call_id"] == call_id:
+                            step["result"] = _cap_tool_result(full_result)
+                            step["status"] = (
+                                "failed" if event.data.get("status") == "failed" else "completed"
+                            )
+                            break
                     yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "content":
                     cleaned = scrubber.feed(event.data.get("content", ""))
@@ -561,6 +618,7 @@ class GroupOrchestrator:
                     if cleaned:
                         yield self._member_event(event.event_type, member, {"content": cleaned}), full_response
                 elif event.event_type == "reasoning":
+                    turn_reasoning += event.data.get("content", "")
                     yield self._member_event(event.event_type, member, {
                         "content": event.data.get("content", ""),
                     }), full_response
@@ -571,15 +629,19 @@ class GroupOrchestrator:
                     if event.data.get("truncated", False):
                         full_response += "\n\n[已达到最大迭代次数，发言被截断]"
                     speech = full_response
+                    if process_out is not None:
+                        process_out["tools"] = turn_tools
+                        process_out["reasoning"] = turn_reasoning or ""
                     await self._finish_member_turn(conv, agent, event, speech, context)
                     yield self._member_event("done", member, {
                         "content": speech,
                         "total_tokens": event.data.get("total_tokens", 0),
                     }), speech
                 elif event.event_type == "error":
-                    yield self._member_event("error", member, {
-                        "content": event.data.get("content", ""),
-                    }), full_response
+                    # 引擎层错误（如模型额度耗尽）以 raise 退出本 turn，交给
+                    # 调用方的成员失败隔离（notice+跳过/consult 错误回流），
+                    # 不能只转发——前端 onError 会断连导致整响中断、run 卡死
+                    raise MemberTurnError(str(event.data.get("content", "成员执行出错")))
         except (asyncio.CancelledError, GeneratorExit):
             # 断连/取消：回滚未提交事务（投递与 user 消息已提前 commit）
             try:
@@ -686,11 +748,22 @@ class GroupOrchestrator:
         member: dict[str, Any],
         speech: str,
         extra: dict[str, Any] | None = None,
+        process: dict[str, Any] | None = None,
     ) -> None:
-        """公开发言落群时间线（投影）：role=assistant + extra.member_agent_id。"""
+        """公开发言落群时间线（投影）：role=assistant + extra.member_agent_id。
+
+        process（本轮工具步骤+思考流）非空时并入 extra.process——时间线是
+        该发言过程的唯一持久化副本（工具调用记录挂在成员私有会话，群回放
+        不读那边），刷新后的历史回放据此复原工具卡与思考折叠区。
+        """
         payload: dict[str, Any] = {
             "member_agent_id": member["agent_id"], "name": member["name"],
         }
+        if process and (process.get("tools") or process.get("reasoning")):
+            payload["process"] = {
+                "tools": process.get("tools") or [],
+                "reasoning": process.get("reasoning") or "",
+            }
         if extra:
             payload.update(extra)
         await self.agent_service.save_message(
@@ -716,32 +789,46 @@ class GroupOrchestrator:
         return members
 
     async def _attach_sessions(
-        self, group: AgentGroup, members: list[dict[str, Any]]
+        self, group: AgentGroup, members: list[dict[str, Any]],
+        group_session_id: str,
     ) -> list[dict[str, Any]]:
         """为每个成员 get_or_create 私有会话，并按 host_agent_id 标记主持人。
 
-        会话 extra_config.group_member={group_id} 标记归属；与该 agent 的单聊
-        会话完全隔离。
+        会话 extra_config.group_member={group_id, group_session_id} 标记归属
+        ——按 (群, 群会话) 二元组隔离：一个群开多个会话时，各会话的成员
+        上下文互不可见（对齐设计文档数据模型节）；与该 agent 的单聊会话
+        完全隔离。
         """
         for m in members:
             if group.host_agent_id == m["agent_id"]:
                 m["is_host"] = True
-            existing = await self._find_member_session(group.id, m["agent_id"])
+            existing = await self._find_member_session(
+                group.id, group_session_id, m["agent_id"]
+            )
             if existing is not None:
                 m["session"] = existing
                 continue
             session = await self.session_repo.create(
                 user_id=group.user_id, agent_id=m["agent_id"],
-                extra_config={GROUP_MEMBER_FLAG: {"group_id": group.id}},
+                extra_config={
+                    GROUP_MEMBER_FLAG: {
+                        "group_id": group.id,
+                        "group_session_id": group_session_id,
+                    }
+                },
             )
             m["session"] = session
         await self.db.commit()
         return members
 
     async def _find_member_session(
-        self, group_id: int, agent_id: int
+        self, group_id: int, group_session_id: str, agent_id: int
     ) -> AgentSession | None:
-        """按 (group_id, agent_id) 查活跃成员私有会话（JSON 路径匹配）。"""
+        """按 (group_id, group_session_id, agent_id) 查活跃成员私有会话。
+
+        只认双键齐备的会话：历史数据（仅 group_id，无 group_session_id）
+        不匹配即新建，旧上下文不串入新会话。
+        """
         from sqlalchemy import select
 
         stmt = (
@@ -749,6 +836,8 @@ class GroupOrchestrator:
             .where(
                 AgentSession.agent_id == agent_id,
                 AgentSession.extra_config[GROUP_MEMBER_FLAG]["group_id"].as_integer() == group_id,
+                AgentSession.extra_config[GROUP_MEMBER_FLAG]["group_session_id"].as_string()
+                == group_session_id,
                 AgentSession.status == "active",
             )
             .order_by(AgentSession.id.desc())
