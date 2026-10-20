@@ -48,6 +48,7 @@ from novamind.features.agent.schemas.agent_schema import (
     MessageListResponse,
     SessionKnowledgeBindingsUpdate,
     SessionResponse,
+    SessionWorkspaceBind,
     SystemPromptResponse,
     ToolFunctionResponse,
     ToolProviderResponse,
@@ -354,6 +355,48 @@ async def update_session_knowledge_bindings(
         user_id, session_id,
         request.knowledge_bindings.model_dump() if request.knowledge_bindings else None,
     )
+
+
+@router.put(
+    "/sessions/{session_id}/workspace",
+    response_model=SessionResponse,
+    summary="绑定/解绑会话工作区",
+    description=(
+        "本地文件夹模式开关：绑定后 read/glob/grep/bash 工具默认必带"
+        "（以 root 为工作区根执行）；传 null 解绑恢复云端 agent 模式"
+    ),
+)
+async def update_session_workspace(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    request: SessionWorkspaceBind,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.update_session_workspace(user_id, session_id, request.workspace)
+
+
+@router.post(
+    "/workspace/validate",
+    response_model=AgentActionResponse,
+    summary="校验工作区根目录",
+    description="本地形态绑定前校验路径存在且为目录（后端与文件同机时可用）",
+)
+async def validate_workspace_root(
+    request: SessionWorkspaceBind,
+    user_id: int = Depends(get_current_user_id),
+):
+    from pathlib import Path
+
+    from novamind.features.agent.exceptions import AgentError
+
+    workspace = request.workspace or {}
+    root = str(workspace.get("root") or "").strip()
+    if not root:
+        raise AgentError("工作区根路径不能为空")
+    p = Path(root)
+    if not p.is_dir():
+        raise AgentError(f"目录不存在: {root}")
+    return {"success": True, "message": "目录有效"}
 
 
 @router.get(

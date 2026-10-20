@@ -1,4 +1,4 @@
-"""本地工作区进程内工具实现：read/glob/grep（P0 只读三件套）。
+"""本地工作区进程内工具实现：read/glob/grep/bash（P0 只读三件套 + bash 命令）。
 
 本模块被 InProcessExecutor 直接调用；runner 形态下同名逻辑在 runner 侧
 独立实现（runner 不 import 云端代码），两侧语义须保持一致——文件行号/
@@ -8,6 +8,8 @@ import asyncio
 import fnmatch
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,9 @@ _READ_MAX_LINES = 2000
 _READ_MAX_LINE_CHARS = 2000
 # glob/grep 结果条数上限（防巨树扫爆上下文）
 _LIST_MAX_ENTRIES = 200
+# bash：输出与超时上限（一次性命令版，P2 升级持久会话）
+_BASH_TIMEOUT_SECONDS = 120
+_BASH_MAX_OUTPUT_CHARS = 30_000
 
 
 async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -32,6 +37,8 @@ async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]
             return await asyncio.to_thread(_glob, root, os_type, args)
         if tool == "grep":
             return await asyncio.to_thread(_grep, root, os_type, args)
+        if tool == "bash":
+            return await _bash(root, os_type, args)
         return {"ok": False, "error": f"未知工具: {tool}", "error_code": "UNKNOWN_TOOL"}
     except WorkspaceSecurityError as e:
         return {"ok": False, "error": str(e), "error_code": "PATH_ESCAPED"}
@@ -41,6 +48,65 @@ async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]
         return {"ok": False, "error": "文件不存在", "error_code": "FILE_NOT_FOUND"}
     except IsADirectoryError:
         return {"ok": False, "error": "路径是目录而非文件", "error_code": "IS_DIRECTORY"}
+
+
+async def _bash(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
+    """一次性命令执行：独立子进程、cwd=工作区根、输出截断、超时强杀。
+
+    cwd 定位在授权根内：命令仍可能读根外文件（进程级隔离做不到），
+    P0 接受此边界（与 Claude Code 本机执行同信任级）；P1 审批流补强。
+    """
+    command = str(args.get("command") or "").strip()
+    if not command:
+        return {"ok": False, "error": "command 不能为空", "error_code": "INVALID_ARGS"}
+    if os_type == "windows":
+        shell = ["cmd.exe", "/c", command]
+    else:
+        shell = ["/bin/sh", "-c", command]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *shell,
+            cwd=root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_BASH_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return {
+                "ok": False,
+                "error": f"命令超时（{_BASH_TIMEOUT_SECONDS}s）已终止",
+                "error_code": "COMMAND_TIMEOUT",
+            }
+    except OSError as e:
+        return {"ok": False, "error": f"命令启动失败: {e}", "error_code": "COMMAND_SPAWN_FAILED"}
+
+    def _decode(b: bytes) -> str:
+        # Windows 控制台多为 GBK，Linux/macOS 为 UTF-8；逐字节解码失败降级 replace
+        enc = "gbk" if os_type == "windows" else "utf-8"
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            return b.decode(enc, errors="replace")
+
+    out, err = _decode(stdout), _decode(stderr)
+    truncated = False
+    if len(out) > _BASH_MAX_OUTPUT_CHARS:
+        out = out[:_BASH_MAX_OUTPUT_CHARS] + "\n…[输出截断]"
+        truncated = True
+    parts = []
+    if out.strip():
+        parts.append(out.rstrip("\n"))
+    if err.strip():
+        parts.append(f"[stderr]\n{err.rstrip(chr(10) + chr(13))}")
+    result = "\n".join(parts) or "（无输出）"
+    return {
+        "ok": proc.returncode == 0,
+        "result": result,
+        "exit_code": proc.returncode,
+        "truncated": truncated,
+    }
 
 
 def _resolve(root: str, os_type: str, args: dict[str, Any]) -> str:

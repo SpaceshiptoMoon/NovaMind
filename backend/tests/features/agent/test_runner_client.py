@@ -1,5 +1,6 @@
 """runner 侧安全校验与工具实现测试：独立拷贝防漂移（与云端判据对齐验证）。"""
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -43,5 +44,12 @@ async def test_runner_ops_roundtrip(workspace_root):
 async def test_runner_ops_security_errors(workspace_root):
     out = await execute_local(workspace_root, "windows", "read", {"path": "../x"})
     assert out["error_code"] == "PATH_ESCAPED"
-    out = await execute_local(workspace_root, "windows", "bash", {"command": "ls"})
+    out = await execute_local(workspace_root, "windows", "notebook_edit", {})
     assert out["error_code"] == "UNKNOWN_TOOL"
+
+
+@pytest.mark.asyncio
+async def test_runner_ops_bash(workspace_root):
+    os_type = "windows" if sys.platform == "win32" else sys.platform
+    out = await execute_local(workspace_root, os_type, "bash", {"command": "dir" if sys.platform == "win32" else "ls"})
+    assert out["ok"] is True and "src" in out["result"]

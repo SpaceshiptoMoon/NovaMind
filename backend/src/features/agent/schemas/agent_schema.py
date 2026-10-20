@@ -139,6 +139,16 @@ class SessionKnowledgeBindingsUpdate(BaseModel):
     )
 
 
+class SessionWorkspaceBind(BaseModel):
+    """会话工作区绑定请求：mode=local 即本地文件夹模式（工具默认必带）。
+
+    根路径由前端经工作区验证接口确认存在后传入；null 解绑恢复云端 agent 模式。
+    """
+    workspace: dict[str, Any] | None = Field(
+        None, description='工作区配置，如 {"mode": "local", "root": "D:/projects/demo"}；null 解绑',
+    )
+
+
 class AgentSessionListResponse(BaseModel):
     """会话列表响应"""
     items: list[SessionResponse]

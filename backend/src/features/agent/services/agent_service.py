@@ -576,6 +576,56 @@ class AgentService:
         await self.db.refresh(conv)
         return SessionResponse.model_validate(conv)
 
+    async def update_session_workspace(
+        self, user_id: int, session_id: str, workspace: dict[str, Any] | None
+    ) -> SessionResponse:
+        """绑定/解绑会话工作区（extra_config.workspace 整体替换）。
+
+        mode=local 即本地文件夹模式：会话绑定工作区后 read/glob/grep/bash
+        默认必带（绑定本身即授权），无需 agent 单独勾选。root 必须是已存在
+        的目录（失败方向安全：不存在的路径拒绝绑定，不静默接受）。
+        workspace=None 解绑，恢复云端 agent 模式。
+
+        Args:
+            user_id: 当前用户 ID，会话归属校验主体。
+            session_id: 业务会话 ID。
+            workspace: 工作区配置 {"mode": "local", "root": "<绝对路径>"}，None 解绑。
+
+        Returns:
+            更新后的会话响应。
+
+        Raises:
+            SessionNotFoundError: 会话不存在或不属于该用户。
+            AgentError: mode 非 local、root 缺失或目录不存在。
+        """
+        conv = await self.get_session(user_id, session_id)
+
+        if workspace is not None:
+            from novamind.features.agent.exceptions import AgentError
+
+            if workspace.get("mode") != "local":
+                raise AgentError(f"不支持的工作区模式: {workspace.get('mode')}")
+            root = str(workspace.get("root") or "").strip()
+            if not root:
+                raise AgentError("工作区根路径不能为空")
+            from pathlib import Path
+
+            if not Path(root).is_dir():
+                raise AgentError(f"工作区根目录不存在: {root}")
+
+        extra_config = dict(conv.extra_config) if conv.extra_config else {}
+        if workspace is None:
+            extra_config.pop("workspace", None)
+        else:
+            extra_config["workspace"] = {"mode": workspace["mode"], "root": workspace["root"]}
+
+        async with self.db.begin_nested():
+            await self.session_repo.update(conv.id, extra_config=extra_config)
+        await self.db.commit()
+
+        await self.db.refresh(conv)
+        return SessionResponse.model_validate(conv)
+
     # ==================== 消息反馈与引用点击（批2：对齐 qa_message_feedback 语义） ====================
 
     async def _get_message_with_session_check(

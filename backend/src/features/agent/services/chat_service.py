@@ -232,8 +232,9 @@ class AgentChatService:
                 else None
             )
             context["knowledge_search_port"] = knowledge_search_port
-            # 本地工作区端口：会话绑定了工作区且 agent 勾了任一本地工具时注入
-            if "local_workspace" in (agent.enabled_tools or []):
+            # 本地工作区端口：会话绑定了工作区即注入（绑定本身即授权，
+            # 不要求 agent 单独勾选——本地文件夹模式下工具默认必带）
+            if (conv.extra_config or {}).get("workspace"):
                 from novamind.features.agent.services.local_workspace.assembly import (
                     build_local_workspace_port,
                 )

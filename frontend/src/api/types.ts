@@ -1779,9 +1779,17 @@ export interface AgentConversation {
   /** 会话级配置（knowledge_bindings：知识范围/检索约束，批2）；存量会话无此键 */
   extra_config?: {
     knowledge_bindings?: KnowledgeBindings | null
+    /** 本地文件夹工作区（mode=local）：绑定即注入 read/glob/grep/bash，null 未绑定 */
+    workspace?: WorkspaceConfig | null
   } | null
   created_at: string
   updated_at: string
+}
+
+/** 本地文件夹工作区配置（会话级）：root 为用户本机授权根目录绝对路径 */
+export interface WorkspaceConfig {
+  mode: 'local'
+  root: string
 }
 
 // 会话级知识绑定（对齐后端 KnowledgeBindings）：限定知识工具/深度研究的检索范围

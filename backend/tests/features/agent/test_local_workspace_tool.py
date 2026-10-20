@@ -1,5 +1,6 @@
-"""LocalWorkspaceTool 执行链测试：port 注入下三工具正反用例 + 未绑定引导文案。"""
+"""LocalWorkspaceTool 执行链测试：port 注入下四工具正反用例 + 未绑定引导文案。"""
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -91,9 +92,34 @@ async def test_grep_invalid_regex(tool: LocalWorkspaceTool, ws_root: Path):
 
 @pytest.mark.asyncio
 async def test_unknown_tool(tool: LocalWorkspaceTool, ws_root: Path):
-    out = json.loads(await tool.execute_tool("bash", {"command": "ls"}, _ctx(ws_root)))
+    out = json.loads(await tool.execute_tool("notebook_edit", {}, _ctx(ws_root)))
     assert out["ok"] is False
     assert out["error_code"] == "UNKNOWN_TOOL"
+
+
+@pytest.mark.asyncio
+async def test_bash_runs_in_workspace_root(tool: LocalWorkspaceTool, ws_root: Path):
+    out = json.loads(await tool.execute_tool("bash", {"command": "dir" if sys.platform == "win32" else "ls"}, _ctx(ws_root)))
+    assert out["ok"] is True
+    assert "src" in out["result"]
+
+
+@pytest.mark.asyncio
+async def test_bash_nonzero_exit_is_error_result(tool: LocalWorkspaceTool, ws_root: Path):
+    out = json.loads(
+        await tool.execute_tool(
+            "bash", {"command": "exit /b 3" if sys.platform == "win32" else "exit 3"}, _ctx(ws_root)
+        )
+    )
+    assert out["ok"] is False
+    assert out["exit_code"] == 3
+
+
+@pytest.mark.asyncio
+async def test_bash_empty_command(tool: LocalWorkspaceTool, ws_root: Path):
+    out = json.loads(await tool.execute_tool("bash", {"command": "  "}, _ctx(ws_root)))
+    assert out["ok"] is False
+    assert out["error_code"] == "INVALID_ARGS"
 
 
 @pytest.mark.asyncio
@@ -105,4 +131,4 @@ async def test_no_port_returns_guidance(tool: LocalWorkspaceTool):
 def test_schema_names_match_enabled_tool_dispatch(tool: LocalWorkspaceTool):
     """提供者名 local_workspace 是 enabled_tools 勾选名（resolve_tools 按 get_tool 匹配）。"""
     names = [t["function"]["name"] for t in tool.get_tools()]
-    assert names == ["read", "glob", "grep"]
+    assert names == ["read", "glob", "grep", "bash"]

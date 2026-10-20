@@ -73,9 +73,70 @@
             >
               轨迹
             </button>
+            <button
+              v-if="currentSessionId"
+              class="view-pill workspace-pill"
+              :class="{ active: isWorkspaceBound }"
+              :title="workspacePillTitle"
+              @click="openWorkspaceDialog"
+            >
+              <el-icon :size="12"><FolderOpened /></el-icon>
+              {{ isWorkspaceBound ? '本地工作区' : '绑定文件夹' }}
+            </button>
           </div>
         </div>
       </header>
+
+      <!-- 工作区绑定弹窗：绑定即本地文件夹模式（read/glob/grep/bash 默认必带） -->
+      <el-dialog
+        v-model="workspaceDialogVisible"
+        title="本地文件夹工作区"
+        width="520px"
+        :close-on-click-modal="false"
+        append-to-body
+      >
+        <div class="ws-dialog-body">
+          <p class="ws-dialog-hint">
+            绑定后，智能体将以该文件夹为工作目录，自动获得
+            read / glob / grep / bash 四个工具（无需在智能体设置中勾选），可直接读取和检索文件夹内的文件、运行命令。
+          </p>
+          <el-input
+            v-model="workspaceRootInput"
+            placeholder="输入本机文件夹绝对路径，如 D:\projects\demo"
+            :disabled="workspaceBinding"
+          >
+            <template #append>
+              <el-button :loading="workspaceValidating" :disabled="workspaceBinding" @click="handleValidateRoot">
+                校验
+              </el-button>
+            </template>
+          </el-input>
+          <div v-if="workspaceValidated" class="ws-dialog-ok">目录有效</div>
+          <div v-if="isWorkspaceBound" class="ws-dialog-current">
+            当前绑定：<code>{{ workspaceRoot }}</code>
+          </div>
+        </div>
+        <template #footer>
+          <el-button
+            v-if="isWorkspaceBound"
+            type="danger"
+            plain
+            :loading="workspaceBinding"
+            @click="handleUnbindWorkspace"
+          >
+            解绑（恢复普通模式）
+          </el-button>
+          <el-button @click="workspaceDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="workspaceBinding"
+            :disabled="!workspaceValidated"
+            @click="handleBindWorkspace"
+          >
+            绑定并启用本地模式
+          </el-button>
+        </template>
+      </el-dialog>
 
       <!-- 消息列表 (仅对话模式)：按轮分组，工作过程折叠 -->
       <div
@@ -567,6 +628,7 @@ import {
   Lightning,
   Collection,
   Warning,
+  FolderOpened,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -608,6 +670,104 @@ window.addEventListener('resize', () => {
 })
 
 const inputText = ref('')
+
+// ===================== 本地文件夹工作区（绑定即本地模式） =====================
+const currentSessionId = computed(() => agentStore.currentSessionId)
+const currentConversation = computed(
+  () =>
+    agentStore.conversations.find((c) => c.session_id === currentSessionId.value) || null,
+)
+const workspaceConfig = computed(
+  () => currentConversation.value?.extra_config?.workspace ?? null,
+)
+const isWorkspaceBound = computed(() => !!workspaceConfig.value)
+const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
+const workspacePillTitle = computed(() =>
+  isWorkspaceBound.value ? `工作区：${workspaceRoot.value}（点击管理）` : '绑定本机文件夹为工作区',
+)
+
+const workspaceDialogVisible = ref(false)
+const workspaceRootInput = ref('')
+const workspaceValidated = ref(false)
+const workspaceValidating = ref(false)
+const workspaceBinding = ref(false)
+
+async function openWorkspaceDialog() {
+  workspaceDialogVisible.value = true
+  workspaceRootInput.value = workspaceRoot.value
+  workspaceValidated.value = isWorkspaceBound.value
+}
+
+/** 绑定前预检：目录存在才放行（后端绑定接口也会再校验一次） */
+async function handleValidateRoot() {
+  const root = workspaceRootInput.value.trim()
+  if (!root) {
+    ElMessage.warning('请输入文件夹路径')
+    return
+  }
+  workspaceValidating.value = true
+  try {
+    await agentApi.validateWorkspaceRoot(root)
+    workspaceValidated.value = true
+    ElMessage.success('目录有效')
+  } catch (e) {
+    workspaceValidated.value = false
+    ElMessage.error(e instanceof Error ? e.message : '目录校验失败')
+  } finally {
+    workspaceValidating.value = false
+  }
+}
+
+/** 绑定：写会话 workspace + 自动给 agent 并入 local_workspace 勾选（工具 schema 下发需要） */
+async function handleBindWorkspace() {
+  if (!currentSessionId.value || !agentStore.currentAgent) return
+  const root = workspaceRootInput.value.trim()
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(currentSessionId.value, { mode: 'local', root })
+    // 工具默认必带：本地模式下 local_workspace 提供者须在 agent.enabled_tools 里
+    // 才会随 resolve_tools 下发 schema；未勾选时静默并入
+    const agent = agentStore.currentAgent
+    const tools = agent.enabled_tools || []
+    if (!tools.includes('local_workspace')) {
+      await agentStore.updateAgent(agent.id, {
+        enabled_tools: [...tools, 'local_workspace'],
+      })
+    }
+    // 回写会话列表里的 workspace 键（不重新拉全量）
+    const conv = currentConversation.value
+    if (conv) {
+      conv.extra_config = { ...(conv.extra_config || {}), workspace: { mode: 'local', root } }
+    }
+    ElMessage.success('已绑定本地工作区：read / glob / grep / bash 已启用')
+    workspaceDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '绑定失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
+
+/** 解绑：清会话 workspace；agent 勾选保留（其他会话可能仍在用） */
+async function handleUnbindWorkspace() {
+  if (!currentSessionId.value) return
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(currentSessionId.value, null)
+    const conv = currentConversation.value
+    if (conv && conv.extra_config) {
+      const next = { ...conv.extra_config }
+      delete next.workspace
+      conv.extra_config = next
+    }
+    ElMessage.success('已解绑，恢复普通对话模式')
+    workspaceDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '解绑失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
 const useStream = ref(true)
 const enableThinking = ref(false)
 // 深度研究开关（请求级）：开启时本轮消息引导模型优先调用 research 工具
@@ -1701,6 +1861,48 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-xs);
   color: var(--color-text);
   font-weight: var(--weight-medium);
+}
+
+/* 工作区 pill：绑定态用主色点缀（与 view-pill 同形，内联 icon 对齐） */
+.workspace-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-pill.active {
+  color: var(--color-primary, var(--el-color-primary));
+}
+
+/* 工作区绑定弹窗 */
+.ws-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ws-dialog-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.ws-dialog-ok {
+  font-size: 12px;
+  color: var(--el-color-success);
+}
+
+.ws-dialog-current {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ws-dialog-current code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-bg-muted, rgba(0, 0, 0, 0.04));
+  font-size: 12px;
 }
 
 /* 轨迹视图容器 */

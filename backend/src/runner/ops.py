@@ -1,4 +1,4 @@
-"""runner 侧工具实现：read/glob/grep——与云端 ops.py 同语义的独立实现。
+"""runner 侧工具实现：read/glob/grep/bash——与云端 ops.py 同语义的独立实现。
 
 两侧语义契约（行号/截断/排序/上限）以云端
 `features/agent/services/local_workspace/ops.py` 为准；runner 不 import
@@ -19,6 +19,9 @@ from novamind.runner.security import (
 _READ_MAX_LINES = 2000
 _READ_MAX_LINE_CHARS = 2000
 _LIST_MAX_ENTRIES = 200
+# bash：输出与超时上限（与云端一致）
+_BASH_TIMEOUT_SECONDS = 120
+_BASH_MAX_OUTPUT_CHARS = 30_000
 
 
 async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -30,6 +33,8 @@ async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]
             return await asyncio.to_thread(_glob, root, os_type, args)
         if tool == "grep":
             return await asyncio.to_thread(_grep, root, os_type, args)
+        if tool == "bash":
+            return await _bash(root, os_type, args)
         return {"ok": False, "error": f"未知工具: {tool}", "error_code": "UNKNOWN_TOOL"}
     except WorkspaceSecurityError as e:
         return {"ok": False, "error": str(e), "error_code": "PATH_ESCAPED"}
@@ -139,3 +144,58 @@ def _grep(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
         items = sorted(matched_files)
         return {"ok": True, "result": "\n".join(items) if items else "（无匹配）", "count": len(items), "truncated": truncated}
     return {"ok": True, "result": "\n".join(hits) if hits else "（无匹配）", "count": len(hits), "truncated": truncated}
+
+
+async def _bash(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
+    """一次性命令执行：独立子进程、cwd=工作区根、输出截断、超时强杀（语义同云端）。"""
+    command = str(args.get("command") or "").strip()
+    if not command:
+        return {"ok": False, "error": "command 不能为空", "error_code": "INVALID_ARGS"}
+    if os_type == "windows":
+        shell = ["cmd.exe", "/c", command]
+    else:
+        shell = ["/bin/sh", "-c", command]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *shell,
+            cwd=root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_BASH_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return {
+                "ok": False,
+                "error": f"命令超时（{_BASH_TIMEOUT_SECONDS}s）已终止",
+                "error_code": "COMMAND_TIMEOUT",
+            }
+    except OSError as e:
+        return {"ok": False, "error": f"命令启动失败: {e}", "error_code": "COMMAND_SPAWN_FAILED"}
+
+    def _decode(b: bytes) -> str:
+        # Windows 命令输出多为 GBK，POSIX 为 UTF-8；解码失败降级 replace
+        enc = "gbk" if os_type == "windows" else "utf-8"
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            return b.decode(enc, errors="replace")
+
+    out, err = _decode(stdout), _decode(stderr)
+    truncated = False
+    if len(out) > _BASH_MAX_OUTPUT_CHARS:
+        out = out[:_BASH_MAX_OUTPUT_CHARS] + "\n…[输出截断]"
+        truncated = True
+    parts = []
+    if out.strip():
+        parts.append(out.rstrip("\n"))
+    if err.strip():
+        parts.append(f"[stderr]\n{err.rstrip(chr(10) + chr(13))}")
+    result = "\n".join(parts) or "（无输出）"
+    return {
+        "ok": proc.returncode == 0,
+        "result": result,
+        "exit_code": proc.returncode,
+        "truncated": truncated,
+    }

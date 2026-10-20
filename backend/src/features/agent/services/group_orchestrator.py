@@ -482,8 +482,8 @@ class GroupOrchestrator:
         )
         context["web_search_port"] = self.chat_service._web_search_port
         context["knowledge_search_port"] = self.chat_service._knowledge_search_port
-        # 本地工作区端口：群会话绑定工作区且成员勾了任一本地工具时注入
-        if "local_workspace" in (agent.enabled_tools or []):
+        # 本地工作区端口：群会话绑定工作区即注入（绑定本身即授权，工具默认必带）
+        if (conv.extra_config or {}).get("workspace"):
             from novamind.features.agent.services.local_workspace.assembly import (
                 build_local_workspace_port,
             )

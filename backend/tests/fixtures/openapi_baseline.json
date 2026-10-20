@@ -9897,6 +9897,26 @@
         "title": "SessionResponse",
         "type": "object"
       },
+      "SessionWorkspaceBind": {
+        "description": "会话工作区绑定请求：mode=local 即本地文件夹模式（工具默认必带）。\n\n根路径由前端经工作区验证接口确认存在后传入；null 解绑恢复云端 agent 模式。",
+        "properties": {
+          "workspace": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "工作区配置，如 {\"mode\": \"local\", \"root\": \"D:/projects/demo\"}；null 解绑",
+            "title": "Workspace"
+          }
+        },
+        "title": "SessionWorkspaceBind",
+        "type": "object"
+      },
       "SkillAISearchParsedQuery": {
         "description": "AI 解析出的结构化搜索参数",
         "properties": {
@@ -17226,6 +17246,67 @@
         ]
       }
     },
+    "/api/v1/agent/sessions/{session_id}/workspace": {
+      "put": {
+        "description": "本地文件夹模式开关：绑定后 read/glob/grep/bash 工具默认必带（以 root 为工作区根执行）；传 null 解绑恢复云端 agent 模式",
+        "operationId": "update_session_workspace_api_v1_agent_sessions__session_id__workspace_put",
+        "parameters": [
+          {
+            "description": "会话ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话ID",
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionWorkspaceBind"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "绑定/解绑会话工作区",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/tools": {
       "get": {
         "description": "获取所有已注册的工具提供者及其工具列表",
@@ -17330,6 +17411,53 @@
           }
         ],
         "summary": "获取工具详情",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
+    "/api/v1/agent/workspace/validate": {
+      "post": {
+        "description": "本地形态绑定前校验路径存在且为目录（后端与文件同机时可用）",
+        "operationId": "validate_workspace_root_api_v1_agent_workspace_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionWorkspaceBind"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "校验工作区根目录",
         "tags": [
           "Agent 智能体"
         ]

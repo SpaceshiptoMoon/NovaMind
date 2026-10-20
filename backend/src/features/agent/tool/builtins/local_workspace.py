@@ -107,6 +107,31 @@ class LocalWorkspaceTool(BaseTool):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "description": (
+                        "Run a shell command in the workspace root (each call spawns a fresh "
+                        "process; cwd is the workspace root, cd does NOT persist between calls). "
+                        "Windows uses cmd, POSIX uses sh. Output truncated at 30k chars; "
+                        "120s timeout kills the process.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Running builds, tests, git, or project scripts\n"
+                        "- Anything beyond read/glob/grep (env inspection, file transforms)\n\n"
+                        "NOT FOR:\n"
+                        "- Reading a known file (use read — cheaper and safer)\n"
+                        "- Commands expecting interactivity (none available; use flags like -y)"
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string", "description": "要执行的命令（在工作区根运行）"},
+                        },
+                        "required": ["command"],
+                    },
+                },
+            },
         ]
 
     async def execute_tool(
