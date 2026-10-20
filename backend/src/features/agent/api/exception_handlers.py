@@ -7,6 +7,8 @@ from novamind.features.agent.exceptions import (
     AgentError,
     AgentMaxIterationsError,
     AgentNotFoundError,
+    GroupNotFoundError,
+    GroupRunConflictError,
     McpConnectionError,
     McpServerError,
     McpServerNotFoundError,
@@ -27,6 +29,8 @@ def setup_agent_exception_handlers(app: FastAPI) -> None:
     register_module_exceptions(app, status_map={
         AgentNotFoundError: 404,
         SessionNotFoundError: 404,
+        GroupNotFoundError: 404,
+        GroupRunConflictError: 409,
         McpServerNotFoundError: 404,
         McpConnectionError: 502,
         McpServerError: 500,

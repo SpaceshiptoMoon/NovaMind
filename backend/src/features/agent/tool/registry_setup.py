@@ -30,6 +30,8 @@ def build_tool_registry(todo_store: Any, sandbox: Any = None) -> ToolRegistry:
         WebSearchTool,
     )
     from novamind.features.agent.tool.builtins import (
+        ConsultMemberTool,
+        GroupMessagingTool,
         PlanOutputTool,
         ReadToolResultTool,
         ResearchTool,
@@ -48,6 +50,8 @@ def build_tool_registry(todo_store: Any, sandbox: Any = None) -> ToolRegistry:
         WikiTool(),
         ResearchTool(),
         ReadAttachmentTool(),
+        ConsultMemberTool(),
+        GroupMessagingTool(),
     ):
         registry.register(tool)
 

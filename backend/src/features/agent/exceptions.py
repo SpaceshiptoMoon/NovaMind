@@ -40,6 +40,30 @@ class SessionNotFoundError(AgentError):
         self.session_id = session_id
 
 
+class GroupNotFoundError(AgentError):
+    """群不存在或非属主"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("group_id",)
+
+    def __init__(self, group_id: int):
+        super().__init__(
+            message=f"群 {group_id} 不存在",
+            code="GROUP_NOT_FOUND",
+        )
+        self.group_id = group_id
+
+
+class GroupRunConflictError(AgentError):
+    """同群已有进行中的一响，拒绝并发触发"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("group_id",)
+
+    def __init__(self, group_id: int):
+        super().__init__(
+            message=f"群 {group_id} 正在讨论中，请等待当前一轮结束后再发送",
+            code="GROUP_RUN_CONFLICT",
+        )
+        self.group_id = group_id
+
+
 class McpServerError(AgentError):
     """MCP 服务器异常"""
 

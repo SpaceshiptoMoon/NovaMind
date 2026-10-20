@@ -371,6 +371,450 @@
         "title": "AgentDetailResponse",
         "type": "object"
       },
+      "AgentGroupCreate": {
+        "description": "建群请求",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "群描述",
+            "title": "Description"
+          },
+          "host_agent_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "主持人 Agent ID（consult 必填且须在成员内）",
+            "title": "Host Agent Id"
+          },
+          "member_ids": {
+            "description": "成员 Agent ID 列表（≥2）",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 2,
+            "title": "Member Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "brainstorm",
+            "description": "群模式",
+            "enum": [
+              "brainstorm",
+              "consult"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "description": "群名称",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rounds_per_turn": {
+            "default": 1,
+            "description": "头脑风暴讨论轮数（硬上限 3）",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Rounds Per Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "member_ids"
+        ],
+        "title": "AgentGroupCreate",
+        "type": "object"
+      },
+      "AgentGroupDetailResponse": {
+        "description": "群详情响应（含成员与编排参数）",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Config"
+          },
+          "host_agent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Agent Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "members": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AgentGroupMemberResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "brainstorm",
+              "consult"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode"
+        ],
+        "title": "AgentGroupDetailResponse",
+        "type": "object"
+      },
+      "AgentGroupListResponse": {
+        "description": "群列表响应",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentGroupResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AgentGroupListResponse",
+        "type": "object"
+      },
+      "AgentGroupMemberResponse": {
+        "description": "群成员响应",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "integer"
+          },
+          "agent_name": {
+            "default": "",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "role_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Hint"
+          },
+          "speak_order": {
+            "default": 0,
+            "title": "Speak Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "agent_id"
+        ],
+        "title": "AgentGroupMemberResponse",
+        "type": "object"
+      },
+      "AgentGroupResponse": {
+        "description": "群响应（列表项）",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "host_agent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Agent Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "brainstorm",
+              "consult"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode"
+        ],
+        "title": "AgentGroupResponse",
+        "type": "object"
+      },
+      "AgentGroupRunResponse": {
+        "description": "群编排运行响应",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mode_snapshot": {
+            "title": "Mode Snapshot",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "group_id",
+          "session_id",
+          "status",
+          "mode_snapshot"
+        ],
+        "title": "AgentGroupRunResponse",
+        "type": "object"
+      },
+      "AgentGroupUpdate": {
+        "description": "改群请求（全可选，None 不更新）",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "host_agent_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Agent Id"
+          },
+          "member_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "全量替换成员",
+            "title": "Member Ids"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "brainstorm",
+                  "consult"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "rounds_per_turn": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds Per Turn"
+          }
+        },
+        "title": "AgentGroupUpdate",
+        "type": "object"
+      },
       "AgentListResponse": {
         "description": "Agent 列表响应",
         "properties": {
@@ -14998,6 +15442,436 @@
         "summary": "下载聊天附件",
         "tags": [
           "Agent 聊天附件"
+        ]
+      }
+    },
+    "/api/v1/agent/groups": {
+      "get": {
+        "description": "分页列出当前用户的群聊（created_at 倒序）",
+        "operationId": "list_groups_api_v1_agent_groups_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGroupListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "我的群列表",
+        "tags": [
+          "Agent 群聊"
+        ]
+      },
+      "post": {
+        "description": "创建多智能体群聊（brainstorm/consult），成员为既有 Agent（≥2）",
+        "operationId": "create_group_api_v1_agent_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentGroupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGroupDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "创建群聊",
+        "tags": [
+          "Agent 群聊"
+        ]
+      }
+    },
+    "/api/v1/agent/groups/{group_id}": {
+      "delete": {
+        "description": "删除群与成员关联（成员私有会话保留）",
+        "operationId": "delete_group_api_v1_agent_groups__group_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "解散群",
+        "tags": [
+          "Agent 群聊"
+        ]
+      },
+      "get": {
+        "description": "取群详情（含成员清单与编排参数）",
+        "operationId": "get_group_api_v1_agent_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGroupDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "群详情",
+        "tags": [
+          "Agent 群聊"
+        ]
+      },
+      "put": {
+        "description": "改群配置/全量替换成员（consult 模式校验主持人∈成员）",
+        "operationId": "update_group_api_v1_agent_groups__group_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentGroupUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGroupDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新群",
+        "tags": [
+          "Agent 群聊"
+        ]
+      }
+    },
+    "/api/v1/agent/groups/{group_id}/runs": {
+      "get": {
+        "description": "列出群最近的一响运行记录（started_at 倒序）",
+        "operationId": "list_group_runs_api_v1_agent_groups__group_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentGroupRunResponse"
+                  },
+                  "title": "Response List Group Runs Api V1 Agent Groups  Group Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "群运行历史",
+        "tags": [
+          "Agent 群聊"
+        ]
+      }
+    },
+    "/api/v1/agent/groups/{group_id}/sessions": {
+      "post": {
+        "description": "取/建群会话（时间线载体），返回 session_id",
+        "operationId": "create_group_session_api_v1_agent_groups__group_id__sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "开群会话",
+        "tags": [
+          "Agent 群聊"
+        ]
+      }
+    },
+    "/api/v1/agent/groups/{group_id}/sessions/{session_id}/messages": {
+      "get": {
+        "description": "分页取群会话消息（时间线投影：用户消息+成员公开发言）",
+        "operationId": "list_group_messages_api_v1_agent_groups__group_id__sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Group Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "群会话 UUID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "群会话 UUID",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "群时间线消息",
+        "tags": [
+          "Agent 群聊"
         ]
       }
     },

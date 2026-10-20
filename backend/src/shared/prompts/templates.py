@@ -105,6 +105,8 @@ class PromptTemplate(Enum):
     # 长期记忆提取（features/agent/agent_prompts.py）。压缩摘要/融合/系统提示等
     # 引擎侧模板在 AGENT_ENGINE_*（engines/agent/prompts.py）。
     AGENT_LONG_TERM_MEMORY = "agent_long_term_memory"
+    # 群聊身份段（features/agent/agent_prompts.py，GroupOrchestrator 注入成员 system）
+    AGENT_GROUP_IDENTITY = "agent_group_identity"
 
     # ==================== Agent 引擎层（engines/agent/prompts.py） ====================
     AGENT_ENGINE_STRUCTURED_SUMMARY = "agent_engine_structured_summary"
