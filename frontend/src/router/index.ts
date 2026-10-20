@@ -309,6 +309,18 @@ const router = createRouter({
               meta: { title: '智能体对话' },
             },
             {
+              path: 'groups',
+              name: 'WorkspaceGroups',
+              component: () => import('@/views/agent/GroupWorkspaceView.vue'),
+              meta: { title: '群聊', requiresApp: 'agent' },
+            },
+            {
+              path: 'groups/:groupId(\\d+)',
+              name: 'WorkspaceGroupChat',
+              component: () => import('@/views/agent/GroupChatView.vue'),
+              meta: { title: '群聊', requiresApp: 'agent' },
+            },
+            {
               path: 'research/:spaceId(\\d+)?',
               redirect: '/home/workspace/chat',
             },

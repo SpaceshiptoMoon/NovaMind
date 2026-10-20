@@ -79,6 +79,57 @@
                 <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
               </div>
             </div>
+
+            <!-- 群聊分区：多智能体群（成员为既有 agent，brainstorm/consult 两模式） -->
+            <div class="list-section list-section--group">
+              <button class="list-section-header" @click="toggleSection('group')">
+                <span class="list-section-title">群聊</span>
+                <span class="list-section-count">{{ groupStore.groups.length }}</span>
+                <el-icon
+                  :size="12"
+                  class="list-section-chevron"
+                  :class="{ collapsed: sectionCollapsed.group }"
+                >
+                  <ArrowDown />
+                </el-icon>
+              </button>
+              <button class="section-new-btn" @click="openGroupDialog()">
+                <el-icon :size="14"><Plus /></el-icon>
+                <span>创建群聊</span>
+              </button>
+              <div v-show="!sectionCollapsed.group" class="list-area">
+                <div
+                  v-for="group in groupStore.groups"
+                  :key="group.id"
+                  class="list-item"
+                  :class="{ active: isGroupChatRoute(group.id) }"
+                  @click="handleSelectGroup(group)"
+                >
+                  <GroupAvatar :members="groupMemberNames(group.id)" :title="group.name" />
+                  <div class="item-info">
+                    <span class="item-title">{{ group.name }}</span>
+                    <span class="item-desc">{{ groupModeLabel(group.mode) }} · {{ group.member_count }} 人</span>
+                  </div>
+                  <div class="item-actions">
+                    <button
+                      class="item-action-btn"
+                      title="编辑"
+                      @click.stop="openGroupDialog(null, group.id)"
+                    >
+                      <el-icon :size="12"><EditPen /></el-icon>
+                    </button>
+                    <button
+                      class="item-action-btn item-action-btn--danger"
+                      title="解散"
+                      @click.stop="handleDissolveGroup(group)"
+                    >
+                      <el-icon :size="12"><Delete /></el-icon>
+                    </button>
+                  </div>
+                </div>
+                <div v-if="groupStore.groups.length === 0" class="list-empty">暂无群聊</div>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -97,6 +148,18 @@
               @click="handleSelectAgent(agent)"
             >
               {{ agent.name.charAt(0) }}
+            </button>
+          </div>
+          <div class="rail-groups">
+            <button
+              v-for="group in groupStore.groups"
+              :key="group.id"
+              class="rail-btn rail-group"
+              :class="{ active: isGroupChatRoute(group.id) }"
+              :title="group.name"
+              @click="handleSelectGroup(group)"
+            >
+              <NavIcon name="group" :size="15" />
             </button>
           </div>
           <button
@@ -370,6 +433,127 @@
         </template>
       </el-dialog>
 
+      <!-- 群聊创建/编辑弹窗（与单聊弹窗同 width/双列制度） -->
+      <el-dialog
+        v-model="groupDialogVisible"
+        :title="groupEditingId ? '编辑群聊' : '创建群聊'"
+        width="880px"
+        top="7vh"
+        class="agent-form-dialog"
+        destroy-on-close
+        append-to-body
+      >
+        <div class="agent-form-scroll">
+          <el-form
+            :model="groupForm"
+            :rules="groupFormRules"
+            ref="groupFormRef"
+            label-position="top"
+            class="agent-form"
+          >
+            <div class="agent-form-columns">
+              <!-- 左列：基本信息 -->
+              <div class="agent-form-col">
+                <div class="form-section">
+                  <h4>基本信息</h4>
+                  <el-form-item label="名称" prop="name">
+                    <el-input
+                      v-model="groupForm.name"
+                      placeholder="为群聊起个名字"
+                      maxlength="50"
+                    />
+                  </el-form-item>
+                  <el-form-item label="描述">
+                    <el-input
+                      v-model="groupForm.description"
+                      type="textarea"
+                      :rows="3"
+                      placeholder="这个群用来讨论什么"
+                      maxlength="200"
+                    />
+                  </el-form-item>
+                  <div v-if="groupForm.mode === 'brainstorm'" class="field-hint">
+                    每次发送消息，成员按顺序依次发言，沉默者后续轮自动跳过
+                  </div>
+                  <div v-else class="field-hint">
+                    主持人接管回答，按需咨询其他成员后汇总答复
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右列：模式 + 成员 -->
+              <div class="agent-form-col">
+                <div class="form-section">
+                  <h4>讨论模式</h4>
+                  <div class="mode-cards">
+                    <button
+                      type="button"
+                      class="mode-card"
+                      :class="{ selected: groupForm.mode === 'brainstorm' }"
+                      @click="groupForm.mode = 'brainstorm'"
+                    >
+                      <span class="mode-card-title">头脑风暴</span>
+                      <span class="mode-card-desc">全员依次发言讨论</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="mode-card"
+                      :class="{ selected: groupForm.mode === 'consult' }"
+                      @click="groupForm.mode = 'consult'"
+                    >
+                      <span class="mode-card-title">专家咨询</span>
+                      <span class="mode-card-desc">主持人按需问成员</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-section">
+                  <h4>成员（至少 2 人）</h4>
+                  <el-form-item prop="member_ids">
+                    <GroupMemberPicker
+                      v-model="groupForm.member_ids"
+                      :agents="agentStore.agents"
+                      :host-agent-id="groupForm.mode === 'consult' ? groupForm.host_agent_id : null"
+                    />
+                  </el-form-item>
+                  <el-form-item v-if="groupForm.mode === 'consult'" label="主持人">
+                    <el-select
+                      v-model="groupForm.host_agent_id"
+                      placeholder="选择主持人（须为已选成员）"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="agent in selectedAgents"
+                        :key="agent.id"
+                        :label="agent.name"
+                        :value="agent.id"
+                      />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item v-if="groupForm.mode === 'brainstorm'" label="讨论轮数">
+                    <el-input-number
+                      v-model="groupForm.rounds_per_turn"
+                      :min="1"
+                      :max="3"
+                      :step="1"
+                      :controls="false"
+                      class="param-input-number"
+                    />
+                    <span class="rounds-hint">成员依次发言的轮数（1~3）</span>
+                  </el-form-item>
+                </div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <template #footer>
+          <el-button @click="groupDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="groupSubmitLoading" @click="handleGroupSubmit"
+            >确定</el-button
+          >
+        </template>
+      </el-dialog>
+
       <el-drawer
         v-model="configDrawerVisible"
         :title="`${configAgent?.name || '智能体'} · 配置`"
@@ -488,13 +672,20 @@ import {
 } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
+import { useAgentGroupStore } from '@/stores/agentGroup'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
+import { agentGroupApi } from '@/api/agentGroup'
 import { spaceApi } from '@/api/space'
 import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
+import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
+import GroupMemberPicker from '@/components/agent/group/GroupMemberPicker.vue'
+import NavIcon from '@/components/common/NavIcon.vue'
 import type {
   Agent,
+  AgentGroup,
+  GroupMode,
   SourceRef,
   ToolCallRecord,
   CreateAgentRequest,
@@ -505,6 +696,7 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
+const groupStore = useAgentGroupStore()
 const workbench = useWorkbenchStore()
 
 provide('isInWorkspace', true)
@@ -516,9 +708,10 @@ const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace')
 // 下方列表的折叠态
 const sectionCollapsed = reactive({
   chat: false,
+  group: false,
 })
 
-function toggleSection(key: 'chat') {
+function toggleSection(key: 'chat' | 'group') {
   sectionCollapsed[key] = !sectionCollapsed[key]
 }
 
@@ -762,6 +955,164 @@ async function handleDeleteAgent(agent: Agent) {
   }
 }
 
+// ===================== 群聊（侧栏分区 + 建/编辑弹窗 + 解散） =====================
+
+function isGroupChatRoute(groupId: number): boolean {
+  return route.name === 'WorkspaceGroupChat' && Number(route.params.groupId) === groupId
+}
+
+function groupModeLabel(mode: string): string {
+  return mode === 'consult' ? '专家咨询' : '头脑风暴'
+}
+
+// 侧栏群条目的成员名：优先取当前群详情（在群内时），否则用首字占位（列表接口不含成员）
+function groupMemberNames(groupId: number): string[] {
+  if (groupStore.currentGroup?.id === groupId) {
+    return groupStore.currentGroup.members.map((m) => m.agent_name)
+  }
+  return []
+}
+
+function handleSelectGroup(group: AgentGroup) {
+  router.push({ name: 'WorkspaceGroupChat', params: { groupId: group.id } })
+}
+
+// 占位页经 inject 调用建群弹窗（与单聊 openAgentDialog 同收编模式）
+provide('openGroupDialog', openGroupDialog)
+
+// 群条目「编辑」与空态页「创建群聊」共用弹窗：groupId 非空时先拉详情回填
+function openGroupDialog(_agent?: unknown, groupId?: number) {
+  groupEditingId.value = groupId ?? null
+  resetGroupForm()
+  if (groupId) {
+    loadGroupForEdit(groupId)
+  }
+  groupDialogVisible.value = true
+}
+
+const groupDialogVisible = ref(false)
+const groupEditingId = ref<number | null>(null)
+const groupSubmitLoading = ref(false)
+const groupFormRef = ref<FormInstance>()
+
+const groupForm = reactive<{
+  name: string
+  description: string
+  mode: GroupMode
+  member_ids: number[]
+  host_agent_id: number | null
+  rounds_per_turn: number
+}>({
+  name: '',
+  description: '',
+  mode: 'brainstorm',
+  member_ids: [],
+  host_agent_id: null,
+  rounds_per_turn: 1,
+})
+
+const groupFormRules: FormRules = {
+  name: [{ required: true, message: '请输入群名称', trigger: 'blur' }],
+  member_ids: [
+    {
+      required: true,
+      validator: (_rule, value: number[] | undefined, callback) => {
+        if (!value || value.length < 2) callback(new Error('请至少选择 2 名成员'))
+        else callback()
+      },
+      trigger: 'change',
+    },
+  ],
+}
+
+// consult 模式主持人下拉选项 = 已选成员
+const selectedAgents = computed(() =>
+  agentStore.agents.filter((a) => groupForm.member_ids.includes(a.id)),
+)
+
+function resetGroupForm() {
+  groupForm.name = ''
+  groupForm.description = ''
+  groupForm.mode = 'brainstorm'
+  groupForm.member_ids = []
+  groupForm.host_agent_id = null
+  groupForm.rounds_per_turn = 1
+}
+
+async function loadGroupForEdit(groupId: number) {
+  try {
+    const detail = await agentGroupApi.getGroup(groupId)
+    groupForm.name = detail.name
+    groupForm.description = detail.description || ''
+    groupForm.mode = detail.mode
+    groupForm.member_ids = detail.members.map((m) => m.agent_id)
+    groupForm.host_agent_id = detail.host_agent_id
+    groupForm.rounds_per_turn = detail.extra_config?.rounds_per_turn ?? 1
+  } catch {
+    ElMessage.error('加载群详情失败')
+  }
+}
+
+async function handleGroupSubmit() {
+  const valid = await groupFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  groupSubmitLoading.value = true
+  try {
+    if (groupForm.mode === 'consult' && (!groupForm.host_agent_id || !groupForm.member_ids.includes(groupForm.host_agent_id))) {
+      ElMessage.error('请为专家咨询模式选择主持人（须为已选成员）')
+      return
+    }
+    if (groupEditingId.value) {
+      await agentGroupApi.updateGroup(groupEditingId.value, {
+        name: groupForm.name,
+        description: groupForm.description || undefined,
+        mode: groupForm.mode,
+        member_ids: groupForm.member_ids,
+        host_agent_id: groupForm.mode === 'consult' ? groupForm.host_agent_id : null,
+        rounds_per_turn: groupForm.mode === 'brainstorm' ? groupForm.rounds_per_turn : undefined,
+      })
+      ElMessage.success('群聊已更新')
+    } else {
+      const detail = await agentGroupApi.createGroup({
+        name: groupForm.name,
+        description: groupForm.description || undefined,
+        mode: groupForm.mode,
+        member_ids: groupForm.member_ids,
+        host_agent_id: groupForm.mode === 'consult' ? groupForm.host_agent_id : null,
+        rounds_per_turn: groupForm.mode === 'brainstorm' ? groupForm.rounds_per_turn : undefined,
+      })
+      ElMessage.success('群聊已创建')
+      // 建完即进群（与单聊「创建后进对话」同体验）
+      router.push({ name: 'WorkspaceGroupChat', params: { groupId: detail.id } })
+    }
+    await groupStore.fetchGroups()
+    groupDialogVisible.value = false
+  } catch {
+    // Error already shown
+  } finally {
+    groupSubmitLoading.value = false
+  }
+}
+
+async function handleDissolveGroup(group: AgentGroup) {
+  try {
+    await ElMessageBox.confirm(`确定解散群聊 "${group.name}" 吗？`, '解散群聊', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await groupStore.deleteGroup(group.id)
+    // 解散的是当前群时退到群空态页
+    if (isGroupChatRoute(group.id)) {
+      router.push({ name: 'WorkspaceGroups' })
+    }
+    ElMessage.success('群已解散')
+  } catch {
+    // cancelled
+  }
+}
+
 // ===================== Agent 配置抽屉 =====================
 
 const configAgent = ref<Agent | null>(null)
@@ -820,6 +1171,7 @@ onMounted(async () => {
     agentStore.fetchAgents(),
     agentStore.fetchTools(),
     agentStore.fetchMcpServers(),
+    groupStore.fetchGroups(),
     fetchModels(),
   ])
 })
@@ -916,6 +1268,16 @@ onMounted(async () => {
   flex-direction: column;
   min-height: 0;
   flex: 1;
+}
+
+/* 群分区与智能体分区同构：不抢主区滚动（分区各自内部滚），占高度按内容收缩 */
+.list-section--group {
+  flex: 0 1 auto;
+}
+
+.list-section--group > .list-area {
+  flex: 0 1 auto;
+  max-height: 32vh;
 }
 
 .list-section-header {
@@ -1068,6 +1430,40 @@ onMounted(async () => {
 }
 
 .rail-agent.active {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+/* 群聊快捷图标组：与 agent 头像列之间留白分隔（不画分割线） */
+.rail-groups {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0 var(--space-1);
+  width: 100%;
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rail-groups::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-group {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.rail-group:hover {
+  background: var(--color-bg-card, #fff);
+  color: var(--color-text);
+  box-shadow: var(--shadow-xs);
+}
+
+.rail-group.active {
   background: var(--color-primary-muted);
   color: var(--color-primary);
 }
@@ -1682,4 +2078,69 @@ onMounted(async () => {
   margin-right: var(--space-1);
   margin-bottom: var(--space-1);
 }
+
+/* ===== 群聊弹窗：模式 radio 卡片 + 轮数提示 ===== */
+/* 模式是群的核心语义，radio 卡片占视觉权重（选中态 primary-muted 底 + primary 边） */
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-card);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: all var(--transition-fast);
+  min-width: 0;
+}
+
+.mode-card:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+}
+
+.mode-card.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+
+.mode-card-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.mode-card-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.rounds-hint {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .mode-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .rounds-hint {
+    display: block;
+    margin-left: 0;
+    margin-top: 4px;
+    white-space: normal;
+  }
+}
+
 </style>

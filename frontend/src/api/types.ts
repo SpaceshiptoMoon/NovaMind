@@ -2046,6 +2046,91 @@ export interface ToolCallRecord {
   durationMs?: number
 }
 
+// ===================== 多智能体群聊 =====================
+// 对齐 backend/src/features/agent/schemas/group_schema.py
+
+export type GroupMode = 'brainstorm' | 'consult'
+
+// 群成员（详情响应内嵌；agent_name 由后端联表填充）
+export interface AgentGroupMember {
+  id: number
+  agent_id: number
+  role_hint: string | null
+  speak_order: number
+  agent_name: string
+}
+
+export interface AgentGroup {
+  id: number
+  name: string
+  description: string | null
+  mode: GroupMode
+  host_agent_id: number | null
+  member_count: number
+  created_at: string | null
+}
+
+export interface AgentGroupDetail extends AgentGroup {
+  members: AgentGroupMember[]
+  extra_config: { rounds_per_turn?: number } | null
+}
+
+export interface AgentGroupListResponse {
+  items: AgentGroup[]
+  total: number
+}
+
+export interface AgentGroupRun {
+  id: number
+  group_id: number
+  session_id: string
+  status: string
+  mode_snapshot: string
+  error: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface CreateAgentGroupRequest {
+  name: string
+  description?: string
+  mode: GroupMode
+  member_ids: number[]
+  host_agent_id?: number | null
+  /** 头脑风暴讨论轮数（1~3），平铺字段（非 extra_config 嵌套） */
+  rounds_per_turn?: number
+}
+
+export type UpdateAgentGroupRequest = Partial<CreateAgentGroupRequest>
+
+// 群时间线条目：user=用户消息 / member=成员公开发言 / notice=系统提示（错误/consult 徽标）
+export interface GroupTimelineEntry {
+  kind: 'user' | 'member' | 'notice'
+  /** member 条目：发言成员 agent_id（时间线投影 extra.member_agent_id） */
+  member_agent_id?: number
+  /** member 条目：成员名（WS 实时路径直带；历史回放从 extra.name 取） */
+  name?: string
+  content: string
+  /** notice 是否为错误级（extra.error === true） */
+  isError?: boolean
+  streaming?: boolean
+  created_at?: string
+}
+
+// 群 WS 事件（单聊事件集扩展；成员事件 data 带 member_agent_id/name）
+export interface GroupSpeakerData {
+  member_agent_id: number
+  name: string
+  wave?: number
+  run_id?: number
+}
+
+export interface GroupRunDoneData {
+  run_id: number
+  status: string
+  rounds?: number
+}
+
 // ==================== 技能广场 ====================
 
 export interface SkillReviewRules {

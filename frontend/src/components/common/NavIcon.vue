@@ -67,6 +67,14 @@
       <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
     </template>
 
+    <!-- 群聊：双人气泡 -->
+    <template v-else-if="name === 'group'">
+      <path d="M14 5.5a6.5 6.5 0 0 1 0 13h-.5" />
+      <path d="M4 12.5a6.5 6.5 0 1 1 13 0V19a1.5 1.5 0 0 1-1.5 1.5H10.5A6.5 6.5 0 0 1 4 12.5z" />
+      <circle cx="8.5" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12.5" cy="12" r="1" fill="currentColor" stroke="none" />
+    </template>
+
     <!-- 技能：闪电 -->
     <template v-else-if="name === 'skill'">
       <path d="M13 2L4.5 13.5H11L9.5 22L18.5 10.5H12L13 2z" />
