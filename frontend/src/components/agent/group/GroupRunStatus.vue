@@ -1,7 +1,7 @@
 <template>
   <div v-if="speaker" class="run-status">
-    <div class="rs-avatar">{{ speaker.name.charAt(0) }}</div>
-    <span class="rs-name">{{ speaker.name }}</span>
+    <div class="rs-avatar" :style="avatarStyle">{{ speaker.name.charAt(0) }}</div>
+    <span class="rs-name" :style="{ color: nameColor }">{{ speaker.name }}</span>
     <span class="rs-text">正在发言</span>
     <span v-if="waveLabel" class="rs-wave">{{ waveLabel }}</span>
     <button class="rs-stop" title="停止讨论" @click="$emit('stop')">
@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 /**
- * 群 run 进行中状态条：当前发言人 + 波次进度 + 停止按钮
+ * 群 run 进行中状态条：当前发言人（成员色身份）+ 波次进度 + 停止按钮
  *
  * 吸在输入区上方的细条（36px）；wave 取自 group.speaker 事件（头脑风暴
  * 显示「第 N 轮」，consult 恒 1 不显示）；停止 = abort WS，服务端收尾
@@ -23,9 +23,13 @@
  */
 import { computed } from 'vue'
 import type { GroupSpeakerData } from '@/api/types'
+import { memberAvatarStyle, memberNameColor } from '@/utils/memberColor'
 
 const props = defineProps<{ speaker: GroupSpeakerData | null }>()
 defineEmits<{ stop: [] }>()
+
+const avatarStyle = computed(() => memberAvatarStyle(props.speaker?.name || ''))
+const nameColor = computed(() => memberNameColor(props.speaker?.name || ''))
 
 const waveLabel = computed(() => {
   const wave = props.speaker?.wave
@@ -54,8 +58,6 @@ const waveLabel = computed(() => {
   width: 20px;
   height: 20px;
   border-radius: var(--radius-full);
-  background: var(--color-chip-active);
-  color: var(--color-chip-active-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -68,7 +70,6 @@ const waveLabel = computed(() => {
 .rs-name {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

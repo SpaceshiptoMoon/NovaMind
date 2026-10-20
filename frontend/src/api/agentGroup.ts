@@ -79,6 +79,16 @@ export const agentGroupApi = {
       onSpeaker?: (d: GroupSpeakerData) => void
       onContent?: (text: string, memberId: number, name: string) => void
       onReasoning?: (text: string, memberId: number, name: string) => void
+      onToolCall?: (
+        d: { call_id: string; tool_name: string; arguments?: Record<string, unknown> },
+        memberId: number,
+        name: string,
+      ) => void
+      onToolResult?: (
+        d: { call_id: string; result?: string; full_result?: string; status?: string },
+        memberId: number,
+        name: string,
+      ) => void
       onNotice?: (d: { content: string }) => void
       onRunDone?: (d: GroupRunDoneData) => void
       onError?: (err: { content: string }) => void
@@ -112,6 +122,29 @@ export const agentGroupApi = {
             case 'reasoning':
               callbacks.onReasoning?.(
                 String((e.data as { content?: string }).content ?? ''),
+                memberId(),
+                memberName(),
+              )
+              break
+            case 'tool_call':
+              callbacks.onToolCall?.(
+                e.data as unknown as {
+                  call_id: string
+                  tool_name: string
+                  arguments?: Record<string, unknown>
+                },
+                memberId(),
+                memberName(),
+              )
+              break
+            case 'tool_result':
+              callbacks.onToolResult?.(
+                e.data as unknown as {
+                  call_id: string
+                  result?: string
+                  full_result?: string
+                  status?: string
+                },
                 memberId(),
                 memberName(),
               )

@@ -2111,10 +2111,23 @@ export interface GroupTimelineEntry {
   /** member 条目：成员名（WS 实时路径直带；历史回放从 extra.name 取） */
   name?: string
   content: string
+  /** member 条目：思考流（reasoning 事件累积；独立于正文展示在折叠区） */
+  reasoning?: string
+  /** member 条目：发言成员的工具执行过程（实时流式累积） */
+  toolCalls?: GroupToolStep[]
   /** notice 是否为错误级（extra.error === true） */
   isError?: boolean
   streaming?: boolean
   created_at?: string
+}
+
+// 成员单次工具调用（tool_call → tool_result 配对）
+export interface GroupToolStep {
+  callId: string
+  name: string
+  arguments?: Record<string, unknown>
+  result?: string
+  status: 'running' | 'completed' | 'failed'
 }
 
 // 群 WS 事件（单聊事件集扩展；成员事件 data 带 member_agent_id/name）

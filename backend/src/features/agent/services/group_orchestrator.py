@@ -513,6 +513,8 @@ class GroupOrchestrator:
                         iteration=context.get("current_iteration"),
                     )
                     context[f"tc_{event.data.get('call_id')}"] = tc.id
+                    # 落库后转发给 WS（口径同单聊 chat_service）：前端工具卡实时翻转状态
+                    yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "tool_result":
                     call_id = event.data.get("call_id", "")
                     tc_id = context.get(f"tc_{call_id}")
@@ -531,6 +533,7 @@ class GroupOrchestrator:
                         tool_name=event.data.get("tool_name"),
                         iteration=context.get("current_iteration"),
                     )
+                    yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "content":
                     cleaned = scrubber.feed(event.data.get("content", ""))
                     full_response += cleaned
@@ -540,8 +543,6 @@ class GroupOrchestrator:
                     yield self._member_event(event.event_type, member, {
                         "content": event.data.get("content", ""),
                     }), full_response
-                elif event.event_type in ("tool_call", "tool_result", "assistant_tool_calls"):
-                    yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "done":
                     remaining = scrubber.flush()
                     if remaining:

@@ -1,18 +1,24 @@
 <template>
   <div class="group-avatar" :title="title">
-    <span v-for="(m, i) in displayMembers" :key="i" class="ga-cell">{{ m.charAt(0) }}</span>
+    <span
+      v-for="(m, i) in displayMembers"
+      :key="i"
+      class="ga-cell"
+      :style="cellStyle(m)"
+    >{{ m.charAt(0) }}</span>
     <span v-if="overflow > 0" class="ga-cell ga-more">+{{ overflow }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 群组头像：2×2 迷你成员首字点阵，超出 4 人显示 +N
+ * 群组头像：2×2 成员首字点阵（每格成员标识色），超出 4 人显示 +N
  *
- * 侧栏群条目与群聊头部徽标双处复用；中性配色（accent 不浸染），
- * 成员名列表由调用方传入（侧栏可从 member_names 传，头部从详情 members 传）。
+ * 侧栏群条目与群聊头部徽标双处复用；成员色与时间线气泡头像同源
+ * （memberColor 散列），同一名成员在群头像格与发言气泡中颜色一致。
  */
 import { computed } from 'vue'
+import { memberAvatarStyle } from '@/utils/memberColor'
 
 const props = withDefaults(defineProps<{ members: string[]; title?: string }>(), {
   title: '',
@@ -20,6 +26,10 @@ const props = withDefaults(defineProps<{ members: string[]; title?: string }>(),
 
 const displayMembers = computed(() => props.members.slice(0, 4))
 const overflow = computed(() => Math.max(0, props.members.length - 4))
+
+function cellStyle(name: string) {
+  return memberAvatarStyle(name)
+}
 </script>
 
 <style scoped>
@@ -42,14 +52,12 @@ const overflow = computed(() => Math.max(0, props.members.length - 4))
   border-radius: 2px;
   font-size: 9px;
   font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-card);
   overflow: hidden;
   line-height: 1;
 }
 
 .ga-more {
-  background: transparent;
+  background: var(--color-bg-card);
   color: var(--color-text-muted);
 }
 </style>

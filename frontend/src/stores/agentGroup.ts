@@ -7,6 +7,7 @@ import type {
   AgentMessage,
   GroupTimelineEntry,
   GroupSpeakerData,
+  GroupToolStep,
 } from '@/api/types'
 
 /**
@@ -115,12 +116,29 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
         member_agent_id: memberId,
         name,
         content: '',
+        reasoning: '',
+        toolCalls: [],
         streaming: true,
         created_at: new Date().toISOString(),
       })
       // 从数组取回 reactive proxy 再持有：改原始对象绕过 proxy 不触发渲染，
       // 流式内容与 streaming 收尾都会静默失效（气泡空白+spinner 卡死）
       activeEntry = timeline.value[timeline.value.length - 1] as GroupTimelineEntry
+    }
+
+    /** 工具步骤按 (callId) 在当前发言条目内配对累积（callId 引擎内全局唯一） */
+    function upsertToolStep(
+      entry: GroupTimelineEntry,
+      callId: string,
+      patch: Partial<GroupToolStep>,
+    ) {
+      entry.toolCalls = entry.toolCalls || []
+      let step = entry.toolCalls.find((t) => t.callId === callId)
+      if (!step) {
+        step = { callId, name: '', status: 'running' }
+        entry.toolCalls.push(step)
+      }
+      Object.assign(step, patch)
     }
 
     try {
@@ -142,6 +160,26 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
           onContent(text, memberId, name) {
             ensureEntry(memberId, name)
             activeEntry!.content += text
+          },
+          onReasoning(text, memberId, name) {
+            // 思考流独立累积（气泡内折叠区展示，不与正文混流）
+            ensureEntry(memberId, name)
+            activeEntry!.reasoning = (activeEntry!.reasoning || '') + text
+          },
+          onToolCall(d, memberId, name) {
+            ensureEntry(memberId, name)
+            upsertToolStep(activeEntry!, d.call_id, {
+              name: d.tool_name,
+              arguments: d.arguments,
+              status: 'running',
+            })
+          },
+          onToolResult(d, memberId, name) {
+            ensureEntry(memberId, name)
+            upsertToolStep(activeEntry!, d.call_id, {
+              result: d.full_result ?? d.result,
+              status: d.status === 'failed' ? 'failed' : 'completed',
+            })
           },
           onNotice(d) {
             if (activeEntry) activeEntry.streaming = false

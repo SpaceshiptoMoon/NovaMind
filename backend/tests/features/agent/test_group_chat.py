@@ -854,3 +854,82 @@ async def test_run_round_normal_done_not_cancelled(group_db):
 
     await session.refresh(run)
     assert run.status == "done"
+
+
+@pytest.mark.asyncio
+async def test_tool_events_forwarded_with_member_marker(group_db):
+    """工具事件落库后转发 WS（口径同单聊 chat_service）。
+
+    回归：编排器持久化分支（tc_repo 落库/save_message）原先不 yield，
+    末尾转发分支成死代码——前端群聊时间线永远收不到工具卡事件。
+    相邻正常场景：content/reasoning/done 转发不受影响。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 1)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+    from novamind.features.agent.models.tool_call import AgentToolCall
+
+    async with factory() as session:
+        group = AgentGroup(user_id=1, name="g", mode="brainstorm")
+        session.add(group)
+        await session.flush()
+        session.add(AgentGroupMember(group_id=group.id, agent_id=ids[0], speak_order=0))
+        await session.commit()
+        group_id = group.id
+
+    scripts = [
+        [
+            ("assistant_tool_calls", {"tool_calls": [{"id": "c1", "function": {"name": "t"}}]}),
+            ("tool_call", {"call_id": "c1", "tool_name": "knowledge_search", "arguments": {"query": "x"}}),
+            ("tool_result", {
+                "call_id": "c1", "tool_name": "knowledge_search",
+                "result": "预览", "full_result": "完整结果",
+                "status": "completed", "duration_ms": 10,
+            }),
+            ("content", {"content": "结论"}),
+            ("done", {"full_response": "结论", "total_tokens": 5}),
+        ],
+    ]
+    orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    events = [ev async for ev in orchestrator.run_round(group, conv, run, "主题")]
+    by_type: dict[str, list[dict]] = {}
+    for ev in events:
+        by_type.setdefault(ev["type"], []).append(ev["data"])
+
+    # 转发断言：tool_call/tool_result 带成员标记出现在事件流
+    assert len(by_type.get("tool_call", [])) == 1, "tool_call 应转发一次"
+    assert by_type["tool_call"][0]["member_agent_id"] == ids[0]
+    assert by_type["tool_call"][0]["tool_name"] == "knowledge_search"
+    assert len(by_type.get("tool_result", [])) == 1, "tool_result 应转发一次"
+    assert by_type["tool_result"][0]["call_id"] == "c1"
+    assert by_type["tool_result"][0]["full_result"] == "完整结果"
+    # 相邻正常场景：content/done 不受影响
+    assert [d["content"] for d in by_type.get("content", [])] == ["结论"]
+    assert events[-1]["type"] == "group.run_done"
+
+    # 落库断言：tc 记录创建并翻转终态（tc 挂成员私有会话，非群时间线会话）
+    from novamind.features.agent.models.session import AgentSession
+    member_sessions = (
+        await session.execute(
+            select(AgentSession).where(
+                AgentSession.extra_config["group_member"]["group_id"].as_integer() == group_id
+            )
+        )
+    ).scalars().all()
+    assert len(member_sessions) == 1
+    tcs = (
+        await session.execute(
+            select(AgentToolCall).where(AgentToolCall.conversation_id == member_sessions[0].id)
+        )
+    ).scalars().all()
+    assert len(tcs) == 1
+    assert tcs[0].tool_name == "knowledge_search"
+    assert tcs[0].status == "completed"
+    assert tcs[0].result == "完整结果"
