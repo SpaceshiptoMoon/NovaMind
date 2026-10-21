@@ -71,8 +71,9 @@ class OcrResult:
     def render_markdown(self) -> str:
         """按阅读顺序（页码 → 页内 y 坐标）渲染为 Markdown。
 
-        渲染规则：title 加 `# ` 前缀；formula 未含 $$ 时包裹为展示块；
-        text 原样输出。空块丢弃；无 bbox 的块排在同页有 bbox 块之后。
+        渲染规则：title 补 `# ` 前缀、formula 补 `$$` 包裹，但供应商
+        markdownContent 自带的等价标记不重复叠加；text 原样输出。空块
+        丢弃；无 bbox 的块排在同页有 bbox 块之后。
         """
         non_empty = [b for b in self.blocks if b.preferred_text()]
         ordered = sorted(
@@ -86,9 +87,10 @@ class OcrResult:
         for block in ordered:
             text = block.preferred_text()
             if block.block_type == "title":
-                parts.append(f"# {text}")
+                # qwen 的 markdownContent 标题自带 "# "，再叠加会产出 "# # 标题"
+                parts.append(text if text.startswith("#") else f"# {text}")
             elif block.block_type == "formula":
-                if "$$" in text:
+                if text.startswith("$$") or (text.startswith("$") and text.endswith("$")):
                     parts.append(text)
                 else:
                     parts.append(f"$$\n{text}\n$$")

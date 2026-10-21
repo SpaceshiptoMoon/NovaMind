@@ -7,7 +7,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-
 from novamind.engines.document.media.ocr.blocks import (
     OcrBlock,
     OcrResult,
@@ -69,6 +68,24 @@ class TestRenderMarkdown:
         # 已含 $$ 的 formula 原样保留不二次包裹
         assert "$$x_{k+1} = T(x_k)$$" in md
         assert "正文段落" in md
+
+    def test_markdown_native_markers_not_doubled(self):
+        """供应商 markdownContent 自带的 # / $ 标记不得二次叠加。"""
+        result = OcrResult(
+            blocks=[
+                _block(block_type="title", markdown="# 第一章 绪论"),
+                _block(block_type="title", markdown="## 1.1 背景"),
+                _block(block_type="formula", markdown="$E = mc^2$"),
+                _block(block_type="formula", markdown="$$\na^2 + b^2 = c^2\n$$"),
+            ]
+        )
+        md = result.render_markdown()
+        assert "# 第一章 绪论" in md
+        assert "# # " not in md
+        assert "## 1.1 背景" in md
+        assert "$E = mc^2$" in md
+        assert "$$\n$E = mc^2$\n$$" not in md
+        assert md.count("$$\na^2 + b^2 = c^2\n$$") == 1
 
     def test_prefers_markdown_over_text(self):
         result = OcrResult(blocks=[_block(text="纯文本", markdown="**markdown 版**")])
