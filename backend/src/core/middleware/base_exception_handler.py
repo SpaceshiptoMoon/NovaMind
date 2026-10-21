@@ -415,6 +415,9 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
     """
     trace_id = getattr(request.state, "trace_id", "no-trace")
 
+    # FastAPI 解析请求体失败时用 raise ... from e 包装成 400，
+    # 根因只在 __cause__ 里；不记录它等于丢掉唯一诊断线索
+    cause = exc.__cause__
     logger.warning(
         "Starlette HTTP 异常",
         trace_id=trace_id,
@@ -422,6 +425,8 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
         detail=exc.detail,
         path=request.url.path,
         method=request.method,
+        cause_type=type(cause).__name__ if cause is not None else None,
+        cause_message=str(cause) if cause is not None else None,
     )
 
     return JSONResponse(
