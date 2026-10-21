@@ -35,6 +35,16 @@ from novamind.engines.document.media.vlm import (
     build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
 )
+from novamind.engines.document.media.ocr import (
+    OcrBlock,
+    OcrConnector,
+    OcrCredentialsMissingError,
+    OcrEngineConfig,
+    OcrFileInvalidError,
+    OcrRequestError,
+    OcrResult,
+    OcrRoute,
+)
 
 __all__ = [
     "AsrBusyError",
@@ -66,4 +76,12 @@ __all__ = [
     "build_segment_timeline_map",
     "format_time_anchor",
     "extract_anchor_indices",
+    "OcrBlock",
+    "OcrConnector",
+    "OcrCredentialsMissingError",
+    "OcrEngineConfig",
+    "OcrFileInvalidError",
+    "OcrRequestError",
+    "OcrResult",
+    "OcrRoute",
 ]

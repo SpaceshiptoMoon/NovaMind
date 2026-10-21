@@ -18,6 +18,7 @@ from .config import (
     DeepResearchModeConfig,
     DeepResearchModesConfig,
     DuckDuckGoConfig,
+    OcrConfig,
     ElasticsearchConfig,
     ExternalSearchConfig,
     FeatureFlag,
@@ -356,6 +357,18 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         openai_base_url=asr.get("openai_base_url", "https://api.openai.com/v1"),
         dashscope_api_key=asr.get("dashscope_api_key", ""),
         local_whisper_model_dir=asr.get("local_whisper_model_dir", ""),
+    )
+
+    ocr = data.get("ocr", {})
+    config.ocr = OcrConfig(
+        api_key=ocr.get("api_key", ""),
+        openai_base_url=ocr.get(
+            "openai_base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ),
+        dashscope_base_url=ocr.get("dashscope_base_url", "https://dashscope.aliyuncs.com/api/v1"),
+        model=ocr.get("model", "qwen3.5-ocr"),
+        render_dpi=ocr.get("render_dpi", 300),
+        timeout=ocr.get("timeout", 120),
     )
 
     agent = data.get("agent", {})

@@ -194,6 +194,20 @@ asr:
   # knowledge_base.parsing.local_whisper_model_dir / local_whisper_model 之后）
   local_whisper_model_dir:
 
+ocr:
+  # 外部 OCR（qwen3.5-ocr）凭据；值可写 ${QWEN_OCR_API_KEY} 等 .env 占位符。
+  # 默认面向官方 DashScope；使用中转/私有端点时在本地 yaml 覆盖 base_url
+  # （*.yaml 不进 git，勿提交真实密钥与私有地址）。
+  api_key: ""
+  # OpenAI 兼容端点（document_parsing，PDF 直传 responses API）
+  openai_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  # DashScope 原生端点（multi_lan，单图 MultiModalConversation）
+  dashscope_base_url: "https://dashscope.aliyuncs.com/api/v1"
+  model: "qwen3.5-ocr"
+  # PDF 渲页 DPI（multi_lan 路径逐页识别用）；300dpi 对公式识别显著优于 200dpi
+  render_dpi: 300
+  timeout: 120
+
 agent:
   sandbox:
     # 代码执行沙箱（agent code_execution 工具）；enabled=false 时工具不注册

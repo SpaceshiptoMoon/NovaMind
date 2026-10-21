@@ -292,6 +292,25 @@ class ASRConfig:
 
 
 @dataclass
+class OcrConfig:
+    """ocr 段：外部 OCR（qwen3.5-ocr）凭据与参数。
+
+    值可来自环境变量（ConfigLoader 的 ${VAR} 占位符）；读取点收敛到
+    ``get_config().ocr``，引擎侧经宿主注入 OcrEngineConfig 消费。
+    """
+
+    api_key: str = ""
+    # OpenAI 兼容端点（document_parsing，PDF 直传 responses API）
+    openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    # DashScope 原生端点（multi_lan，单图 MultiModalConversation）
+    dashscope_base_url: str = "https://dashscope.aliyuncs.com/api/v1"
+    model: str = "qwen3.5-ocr"
+    # PDF 渲页 DPI（multi_lan 路径逐页识别用）
+    render_dpi: int = 300
+    timeout: int = 120
+
+
+@dataclass
 class SandboxConfigYaml:
     """agent 代码执行沙箱参数（features/agent/sandbox/config.py SandboxConfig 的 YAML 段）。"""
 
@@ -434,6 +453,7 @@ class AppConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     external_search: ExternalSearchConfig = field(default_factory=ExternalSearchConfig)
     asr: ASRConfig = field(default_factory=ASRConfig)
+    ocr: OcrConfig = field(default_factory=OcrConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)

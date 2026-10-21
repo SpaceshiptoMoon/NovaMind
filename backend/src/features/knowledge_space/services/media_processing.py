@@ -192,6 +192,26 @@ def _build_engine_audio_config() -> AudioConfig:
     )
 
 
+def _build_engine_ocr_config() -> "OcrEngineConfig":
+    """从 YAML 构造引擎 OcrEngineConfig（外部 OCR 接线唯一构造点）。
+
+    引擎侧 ocr 模块不 import setting；宿主在此注入凭据与端点
+    （api_key 支持 ${ENV_VAR} 占位符经 ConfigLoader 解析）。
+    """
+    from novamind.engines.document.media.ocr import OcrEngineConfig
+    from novamind.setting.yaml_config import get_config
+
+    ocr = get_config().ocr
+    return OcrEngineConfig(
+        api_key=ocr.api_key,
+        model=ocr.model,
+        openai_base_url=ocr.openai_base_url,
+        dashscope_base_url=ocr.dashscope_base_url,
+        render_dpi=ocr.render_dpi,
+        timeout=ocr.timeout,
+    )
+
+
 def _resolve_default_local_asr_model() -> str:
     """解析本地 ASR 默认档位名（faster-whisper-{slug}）。
 
