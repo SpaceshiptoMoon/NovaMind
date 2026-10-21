@@ -224,6 +224,33 @@ class DocumentNotFoundError(KnowledgeSpaceError):
         self.document_id = document_id
 
 
+class DocumentObjectMissingError(KnowledgeSpaceError):
+    """文档记录存在但 MinIO 对象缺失（原件或解析产物丢失）"""
+
+    _serializable_attrs: ClassVar[list[str]] = ["document_id", "object_name"]
+
+    def __init__(self, document_id: int, object_name: str = ""):
+        super().__init__(
+            message=f"文档 {document_id} 的存储对象不存在（{object_name or '未知对象'}），请重新上传",
+            code="DOCUMENT_OBJECT_MISSING",
+        )
+        self.document_id = document_id
+        self.object_name = object_name
+
+
+class ParsedTextNotFoundError(KnowledgeSpaceError):
+    """文档尚未解析或解析产物已被清理（parsed_text_object 缺失）"""
+
+    _serializable_attrs: ClassVar[list[str]] = ["document_id"]
+
+    def __init__(self, document_id: int):
+        super().__init__(
+            message=f"文档 {document_id} 尚无解析结果，请先完成解析",
+            code="PARSED_TEXT_NOT_FOUND",
+        )
+        self.document_id = document_id
+
+
 class DocumentAlreadyExistsError(KnowledgeSpaceError):
     """文档已存在（同知识库 + 同上传者内内容哈希重复）
 

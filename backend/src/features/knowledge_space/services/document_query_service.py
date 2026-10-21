@@ -3,13 +3,16 @@
 构造契约 (session, minio_client, es_client)：查询/下载/删除不触碰模型配置；任务编排、上传、管道执行分别由专职服务承担。
 """
 
-from typing import Any
 import re
+from typing import Any
 
+from minio.error import S3Error
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.document.pipeline.tagged_rechunk import parse_position_tag
 from novamind.features.knowledge_space.exceptions import (
     DocumentAlreadyProcessingError,
     DocumentNotFoundError,
+    DocumentObjectMissingError,
     KnowledgeBaseNotFoundError,
     SpaceAccessDeniedError,
 )
@@ -22,7 +25,6 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
-from novamind.engines.document.pipeline.tagged_rechunk import parse_position_tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # figure 文件名白名单：上传侧 _upload_figure_images_to_minio 产出
@@ -534,23 +536,32 @@ class DocumentQueryService:
             文件内容
 
         Raises:
-            DocumentNotFoundError: 文档不存在
+            DocumentNotFoundError: 文档记录不存在
+            DocumentObjectMissingError: 文档记录存在但 MinIO 原件缺失（被清理/误删）
         """
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
 
         storage_info = document.get_storage_info()
-        return await self.minio_client.download_document(
-            bucket_name=storage_info.get("minio_bucket"),
-            object_name=storage_info.get("minio_object_name"),
-        )
+        object_name = storage_info.get("minio_object_name") or ""
+        try:
+            return await self.minio_client.download_document(
+                bucket_name=storage_info.get("minio_bucket"),
+                object_name=object_name,
+            )
+        except S3Error as exc:
+            # 记录在案但对象不在 = 数据丢失，不是服务故障；显式语义便于前端提示重新上传
+            if exc.code in ("NoSuchKey", "NoSuchBucket"):
+                raise DocumentObjectMissingError(document_id, object_name) from exc
+            raise
 
     async def get_parsed_text(self, document_id: int) -> bytes | None:
         """获取文档解析后的 Markdown 全文。
 
         从 MinIO 读取 document.storage["parsed_text_object"] 指向的文件。
-        若文档尚未解析或解析结果不存在，返回 None。
+        未解析或解析产物被清理时返回 None（调用方映射为「尚无解析结果」）；
+        存储服务本身的其它错误原样抛出，不伪装成未解析。
 
         Args:
             document_id: 文档 ID
@@ -573,13 +584,15 @@ class DocumentQueryService:
                 object_name=parsed_text_object,
             )
             return content
-        except Exception:
-            self.logger.warning(
-                "解析全文下载失败",
-                document_id=document_id,
-                object_name=parsed_text_object,
-            )
-            return None
+        except S3Error as exc:
+            if exc.code in ("NoSuchKey", "NoSuchBucket"):
+                self.logger.warning(
+                    "解析全文下载失败",
+                    document_id=document_id,
+                    object_name=parsed_text_object,
+                )
+                return None
+            raise
 
     async def get_document_frames(self, document_id: int) -> dict:
         """获取文档视频帧预签名 URL 列表。

@@ -33,6 +33,7 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     DocumentSizeExceededError,
     KnowledgeBaseNotFoundError,
+    ParsedTextNotFoundError,
     SpaceAccessDeniedError,
 )
 from novamind.features.knowledge_space.models.space_member import SpaceMember
@@ -1002,7 +1003,7 @@ async def get_document_parsed_text(
 
     parsed_text = await document_query_service.get_parsed_text(document_id)
     if parsed_text is None:
-        raise DocumentNotFoundError(document_id)
+        raise ParsedTextNotFoundError(document_id)
 
     # <img> 无法携带 Authorization 头——在已鉴权的本端点内换好新鲜签名再返回
     content = await document_query_service.presign_figure_links(

@@ -16,6 +16,7 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentInvalidTypeError,
     # 文档相关
     DocumentNotFoundError,
+    DocumentObjectMissingError,
     DocumentProcessingError,
     DocumentSizeExceededError,
     EmbeddingError,
@@ -35,6 +36,7 @@ from novamind.features.knowledge_space.exceptions import (
     MemberAlreadyExistsError,
     # 成员相关
     MemberNotFoundError,
+    ParsedTextNotFoundError,
     QuestionGenerationError,
     RerankError,
     # 检索相关
@@ -97,6 +99,8 @@ def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
         KnowledgeBaseLimitExceededError: 429,
         # 文档相关
         DocumentNotFoundError: 404,
+        DocumentObjectMissingError: 410,
+        ParsedTextNotFoundError: 404,
         DocumentAlreadyExistsError: 409,
         DocumentAlreadyProcessingError: 409,
         DocumentProcessingError: 400,
