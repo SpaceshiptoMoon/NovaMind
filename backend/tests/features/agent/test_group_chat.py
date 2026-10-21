@@ -6,6 +6,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -170,6 +171,12 @@ def _make_orchestrator(factory, fake_engine):
     chat_service._web_search_port = None
     chat_service._knowledge_search_port = None
     chat_service._attachment_read_port = None
+    chat_service._todo_store = None
+    chat_service._memory_search_repo = None
+    chat_service._minio_client = None
+    chat_service.model_config_service = SimpleNamespace()
+    chat_service.attachment_repo = None
+    chat_service._prompt_builder = SimpleNamespace()
     chat_service.tc_repo = ToolCallRepository(session)
 
     return GroupOrchestrator(session, chat_service), session
@@ -324,6 +331,102 @@ async def test_brainstorm_round_robin_and_delivery(group_db):
 
 
 @pytest.mark.asyncio
+async def test_brainstorm_parallel_members_concurrent(group_db):
+    """并行语义回归：两成员 turn 并发跑（事件时间线交错证明），wave 间投递可见。
+
+    并行判据：引擎记录每次 run 的进入/退出时刻，若串行则 B 的进入时刻
+    不早于 A 的退出时刻；并发时两者区间必然重叠。信箱判据：A 的发言在
+    wave 2 前投递到 B 的私有会话（B wave 2 上下文可见）。
+    """
+    factory, _ = group_db
+    ids = await _seed_agents(factory, 1, 2)
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
+
+    async with factory() as session:
+        group = AgentGroup(
+            user_id=1, name="g", mode="brainstorm",
+            extra_config={"rounds_per_turn": 2},
+        )
+        session.add(group)
+        await session.flush()
+        for idx, aid in enumerate(ids):
+            session.add(AgentGroupMember(group_id=group.id, agent_id=aid, speak_order=idx))
+        await session.commit()
+        group_id = group.id
+
+    class _SlowEngine:
+        """每个 turn 事件间挂起一点时间：制造并发重叠窗口。"""
+
+        def __init__(self):
+            self.spans: list[tuple[float, float]] = []
+
+        def run(self, **kwargs):
+            from types import SimpleNamespace
+
+            async def gen():
+                import time
+
+                start = time.monotonic()
+                yield SimpleNamespace(event_type="content", data={"content": "观点"})
+                await asyncio.sleep(0.05)
+                yield SimpleNamespace(
+                    event_type="done",
+                    data={"full_response": "观点", "total_tokens": 5},
+                )
+                self.spans.append((start, time.monotonic()))
+            return gen()
+
+    engine = _SlowEngine()
+    orchestrator, session = _make_orchestrator(factory, engine)
+    group = await session.get(AgentGroup, group_id)
+    conv = await orchestrator.session_repo.create(
+        user_id=1, agent_id=ids[0], extra_config={"group": {"group_id": group_id}}
+    )
+    run = await orchestrator.run_repo.create_run(group_id, 1, conv.session_id, "brainstorm")
+    await session.commit()
+
+    events = []
+    async for ev in orchestrator.run_round(group, conv, run, "主题"):
+        events.append(ev)
+
+    assert events[-1]["data"]["status"] == "done"
+    # 并发判据：同一 wave 内两个 turn 的执行区间重叠（串行时后者的 start >= 前者的 end）。
+    # 4 个 span = 2 成员 × 2 wave；按 start 排序后，wave 内相邻 span 必然重叠。
+    assert len(engine.spans) == 4
+    spans = sorted(engine.spans)
+    overlap_found = any(
+        spans[i][0] < spans[i + 1][1] and spans[i + 1][0] < spans[i][1]
+        for i in range(len(spans) - 1)
+    )
+    assert overlap_found, f"应存在同 wave 内并行重叠的 turn 区间: {engine.spans}"
+
+    # 信箱判据：wave 2 前 A 的发言已投递 B（两成员各收到对方 wave 1 发言）
+    from novamind.features.agent.models.message import AgentMessage
+    from novamind.features.agent.models.session import AgentSession
+
+    member_sessions = (
+        await session.execute(
+            select(AgentSession).where(
+                AgentSession.extra_config["group_member"]["group_id"].as_integer() == group_id
+            )
+        )
+    ).scalars().all()
+    assert len(member_sessions) == 2
+    for s in member_sessions:
+        deliveries = (
+            await session.execute(
+                select(AgentMessage).where(
+                    AgentMessage.conversation_id == s.id,
+                    AgentMessage.role == "user",
+                )
+            )
+        ).scalars().all()
+        contents = [m.content for m in deliveries if m.extra and "delivery" in m.extra]
+        # wave1 用户消息 + wave1 对方发言 + wave2 对方发言 = 3 条投递
+        assert len(contents) == 3, f"成员 {s.agent_id} 投递数 {len(contents)}"
+
+
+@pytest.mark.asyncio
 async def test_brainstorm_member_failure_isolated(group_db):
     """单成员 turn 异常：记 notice 后继续，其余成员发言不受影响，run=done。"""
     factory, _ = group_db
@@ -382,7 +485,8 @@ async def test_brainstorm_member_failure_isolated(group_db):
 
 @pytest.mark.asyncio
 async def test_brainstorm_budget_truncation(group_db):
-    """单响 token 预算：第一发言后预算耗尽，后续成员被跳过并有 notice。"""
+    """单响 token 预算：wave 内并行全员拉起（并行语义），A 发言后预算超限，
+    wave 2 提前结束（有 notice），B 不再有第二轮发言。"""
     factory, _ = group_db
     ids = await _seed_agents(factory, 1, 2)
     from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
@@ -401,8 +505,10 @@ async def test_brainstorm_budget_truncation(group_db):
 
     scripts = [
         [("content", {"content": "A 长发言内容很多很多"}), ("done", {"full_response": "A 长发言内容很多很多", "total_tokens": 10})],
-        # 预算 1 token≈2 字符，A 发言后即超限，B 不应被拉起
-        [("done", {"full_response": "B 不应发言", "total_tokens": 5})],
+        # wave 1 并行：A/B 同时拉起（B 的脚本为空发言→沉默）；预算 1 token≈2 字符
+        [("done", {"full_response": "", "total_tokens": 5})],
+        # wave 2 不应发生：A 发言后预算已超限
+        [("done", {"full_response": "wave2 不应到达", "total_tokens": 5})],
     ]
     orchestrator, session = _make_orchestrator(factory, _FakeEngine(scripts))
     group = await session.get(AgentGroup, group_id)
@@ -416,8 +522,12 @@ async def test_brainstorm_budget_truncation(group_db):
     async for ev in orchestrator.run_round(group, conv, run, "主题"):
         events.append(ev)
 
+    # wave 1 全员拉起（并行语义）；wave 2 因预算超限不发生
     speakers = [e["data"]["member_agent_id"] for e in events if e["type"] == "group.speaker"]
-    assert speakers == [ids[0]], "预算超限后第二个成员不应被拉起"
+    assert sorted(speakers) == sorted(ids), "wave 1 全员并行拉起"
+    assert all(e["data"]["wave"] == 1 for e in events if e["type"] == "group.speaker"), (
+        "预算超限后不得进入 wave 2"
+    )
     assert any(e["type"] == "notice" and "预算" in e["data"]["content"] for e in events)
     assert events[-1]["data"]["status"] == "done"
 

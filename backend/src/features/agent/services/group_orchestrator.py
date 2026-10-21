@@ -1,9 +1,11 @@
 """群聊编排器：用户消息触发一响编排（拉起式），复用 AgentEngine 零改动内核。
 
 两种模式：
-- brainstorm：成员按 speak_order 轮流发言 R 轮（默认 1，上限 3），公开发言广播全员。
+- brainstorm：全体成员并行发言 R 轮（默认 1，上限 3）——CC 式多智能体并发，
+  每 wave 全员同时拉起（各自独立 AsyncSession），公开发言在 wave 间广播全员，
+  成员间经信箱投递通信（send_group_message/send_direct_message 工具即时投递）。
 - consult：主持人（host_agent_id）一次完整 ReAct turn，非主持人成员包装为
-  consult_member_{id} 工具按需拉起。
+  consult_member_{id} 工具按需拉起（串行，非主持人一个接一个经工具拉起）。
 
 上下文模型：每 (群会话, 成员) 一条私有 AgentSession（extra_config.group_member
 ={group_id, group_session_id} 标记），投递=向成员会话 append user 消息
@@ -15,7 +17,8 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import inspect
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
@@ -75,6 +78,22 @@ def _cap_tool_result(text: str) -> str:
     if len(text) <= TIMELINE_TOOL_RESULT_MAX_CHARS:
         return text
     return text[:TIMELINE_TOOL_RESULT_MAX_CHARS] + "\n…（已截断）"
+
+
+def _fork_session(main_session: AsyncSession) -> AsyncSession:
+    """从主 session 的 bind 新开一条独立 AsyncSession（并行成员 turn 专用）。
+
+    AsyncSession 不可被并发任务共享（内部连接/事务状态单主）；每成员 fork
+    一条，turn 结束即 close 归还连接池。bind 取自主 session（生产=全局引擎
+    连接池；测试=夹具的 SQLite 内存库），不碰全局工厂——测试夹具工厂与全局
+    工厂不同源，fork 若走全局会连错库。
+    """
+    sessionmaker = async_sessionmaker(
+        bind=main_session.bind,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    return sessionmaker()
 
 
 class GroupOrchestrator:
@@ -190,9 +209,11 @@ class GroupOrchestrator:
         config: dict[str, Any],
         steering_queue: Any | None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """头脑风暴：成员按 speak_order 轮流发言 R 轮，公开发言广播全员。
+        """头脑风暴：每 wave 全体成员并行发言（CC 式并发），公开发言 wave 间广播。
 
-        沉默者后续轮跳过；单成员 turn 失败记 notice 后继续（失败隔离）；
+        成员各自在独立 AsyncSession 上跑完整 ReAct turn（AsyncSession 不可并发
+        共享，用全局 session factory 每成员新开）；事件经汇流队列转发保持 WS
+        单连接时序。沉默者后续轮跳过；单成员失败记 notice 后继续（失败隔离）；
         全部成员全程无有效产出才置 run=failed。
         """
         rounds = min(
@@ -208,70 +229,107 @@ class GroupOrchestrator:
         for wave in range(rounds):
             if stopped_early:
                 break
-            for m in members:
-                if wave > 0 and m["agent_id"] in silent:
-                    continue
-                if budget.exceeded:
-                    yield self._emit("notice", {
-                        "content": "已达到单响 token 预算，本轮讨论提前结束",
-                        "run_id": run.id,
-                    })
-                    stopped_early = True
-                    break
+            active = [
+                m for m in members
+                if not (wave > 0 and m["agent_id"] in silent)
+            ]
+            if not active:
+                break
+            if budget.exceeded:
+                yield self._emit("notice", {
+                    "content": "已达到单响 token 预算，本轮讨论提前结束",
+                    "run_id": run.id,
+                })
+                break
+            for m in active:
                 yield self._emit("group.speaker", {
                     "member_agent_id": m["agent_id"],
                     "name": m["name"],
                     "wave": wave + 1,
                     "run_id": run.id,
                 })
-                speech = ""
-                failed = False
-                process: dict[str, Any] = {}
-                try:
-                    async for ev, acc in self._run_member_turn(
+
+            # 全员并发拉起：每成员独立 session+运行时，事件写入共享汇流队列
+            merger: asyncio.Queue = asyncio.Queue()
+            tasks: dict[int, asyncio.Task] = {}
+            for m in active:
+                tasks[m["agent_id"]] = asyncio.create_task(
+                    self._run_member_turn_detached(
                         group, run, m, members,
-                        steering_queue=steering_queue, process_out=process,
-                    ):
-                        yield ev
-                        speech = acc
-                except (asyncio.CancelledError, GeneratorExit):
-                    raise
-                except Exception as e:
-                    logger.error(
-                        "成员发言失败", group_id=group.id,
-                        member_agent_id=m["agent_id"], error=str(e),
-                    )
-                    failed = True
+                        steering_queue=steering_queue, merger=merger,
+                    ),
+                    name=f"group-member-{m['agent_id']}",
+                )
+            try:
+                # 汇流消费：成员事件实时转发（WS 单连接时序不变）；哨兵 None=该成员落定
+                settled = 0
+                while settled < len(tasks):
+                    ev = await merger.get()
+                    if ev is None:
+                        settled += 1
+                        continue
+                    yield ev
 
-                if failed:
-                    # 不回滚：失败 turn 的半程落库（工具卡/消息）是真实发生的
-                    # 历史，与失败 notice 原子提交；rollback 会 expire 已加载
-                    # 实例，后续 ORM 访问在 async 下触发 sync IO（MissingGreenlet）
-                    text = f"成员「{m['name']}」发言失败，已跳过"
-                    await self._append_timeline(group_session, m, text, extra={"error": True})
-                    yield self._emit("notice", {"content": text, "run_id": run.id})
-                    silent.add(m["agent_id"])
-                    await self.db.commit()
-                    continue
+                # 全部落定：先 await 收敛任务（哨兵入队时任务可能还差最后一步
+                # 收尾，直接 result() 会撞 InvalidStateError），再收集结果
+                results: dict[int, dict[str, Any]] = {}
+                errors: dict[int, BaseException] = {}
+                for aid, t in tasks.items():
+                    try:
+                        results[aid] = await t
+                    except (asyncio.CancelledError, GeneratorExit):
+                        raise
+                    except Exception as e:
+                        errors[aid] = e
 
-                if not speech.strip():
-                    silent.add(m["agent_id"])
-                    continue
-
-                spoken_any = True
-                speech_log.append({
-                    "member_agent_id": m["agent_id"], "name": m["name"], "wave": wave + 1,
-                })
-                await self._append_timeline(group_session, m, speech, process=process)
-                # 公开发言广播其他成员（纯 DB append，无 LLM）
-                for other in members:
-                    if other["agent_id"] != m["agent_id"]:
-                        await self._deliver(
-                            other["session"], from_=m["name"], content=speech,
-                            visibility="group", run_id=run.id,
+                # wave 串行点：全部成员落定后统一处理（时间线/投递/预算，主 session 独占）
+                for m in active:
+                    aid = m["agent_id"]
+                    if aid in errors:
+                        logger.error(
+                            "成员发言失败", group_id=group.id,
+                            member_agent_id=aid, error=str(errors[aid]),
                         )
-                await self.db.commit()
-                budget.add(speech)
+                        text = f"成员「{m['name']}」发言失败，已跳过"
+                        await self._append_timeline(
+                            group_session, m, text, extra={"error": True}
+                        )
+                        yield self._emit("notice", {"content": text, "run_id": run.id})
+                        silent.add(aid)
+                        await self.db.commit()
+                        continue
+                    r = results.get(aid) or {}
+                    speech = str(r.get("speech") or "")
+                    process = r.get("process") or {}
+                    if not speech.strip():
+                        silent.add(aid)
+                        continue
+                    spoken_any = True
+                    speech_log.append({
+                        "member_agent_id": aid, "name": m["name"], "wave": wave + 1,
+                    })
+                    await self._append_timeline(group_session, m, speech, process=process)
+                    # 公开发言广播其他成员（信箱投递，下一 wave 可见；无 LLM）
+                    for other in members:
+                        if other["agent_id"] != aid:
+                            await self._deliver(
+                                other["session"], from_=m["name"], content=speech,
+                                visibility="group", run_id=run.id,
+                            )
+                    await self.db.commit()
+                    budget.add(speech)
+            finally:
+                # 断连/取消：终止仍在跑的成员任务并回收（防任务/session 泄漏）
+                for t in tasks.values():
+                    if not t.done():
+                        t.cancel()
+                for t in tasks.values():
+                    try:
+                        await t
+                    except BaseException:
+                        pass
+                while not merger.empty():
+                    merger.get_nowait()
 
         status = "done" if spoken_any else "failed"
         error = None if spoken_any else "全部成员无有效发言"
@@ -283,6 +341,137 @@ class GroupOrchestrator:
         yield self._emit("group.run_done", {
             "run_id": run.id, "status": status, "rounds": rounds,
         })
+
+    async def _run_member_turn_detached(
+        self,
+        group: AgentGroup,
+        run: AgentGroupRun,
+        member: dict[str, Any],
+        members: list[dict[str, Any]],
+        steering_queue: Any | None,
+        merger: asyncio.Queue,
+    ) -> dict[str, Any]:
+        """并行 wave 内单成员独立运行时执行：fork session/服务，事件汇入队列。
+
+        Returns:
+            {"speech": 最终发言, "process": 过程档案}；失败抛异常由 wave 串行点
+            统一失败隔离。
+        """
+        session = _fork_session(self.db)
+        try:
+            orch = self._fork_runtime(session)
+            speech = ""
+            process: dict[str, Any] = {}
+            try:
+                async for ev, acc in orch._run_member_turn(
+                    group, run, member, members,
+                    steering_queue=steering_queue, process_out=process,
+                ):
+                    merger.put_nowait(ev)
+                    speech = acc
+                # fork session 事务自管：成员 turn 内的落库（消息/工具卡）
+                # 只 flush 不 commit（照抄单聊惯例），此处统一提交；主 session
+                # 的 wave 串行点只提交时间线/投递，两边行不相交
+                await session.commit()
+            except BaseException:
+                # 成员任务内异常：回滚自身 session 防连接池脏状态，再上抛隔离
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                raise
+            return {"speech": speech, "process": process}
+        finally:
+            # 哨兵在所有退出路径（含 fork 失败/取消）保证恰好一条，
+            # 消费循环按 len(tasks) 收哨兵不会卡死
+            merger.put_nowait(None)
+            await session.close()
+
+    def _fork_runtime(self, session: AsyncSession) -> "GroupOrchestrator":
+        """在给定 session 上装配编排器分身（成员并行 turn 专用）。
+
+        AsyncSession 不可并发共享：每成员一条独立 session，其上的全部仓储/
+        服务/端口（db 持有者）逐一新建重绑；引擎与 prompt 构建器等无 db 状态
+        的协作方直接共享。
+        """
+        src = self.chat_service
+        from novamind.features.agent.attachments.text_reader import AttachmentTextReader
+        from novamind.features.agent.repository.agent_repository import (
+            AgentRepository,
+            McpServerRepository,
+            MessageRepository,
+            SessionRepository,
+            ToolCallRepository,
+        )
+        from novamind.features.agent.attachments.repository import (
+            ChatAttachmentRepository,
+        )
+        from novamind.features.agent.repository.context_summary_repository import (
+            ContextSummaryRepository,
+        )
+        from novamind.features.agent.repository.memory_repository import MemoryRepository
+        from novamind.features.agent.services.host_knowledge_search import (
+            HostKnowledgeSearchPort,
+        )
+        from novamind.features.agent.services.host_memory_store import HostMemoryStorePort
+        from novamind.features.user.repository.model_config_repository import (
+            ModelConfigRepository,
+        )
+        from novamind.features.user.services.model_config_service import ModelConfigService
+
+        agent_service = AgentService.__new__(AgentService)
+        agent_service.db = session
+        agent_service.agent_repo = AgentRepository(session)
+        agent_service.session_repo = SessionRepository(session)
+        agent_service.msg_repo = MessageRepository(session)
+        agent_service.tc_repo = ToolCallRepository(session)
+        agent_service.memory_repo = MemoryRepository(session)
+        agent_service.context_summary_repo = ContextSummaryRepository(session)
+        agent_service._mcp_repo = McpServerRepository(session)
+        chat2 = AgentChatService.__new__(AgentChatService)
+        chat2.db = session
+        chat2.agent_service = agent_service
+        chat2.agent_engine = src.agent_engine
+        chat2._todo_store = src._todo_store
+        chat2._memory_search_repo = src._memory_search_repo
+        chat2._minio_client = src._minio_client
+        chat2._web_search_port = src._web_search_port
+        chat2._prompt_provider = src._prompt_provider
+        # db 持有者：按类型重绑到 fork session
+        chat2._memory_store_port = HostMemoryStorePort(session)
+        chat2._knowledge_search_port = (
+            HostKnowledgeSearchPort(session, src.model_config_service)
+            if src._knowledge_search_port is not None else None
+        )
+        chat2._attachment_read_port = (
+            AttachmentTextReader(session)
+            if src._attachment_read_port is not None else None
+        )
+        mcs = ModelConfigService.__new__(ModelConfigService)
+        mcs.db = session
+        mcs.repo = ModelConfigRepository(session)
+        chat2.model_config_service = mcs
+        chat2._memory_search_port = src._memory_search_port
+        chat2._prompt_builder = src._prompt_builder
+        chat2.tc_repo = agent_service.tc_repo
+        chat2.msg_repo = agent_service.msg_repo
+        chat2.session_repo = agent_service.session_repo
+        chat2.attachment_repo = ChatAttachmentRepository(session)
+        for name in (
+            "_build_context", "_resolve_model", "_create_memory_manager",
+            "_compress_messages", "_build_embedding_resolver",
+            "_build_research_service_factory", "_filter_visible_mcp_ids",
+        ):
+            setattr(chat2, name, getattr(src, name))
+        orch = GroupOrchestrator.__new__(GroupOrchestrator)
+        orch.db = session
+        orch.chat_service = chat2
+        orch.agent_service = agent_service
+        orch.group_repo = GroupRepository(session)
+        orch.run_repo = GroupRunRepository(session)
+        orch.session_repo = agent_service.session_repo
+        orch._consult_events = []
+        return orch
 
     # ==================== 专家咨询 ====================
 
@@ -425,6 +614,12 @@ class GroupOrchestrator:
         """
         agent: AgentDefinition = member["agent"]
         conv: AgentSession = member["session"]
+        # fork 运行时的成员 turn：agent/conv 等 ORM 实体来自主 session，须并入
+        # 本 session 才能持久化操作（merge load=False 按 id 复制为受管副本；
+        # turn 内写的是消息/工具卡等新行，不回写这两个实体）
+        if inspect(conv).session is not self.db:
+            conv = await self.db.merge(conv, load=False)
+            member = {**member, "session": conv}
         user_id = group.user_id
         model = await self.chat_service._resolve_model(user_id, agent, None)
         memory_manager = await self.chat_service._create_memory_manager(
@@ -874,7 +1069,13 @@ class GroupOrchestrator:
         elif group.mode == "consult":
             mode_hint = "专家咨询模式，你是被咨询成员：完整回答交给你的问题"
         else:
-            mode_hint = "头脑风暴模式：与各成员依次讨论，当前为你的发言轮次"
+            mode_hint = (
+                "头脑风暴模式：全体成员同时发言（并行讨论），不等他人结束；"
+                "想私下交流特定成员用 send_direct_message 工具，"
+                "想中途向全体补充观点用 send_group_message 工具；"
+                "其他成员的发言与私信会作为消息送达你（信箱投递），"
+                "当前这轮先独立给出你的观点，后续轮可回应他人"
+            )
         try:
             return PromptManager.format_prompt(
                 "agent_group_identity",

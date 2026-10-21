@@ -173,8 +173,9 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
   /**
    * 发起一响讨论：落用户消息 → WS 事件流增量渲染时间线
    *
-   * 成员发言条目按 member_agent_id 复用（流式内容直拼）；group.speaker 切换
-   * currentSpeaker；run_done/断连统一收尾解锁输入。
+   * 成员发言条目按 member_agent_id 复用（流式内容直拼）；头脑风暴为并行
+   * 模式，多成员事件交错到达，发言中条目按 memberId 各持一个（Map 复用）；
+   * run_done/断连统一收尾解锁输入。
    */
   async function sendGroupMessage(content: string) {
     const group = currentGroup.value
@@ -185,14 +186,15 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
     currentSpeaker.value = null
     error.value = null
 
-    // 发言中条目：首个 content 事件到达时建（member 条目按 agent_id 复用）
-    let activeEntry: GroupTimelineEntry | null = null
+    // 发言中条目按 memberId 各持一个：并行成员事件交错，单变量会串条目
+    const activeEntries = new Map<number, GroupTimelineEntry>()
 
     const controller = new AbortController()
     abortController.value = controller
 
-    function ensureEntry(memberId: number, name: string) {
-      if (activeEntry && activeEntry.member_agent_id === memberId) return
+    function ensureEntry(memberId: number, name: string): GroupTimelineEntry {
+      const existing = activeEntries.get(memberId)
+      if (existing) return existing
       timeline.value.push({
         kind: 'member',
         member_agent_id: memberId,
@@ -205,7 +207,9 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
       })
       // 从数组取回 reactive proxy 再持有：改原始对象绕过 proxy 不触发渲染，
       // 流式内容与 streaming 收尾都会静默失效（气泡空白+spinner 卡死）
-      activeEntry = timeline.value[timeline.value.length - 1] as GroupTimelineEntry
+      const entry = timeline.value[timeline.value.length - 1] as GroupTimelineEntry
+      activeEntries.set(memberId, entry)
+      return entry
     }
 
     /** 工具步骤按 (callId) 在当前发言条目内配对累积（callId 引擎内全局唯一） */
@@ -233,38 +237,30 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
             if (!currentSessionId.value) currentSessionId.value = d.session_id
           },
           onSpeaker(d) {
-            // 封口上一条流式条目再切换：只置 null 会让旧条目永远「正在发言」
-            if (activeEntry) activeEntry.streaming = false
             currentSpeaker.value = d
-            activeEntry = null
-            ensureEntry(d.member_agent_id, d.name)
           },
           onContent(text, memberId, name) {
-            ensureEntry(memberId, name)
-            activeEntry!.content += text
+            ensureEntry(memberId, name).content += text
           },
           onReasoning(text, memberId, name) {
             // 思考流独立累积（气泡内折叠区展示，不与正文混流）
-            ensureEntry(memberId, name)
-            activeEntry!.reasoning = (activeEntry!.reasoning || '') + text
+            const entry = ensureEntry(memberId, name)
+            entry.reasoning = (entry.reasoning || '') + text
           },
           onToolCall(d, memberId, name) {
-            ensureEntry(memberId, name)
-            upsertToolStep(activeEntry!, d.call_id, {
+            upsertToolStep(ensureEntry(memberId, name), d.call_id, {
               name: d.tool_name,
               arguments: d.arguments,
               status: 'running',
             })
           },
           onToolResult(d, memberId, name) {
-            ensureEntry(memberId, name)
-            upsertToolStep(activeEntry!, d.call_id, {
+            upsertToolStep(ensureEntry(memberId, name), d.call_id, {
               result: d.full_result ?? d.result,
               status: d.status === 'failed' ? 'failed' : 'completed',
             })
           },
           onNotice(d) {
-            if (activeEntry) activeEntry.streaming = false
             timeline.value.push({
               kind: 'notice',
               content: d.content,
@@ -288,10 +284,8 @@ export const useAgentGroupStore = defineStore('agentGroup', () => {
         error.value = e instanceof Error ? e.message : '发送失败'
       }
     } finally {
-      // activeEntry 在闭包 ensureEntry 中赋值，TS 在 finally 分支窄化为 never；
-      // 用 as 断言重置窄化类型（与单聊 store 的 assistantMsg 同坑）
-      const pendingEntry = activeEntry as GroupTimelineEntry | null
-      if (pendingEntry) pendingEntry.streaming = false
+      // 收尾全部发言中条目（并行交错：可能多条同时在流式）
+      for (const entry of activeEntries.values()) entry.streaming = false
       running.value = false
       currentSpeaker.value = null
       abortController.value = null
