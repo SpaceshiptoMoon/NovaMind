@@ -136,6 +136,8 @@ import {
 } from '@/components/knowledge'
 import type {
   ImageStrategy,
+  OcrTask,
+  PdfStrategy,
   TextStrategy,
   VideoStrategy,
   WikiGranularity,
@@ -182,7 +184,8 @@ const asrModels = ref<AvailableModelItem[]>([])
 const configForm = reactive({
   kbSpaceTypes: ['text'] as string[],
 
-  pdfStrategy: 'default' as TextStrategy,
+  pdfStrategy: 'default' as PdfStrategy,
+  pdfOcrTask: null as OcrTask | null,
   docxStrategy: 'default' as TextStrategy,
   excelStrategy: 'deepdoc' as TextStrategy,
   pptStrategy: 'deepdoc' as TextStrategy,
@@ -327,6 +330,16 @@ watch(hasAudio, (value) => {
     configForm.audioSpeakerCount = null
   }
 })
+
+watch(
+  () => configForm.pdfStrategy,
+  (value) => {
+    if (value !== 'external_ocr') {
+      // ocr_task 仅 external_ocr 消费，切走即清防脏值
+      configForm.pdfOcrTask = null
+    }
+  },
+)
 
 watch(
   () => configForm.imageStrategy,

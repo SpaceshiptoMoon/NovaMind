@@ -3,6 +3,10 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 
 /** 文本解析策略：default（内置 reader）或 deepdoc */
 export type TextStrategy = 'default' | 'deepdoc'
+/** PDF 文本解析策略：额外支持 external_ocr（扫描件整本交外部 OCR） */
+export type PdfStrategy = TextStrategy | 'external_ocr'
+/** 外部 OCR 任务：document_parsing（整本 PDF 直传带版面）/ multi_lan（逐页纯文本） */
+export type OcrTask = 'document_parsing' | 'multi_lan'
 /** 图片解析策略：VLM 描述或 DeepDoc OCR */
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
 /** 视频解析策略：7 种抽帧/去重/描述组合预设 */
@@ -107,6 +111,12 @@ export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
 
+/** 校验 PDF 文本策略枚举（含 external_ocr），非法值回退 default */
+export function getPdfStrategyValue(value: unknown): PdfStrategy {
+  if (value === 'deepdoc' || value === 'external_ocr') return value
+  return 'default'
+}
+
 /** 校验音频切分模式枚举，仅接受 pause_topic，其余回退空（通用切分）。 */
 export function getAudioSplitModeValue(value: unknown): string {
   return value === 'pause_topic' ? 'pause_topic' : ''
@@ -146,7 +156,8 @@ export const DEFAULT_QUESTION_PROMPT_TEMPLATE = `留空则使用系统默认模�
 /** 后端 config.text_parsing → 表单字段（逐类型回填策略） */
 export function applyTextParsingConfig(
   target: {
-    pdfStrategy: TextStrategy
+    pdfStrategy: PdfStrategy
+    pdfOcrTask: OcrTask | null
     docxStrategy: TextStrategy
     excelStrategy: TextStrategy
     pptStrategy: TextStrategy
@@ -158,7 +169,8 @@ export function applyTextParsingConfig(
   },
   textConfig?: TextParsingConfig,
 ) {
-  target.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
+  target.pdfStrategy = getPdfStrategyValue(textConfig?.pdf?.strategy)
+  target.pdfOcrTask = textConfig?.pdf?.ocr_task ?? null
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
   target.excelStrategy = DEEPDOC_ONLY_STRATEGY
   target.pptStrategy = DEEPDOC_ONLY_STRATEGY
@@ -171,7 +183,8 @@ export function applyTextParsingConfig(
 
 /** 表单字段 → 后端 TextParsingConfig（deepdoc 策略时 PDF 固定 parser=full） */
 export function buildTextParsingConfigFromForm(source: {
-  pdfStrategy: TextStrategy
+  pdfStrategy: PdfStrategy
+  pdfOcrTask: OcrTask | null
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
   pptStrategy: TextStrategy
@@ -184,8 +197,10 @@ export function buildTextParsingConfigFromForm(source: {
   return {
     pdf: {
       strategy: source.pdfStrategy,
-      // 前端只暴露 default/deepdoc 两个选择；deepdoc 固定走 full（推荐模式）
+      // 前端只暴露 default/deepdoc/external_ocr；deepdoc 固定走 full（推荐模式）。
+      // ocr_task 仅 external_ocr 消费，其它策略置 undefined 防脏值。
       parser: source.pdfStrategy === 'deepdoc' ? 'full' : undefined,
+      ocr_task: source.pdfStrategy === 'external_ocr' ? source.pdfOcrTask : undefined,
     },
     docx: { strategy: source.docxStrategy },
     excel: { strategy: DEEPDOC_ONLY_STRATEGY },

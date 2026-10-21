@@ -1151,3 +1151,41 @@ def test_runtime_parsing_config_external_ocr_strategy_passthrough():
         ParsingConfig.model_validate(
             {"image": {"strategy": "external_ocr", "ocr_task": "unknown_task"}}
         )
+
+
+def test_runtime_parsing_config_pdf_external_ocr_passthrough():
+    """PDF 文本策略 external_ocr 与 ocr_task 透传。
+
+    正例：显式 ocr_task 落 pdf_ocr_task 键；反例：非 external_ocr 策略即
+    使误配 ocr_task 也不落键；留空不落键（连接器默认 document_parsing）。
+    PDF 是非 VLM 文本路径，不应被误置 vlm_description_enabled。
+    """
+    runtime = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "external_ocr", "ocr_task": "multi_lan"}}},
+        file_type="pdf",
+    )
+    assert runtime["strategy"] == "external_ocr"
+    assert runtime["pdf_ocr_task"] == "multi_lan"
+    assert "deepdoc_parser_id" not in runtime
+    assert "vlm_description_enabled" not in runtime
+
+    runtime = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "external_ocr"}}}, file_type="pdf"
+    )
+    assert runtime["strategy"] == "external_ocr"
+    assert "pdf_ocr_task" not in runtime
+
+    # 非 external_ocr 策略误配 ocr_task → 不落键
+    runtime = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "deepdoc", "parser": "full", "ocr_task": "multi_lan"}}},
+        file_type="pdf",
+    )
+    assert "pdf_ocr_task" not in runtime
+    assert runtime["deepdoc_parser_id"] == "pdf_full"
+
+    # PDF 之外的文本类型不接受 external_ocr
+    import pytest as _pytest
+    from pydantic import ValidationError as _ValidationError
+
+    with _pytest.raises(_ValidationError):
+        ParsingConfig.model_validate({"text": {"docx": {"strategy": "external_ocr"}}})

@@ -2,8 +2,8 @@
   <div class="sub-section">
     <h4 class="sub-title">文本解析</h4>
     <p class="sub-desc">
-      按文件类型设置解析策略：默认或 DeepDoc。扫描件等图片型 PDF 请选 DeepDoc；Excel、PPT、EPUB
-      仅支持 DeepDoc。
+      按文件类型设置解析策略：默认、DeepDoc 或外部 OCR。扫描件等图片型 PDF 可选 DeepDoc 或
+      外部 OCR；Excel、PPT、EPUB 仅支持 DeepDoc。
     </p>
 
     <el-form :model="configForm" label-width="120px" class="config-form">
@@ -15,7 +15,25 @@
               <el-select v-model="configForm.pdfStrategy" style="width: 100%">
                 <el-option label="默认" value="default" />
                 <el-option label="DeepDoc" value="deepdoc" />
+                <el-option label="外部 OCR" value="external_ocr" />
               </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="configForm.pdfStrategy === 'external_ocr'" :span="12">
+            <el-form-item label="OCR 任务">
+              <el-select
+                v-model="configForm.pdfOcrTask"
+                style="width: 100%"
+                placeholder="整本直传（默认）"
+                clearable
+              >
+                <el-option label="整本直传（带版面结构）" value="document_parsing" />
+                <el-option label="逐页渲图（纯文本）" value="multi_lan" />
+              </el-select>
+              <div class="field-hint">
+                调用配置中心 ocr 段的外部 OCR 服务（如 qwen3.5-ocr），适用于文字层为空的扫描件；
+                留空默认整本直传
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -40,10 +58,11 @@
 <script setup lang="ts">
 /** 知识库配置弹窗的文本解析分区：PDF 专属解析策略 + 各文本类型解析策略 */
 import { textStrategyItems } from './kbConfig'
-import type { TextStrategy } from './kbConfig'
+import type { OcrTask, PdfStrategy, TextStrategy } from './kbConfig'
 
 type TextParsingFormModel = {
-  pdfStrategy: TextStrategy
+  pdfStrategy: PdfStrategy
+  pdfOcrTask: OcrTask | null
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
   pptStrategy: TextStrategy

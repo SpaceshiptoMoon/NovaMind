@@ -435,11 +435,25 @@ async def execute_document_pipeline(
             splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
         )
         await begin_step(session, task, "parsed")
-        parse_result = await processor.parse_document_result(
-            tmp_path,
-            parsing_config=parsing_config,
-            splitting_config=splitting_config,
-        )
+        if parsing_config.get("strategy") == "external_ocr":
+            # 扫描件/图片型 PDF：文字层为空，外部 OCR 是唯一可用的文本来源。
+            # 产物走与 default 分支相同的 splitter 链路（尊重用户切分配置），
+            # 不混入 DeepDoc 的哨兵重切（那套依赖 reading_order 坐标）。
+            parse_result = await _parse_pdf_with_external_ocr_static(
+                document=document,
+                file_content=file_content,
+                file_path=file_path,
+                parse_config=parsing_config,
+                splitting_config=splitting_config,
+                processor=processor,
+                _logger=_logger,
+            )
+        else:
+            parse_result = await processor.parse_document_result(
+                tmp_path,
+                parsing_config=parsing_config,
+                splitting_config=splitting_config,
+            )
         # 原始文件已解析完，立即释放临时文件。不把 unlink 挂 try/finally 到整个
         # 管道——此前快照命中分支提前 return 绕过 finally，每个续跑任务泄漏一个
         # tmp 文件；解析抛错时任务行会标 FAILED，OS tmp 目录由系统清理兜底。
@@ -1175,6 +1189,100 @@ async def _process_image_ocr_external_static(
         char_count=len(text),
     )
     return text
+
+
+async def _parse_pdf_with_external_ocr_static(
+    document: Document,
+    file_content: bytes | None,
+    file_path: str | None,
+    parse_config: dict[str, Any],
+    splitting_config: dict[str, Any],
+    processor,
+    _logger,
+):
+    """PDF strategy=external_ocr：整本对外部 OCR 识别后按用户切分配置分块。
+
+    与图片分支的区别在于产物必须与文本分支同构——后续 figure/快照/切分
+    快照/后置尾复用同一条链路，因此这里产出 DeepDocParseResult 而非裸文本。
+    file_path 由调用方透传：大文件（worker 落盘）直接读盘，避免整包驻留内存。
+    """
+    from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
+    from novamind.engines.document.media.ocr import (
+        OcrConnector,
+        OcrCredentialsMissingError,
+        OcrFileInvalidError,
+        OcrRequestError,
+    )
+    from novamind.features.knowledge_space.services.media_processing import (
+        build_engine_ocr_config,
+    )
+
+    ocr_task = parse_config.get("pdf_ocr_task")
+    _logger.info(
+        "外部 OCR PDF 解析开始",
+        document_id=document.id,
+        file_type=document.file_type,
+        ocr_task=ocr_task or "document_parsing",
+    )
+
+    if file_path is not None:
+        content = await asyncio.to_thread(Path(file_path).read_bytes)
+    else:
+        content = file_content or b""
+
+    connector = OcrConnector(build_engine_ocr_config())
+    try:
+        ocr_result = await connector.recognize(
+            file_content=content,
+            file_type=(document.file_type or "pdf").lower(),
+            ocr_task=ocr_task,
+        )
+    except (OcrCredentialsMissingError, OcrFileInvalidError) as exc:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=f"外部 OCR 配置或文件错误：{exc}",
+        ) from exc
+    except OcrRequestError as exc:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"外部 OCR 服务调用失败（可重试）：{exc}",
+        ) from exc
+
+    full_text = ocr_result.render_markdown().strip()
+    split_items = await processor.split_text_items(
+        full_text,
+        strategy=str(splitting_config.get("strategy", "recursive")),
+        chunk_size=splitting_config.get("chunk_size", 1000),
+        chunk_overlap=splitting_config.get("chunk_overlap", 100),
+        min_chunk_size=splitting_config.get("min_chunk_size", 500),
+        max_chunk_size=splitting_config.get("max_chunk_size", 2000),
+        similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
+        batch_size=splitting_config.get("batch_size", 20),
+        separators=splitting_config.get("separators"),
+        window_size=splitting_config.get("window_size", 2),
+        parent_chunk_size=splitting_config.get("parent_chunk_size", 2000),
+    )
+    chunks = [t for t, _meta in split_items]
+    chunk_structure_meta = [m for _t, m in split_items]
+    metadata: dict[str, Any] = {
+        "parser": "external_ocr",
+        "file_type": (document.file_type or "pdf").lower(),
+        "split_strategy": str(splitting_config.get("strategy", "recursive")),
+        "ocr_protocol": ocr_result.protocol,
+        "ocr_page_count": ocr_result.page_count,
+    }
+    # 关系元数据仅在非空时写键，与 parse_document_result 的默认分支同约定
+    if any(chunk_structure_meta):
+        metadata["chunk_structure_meta"] = chunk_structure_meta
+    _logger.info(
+        "外部 OCR PDF 解析完成",
+        document_id=document.id,
+        protocol=ocr_result.protocol,
+        page_count=ocr_result.page_count,
+        char_count=len(full_text),
+        chunk_count=len(chunks),
+    )
+    return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
 
 
 async def _process_image_combined_static(

@@ -28,6 +28,7 @@ export {
   applyTextParsingConfig,
   buildTextParsingConfigFromForm,
   getAudioSplitModeValue,
+  getPdfStrategyValue,
   getTextStrategyValue,
   getVideoStrategyValue,
   audioSplitModeItems,
@@ -37,6 +38,8 @@ export {
 } from './kbConfig'
 export type {
   ImageStrategy,
+  OcrTask,
+  PdfStrategy,
   WikiGranularity,
   TextStrategy,
   TextStrategyField,

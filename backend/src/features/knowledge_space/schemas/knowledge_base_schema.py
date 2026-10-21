@@ -159,9 +159,21 @@ class DeepDocOnlyParsingConfig(BaseModel):
 
 
 class PdfParsingConfig(TextTypeParsingConfig):
-    """PDF parsing config."""
+    """PDF parsing config.
 
+    strategy 除 default/deepdoc 外支持 external_ocr：整本 PDF 交外部 OCR
+    （配置中心 ocr 段，如 qwen3.5-ocr）识别后按用户切分配置继续分块。
+    适用于文字层为空的扫描件/图片型 PDF。
+    """
+
+    strategy: Literal["default", "deepdoc", "external_ocr"] = Field(default="default")
     parser: PdfParserName | None = Field(default=None)
+    # 仅 external_ocr 消费：document_parsing（整本直传，带版面结构）/
+    # multi_lan（逐页渲图纯文本）；None 默认走 document_parsing
+    ocr_task: Literal["document_parsing", "multi_lan"] | None = Field(
+        default=None,
+        description="外部 OCR 任务（仅 strategy=external_ocr 消费）：留空走 document_parsing",
+    )
 
     @model_validator(mode="after")
     def validate_parser_usage(self):
@@ -171,8 +183,8 @@ class PdfParsingConfig(TextTypeParsingConfig):
         # default 时未显式清 parser，旧值残留；运行时本就忽略该字段，此处自动
         # 清空而非报错，避免 update 返回时 response 构造触发 500（KB 配置
         # update 实测）。parser 原值仍在 DB，切回 deepdoc 时恢复。
-        """strategy=default 时自动清空残留 parser 字段（防旧值触发响应构造 500）。"""
-        if self.strategy == "default" and self.parser is not None:
+        """非 deepdoc 策略时自动清空残留 parser 字段（防旧值触发响应构造 500）。"""
+        if self.strategy != "deepdoc" and self.parser is not None:
             self.parser = None
         return self
 
@@ -775,6 +787,8 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
             result["deepdoc_parser_id"] = PDF_PARSER_TO_LEGACY_ID[pdf_cfg.parser]
             if pdf_cfg.parser in ("full", "plain"):
                 result["deepdoc_pdf_mode"] = pdf_cfg.parser
+        elif pdf_cfg.strategy == "external_ocr" and pdf_cfg.ocr_task:
+            result["pdf_ocr_task"] = pdf_cfg.ocr_task
     elif text_cfg.strategy == "deepdoc":
         result["deepdoc_parser_id"] = target_doc_type
 

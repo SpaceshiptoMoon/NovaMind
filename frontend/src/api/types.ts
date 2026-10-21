@@ -451,8 +451,11 @@ export interface TextTypeParsingConfig {
   strategy?: 'default' | 'deepdoc'
 }
 
-export interface PdfParsingConfig extends TextTypeParsingConfig {
+export interface PdfParsingConfig extends Omit<TextTypeParsingConfig, 'strategy'> {
+  strategy?: 'default' | 'deepdoc' | 'external_ocr'
   parser?: PdfParserName
+  /** 仅 strategy=external_ocr 消费：document_parsing(整本直传带版面)/multi_lan(逐页纯文本)；空=document_parsing */
+  ocr_task?: 'document_parsing' | 'multi_lan' | null
 }
 
 export interface TextParsingConfig {

@@ -7695,8 +7695,24 @@
         "type": "object"
       },
       "PdfParsingConfig": {
-        "description": "PDF parsing config.",
+        "description": "PDF parsing config.\n\nstrategy 除 default/deepdoc 外支持 external_ocr：整本 PDF 交外部 OCR\n（配置中心 ocr 段，如 qwen3.5-ocr）识别后按用户切分配置继续分块。\n适用于文字层为空的扫描件/图片型 PDF。",
         "properties": {
+          "ocr_task": {
+            "anyOf": [
+              {
+                "enum": [
+                  "document_parsing",
+                  "multi_lan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "外部 OCR 任务（仅 strategy=external_ocr 消费）：留空走 document_parsing",
+            "title": "Ocr Task"
+          },
           "parser": {
             "anyOf": [
               {
@@ -7713,7 +7729,8 @@
             "default": "default",
             "enum": [
               "default",
-              "deepdoc"
+              "deepdoc",
+              "external_ocr"
             ],
             "title": "Strategy",
             "type": "string"
