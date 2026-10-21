@@ -83,19 +83,6 @@
               <el-icon :size="12"><FolderOpened /></el-icon>
               工作
             </button>
-            <button
-              v-if="currentSessionId && isWorkspaceBound"
-              class="view-pill ws-add-btn"
-              title="选择工作目录"
-              @click="openWorkspaceDialog"
-            >
-              <svg viewBox="0 0 1024 1024" width="12" height="12">
-                <path
-                  fill="currentColor"
-                  d="M480 480V128a32 32 0 0 1 64 0v352h352a32 32 0 1 1 0 64H544v352a32 32 0 1 1-64 0V544H128a32 32 0 0 1 0-64z"
-                />
-              </svg>
-            </button>
           </div>
         </div>
       </header>
@@ -111,7 +98,7 @@
         <div class="ws-dialog-body">
           <p class="ws-dialog-hint">
             进入工作模式后，智能体将以该文件夹为工作目录，自动获得
-            read / glob / grep / bash 四个工具，可直接读取和检索文件夹内的文件、运行命令。
+            read / glob / grep / write / edit / bash 六个工具，可读写文件、检索内容、运行命令。
           </p>
           <!-- 目录浏览器：逐层点选，选中层即为工作区根 -->
           <div class="ws-browser">
@@ -521,7 +508,7 @@
               />
             </div>
 
-            <!-- 底部工具行：左 = + 附件 + 模式 chip；右 = 模型 + ContextMeter + 发送/停止 -->
+            <!-- 底部工具行：左 = + 附件 + + 工作目录 + 模式 chip；右 = 模型 + ContextMeter + 发送/停止 -->
             <div class="input-row">
               <div class="input-tools">
                 <button
@@ -539,6 +526,25 @@
                   style="display: none"
                   @change="handleFileSelected"
                 />
+                <!-- + 工作目录（对齐 dsh Choose workspace）：未绑定点选即弹目录选择器；已绑定显示目录 chip 可点重开 -->
+                <button
+                  v-if="currentSessionId && !isWorkspaceBound"
+                  class="input-add-btn"
+                  :disabled="agentStore.isStreaming || agentStore.loading"
+                  title="添加工作目录（进入工作模式）"
+                  @click="openWorkspaceDialog"
+                >
+                  <el-icon :size="14"><FolderOpened /></el-icon>
+                </button>
+                <button
+                  v-if="currentSessionId && isWorkspaceBound"
+                  class="mode-chip workspace-chip active"
+                  :title="`工作目录：${workspaceRoot}（点击更换 / 退出）`"
+                  @click="openWorkspaceDialog"
+                >
+                  <el-icon :size="14" class="mode-chip-icon"><FolderOpened /></el-icon>
+                  <span class="workspace-chip-path">{{ workspaceRootName }}</span>
+                </button>
                 <div class="input-modes">
                   <button
                     class="mode-chip"
@@ -720,6 +726,12 @@ const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
 const workspacePillTitle = computed(() =>
   isWorkspaceBound.value ? `工作目录：${workspaceRoot.value}` : '选择文件夹进入工作模式',
 )
+/** 工作目录 chip 显示名：取末段（长路径截断），title 里看全路径 */
+const workspaceRootName = computed(() => {
+  const p = workspaceRoot.value.replace(/\/+$/, '')
+  const seg = p.split(/[\\/]/).pop() || p
+  return seg.length > 18 ? `${seg.slice(0, 17)}…` : seg
+})
 
 const workspaceDialogVisible = ref(false)
 const workspaceBinding = ref(false)
@@ -1915,17 +1927,15 @@ onBeforeUnmount(() => {
   color: var(--color-primary, var(--el-color-primary));
 }
 
-/* 「+」换目录小按钮：仅工作模式激活时显示（模板 v-if 控制） */
-.ws-add-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 9px;
-  color: var(--color-primary, var(--el-color-primary));
+/* 工作目录 chip（输入区，绑定后显示）：复用 mode-chip 基础样式，主色强调 */
+.workspace-chip {
+  max-width: 220px;
 }
 
-.ws-add-btn svg {
-  display: block;
+.workspace-chip-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 工作区绑定弹窗 */
