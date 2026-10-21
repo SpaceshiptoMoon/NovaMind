@@ -601,19 +601,57 @@ class SpaceService:
                 "请创建新空间使用不同的 Embedding 模型。"
             )
 
-    def _is_embedding_changed(self, config_updates: dict, current_config: dict) -> bool:
+    async def _get_effective_embedding_config(
+        self, space: KnowledgeSpace, current_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """空间实际生效的 embedding 语义：已固化配置，或未固化时的用户默认模型。
+
+        与处理管道 / 检索侧一致：空间未配 model 时按用户默认 embedding 模型出向量
+        （前端状态标签同样显示「默认 · 模型名」）。门禁比较必须用生效语义，
+        否则「把当前默认模型固化进空间配置」会被误判为换模型而永久拒绝。
+        """
+        embedding = current_config.get("embedding") or {}
+        model = embedding.get("model")
+        dimension = embedding.get("dimension")
+        if model and dimension:
+            return {"model": model, "dimension": dimension}
+        if self.model_config_service:
+            if not model:
+                model = await self.model_config_service.get_user_default_model_name(
+                    space.owner_id, "embedding"
+                )
+            if not dimension and model:
+                dimension = await self._get_embedding_dimension(model, space.owner_id)
+        return {"model": model, "dimension": dimension}
+
+    def _is_embedding_changed(
+        self,
+        config_updates: dict,
+        current_config: dict,
+        effective_embedding: dict | None = None,
+    ) -> bool:
         """检查配置更新是否涉及 embedding 变更（model 或 dimension 任一变化）。
 
         dimension 曾被排除在变更判定外（注释称「后端自动管理」）——但若上游仅
         改 dimension：门禁放行 → ES 索引维持旧维度 mapping → 新向量 bulk 全部
         失败且被部分失败路径吞掉（审计 P2#13）。维度与模型同属向量语义，
         变更都必须过「无已完成文档」门禁。
+
+        Args:
+            config_updates: PATCH 进来的配置片段。
+            current_config: 空间当前配置。
+            effective_embedding: 实际生效的 embedding（未固化时含用户默认模型）；
+                为 None 时退化为只比空间配置本身（纯函数语义，测试用）。
         """
         embedding_update = config_updates.get("embedding")
         if not isinstance(embedding_update, dict) or not embedding_update:
             return False
 
-        current_embedding = current_config.get("embedding") or {}
+        current_embedding = (
+            effective_embedding
+            if effective_embedding is not None
+            else (current_config.get("embedding") or {})
+        )
         new_model = embedding_update.get("model")
         new_dim = embedding_update.get("dimension")
         model_changed = new_model is not None and new_model != current_embedding.get("model")
@@ -667,9 +705,10 @@ class SpaceService:
             raise SpaceNotFoundError(space_id)
 
         current_config = space.get_config()
+        effective_embedding = await self._get_effective_embedding_config(space, current_config)
 
         # 1. 校验 embedding 变更
-        if self._is_embedding_changed(config_updates, current_config):
+        if self._is_embedding_changed(config_updates, current_config, effective_embedding):
             await self._check_embedding_change_allowed(space_id)
 
         # 2. 深度合并
@@ -694,11 +733,28 @@ class SpaceService:
                     model=new_model,
                     dimension=auto_dim,
                 )
+        elif isinstance(embedding_update, dict) and not merged_config.get("embedding", {}).get(
+            "dimension"
+        ):
+            # 仅改 batch_size/normalize 的历史空间：从生效模型补齐缺失维度，
+            # 否则后续管道与检索仍无维度可用（与下方索引重建共用同一 new_dim 口径）
+            effective_dim = effective_embedding.get("dimension")
+            if effective_dim:
+                if not merged_config.get("embedding"):
+                    merged_config["embedding"] = {}
+                merged_config["embedding"]["dimension"] = effective_dim
+                self.logger.info(
+                    "配置更新：补齐缺失的 Embedding 维度",
+                    dimension=effective_dim,
+                )
 
         # 2.2 embedding 变更且维度改变时，重建 ES 索引
-        embedding_changed = self._is_embedding_changed(config_updates, current_config)
+        embedding_changed = self._is_embedding_changed(
+            config_updates, current_config, effective_embedding
+        )
         if embedding_changed and self.es_client:
-            old_dim = (current_config.get("embedding") or {}).get("dimension")
+            # 与门禁同口径：未固化空间比较「生效维度」，避免把默认模型固化误判成换维度
+            old_dim = effective_embedding.get("dimension")
             new_dim = (merged_config.get("embedding") or {}).get("dimension")
             if old_dim != new_dim:
                 await self.es_client.delete_index(space_id)

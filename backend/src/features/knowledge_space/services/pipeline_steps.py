@@ -861,6 +861,58 @@ async def generate_questions_for_chunks(
     return questions_list, question_embeddings_list, qg_stats
 
 
+async def resolve_embedding_config(
+    embedding_config: dict[str, Any],
+    model_config_port: ModelConfigService | None,
+    *,
+    user_id: int | None,
+    document_id: int,
+) -> dict[str, Any]:
+    """把空间 embedding 配置补足到向量化的真实执行口径，缺失维度即显式抛错。
+
+    空间未固化 model 时，generate_embeddings 实际按「用户默认 embedding 模型」生成
+    向量——这是既有且前端明确展示的兜底语义。但调用方此前只拿空间配置里的维度做
+    ES 索引，二者口径不一致：空间从未固化模型（如建空间时无可用模型）就会以
+    dimension=None 走到索引步骤，被 bulk_index_chunks 拒绝，且报错发生在切分之后，
+    用户看到的是「解析失败」，实际解析早已成功。
+
+    本函数补齐 model / dimension：维度优先取空间配置，其次按有效模型
+    （空间模型 > 用户默认模型）从 user_model_configs.extra_config.dimension 读取；
+    仍无法确定则抛 PermanentProcessingError（配置缺口重试不会成功）。
+    返回新 dict，不回写 space 配置——保留「空间是否固化配置」的语义，修复由用户在
+    空间设置中显式完成。dimension 保持数值原样，不在此处推断或降级。
+    """
+    model_name = embedding_config.get("model") or None
+    if not model_name and user_id and model_config_port:
+        model_name = await model_config_port.get_user_default_model_name(user_id, "embedding")
+    dimension = embedding_config.get("dimension")
+    if not dimension and model_name and model_config_port:
+        try:
+            credentials = await model_config_port.get_credentials_by_model(
+                user_id or 0, "embedding", model_name
+            )
+        except Exception as exc:  # 凭证查询失败不能与「维度未配置」混为一谈
+            get_logger(__name__).warning(
+                "读取 embedding 模型配置失败", model=model_name, error=str(exc),
+            )
+            credentials = None
+        extra = (getattr(credentials, "extra_config", None) if credentials else None) or {}
+        dimension = extra.get("dimension") or None
+    if not dimension:
+        raise PermanentProcessingError(
+            document_id=document_id,
+            error_message=(
+                "无法确定 embedding 向量维度：空间或用户默认 embedding 模型均未配置"
+                "（或该模型配置缺少 dimension）。请在空间设置中选择 Embedding 模型后重新解析"
+            ),
+        )
+    resolved = dict(embedding_config)
+    if model_name:
+        resolved["model"] = model_name
+    resolved["dimension"] = dimension
+    return resolved
+
+
 async def run_post_parse_tail(
     *,
     document: Document,
@@ -907,6 +959,19 @@ async def run_post_parse_tail(
         snapshot_fingerprint,
     )
     from novamind.shared.storage.client_factory import ClientFactory
+
+    # 向量配置先补足到真实执行口径再算指纹：model/dimension 都是指纹输入，
+    # 用补足后的值才能让快照与本次实际向量语义一一对应；维度缺失在此即抛
+    # 永久错误，早于切分/向量化，避免重试白烧解析与 embedding 调用。
+    # 文本/音频/视频/图片四个模态入口都会在本函数内补齐；各入口不各自读取原始配置。
+    # 实际凭证按 生成向量时的 user_id > 文档上传者 解析（与 generate_embeddings 同口径）。
+    _embedding_user_id = user_id or document.uploader_id
+    embedding_config = await resolve_embedding_config(
+        embedding_config,
+        model_config_port,
+        user_id=_embedding_user_id,
+        document_id=document.id,
+    )
 
     # 断点续跑前置：MinIO 客户端 + 各级指纹（懒获取，失败降级为不启用）
     resume_minio = None
@@ -990,11 +1055,12 @@ async def run_post_parse_tail(
     # ES metadata.confidence/speaker_id；切分快照保存前完成，resume 免重聚合。
     audio_segments = (time_alignment or {}).get("audio_segments")
     if audio_segments and not resumed_split:
+        import re as _re
+
         from novamind.engines.document.media.audio import (
             finalize_segment_meta,
             merge_segment_meta,
         )
-        import re as _re
 
         for text, meta in chunk_items:
             idxs = [int(m) for m in _re.findall(r"#(\d+)", text)]
@@ -1174,8 +1240,7 @@ async def run_post_parse_tail(
         space_id=document.space_id,
         chunks=es_chunks,
         embedding_dim=embedding_config.get("dimension"),
-    )
-    # 部分失败不再静默（审计 P1#5）：bulk 内部失败只计成功数不抛错，此前
+    )    # 部分失败不再静默（审计 P1#5）：bulk 内部失败只计成功数不抛错，此前
     # indexed_count != 0 即 COMPLETED，缺失块永久无感知。要求全量写入。
     if es_chunks and indexed_count < len(es_chunks):
         raise RuntimeError(
