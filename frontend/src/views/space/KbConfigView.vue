@@ -193,6 +193,7 @@ const configForm = reactive({
   jsonStrategy: 'default' as TextStrategy,
 
   imageStrategy: 'vlm' as ImageStrategy,
+  imageOcrTask: null as 'document_parsing' | 'multi_lan' | null,
   imageVlmModel: '',
   imageVlmFallbackModel: '',
   imageVlmSkipOnQuotaError: false,
@@ -330,11 +331,15 @@ watch(hasAudio, (value) => {
 watch(
   () => configForm.imageStrategy,
   (value) => {
-    if (value === 'deepdoc_ocr') {
-      // 纯 OCR 不消费 VLM 相关参数，清空防脏值提交（combined 与 vlm 一样消费）
+    if (value === 'deepdoc_ocr' || value === 'external_ocr') {
+      // 纯 OCR（本地/外部）不消费 VLM 相关参数，清空防脏值提交（combined 与 vlm 一样消费）
       configForm.imageVlmModel = ''
       configForm.imageVlmFallbackModel = ''
       configForm.imageVlmSkipOnQuotaError = false
+    }
+    if (value !== 'external_ocr') {
+      // ocr_task 仅 external_ocr 消费，切走即清防脏值
+      configForm.imageOcrTask = null
     }
   },
 )
@@ -383,6 +388,7 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
 
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
+  configForm.imageOcrTask = parsing?.image?.ocr_task ?? null
   configForm.imageVlmModel = parsing?.image?.vlm_model || ''
   configForm.imageVlmFallbackModel = parsing?.image?.vlm_fallback_model || ''
   configForm.imageVlmSkipOnQuotaError = parsing?.image?.vlm_skip_on_quota_error ?? false
@@ -552,6 +558,7 @@ function buildParsingConfig(): ParsingConfig {
     const usesVlm = configForm.imageStrategy !== 'deepdoc_ocr'
     parsing.image = {
       strategy: configForm.imageStrategy,
+      ocr_task: configForm.imageStrategy === 'external_ocr' ? configForm.imageOcrTask : undefined,
       vlm_model: usesVlm ? configForm.imageVlmModel || undefined : undefined,
       vlm_fallback_model: usesVlm ? configForm.imageVlmFallbackModel || undefined : undefined,
       vlm_skip_on_quota_error: usesVlm ? configForm.imageVlmSkipOnQuotaError : false,

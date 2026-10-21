@@ -207,14 +207,24 @@ class ImageParsingConfig(BaseModel):
       实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。
       需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号
       （warning-only，不改写入库文本）。
+    - "external_ocr": 外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字
+      再走文本 Embedding 索引（无需 VLM 模型，需配置 api_key）。PDF 走
+      document_parsing 整本直传（带版面结构），图片走 multi_lan 单图识别。
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["vlm", "deepdoc_ocr", "combined"] = Field(
+    strategy: Literal["vlm", "deepdoc_ocr", "combined", "external_ocr"] = Field(
         default="vlm",
         description="图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/"
-        "combined(OCR+VLM 合并，逐字+语义双通道交叉校验)",
+        "combined(OCR+VLM 合并，逐字+语义双通道交叉校验)/external_ocr(外部 OCR 服务)",
+    )
+    # 仅 external_ocr 消费：document_parsing（PDF 整本直传，带版面结构）/
+    # multi_lan（逐页/单图纯文本）；None 按输入形态自动（PDF→document_parsing，
+    # 图片→multi_lan）
+    ocr_task: Literal["document_parsing", "multi_lan"] | None = Field(
+        default=None,
+        description="外部 OCR 任务（仅 strategy=external_ocr 消费）：留空按文件形态自动选择",
     )
     vlm_model: str | None = Field(
         default=None,
@@ -775,6 +785,8 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
         result["vlm_description_enabled"] = parsed.image.strategy in ("vlm", "combined")
         if parsed.image.vlm_model:
             result["vlm_model"] = parsed.image.vlm_model
+        if parsed.image.strategy == "external_ocr" and parsed.image.ocr_task:
+            result["image_ocr_task"] = parsed.image.ocr_task
 
     if parsed.video:
         result["video"] = parsed.video.model_dump(exclude_none=True)

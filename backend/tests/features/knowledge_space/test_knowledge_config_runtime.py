@@ -1113,3 +1113,41 @@ def test_excel_ppt_epub_reject_default_and_migrate_to_deepdoc():
     assert parsed.text.ppt.strategy == "deepdoc"
     assert parsed.text.epub.strategy == "deepdoc"
 
+
+
+def test_runtime_parsing_config_external_ocr_strategy_passthrough():
+    """external_ocr 策略与 ocr_task 透传（Phase 2 KB 管道接线）。
+
+    正例：显式 ocr_task 落 image_ocr_task 键；反例：非 external_ocr 策略
+    即使误配 ocr_task 也不落键（防脏值驱动路径）；留空不落键（连接器按
+    输入形态自动推导）。
+    """
+    # 显式 multi_lan → 透传
+    runtime = build_runtime_parsing_config(
+        {"image": {"strategy": "external_ocr", "ocr_task": "multi_lan"}}, file_type="png"
+    )
+    assert runtime["image_strategy"] == "external_ocr"
+    assert runtime["image_ocr_task"] == "multi_lan"
+    # external_ocr 下 VLM 兼容键应置 False（非 VLM 路径）
+    assert runtime["vlm_description_enabled"] is False
+
+    # 留空 → 不落键，运行时按文件形态自动
+    runtime = build_runtime_parsing_config(
+        {"image": {"strategy": "external_ocr"}}, file_type="pdf"
+    )
+    assert "image_ocr_task" not in runtime
+
+    # 非 external_ocr 策略误配 ocr_task → 不落键
+    runtime = build_runtime_parsing_config(
+        {"image": {"strategy": "vlm", "ocr_task": "multi_lan"}}, file_type="png"
+    )
+    assert "image_ocr_task" not in runtime
+
+    # schema 层拒绝未知任务值
+    import pytest as _pytest
+    from pydantic import ValidationError as _ValidationError
+
+    with _pytest.raises(_ValidationError):
+        ParsingConfig.model_validate(
+            {"image": {"strategy": "external_ocr", "ocr_task": "unknown_task"}}
+        )

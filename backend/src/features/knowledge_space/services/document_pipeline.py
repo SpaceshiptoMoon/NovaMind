@@ -856,6 +856,7 @@ async def _process_image_document_static(
             image_fp_cfg = dict(parsing_config)
             image_fp_cfg["strategy"] = (
                 f"image:{image_strategy}:{image_vlm_model}:{image_vlm_fallback_model or ''}"
+                f":{image_nested_cfg.get('ocr_task') or ''}"
             )
             image_parse_fp = _compute_parse_fp(document, image_fp_cfg)
         except Exception as fp_exc:
@@ -891,6 +892,14 @@ async def _process_image_document_static(
             file_content=file_content,
             session=session,
             _logger=_logger,
+        )
+    elif image_strategy == "external_ocr":
+        description_text = await _process_image_ocr_external_static(
+            document=document,
+            file_content=file_content,
+            session=session,
+            _logger=_logger,
+            ocr_task=image_nested_cfg.get("ocr_task"),
         )
     elif image_strategy == "combined":
         # OCR + VLM caption 合并：逐字层（图中文字/实体）双通道交叉、语义层来自
@@ -1108,6 +1117,64 @@ async def _process_image_ocr_static(
 # 并入——图片内文字量超过 3000 字符属极端场景（整页文档照片），保护性截断防止
 # caption+OCR 合并文本爆掉切分与 embedding。
 _COMBINED_OCR_MAX_CHARS = 3000
+
+
+async def _process_image_ocr_external_static(
+    document: Document,
+    file_content: bytes,
+    session,
+    _logger,
+    ocr_task: str | None = None,
+) -> str:
+    """使用外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字。
+
+    统一经 OcrConnector：PDF 走 document_parsing 整本直传（版面结构经
+    render_markdown 转入库文本），图片走 multi_lan 单图识别。异常映射与
+    ASR 路径同风格——配置错/文件损坏为永久性，服务瞬时失败为可重试。
+    """
+    from novamind.engines.document.media.ocr import (
+        OcrConnector,
+        OcrCredentialsMissingError,
+        OcrFileInvalidError,
+        OcrRequestError,
+    )
+    from novamind.features.knowledge_space.services.media_processing import (
+        build_engine_ocr_config,
+    )
+
+    file_type = (document.file_type or "png").lower()
+    _logger.info(
+        "外部 OCR 图片解析开始",
+        document_id=document.id,
+        file_type=file_type,
+        ocr_task=ocr_task or "auto",
+    )
+
+    connector = OcrConnector(build_engine_ocr_config())
+    try:
+        result = await connector.recognize(
+            file_content=file_content, file_type=file_type, ocr_task=ocr_task
+        )
+    except (OcrCredentialsMissingError, OcrFileInvalidError) as exc:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=f"外部 OCR 配置或文件错误：{exc}",
+        ) from exc
+    except OcrRequestError as exc:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"外部 OCR 服务调用失败（可重试）：{exc}",
+        ) from exc
+
+    text = result.render_markdown().strip()
+    _logger.info(
+        "外部 OCR 图片解析完成",
+        document_id=document.id,
+        protocol=result.protocol,
+        page_count=result.page_count,
+        char_count=len(text),
+    )
+    return text
 
 
 async def _process_image_combined_static(

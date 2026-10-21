@@ -4,7 +4,7 @@
       <h4 class="sub-title">图片解析</h4>
       <p class="sub-desc">
         选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR
-        提取图片中的文字。
+        提取图片中的文字；选择 `外部 OCR` 调用配置中心的 OCR 服务（如 qwen3.5-ocr）。
       </p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
@@ -13,16 +13,33 @@
             <el-radio value="vlm">VLM 描述</el-radio>
             <el-radio value="deepdoc_ocr">DeepDoc OCR</el-radio>
             <el-radio value="combined">OCR + VLM 合并</el-radio>
+            <el-radio value="external_ocr">外部 OCR</el-radio>
           </el-radio-group>
           <div class="field-hint">
             {{
               configForm.imageStrategy === 'combined'
                 ? '本地 OCR 提取文字 + VLM 结构化描述合并入库：文字逐字通道与语义通道互补，caption 与 OCR 交叉校验产出幻觉信号；VLM 失败自动降级纯 OCR'
-                : configForm.imageStrategy === 'vlm'
-                  ? 'VLM 生成结构化描述（主体/图中文字/图表数据/实体），语义检索友好'
-                  : '本地 OCR 提取图内文字，无 VLM 成本；仅覆盖文字型图片（图表/照片的视觉信息会丢失）'
+                : configForm.imageStrategy === 'external_ocr'
+                  ? '调用配置中心 ocr 段的外部 OCR 服务（如 qwen3.5-ocr），扫描件/公式页识别质量优于本地 OCR；需先配置 api_key'
+                  : configForm.imageStrategy === 'vlm'
+                    ? 'VLM 生成结构化描述（主体/图中文字/图表数据/实体），语义检索友好'
+                    : '本地 OCR 提取图内文字，无 VLM 成本；仅覆盖文字型图片（图表/照片的视觉信息会丢失）'
             }}
           </div>
+        </el-form-item>
+        <el-form-item v-if="configForm.imageStrategy === 'external_ocr'" label="OCR 任务">
+          <el-select
+            v-model="configForm.imageOcrTask"
+            clearable
+            placeholder="留空：按文件形态自动（PDF 整本解析，图片单图识别）"
+            style="width: 100%"
+          >
+            <el-option label="document_parsing（PDF 整本直传，带版面结构）" value="document_parsing" />
+            <el-option label="multi_lan（逐页/单图纯文本）" value="multi_lan" />
+          </el-select>
+          <span class="field-hint">
+            document_parsing 版面结构保留最佳；multi_lan 兼容图片与 PDF 逐页，渲染 DPI 由服务端配置
+          </span>
         </el-form-item>
         <el-form-item v-if="configForm.imageStrategy !== 'deepdoc_ocr'" label="VLM 模型">
           <el-select
@@ -506,6 +523,7 @@ import {
 
 type MultimodalParsingFormModel = {
   imageStrategy: ImageStrategy
+  imageOcrTask: 'document_parsing' | 'multi_lan' | null
   imageVlmModel: string
   imageVlmFallbackModel: string
   imageVlmSkipOnQuotaError: boolean

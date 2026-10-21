@@ -468,7 +468,9 @@ export interface TextParsingConfig {
 }
 
 export interface ImageParsingConfig {
-  strategy?: 'vlm' | 'deepdoc_ocr' | 'combined'
+  strategy?: 'vlm' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
+  /** 仅 external_ocr 消费：document_parsing(PDF 整本直传带版面)/multi_lan(逐页纯文本)；空=按文件形态自动 */
+  ocr_task?: 'document_parsing' | 'multi_lan' | null
   vlm_model?: string
   /** VLM 主模型配额/鉴权失败时回退的备用模型名；空=不回退（与视频同名参数同语义） */
   vlm_fallback_model?: string

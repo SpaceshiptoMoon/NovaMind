@@ -4682,15 +4682,32 @@
         "type": "object"
       },
       "ImageParsingConfig": {
-        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。",
+        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。\n- \"external_ocr\": 外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字\n  再走文本 Embedding 索引（无需 VLM 模型，需配置 api_key）。PDF 走\n  document_parsing 整本直传（带版面结构），图片走 multi_lan 单图识别。",
         "properties": {
+          "ocr_task": {
+            "anyOf": [
+              {
+                "enum": [
+                  "document_parsing",
+                  "multi_lan"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "外部 OCR 任务（仅 strategy=external_ocr 消费）：留空按文件形态自动选择",
+            "title": "Ocr Task"
+          },
           "strategy": {
             "default": "vlm",
-            "description": "图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/combined(OCR+VLM 合并，逐字+语义双通道交叉校验)",
+            "description": "图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/combined(OCR+VLM 合并，逐字+语义双通道交叉校验)/external_ocr(外部 OCR 服务)",
             "enum": [
               "vlm",
               "deepdoc_ocr",
-              "combined"
+              "combined",
+              "external_ocr"
             ],
             "title": "Strategy",
             "type": "string"

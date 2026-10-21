@@ -4,7 +4,7 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 /** 文本解析策略：default（内置 reader）或 deepdoc */
 export type TextStrategy = 'default' | 'deepdoc'
 /** 图片解析策略：VLM 描述或 DeepDoc OCR */
-export type ImageStrategy = 'vlm' | 'deepdoc_ocr' | 'combined'
+export type ImageStrategy = 'vlm' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
 /** 视频解析策略：7 种抽帧/去重/描述组合预设 */
 export type VideoStrategy =
   | 'simple'

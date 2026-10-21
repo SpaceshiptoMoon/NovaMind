@@ -192,11 +192,12 @@ def _build_engine_audio_config() -> AudioConfig:
     )
 
 
-def _build_engine_ocr_config() -> "OcrEngineConfig":
+def build_engine_ocr_config() -> "OcrEngineConfig":
     """从 YAML 构造引擎 OcrEngineConfig（外部 OCR 接线唯一构造点）。
 
     引擎侧 ocr 模块不 import setting；宿主在此注入凭据与端点
     （api_key 支持 ${ENV_VAR} 占位符经 ConfigLoader 解析）。
+    公开面：同 feature 文档管道（document_pipeline）经此构造连接器配置。
     """
     from novamind.engines.document.media.ocr import OcrEngineConfig
     from novamind.setting.yaml_config import get_config
