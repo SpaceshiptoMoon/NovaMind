@@ -251,7 +251,7 @@ def test_derive_compaction_response_shape() -> None:
 async def test_estimate_context_usage_uses_dry_run() -> None:
     """estimate_context_usage 调 _build_context(dry_run=True)，返回 ContextUsageResponse 分项"""
     svc = AgentChatService.__new__(AgentChatService)
-    conv = SimpleNamespace(id=7, agent_id=3)
+    conv = SimpleNamespace(id=7, agent_id=3, extra_config={})
     agent = SimpleNamespace(id=3)
     svc.agent_service = SimpleNamespace(
         get_session=AsyncMock(return_value=conv),
@@ -289,7 +289,7 @@ async def test_estimate_context_usage_uses_dry_run() -> None:
 async def test_get_system_prompt_returns_prompt() -> None:
     """get_system_prompt 返回 SystemPromptResponse 含 system_prompt 全文 + tokens 估算"""
     svc = AgentChatService.__new__(AgentChatService)
-    conv = SimpleNamespace(id=7, agent_id=3)
+    conv = SimpleNamespace(id=7, agent_id=3, extra_config={})
     agent = SimpleNamespace(
         id=3, system_prompt="你是一个知识库助手", enabled_tools=[], context_window=32768,
     )

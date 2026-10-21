@@ -107,7 +107,7 @@ async def test_handle_assistant_tool_calls_persists_extra_usage() -> None:
 async def test_get_system_prompt_returns_full_prompt() -> None:
     """get_system_prompt 返回 SystemPromptResponse（复用 system_prompt 构造逻辑）"""
     svc = AgentChatService.__new__(AgentChatService)
-    conv = SimpleNamespace(id=7, agent_id=3)
+    conv = SimpleNamespace(id=7, agent_id=3, extra_config={})
     agent = SimpleNamespace(
         id=3, enabled_tools=[], enabled_mcp_servers=[],
         system_prompt="你是助手", context_window=32768,

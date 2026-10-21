@@ -875,7 +875,13 @@ class AgentChatService:
 
         # 工具列表
         tool_executor = self.agent_engine.tool_executor
-        enabled_tools = agent.enabled_tools or []
+        enabled_tools = list(agent.enabled_tools or [])
+        # 工作模式（会话绑定工作区）默认必带六件套：后端强制并入 local_workspace
+        # 勾选，不依赖前端——绑定本身即授权（dsh workspace-write 同语义）
+        ws_cfg = (conv.extra_config or {}).get("workspace") or {}
+        if ws_cfg.get("mode") == "local" and ws_cfg.get("root"):
+            if "local_workspace" not in enabled_tools:
+                enabled_tools.append("local_workspace")
         # 归属过滤：他人私有 MCP 服务器不可借用（含其凭证），剔除并告警不抛错
         enabled_mcp_ids = await self._filter_visible_mcp_ids(
             user_id, agent.enabled_mcp_servers or []
@@ -914,6 +920,15 @@ class AgentChatService:
         if caps.tools:
             self._inject_plan_output_tool(tools, agent)
 
+        # 工作模式：工作目录以 user-role 运行时快照注入（dsh 同款——不入
+        # 按 agent 冻结的 prompt 缓存，会话内路径恒定不撕裂 KV cache）
+        workspace_prompt = ""
+        if ws_cfg.get("mode") == "local" and ws_cfg.get("root"):
+            workspace_prompt = (
+                f'Current working directory: "{ws_cfg["root"]}"\n'
+                "(All workspace tool paths are relative to this directory.)"
+            )
+
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
         # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径；会话粒度冻结
@@ -939,9 +954,8 @@ class AgentChatService:
             self._set_cached_prompt(cache_key, cached_partial)
 
         if caps.tools:
-            system_prompt = (
-                cached_partial + "\n\n" + frozen_memory if frozen_memory else cached_partial
-            )
+            tail_parts = [p for p in (frozen_memory, workspace_prompt) if p]
+            system_prompt = cached_partial + ("\n\n" + "\n\n".join(tail_parts) if tail_parts else "")
         else:
             # 无工具能力的模型：诚实声明工具不可执行（防正文假调用被误解为已执行），
             # 引导模型基于上下文直接回答
@@ -949,6 +963,8 @@ class AgentChatService:
             parts = [cached_partial]
             if frozen_memory:
                 parts.append(frozen_memory)
+            if workspace_prompt:
+                parts.append(workspace_prompt)
             if sim_block:
                 parts.append(sim_block)
             system_prompt = "\n\n".join(parts)
@@ -1073,7 +1089,12 @@ class AgentChatService:
             agent, user_id, model, conv.id,
             self._memory_store_port, self._memory_search_port, self._prompt_provider,
         )
-        enabled_tools = agent.enabled_tools or []
+        enabled_tools = list(agent.enabled_tools or [])
+        # 与 _build_context 同口径：工作模式强制并入 local_workspace
+        ws_cfg = (conv.extra_config or {}).get("workspace") or {}
+        if ws_cfg.get("mode") == "local" and ws_cfg.get("root"):
+            if "local_workspace" not in enabled_tools:
+                enabled_tools.append("local_workspace")
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
         # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径；会话粒度冻结
         frozen_memory = await self._get_frozen_memory(
@@ -1093,7 +1114,16 @@ class AgentChatService:
                 max_prompt_tokens=agent.context_window,
             )
             self._set_cached_prompt(cache_key, cached_partial)
-        system_prompt = cached_partial + ("\n\n" + frozen_memory if frozen_memory else "")
+        parts = [cached_partial]
+        if frozen_memory:
+            parts.append(frozen_memory)
+        # 工作目录快照（与实时路径一致，轨迹 inspector 展示的 prompt 即实发 prompt）
+        if ws_cfg.get("mode") == "local" and ws_cfg.get("root"):
+            parts.append(
+                f'Current working directory: "{ws_cfg["root"]}"\n'
+                "(All workspace tool paths are relative to this directory.)"
+            )
+        system_prompt = "\n\n".join(parts)
         from novamind.engines.agent.memory.token_budget import TokenBudget
         tokens = TokenBudget(model).count_text_tokens(system_prompt)
         return SystemPromptResponse(system_prompt=system_prompt, tokens=tokens)

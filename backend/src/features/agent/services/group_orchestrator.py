@@ -448,7 +448,8 @@ class GroupOrchestrator:
         )
         # user_content 传空：触发消息（用户原话/consult 问题）已在 build_context
         # 之前以投递形式 commit 进成员会话，MemoryManager 会将其组装进 messages，
-        # 无需二次注入。
+        # 无需二次注入。_build_context 内部已按会话工作区绑定强制并入
+        # local_workspace 勾选并生成工作目录 prompt——群聊成员与单聊同口径。
 
         context = ToolContext(
             db_session=self.db, user_id=user_id,

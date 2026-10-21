@@ -1,8 +1,8 @@
-"""本地工作区进程内工具实现：read/glob/grep/bash（P0 只读三件套 + bash 命令）。
+"""本地工作区进程内工具实现：read/glob/grep/write/edit/bash（工作模式六件套）。
 
 本模块被 InProcessExecutor 直接调用；runner 形态下同名逻辑在 runner 侧
 独立实现（runner 不 import 云端代码），两侧语义须保持一致——文件行号/
-截断/排序规则以本模块为准（Claude Code 同名工具语义）。
+截断/排序/替换规则以本模块为准（Claude Code 同名工具语义）。
 """
 import asyncio
 import fnmatch
@@ -23,6 +23,10 @@ _READ_MAX_LINES = 2000
 _READ_MAX_LINE_CHARS = 2000
 # glob/grep 结果条数上限（防巨树扫爆上下文）
 _LIST_MAX_ENTRIES = 200
+# write 单次写入字符上限（防上下文爆炸式落盘；超大文件应分次 edit 追加）
+_WRITE_MAX_CHARS = 200_000
+# edit：old_string 匹配时按行尾归一（CRLF/LF 混用文件也能命中），写回保留原行尾风格
+_EDIT_MAX_OLD_CHARS = 50_000
 # bash：输出与超时上限（一次性命令版，P2 升级持久会话）
 _BASH_TIMEOUT_SECONDS = 120
 _BASH_MAX_OUTPUT_CHARS = 30_000
@@ -37,6 +41,10 @@ async def execute_local(root: str, os_type: str, tool: str, args: dict[str, Any]
             return await asyncio.to_thread(_glob, root, os_type, args)
         if tool == "grep":
             return await asyncio.to_thread(_grep, root, os_type, args)
+        if tool == "write":
+            return await asyncio.to_thread(_write_file, root, os_type, args)
+        if tool == "edit":
+            return await asyncio.to_thread(_edit_file, root, os_type, args)
         if tool == "bash":
             return await _bash(root, os_type, args)
         return {"ok": False, "error": f"未知工具: {tool}", "error_code": "UNKNOWN_TOOL"}
@@ -111,6 +119,87 @@ async def _bash(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]
 
 def _resolve(root: str, os_type: str, args: dict[str, Any]) -> str:
     return validate_relative_path(str(args.get("path") or ""), root, os_type)
+
+
+def _write_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
+    """全量写入（新建或覆写）：内容必须完整给出，父目录自动创建。
+
+    语义与 dsh/Claude Code write 对齐——write 是「替换整个文件」而非追加；
+    已有文件的修改应优先 edit（只传差异），防止模型重写全文时丢内容。
+    """
+    path = _resolve(root, os_type, args)
+    content = args.get("content")
+    if content is None:
+        return {"ok": False, "error": "content 不能为空", "error_code": "INVALID_ARGS"}
+    content = str(content)
+    if len(content) > _WRITE_MAX_CHARS:
+        return {
+            "ok": False,
+            "error": f"内容超长（{len(content)} 字符，上限 {_WRITE_MAX_CHARS}）；请分次写入或改用 edit",
+            "error_code": "CONTENT_TOO_LARGE",
+        }
+    # 敏感文件黑名单在 validate_relative_path 已拦截（.env/*.key 等），此处不再重复
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    existed = p.exists()
+    p.write_text(content, encoding="utf-8", newline="")
+    action = "已覆写" if existed else "已创建"
+    return {"ok": True, "result": f"{action} {args.get('path')}（{len(content)} 字符）"}
+
+
+def _edit_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
+    """字面量替换编辑：old_string 唯一匹配后替换为 new_string（dsh 同款语义）。
+
+    - 0 命中报 EDIT_NOT_FOUND（多半是没先 read，提示模型重读）
+    - replace_all=False 且多命中报 EDIT_AMBIGUOUS（要求更大上下文或 replace_all）
+    - old==new 直接拒绝（无意义调用防误触）
+    - 匹配时行尾归一（\r\n 与 \n 等价），写回保留文件原行尾风格
+    """
+    path = _resolve(root, os_type, args)
+    old = args.get("old_string")
+    new = args.get("new_string")
+    if old is None or new is None:
+        return {"ok": False, "error": "old_string 与 new_string 均必填", "error_code": "INVALID_ARGS"}
+    old, new = str(old), str(new)
+    if not old:
+        return {"ok": False, "error": "old_string 不能为空（新建文件用 write）", "error_code": "INVALID_ARGS"}
+    if old == new:
+        return {"ok": False, "error": "old_string 与 new_string 相同", "error_code": "INVALID_ARGS"}
+    if len(old) > _EDIT_MAX_OLD_CHARS:
+        return {"ok": False, "error": f"old_string 超长（上限 {_EDIT_MAX_OLD_CHARS} 字符）", "error_code": "CONTENT_TOO_LARGE"}
+    replace_all = bool(args.get("replace_all"))
+
+    # newline="" 禁用 universal newlines：read_text 会把 \r\n 静默翻译成 \n，
+    # 行尾归一检测恒假、写回丢 CRLF——必须按原始字节读
+    with open(path, encoding="utf-8", errors="replace", newline="") as f:
+        raw = f.read()
+    # 行尾归一匹配：文件与 old 都转 LF 比对；命中后按原行尾还原写回
+    is_crlf = "\r\n" in raw
+    norm_raw = raw.replace("\r\n", "\n") if is_crlf else raw
+    norm_old = old.replace("\r\n", "\n")
+    count = norm_raw.count(norm_old)
+    if count == 0:
+        return {
+            "ok": False,
+            "error": "old_string 未在文件中找到（文件可能已被修改，请先 read 再 edit）",
+            "error_code": "EDIT_NOT_FOUND",
+        }
+    if count > 1 and not replace_all:
+        return {
+            "ok": False,
+            "error": f"old_string 匹配了 {count} 处：请提供更多上下文使其唯一，或设 replace_all=true 全部替换",
+            "error_code": "EDIT_AMBIGUOUS",
+        }
+    norm_new = new.replace("\r\n", "\n")
+    if replace_all:
+        result = norm_raw.replace(norm_old, norm_new)
+    else:
+        result = norm_raw.replace(norm_old, norm_new, 1)
+    if is_crlf:
+        result = result.replace("\n", "\r\n")
+    Path(path).write_text(result, encoding="utf-8", newline="")
+    replaced = count if replace_all else 1
+    return {"ok": True, "result": f"已更新 {args.get('path')}（替换 {replaced} 处）", "replacements": replaced}
 
 
 def _read_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:

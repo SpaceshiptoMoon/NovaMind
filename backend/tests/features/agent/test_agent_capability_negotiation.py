@@ -111,7 +111,7 @@ async def test_build_context_strips_tools_when_unsupported():
         system_prompt="", context_window=32768, extra_config={},
         id=1,
     )
-    conv = SimpleNamespace(id=1)
+    conv = SimpleNamespace(id=1, extra_config={})
 
     _, tools, _, _, system_prompt, caps = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,
@@ -135,7 +135,7 @@ async def test_build_context_no_simulation_block_when_agent_has_no_tools():
         system_prompt="", context_window=32768, extra_config={},
         id=1,
     )
-    conv = SimpleNamespace(id=1)
+    conv = SimpleNamespace(id=1, extra_config={})
 
     _, tools, _, _, system_prompt, _ = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,
@@ -154,7 +154,7 @@ async def test_build_context_keeps_tools_when_supported():
         system_prompt="", context_window=32768, extra_config={},
         id=1,
     )
-    conv = SimpleNamespace(id=1)
+    conv = SimpleNamespace(id=1, extra_config={})
 
     _, tools, _, _, system_prompt, caps = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,

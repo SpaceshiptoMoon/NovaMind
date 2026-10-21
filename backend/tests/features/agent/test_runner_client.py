@@ -53,3 +53,28 @@ async def test_runner_ops_bash(workspace_root):
     os_type = "windows" if sys.platform == "win32" else sys.platform
     out = await execute_local(workspace_root, os_type, "bash", {"command": "dir" if sys.platform == "win32" else "ls"})
     assert out["ok"] is True and "src" in out["result"]
+
+
+@pytest.mark.asyncio
+async def test_runner_ops_write_edit_parity(workspace_root):
+    """runner 侧 write/edit 与云端同语义：新建/唯一替换/多命中拒绝。"""
+    out = await execute_local(workspace_root, "windows", "write", {"path": "n/new.py", "content": "a = 1\n"})
+    assert out["ok"] is True
+    out = await execute_local(workspace_root, "windows", "edit", {
+        "path": "n/new.py", "old_string": "a = 1", "new_string": "a = 2",
+    })
+    assert out["ok"] is True
+    assert (Path(workspace_root) / "n" / "new.py").read_text(encoding="utf-8") == "a = 2\n"
+    out = await execute_local(workspace_root, "windows", "edit", {
+        "path": "n/new.py", "old_string": "a = 2", "new_string": "a = 2 # twice a = 2",
+    })
+    assert out["ok"] is True
+    # 多命中拒绝：改写后的文本含两处 "a = 2"
+    out = await execute_local(workspace_root, "windows", "edit", {
+        "path": "n/new.py", "old_string": "a = 2", "new_string": "z",
+    })
+    assert out["ok"] is False and out["error_code"] == "EDIT_AMBIGUOUS"
+    out = await execute_local(workspace_root, "windows", "edit", {
+        "path": "n/new.py", "old_string": "missing", "new_string": "b",
+    })
+    assert out["ok"] is False and out["error_code"] == "EDIT_NOT_FOUND"

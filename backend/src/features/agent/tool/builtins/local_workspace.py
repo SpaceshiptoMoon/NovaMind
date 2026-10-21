@@ -1,7 +1,8 @@
-"""本地工作区内置工具：read/glob/grep（P0）——经 LocalWorkspacePort 执行。
+"""本地工作区内置工具：工作模式六件套（read/glob/grep/write/edit/bash）。
 
-工具定义与 Claude Code 同名工具语义对齐；会话未绑定工作区时端口缺位，
-execute_tool 返回引导文案（能力缺失优于报错栈）。
+工具定义与 Claude Code / dsh 同名工具语义对齐；会话未绑定工作区时端口缺位，
+execute_tool 返回引导文案（能力缺失优于报错栈）。绑定会话的 system prompt
+fragment 由引擎经 context["workspace_prompt"] 动态注入（工作目录+守则）。
 """
 import json
 from typing import Any
@@ -15,7 +16,7 @@ _WORKSPACE_MISSING = (
 
 
 class LocalWorkspaceTool(BaseTool):
-    """本地工作区只读工具（read/glob/grep；write/edit/bash 属 P1/P2）"""
+    """本地工作区工具（工作模式默认必带：三只读 + 两写入 + 命令执行）"""
 
     @property
     def name(self) -> str:
@@ -23,7 +24,7 @@ class LocalWorkspaceTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "本地工作区工具：读取与检索用户授权文件夹内的文件"
+        return "本地工作区工具：读写、检索用户授权文件夹内的文件并执行命令"
 
     def get_tools(self) -> list[dict[str, Any]]:
         return [
@@ -36,7 +37,7 @@ class LocalWorkspaceTool(BaseTool):
                         "lines; use offset/limit to page through large files.\n\n"
                         "WHEN TO USE:\n"
                         "- Inspecting source files, configs, or docs inside the workspace\n"
-                        "- Reading a file found earlier via glob/grep\n\n"
+                        "- Reading a file before editing it (required: edit needs exact text)\n\n"
                         "NOT FOR:\n"
                         "- Files outside the workspace root (rejected by security check)\n"
                         "- Searching by content (use grep) or by name pattern (use glob)"
@@ -110,6 +111,57 @@ class LocalWorkspaceTool(BaseTool):
             {
                 "type": "function",
                 "function": {
+                    "name": "write",
+                    "description": (
+                        "Write a file in the workspace, replacing its ENTIRE content "
+                        "(creates parent dirs). Use only for new files or full rewrites.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Creating a new file\n"
+                        "- Intentionally replacing a whole file you have read\n\n"
+                        "NOT FOR:\n"
+                        "- Changing part of an existing file (use edit — it only sends "
+                        "the diff and cannot silently drop the rest of the file)"
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "工作区内相对路径（父目录自动创建）"},
+                            "content": {"type": "string", "description": "完整文件内容（覆写全文）"},
+                        },
+                        "required": ["path", "content"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "edit",
+                    "description": (
+                        "Exact string replacement in an existing file. old_string must "
+                        "match uniquely unless replace_all=true. ALWAYS read the file "
+                        "immediately before editing — edit fails if the text is not found.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Modifying existing code/config with a minimal, surgical change\n"
+                        "- Renaming a symbol across one file (replace_all=true)\n\n"
+                        "NOT FOR:\n"
+                        "- Creating new files (use write)\n"
+                        "- Fuzzy or regex replacement (exact literal text only)"
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "工作区内相对路径"},
+                            "old_string": {"type": "string", "description": "要被替换的原文（须唯一，含足够上下文）"},
+                            "new_string": {"type": "string", "description": "替换后的新文本"},
+                            "replace_all": {"type": "boolean", "description": "全部命中处替换（缺省 false，仅替换唯一命中）"},
+                        },
+                        "required": ["path", "old_string", "new_string"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "bash",
                     "description": (
                         "Run a shell command in the workspace root (each call spawns a fresh "
@@ -133,6 +185,26 @@ class LocalWorkspaceTool(BaseTool):
                 },
             },
         ]
+
+    def get_system_prompt_fragment(self) -> str:
+        """工作模式守则（enabled_tools 含 local_workspace 时注入）。
+
+        工作目录路径不在此处——它随会话变化，经 context["workspace_prompt"]
+        由 chat_service 追加（避免进入按 agent 冻结的 prompt 缓存）。
+        """
+        return (
+            "# Workspace Mode\n"
+            "You are working in the user's local workspace as a coding agent.\n"
+            "- ALWAYS read a file immediately before editing it: edit matches exact "
+            "text and fails on stale content.\n"
+            "- Prefer read/glob/grep over shell commands (cat/ls/find/grep in bash) — "
+            "they are faster, safer, and structured.\n"
+            "- Prefer edit over write for existing files: write replaces the ENTIRE "
+            "file and risks dropping content you have not seen.\n"
+            "- Paths are workspace-relative; absolute paths and `..` are rejected.\n"
+            "- Before destructive shell commands (delete/move), verify the target "
+            "path is the intended one."
+        )
 
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
