@@ -563,6 +563,8 @@ class DocumentTaskService:
                 )
                 if job is None:
                     raise RuntimeError(f"批量任务入队失败: task_id={task.id}")
+                from novamind.core.middleware import metrics as pipeline_metrics
+                pipeline_metrics.inc("tasks_enqueued")
                 task.job_id = job.job_id
                 enqueued.append((task.id, task.document_id, job.job_id))
 

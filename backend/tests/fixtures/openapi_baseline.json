@@ -29559,6 +29559,31 @@
         ]
       }
     },
+    "/metrics": {
+      "get": {
+        "description": "管道任务计数指标（JSON；进程内口径，多 worker 部署由部署层聚合）。",
+        "operationId": "pipeline_metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pipeline Metrics Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pipeline Metrics",
+        "tags": [
+          "指标",
+          "指标"
+        ]
+      }
+    },
     "/v1/chat/completions": {
       "post": {
         "description": "OpenAI 兼容对话补全：非流式返回完整 JSON，stream=true 走 SSE。\n\n异常在路由边界统一转译为 OpenAI 错误信封（外部 SDK 只认该格式）。",

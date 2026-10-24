@@ -380,6 +380,8 @@ async def execute_document_pipeline(
                     "resumed": True,
                     **({"split_config_drifted": True} if split_config_drifted else {}),
         })
+        from novamind.core.middleware import metrics as pipeline_metrics
+        pipeline_metrics.inc("snapshot_parse_hits")
         _logger.info(
             "解析快照命中，复用解析产物（跳过解析）",
             document_id=document_id,

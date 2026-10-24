@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from novamind.shared.logging import get_logger
+from novamind.core.middleware import metrics as pipeline_metrics
 from novamind.shared.mq.exceptions import TransientBusyError
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -407,6 +408,7 @@ async def process_document_task(
                 Path(downloaded_path).unlink(missing_ok=True)
 
             # 5. 成功：标记任务完成
+            pipeline_metrics.inc("documents_completed")
             task.mark_completed(result)
             await session.commit()
             if task.batch_id:
@@ -651,6 +653,7 @@ async def process_document_task(
                         error=str(mark_err),
                     )
                 from arq import Retry
+                pipeline_metrics.inc("retries_scheduled")
                 raise Retry(retry_delay_seconds)
 
 
@@ -738,6 +741,8 @@ async def _ensure_mark_failed(
 ) -> None:
     """强制将文档标记为 FAILED（三层兜底），_ensure_mark_terminal 的 FAILED 特化。"""
     from novamind.features.knowledge_space.models.document_task import TaskStatus
+
+    pipeline_metrics.inc("documents_failed")
 
     await _ensure_mark_terminal(
         document_id, error_message,
@@ -865,6 +870,7 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
     # 此前 worker 侧取消走 FAILED 标记——API（CANCELLED）与 worker（FAILED）
     # 双 writer last-write-wins，终态随机；且 retry 原本只认 FAILED/COMPLETED，
     # 落 CANCELLED 的行会被误清活 job 后锁死不可重试。这里三层兜底统一写 CANCELLED。
+    pipeline_metrics.inc("documents_cancelled")
     await _ensure_mark_terminal(document_id, "[用户取消] 文档处理已被用户取消", target_status=TaskStatus.CANCELLED)
 
     # 清理 ES 残留数据（非关键）
