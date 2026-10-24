@@ -440,115 +440,114 @@ async def execute_document_pipeline(
         return
 
     # ===== 无快照命中：正常解析路径 =====
-    if True:  # 保留原缩进层级，减少此文件 diff 噪声
-        # 先读取原始解析全文，避免将切块结果回拼成”伪全文”再落 MinIO。
+    # 先读取原始解析全文，避免将切块结果回拼成”伪全文”再落 MinIO。
 
-        parsing_config = build_runtime_parsing_config(
-            kb_config.get("parsing", {}), document.file_type
+    parsing_config = build_runtime_parsing_config(
+        kb_config.get("parsing", {}), document.file_type
+    )
+    _logger.info(
+        "文档解析配置已生成",
+        document_id=document_id,
+        file_type=document.file_type,
+        parsing_strategy=parsing_config.get("strategy", "default"),
+        deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
+        deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
+        vlm_description_enabled=parsing_config.get("vlm_description_enabled", False),
+        splitting_strategy=splitting_config.get("strategy", "recursive"),
+        splitting_chunk_size=splitting_config.get("chunk_size", 1000),
+        splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
+    )
+    await begin_step(session, task, "parsed")
+    parsing_strategy = resolve_text_parsing_strategy(
+        parsing_config, document_id=document_id
+    )
+    if parsing_strategy == "external_ocr":
+        # 扫描件/图片型 PDF：文字层为空，外部 OCR 是唯一可用的文本来源。
+        # 产物走与 default 分支相同的 splitter 链路（尊重用户切分配置），
+        # 不混入 DeepDoc 的哨兵重切（那套依赖 reading_order 坐标）。
+        parse_result = await _parse_pdf_with_external_ocr_static(
+            document=document,
+            file_content=file_content,
+            file_path=file_path,
+            parse_config=parsing_config,
+            splitting_config=splitting_config,
+            processor=processor,
+            _logger=_logger,
         )
-        _logger.info(
-            "文档解析配置已生成",
-            document_id=document_id,
-            file_type=document.file_type,
-            parsing_strategy=parsing_config.get("strategy", "default"),
-            deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
-            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
-            vlm_description_enabled=parsing_config.get("vlm_description_enabled", False),
-            splitting_strategy=splitting_config.get("strategy", "recursive"),
-            splitting_chunk_size=splitting_config.get("chunk_size", 1000),
-            splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
+    else:
+        parse_result = await processor.parse_document_result(
+            tmp_path,
+            parsing_config=parsing_config,
+            splitting_config=splitting_config,
         )
-        await begin_step(session, task, "parsed")
-        parsing_strategy = resolve_text_parsing_strategy(
-            parsing_config, document_id=document_id
+    # 原始文件已解析完，立即释放临时文件。不把 unlink 挂 try/finally 到整个
+    # 管道——此前快照命中分支提前 return 绕过 finally，每个续跑任务泄漏一个
+    # tmp 文件；解析抛错时任务行会标 FAILED，OS tmp 目录由系统清理兜底。
+    # file_path 模式（worker 落盘文件）由 worker 侧 finally 统一清理，
+    # 此处不动——双处 unlink 无害但会掩盖归属。
+    if _owns_tmp_path:
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    full_text = parse_result.full_text
+    chunks = parse_result.chunks
+    _logger.info(
+        "文档解析结果",
+        document_id=document_id,
+        file_type=document.file_type,
+        char_count=len(full_text),
+        chunk_count=len(chunks),
+        parse_metadata_keys=list(parse_result.metadata.keys())
+        if parse_result.metadata
+        else [],
+        deepdoc_rechunked=parse_result.metadata.get("deepdoc_rechunked", False)
+        if parse_result.metadata
+        else False,
+    )
+    # 空文本检测：解析跑完但 0 字符——不静默当成功（否则前端看到"成功但无内容"的假成功）。
+    # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
+    _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
+    await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
+
+    # 上传 PDF figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。
+    # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
+    # 保证最终落盘的完整 MD 与 ES chunk content 都已含图片短路径。
+    # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
+    figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
+    image_url_map: dict[str, str] = {}
+    if figure_regions and document.file_type.lower() == "pdf":
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        minio_client = await ClientFactory.get_minio_client()
+        image_url_map = await _upload_figure_images_to_minio(
+            document, figure_regions, _logger, minio_client=minio_client
         )
-        if parsing_strategy == "external_ocr":
-            # 扫描件/图片型 PDF：文字层为空，外部 OCR 是唯一可用的文本来源。
-            # 产物走与 default 分支相同的 splitter 链路（尊重用户切分配置），
-            # 不混入 DeepDoc 的哨兵重切（那套依赖 reading_order 坐标）。
-            parse_result = await _parse_pdf_with_external_ocr_static(
-                document=document,
-                file_content=file_content,
-                file_path=file_path,
-                parse_config=parsing_config,
-                splitting_config=splitting_config,
-                processor=processor,
-                _logger=_logger,
-            )
-        else:
-            parse_result = await processor.parse_document_result(
-                tmp_path,
-                parsing_config=parsing_config,
-                splitting_config=splitting_config,
-            )
-        # 原始文件已解析完，立即释放临时文件。不把 unlink 挂 try/finally 到整个
-        # 管道——此前快照命中分支提前 return 绕过 finally，每个续跑任务泄漏一个
-        # tmp 文件；解析抛错时任务行会标 FAILED，OS tmp 目录由系统清理兜底。
-        # file_path 模式（worker 落盘文件）由 worker 侧 finally 统一清理，
-        # 此处不动——双处 unlink 无害但会掩盖归属。
-        if _owns_tmp_path:
-            try:
-                Path(tmp_path).unlink(missing_ok=True)
-            except OSError:
-                pass
-        full_text = parse_result.full_text
+    if figure_regions or image_url_map:
+        full_text, parse_result.chunks = _restore_figure_links(
+            full_text, parse_result.chunks, image_url_map
+        )
         chunks = parse_result.chunks
-        _logger.info(
-            "文档解析结果",
-            document_id=document_id,
-            file_type=document.file_type,
-            char_count=len(full_text),
-            chunk_count=len(chunks),
-            parse_metadata_keys=list(parse_result.metadata.keys())
-            if parse_result.metadata
-            else [],
-            deepdoc_rechunked=parse_result.metadata.get("deepdoc_rechunked", False)
-            if parse_result.metadata
-            else False,
-        )
-        # 空文本检测：解析跑完但 0 字符——不静默当成功（否则前端看到"成功但无内容"的假成功）。
-        # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
-        _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
-        await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
-
-        # 上传 PDF figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。
-        # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
-        # 保证最终落盘的完整 MD 与 ES chunk content 都已含图片短路径。
-        # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
-        figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
-        image_url_map: dict[str, str] = {}
-        if figure_regions and document.file_type.lower() == "pdf":
-            from novamind.shared.storage.client_factory import ClientFactory
-
-            minio_client = await ClientFactory.get_minio_client()
-            image_url_map = await _upload_figure_images_to_minio(
-                document, figure_regions, _logger, minio_client=minio_client
-            )
-        if figure_regions or image_url_map:
-            full_text, parse_result.chunks = _restore_figure_links(
-                full_text, parse_result.chunks, image_url_map
-            )
-            chunks = parse_result.chunks
-        if figure_regions:
-            if len(image_url_map) < len(figure_regions):
-                _logger.warning(
-                    "部分 PDF figure 图片上传失败，残留占位符已剥除（figure 能力降级）",
-                    document_id=document_id,
-                    failed_count=len(figure_regions) - len(image_url_map),
-                )
-        if image_url_map:
-            # 上传完成后清除原始 PNG bytes，降低大 PDF 多图场景的内存占用。
-            for region in figure_regions:
-                region.pop("image_blobs", None)
-            _logger.info(
-                "PDF figure 图片占位符已替换",
+    if figure_regions:
+        if len(image_url_map) < len(figure_regions):
+            _logger.warning(
+                "部分 PDF figure 图片上传失败，残留占位符已剥除（figure 能力降级）",
                 document_id=document_id,
-                replaced_count=len(image_url_map),
-                figure_region_count=len(figure_regions),
+                failed_count=len(figure_regions) - len(image_url_map),
             )
+    if image_url_map:
+        # 上传完成后清除原始 PNG bytes，降低大 PDF 多图场景的内存占用。
+        for region in figure_regions:
+            region.pop("image_blobs", None)
+        _logger.info(
+            "PDF figure 图片占位符已替换",
+            document_id=document_id,
+            replaced_count=len(image_url_map),
+            figure_region_count=len(figure_regions),
+        )
 
-        # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
-        await persist_parsed_text(document, full_text, session, _logger)
+    # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
+    await persist_parsed_text(document, full_text, session, _logger)
 
     # 检查点 1：文档解析完成之后
     await check_document_cancelled(document_id)
