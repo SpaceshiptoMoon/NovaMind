@@ -529,7 +529,15 @@ class DocumentProcessor:
         """
         parsing_config = dict(parsing_config or {})
         splitting_config = dict(splitting_config or {})
-        parsing_strategy = str(parsing_config.get("strategy", "default"))
+        # 缺失/None 归一为 default；未知策略显式拒绝而非静默落 default——
+        # 脏配置（如手改持久化数据）按内置 reader 解析会让扫描件抽出 0 字符
+        # 才暴露，错误方向不可追踪。external_ocr 在 pipeline 层分发，不进本方法。
+        parsing_strategy = str(parsing_config.get("strategy") or "default")
+        if parsing_strategy not in ("default", "deepdoc"):
+            raise ValueError(
+                f"Unknown parsing strategy: {parsing_strategy}. "
+                f"Supported: ['default', 'deepdoc']"
+            )
         file_type = Path(file_path).suffix.lower().lstrip(".")
 
         if parsing_strategy == "deepdoc":

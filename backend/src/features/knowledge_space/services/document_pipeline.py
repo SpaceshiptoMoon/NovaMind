@@ -68,6 +68,41 @@ from novamind.features.knowledge_space.services.pipeline_steps import (
 from novamind.features.user.services.model_config_service import ModelConfigService
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# 文本文档解析策略合法值域（与 schema PdfParsingConfig/TextParsingConfig 的
+# Literal 对齐；schema 校验正常拦截脏值，此处防御绕过 schema 的存量脏数据，
+# 如手改 DB）。图片等非文本模态的 strategy 走各自分发，不经此函数。
+_TEXT_PARSING_STRATEGIES = frozenset({"default", "deepdoc", "external_ocr"})
+
+
+def resolve_text_parsing_strategy(parsing_config: dict[str, Any], document_id: int) -> str:
+    """归一并校验文本文档解析策略，未知值显式拒绝（不可重试）。
+
+    缺失/None 归一为 default；未知策略（如手改 DB 写入 "cloud_ocr"）历史上
+    会静默落 default 分支按内置 reader 解析——扫描件抽出 0 字符才暴露，且
+    错误信息误导用户去切 full 模式。
+
+    Args:
+        parsing_config: 运行时解析配置（build_runtime_parsing_config 产物或任务快照）。
+        document_id: 文档 id，用于异常上下文。
+
+    Returns:
+        合法策略名（default / deepdoc / external_ocr）。
+
+    Raises:
+        PermanentProcessingError: 策略名不在合法值域（重试不可能成功）。
+    """
+    strategy = parsing_config.get("strategy")
+    strategy = "default" if strategy is None else str(strategy)
+    if strategy not in _TEXT_PARSING_STRATEGIES:
+        raise PermanentProcessingError(
+            document_id=document_id,
+            error_message=(
+                f"未知解析策略: {strategy}（合法值: {sorted(_TEXT_PARSING_STRATEGIES)}）。"
+                "配置可能绕过了 schema 校验，请检查知识库解析配置"
+            ),
+        )
+    return strategy
+
 
 def _raise_on_empty_parse(
     full_text: str,
@@ -443,7 +478,10 @@ async def execute_document_pipeline(
             splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
         )
         await begin_step(session, task, "parsed")
-        if parsing_config.get("strategy") == "external_ocr":
+        parsing_strategy = resolve_text_parsing_strategy(
+            parsing_config, document_id=document_id
+        )
+        if parsing_strategy == "external_ocr":
             # 扫描件/图片型 PDF：文字层为空，外部 OCR 是唯一可用的文本来源。
             # 产物走与 default 分支相同的 splitter 链路（尊重用户切分配置），
             # 不混入 DeepDoc 的哨兵重切（那套依赖 reading_order 坐标）。
