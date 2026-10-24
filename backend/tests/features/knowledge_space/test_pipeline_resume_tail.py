@@ -104,6 +104,7 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
         return [[0.1, 0.2] for _ in texts]
 
     return dp.run_post_parse_tail(
+TailInputs(
         document=document, session=session, task=task,
         model_config_port=MagicMock(), logger=_logger(),
         chunk_type=ChunkType.TEXT,
@@ -113,7 +114,7 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
         full_text="全文内容" * 50,
         parse_fingerprint=parse_fp,
         user_id=7,
-    ), fake_split, fake_embeddings
+    )), fake_split, fake_embeddings
 
 
 class _FakeCF:
@@ -172,6 +173,7 @@ def _do_run(document, task, session, *, parse_fp, minio,
     """受控依赖下执行 tail，返回 (result, split_calls, embed_calls, es_client)。"""
     from novamind.features.knowledge_space.services import document_pipeline as dp
     from novamind.features.knowledge_space.services import pipeline_steps
+    from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
 
     split_calls, embed_calls = [], []
 
@@ -204,6 +206,7 @@ def _do_run(document, task, session, *, parse_fp, minio,
              AsyncMock(return_value=None),
          ):
         result = asyncio.run(dp.run_post_parse_tail(
+TailInputs(
             document=document, session=session, task=task,
             model_config_port=MagicMock(), logger=_logger(),
             chunk_type=ChunkType.TEXT,
@@ -213,7 +216,7 @@ def _do_run(document, task, session, *, parse_fp, minio,
             full_text="全文内容" * 50,
             parse_fingerprint=parse_fp,
             user_id=7,
-        ))
+    )))
     return result, split_calls, embed_calls, es_client
 
 

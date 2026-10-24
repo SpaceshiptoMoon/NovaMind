@@ -26,6 +26,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
+from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
 from novamind.features.knowledge_space.services import (
     pipeline_steps,
 )
@@ -94,6 +95,7 @@ async def test_image_dirty_image_subkey_does_not_break_split(monkeypatch):
     _patch_tail_deps(monkeypatch)
 
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -109,7 +111,7 @@ async def test_image_dirty_image_subkey_does_not_break_split(monkeypatch):
         },
         full_text="一只橘猫趴在窗台上晒太阳，窗外是城市的远景。",
         user_id=1,
-    )
+    ))
     assert result["split_strategy"] == "recursive"
     assert result["chunk_count"] >= 1
 
@@ -122,6 +124,7 @@ async def test_image_description_is_splittable_into_multiple_chunks(monkeypatch)
     long_description = "这是一张图片的描述。" * 60  # 约 600 字
 
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -133,7 +136,7 @@ async def test_image_description_is_splittable_into_multiple_chunks(monkeypatch)
         splitting_config={"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 0},
         full_text=long_description,
         user_id=1,
-    )
+    ))
     assert result["split_strategy"] == "fixed_size"
     assert result["chunk_count"] > 1, "图片描述应能切成多块"
 
@@ -154,6 +157,7 @@ async def test_full_text_with_dirty_top_level_strategy_still_raises(monkeypatch)
 
     with pytest.raises(ValueError, match="不支持的切分策略"):
         await pipeline_steps.run_post_parse_tail(
+TailInputs(
             document=_make_document(),
             session=_FakeSession(),
             task=_make_task(),
@@ -165,7 +169,7 @@ async def test_full_text_with_dirty_top_level_strategy_still_raises(monkeypatch)
             splitting_config={"strategy": "single"},
             full_text="x",
             user_id=1,
-        )
+    ))
 
 @pytest.mark.asyncio
 async def test_image_delimiter_strategy_with_separators_passthrough(monkeypatch):
@@ -177,6 +181,7 @@ async def test_image_delimiter_strategy_with_separators_passthrough(monkeypatch)
     _patch_tail_deps(monkeypatch)
 
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -194,6 +199,6 @@ async def test_image_delimiter_strategy_with_separators_passthrough(monkeypatch)
         },
         full_text="段甲<SEP>段乙<SEP>段丙",
         user_id=1,
-    )
+    ))
     assert result["split_strategy"] == "delimiter"
     assert result["chunk_count"] == 3

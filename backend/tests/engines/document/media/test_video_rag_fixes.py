@@ -45,6 +45,24 @@ from novamind.features.knowledge_space.services import (
 pytestmark = pytest.mark.unit
 
 
+
+
+def _tail_kw(inputs, kw):
+    """批次 4.3 兼容：run_post_parse_tail 改收 TailInputs 聚合，桩内 kw 取值
+    统一经此转换（inputs 属性优先，兼容直接 kwargs 传参）。"""
+    if inputs is not None:
+        return {
+            "document": inputs.document, "session": inputs.session, "task": inputs.task,
+            "model_config_port": inputs.model_config_port, "logger": inputs.logger,
+            "chunk_type": inputs.chunk_type, "embedding_config": inputs.embedding_config,
+            "pipeline_config": inputs.pipeline_config, "splitting_config": inputs.splitting_config,
+            "user_id": inputs.user_id, "full_text": inputs.full_text,
+            "prechunked_items": inputs.prechunked_items, "steps_items": inputs.steps_items,
+            "parse_metadata": inputs.parse_metadata, "frame_paths": inputs.frame_paths,
+            "time_alignment": inputs.time_alignment, "parse_fingerprint": inputs.parse_fingerprint,
+        }
+    return kw
+
 def _silent_logger() -> SimpleNamespace:
     return SimpleNamespace(
         info=lambda *a, **k: None,
@@ -349,7 +367,8 @@ async def test_storage_frames_persisted_before_tail(monkeypatch):
     async def fake_persist(document, text, session, logger):
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         raise RuntimeError("tail boom")
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
@@ -428,7 +447,8 @@ async def test_video_vlm_concurrency_read_from_yaml_config(monkeypatch):
     async def fake_persist(document, text, session, logger):
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     # 全局 YAML config 返回 video_vlm_concurrency=7
@@ -501,7 +521,8 @@ async def test_video_vlm_concurrency_clamped_to_range(monkeypatch):
     async def fake_persist(document, text, session, logger):
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     fake_app_config = SimpleNamespace(
@@ -598,7 +619,8 @@ async def test_frame_seq_strategy_dispatch_and_kwargs(monkeypatch):
         captured["full_text"] = text
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
@@ -799,7 +821,8 @@ async def test_video_native_dispatch_scene_and_cleanup(monkeypatch):
         captured["full_text"] = text
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
@@ -854,7 +877,8 @@ async def test_video_native_closures_use_default_bucket(monkeypatch):
     async def fake_persist(document, text, session, logger):
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)
@@ -915,7 +939,8 @@ async def test_video_native_reject_falls_back_to_frame_seq(monkeypatch):
         fallback_called["full_text"] = text
         return None
 
-    async def fake_tail(**kw):
+    async def fake_tail(inputs=None, **kw):
+        kw = _tail_kw(inputs, kw)
         return {"chunk_count": 1}
 
     monkeypatch.setattr(media_processing, "describe_video_native", fake_describe_native)

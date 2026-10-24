@@ -21,7 +21,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import pipeline_steps
-from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks
+from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks, TailInputs
 
 pytestmark = pytest.mark.unit
 
@@ -94,6 +94,7 @@ def _run_sync_tail(splitting_config, full_text):
 
     async def _inner():
         return await pipeline_steps.run_post_parse_tail(
+TailInputs(
             document=_make_document(),
             session=_FakeSession(),
             task=_make_task(),
@@ -105,7 +106,7 @@ def _run_sync_tail(splitting_config, full_text):
             splitting_config=splitting_config,
             full_text=full_text,
             user_id=1,
-        )
+    ))
 
     return asyncio.run(_inner())
 
@@ -119,6 +120,7 @@ async def test_sentence_window_tail_carries_expansion_metadata(monkeypatch):
     bulk: list = []
     _patch_tail_deps(monkeypatch, bulk_capture=bulk)
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -130,7 +132,7 @@ async def test_sentence_window_tail_carries_expansion_metadata(monkeypatch):
         splitting_config={"strategy": "sentence_window", "chunk_size": 1000, "window_size": 3},
         full_text="甲句。乙句。丙句。丁句。",
         user_id=1,
-    )
+    ))
     assert result["split_strategy"] == "sentence_window"
     assert result["chunk_count"] == 4
     assert all(
@@ -150,6 +152,7 @@ async def test_parent_child_tail_resolves_parent_chunk_id(monkeypatch):
     _patch_tail_deps(monkeypatch, bulk_capture=bulk)
     text = "段一。" * 200 + "段二。" * 200
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -164,7 +167,7 @@ async def test_parent_child_tail_resolves_parent_chunk_id(monkeypatch):
         },
         full_text=text,
         user_id=1,
-    )
+    ))
     assert result["split_strategy"] == "parent_child"
     parents = [c for c in bulk if c["metadata"].get("chunk_role") == "parent"]
     children = [c for c in bulk if c["metadata"].get("chunk_role") == "child"]
@@ -206,6 +209,7 @@ async def test_parent_chunk_skips_embedding(monkeypatch):
     _patch_tail_deps(monkeypatch, embed_capture=embed_texts, bulk_capture=bulk)
     text = "段一。" * 200 + "段二。" * 200
     await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -220,7 +224,7 @@ async def test_parent_chunk_skips_embedding(monkeypatch):
         },
         full_text=text,
         user_id=1,
-    )
+    ))
     parents = [c for c in bulk if c["metadata"].get("chunk_role") == "parent"]
     assert parents, "测试前置：应产出父块"
     parent_contents = {p["content"] for p in parents}
@@ -247,6 +251,7 @@ async def test_sentence_window_line_aware_falls_back(monkeypatch):
         "[00:00:10#2] 第三句内容，讲述主题丙。"
     )
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -259,7 +264,7 @@ async def test_sentence_window_line_aware_falls_back(monkeypatch):
         full_text=anchor_text,
         time_alignment={"timeline_map": {}, "is_video": False},
         user_id=1,
-    )
+    ))
     assert result["chunk_count"] >= 1
     # 锚点行完整性：无任何 chunk 把「[锚点] 描述」行拦腰切开
     assert all(
@@ -281,6 +286,7 @@ async def test_recursive_strategy_has_no_new_metadata_keys(monkeypatch):
     bulk: list = []
     _patch_tail_deps(monkeypatch, bulk_capture=bulk)
     await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -292,7 +298,7 @@ async def test_recursive_strategy_has_no_new_metadata_keys(monkeypatch):
         splitting_config={"strategy": "recursive", "chunk_size": 1000},
         full_text="这是一段测试文本。" * 50,
         user_id=1,
-    )
+    ))
     assert bulk
     assert all(
         not ({"chunk_role", "parent_chunk_id", "expansion_type", "expansion_window_size"}

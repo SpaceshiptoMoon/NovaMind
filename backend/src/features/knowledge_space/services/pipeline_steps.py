@@ -877,26 +877,49 @@ async def resolve_embedding_config(
     return resolved
 
 
-async def run_post_parse_tail(
-    *,
-    document: Document,
-    session: AsyncSession,
-    task: DocumentTask,
-    model_config_port: ModelConfigService | None,
-    logger,
-    chunk_type: ChunkType,
-    embedding_config: dict[str, Any],
-    pipeline_config: dict[str, Any],
-    splitting_config: dict[str, Any],
-    full_text: str = "",
-    prechunked_items: list[tuple[str, dict[str, Any]]] | None = None,
-    steps_items: list[tuple[str, dict[str, Any]]] | None = None,
-    parse_metadata: dict[str, Any] | None = None,
-    frame_paths: dict[int, str] | None = None,
-    time_alignment: dict[str, Any] | None = None,
-    parse_fingerprint: str | None = None,
-    user_id: int | None = None,
-) -> dict[str, Any]:
+@dataclass
+class TailInputs:
+    """``run_post_parse_tail`` 的输入聚合（批次 4.3）。
+
+    此前 18 个 keyword-only 参数靠 7 个调用点（文本正常/resume/图片 +
+    音频/视频各路径）人肉保持对齐——新增贯穿产物要改签名 + 7 处调用，
+    漏改无编译期报错。聚合后新增字段 = 本类加一个带默认值字段，调用方
+    按需赋值；公共九件套（宿主依赖 + 模态 + 三配置）必填，产物参数可选。
+
+    Attributes:
+        document/session/task/model_config_port/logger: 宿主依赖（task 允许
+            None——媒体路径的部分续跑分支无任务行，节点日志静默跳过）。
+        chunk_type: 模态（TEXT/IMAGE/AUDIO/VIDEO），决定 ES 分块元数据形态。
+        embedding_config/pipeline_config/splitting_config: 三配置，向量配置
+            在尾段内先补足真实执行口径再算指纹。
+        full_text/prechunked_items/steps_items/parse_metadata: 解析与切分
+            产物（文本链路传结构化 prechunked_items，媒体链路传 full_text
+            或预切 steps_items，二者互斥——尾段按「有 prechunked 走快照分块、
+            否则重切」分流）。
+        frame_paths/time_alignment: 视频帧路径映射与时间线对齐信息（音视频）。
+        parse_fingerprint/user_id: 解析级指纹（断点续跑链头）与向量凭证归属。
+    """
+
+    document: Document
+    session: AsyncSession
+    task: DocumentTask | None
+    model_config_port: ModelConfigService | None
+    logger: Any
+    chunk_type: ChunkType
+    embedding_config: dict[str, Any]
+    pipeline_config: dict[str, Any]
+    splitting_config: dict[str, Any]
+    user_id: int | None = None
+    full_text: str = ""
+    prechunked_items: list[tuple[str, dict[str, Any]]] | None = None
+    steps_items: list[tuple[str, dict[str, Any]]] | None = None
+    parse_metadata: dict[str, Any] | None = None
+    frame_paths: dict[int, str] | None = None
+    time_alignment: dict[str, Any] | None = None
+    parse_fingerprint: str | None = None
+
+
+async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
     """共享后置尾：切分 → 构造 ES chunks → 向量化 → 问题生成 → 索引。
 
     文本/音频/视频三模态共用此尾，统一节点名 split/embedded/question_generation/indexed。
@@ -912,6 +935,26 @@ async def run_post_parse_tail(
     Returns:
         {chunk_count, indexed_count, total_questions, split_strategy}，供调用方写 mark_completed。
     """
+
+    # 批次 4.3：参数聚合解包——函数体内部仍以局部名引用，逻辑零改动
+    document = inputs.document
+    session = inputs.session
+    task = inputs.task
+    model_config_port = inputs.model_config_port
+    logger = inputs.logger
+    chunk_type = inputs.chunk_type
+    embedding_config = inputs.embedding_config
+    pipeline_config = inputs.pipeline_config
+    splitting_config = inputs.splitting_config
+    user_id = inputs.user_id
+    full_text = inputs.full_text
+    prechunked_items = inputs.prechunked_items
+    steps_items = inputs.steps_items
+    parse_metadata = inputs.parse_metadata
+    frame_paths = inputs.frame_paths
+    time_alignment = inputs.time_alignment
+    parse_fingerprint = inputs.parse_fingerprint
+
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         SNAPSHOTS_ENABLED,
         compute_embed_fingerprint,

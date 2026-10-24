@@ -171,7 +171,7 @@ async def _drive(
     async def _fake_persist(*a, **k):
         return None
 
-    async def _fake_tail(**kwargs):
+    async def _fake_tail(inputs=None, **kwargs):
         return {"chunk_count": 1, "total_questions": 0}
 
     monkeypatch.setattr(document_pipeline, "persist_parsed_text", _fake_persist)

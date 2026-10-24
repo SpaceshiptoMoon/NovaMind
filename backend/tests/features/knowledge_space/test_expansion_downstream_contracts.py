@@ -31,7 +31,7 @@ from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
     expand_search_results,
 )
-from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks
+from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks, TailInputs
 from novamind.features.knowledge_space.services.pipeline_snapshots import (
     save_split_snapshot,
     load_split_snapshot,
@@ -138,6 +138,7 @@ class TestImagePathWindowSplit:
 
         async def _run():
             return await pipeline_steps.run_post_parse_tail(
+TailInputs(
                 document=doc,
                 session=_PlainSession(),
                 task=SimpleNamespace(
@@ -151,7 +152,7 @@ class TestImagePathWindowSplit:
                 splitting_config={"strategy": "sentence_window", "chunk_size": 1000, "window_size": 2},
                 full_text=description,
                 user_id=1,
-            )
+    ))
 
         result = asyncio.run(_run())
         assert result["split_strategy"] == "sentence_window"

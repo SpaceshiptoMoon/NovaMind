@@ -53,6 +53,7 @@ from novamind.features.knowledge_space.services.pipeline_snapshots import (
     snapshot_fingerprint,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import (
+    TailInputs,
     begin_step,
     check_document_cancelled,
     finish_step_committed,
@@ -686,7 +687,7 @@ async def _audio_resume_tail(
                 document_id=document.id, error=str(up_exc),
             )
 
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -700,7 +701,7 @@ async def _audio_resume_tail(
         time_alignment=resumed_time_alignment,
         parse_fingerprint=parse_fingerprint,
         user_id=document.uploader_id,
-    )
+    ))
     if task:
         completed_result: dict[str, Any] = {
             "chunk_count": tail_result["chunk_count"],
@@ -745,7 +746,7 @@ async def _video_resume_tail(
     if task:
         await finish_step_committed(session, task, "descriptions_generated", metrics={"resumed": True})
 
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -760,7 +761,7 @@ async def _video_resume_tail(
         time_alignment=resumed_time_alignment,
         parse_fingerprint=parse_fingerprint,
         user_id=document.uploader_id,
-    )
+    ))
     if task:
         completed_result: dict[str, Any] = {
             "chunk_count": tail_result["chunk_count"],
@@ -1403,7 +1404,7 @@ async def process_video_document(
         await finish_step_committed(session, task, "descriptions_generated", metrics=desc_metrics)
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -1423,7 +1424,7 @@ async def process_video_document(
         },
         parse_fingerprint=video_parse_fp or None,
         user_id=document.uploader_id,
-    )
+    ))
 
     # 5. 写入处理结果到 Task（storage["frames"] 已在帧上传后立即持久化，此处不再重写）
     if task:
@@ -1881,7 +1882,7 @@ async def process_audio_document(
             "音频停顿边界切分", document_id=document.id,
             segments=len(segments), groups=len(groups),
         )
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -1900,7 +1901,7 @@ async def process_audio_document(
         },
         parse_fingerprint=audio_parse_fp or None,
         user_id=document.uploader_id,
-    )
+    ))
 
     # 4. 写入处理结果到 Task
     if task:

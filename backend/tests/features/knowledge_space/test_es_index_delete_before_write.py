@@ -14,6 +14,7 @@ import pytest
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import pipeline_steps
+from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
 
 
 class _FakeSession:
@@ -76,6 +77,7 @@ async def test_index_step_deletes_old_chunks_before_write(monkeypatch):
     _patch_common(monkeypatch, es_stub)
 
     await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -87,7 +89,7 @@ async def test_index_step_deletes_old_chunks_before_write(monkeypatch):
         splitting_config={"strategy": "fixed_size", "chunk_size": 50, "chunk_overlap": 0},
         full_text="内容甲。" * 30,
         user_id=1,
-    )
+    ))
     assert delete_calls == [(7, 42)], "索引前未按 (space_id, document_id) 清旧分块"
 
 
@@ -101,6 +103,7 @@ async def test_partial_bulk_failure_raises_instead_of_silent_success(monkeypatch
 
     with pytest.raises(RuntimeError, match="部分写入失败"):
         await pipeline_steps.run_post_parse_tail(
+TailInputs(
             document=_make_document(),
             session=_FakeSession(),
             task=_make_task(),
@@ -112,7 +115,7 @@ async def test_partial_bulk_failure_raises_instead_of_silent_success(monkeypatch
             splitting_config={"strategy": "fixed_size", "chunk_size": 50, "chunk_overlap": 0},
             full_text="内容乙。" * 30,
             user_id=1,
-        )
+    ))
 
 
 @pytest.mark.asyncio
@@ -123,6 +126,7 @@ async def test_full_bulk_success_still_passes(monkeypatch):
     _patch_common(monkeypatch, es_stub)
 
     result = await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -134,5 +138,5 @@ async def test_full_bulk_success_still_passes(monkeypatch):
         splitting_config={"strategy": "fixed_size", "chunk_size": 50, "chunk_overlap": 0},
         full_text="内容丙。" * 30,
         user_id=1,
-    )
+    ))
     assert result["indexed_count"] == result["chunk_count"] >= 1

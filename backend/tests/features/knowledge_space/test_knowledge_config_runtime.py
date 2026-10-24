@@ -422,12 +422,12 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         captured["parsed_video_text"] = full_text
         return "parsed/full_text.md"
 
-    async def fake_post_parse_tail(**kwargs):
-        captured["video_index_chunk_type"] = str(kwargs["chunk_type"])
-        sc = kwargs.get("splitting_config") or {}
+    async def fake_post_parse_tail(inputs=None, **kwargs):
+        captured["video_index_chunk_type"] = str(inputs.chunk_type)
+        sc = inputs.splitting_config or {}
         captured["split_strategy"] = sc.get("strategy")
         captured["split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
-        captured["video_time_alignment"] = kwargs.get("time_alignment")
+        captured["video_time_alignment"] = inputs.time_alignment
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     # fake ModelConfigPort：配置了 vlm_model 时不查默认，get_vlm_client_by_model 返回占位 client
@@ -564,12 +564,12 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         captured["parsed_audio_text"] = full_text
         return "parsed/full_text.md"
 
-    async def fake_post_parse_tail(**kwargs):
-        captured["audio_index_chunk_type"] = str(kwargs["chunk_type"])
-        sc = kwargs.get("splitting_config") or {}
+    async def fake_post_parse_tail(inputs=None, **kwargs):
+        captured["audio_index_chunk_type"] = str(inputs.chunk_type)
+        sc = inputs.splitting_config or {}
         captured["audio_split_strategy"] = sc.get("strategy")
         captured["audio_split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
-        captured["audio_time_alignment"] = kwargs.get("time_alignment")
+        captured["audio_time_alignment"] = inputs.time_alignment
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
@@ -948,8 +948,8 @@ async def test_process_video_document_grouped_strategy_passes_frame_groups(monke
         captured["parsed_video_text"] = full_text
         return "parsed/full_text.md"
 
-    async def fake_post_parse_tail(**kwargs):
-        captured["video_time_alignment"] = kwargs.get("time_alignment")
+    async def fake_post_parse_tail(inputs=None, **kwargs):
+        captured["video_time_alignment"] = inputs.time_alignment
         return {"chunk_count": 2, "indexed_count": 2, "total_questions": 0, "split_strategy": "recursive"}
 
     fake_mcs = SimpleNamespace(

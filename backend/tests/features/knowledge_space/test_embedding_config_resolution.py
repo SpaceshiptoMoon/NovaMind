@@ -16,6 +16,7 @@ import pytest
 from novamind.features.knowledge_space.exceptions import PermanentProcessingError
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import pipeline_steps
+from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
 from novamind.features.knowledge_space.services.space_service import SpaceService
 
 
@@ -99,6 +100,7 @@ def _capture_bulk(captured: dict):
 async def _run_tail(*, embedding_config, model_config_port, monkeypatch, captured):
     _patch_tail_deps(monkeypatch, captured)
     return await pipeline_steps.run_post_parse_tail(
+TailInputs(
         document=_make_document(),
         session=_FakeSession(),
         task=SimpleNamespace(
@@ -113,7 +115,7 @@ async def _run_tail(*, embedding_config, model_config_port, monkeypatch, capture
         splitting_config={"strategy": "fixed_size", "chunk_size": 50, "chunk_overlap": 0},
         full_text="内容丁。" * 30,
         user_id=1,
-    )
+    ))
 
 
 @pytest.mark.asyncio
@@ -168,6 +170,7 @@ async def test_no_embedding_anywhere_raises_permanent_error_before_split(monkeyp
 
     with pytest.raises(PermanentProcessingError, match="无法确定 embedding 向量维度"):
         await pipeline_steps.run_post_parse_tail(
+TailInputs(
             document=_make_document(),
             session=_FakeSession(),
             task=SimpleNamespace(
@@ -182,7 +185,7 @@ async def test_no_embedding_anywhere_raises_permanent_error_before_split(monkeyp
             splitting_config={"strategy": "fixed_size", "chunk_size": 50, "chunk_overlap": 0},
             full_text="内容戊。" * 30,
             user_id=1,
-        )
+    ))
     assert "bulk_dim" not in captured
 
 

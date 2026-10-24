@@ -53,6 +53,7 @@ from novamind.features.knowledge_space.services.document_file_types import (
     VIDEO_FILE_TYPES,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import (
+    TailInputs,
     begin_step,
     check_document_cancelled,
     extract_parse_metadata_summary,
@@ -389,7 +390,7 @@ async def execute_document_pipeline(
         # resume 路径同样要落解析全文（审计 P2：首跑 persist 失败时无自愈路径；
         # 快照全文是占位符版，重签 URL 后落盘即最终形态）
         await persist_parsed_text(document, full_text, session, _logger)
-        _resume_tail_result = await run_post_parse_tail(
+        _resume_tail_result = await run_post_parse_tail(TailInputs(
             document=document,
             session=session,
             task=task,
@@ -407,7 +408,7 @@ async def execute_document_pipeline(
             frame_paths=resumed_frame_paths or None,
             time_alignment=restore_time_alignment(resumed_time_alignment),
             user_id=document.uploader_id,
-        )
+        ))
         parse_summary = extract_parse_metadata_summary(resume_meta if isinstance(resume_meta, dict) else {})
         # parse_duration_ms 口径 = 本次续跑尾段耗时（started_at 仍是原任务起点，
         # 快照命中的解析阶段被跳过，差额即尾段实际开销），与正常路径的全程口径不同源。
@@ -608,7 +609,7 @@ async def execute_document_pipeline(
             payload=snapshot_payload,
         )
 
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -622,7 +623,7 @@ async def execute_document_pipeline(
         parse_metadata=parse_result.metadata,
         parse_fingerprint=parse_fingerprint,
         user_id=document.uploader_id,
-    )
+    ))
     parse_summary = extract_parse_metadata_summary(parse_result.metadata)
 
     # 5. 标记任务完成
@@ -1109,7 +1110,7 @@ async def _process_image_document_static(
     #      残留干扰；audio/video 子键同理由 SplittingConfig extra=ignore 在配置层丢弃。
     splitting_config = dict(ctx.pipeline_config.get("splitting", {}))
     splitting_config.pop("image", None)
-    tail_result = await run_post_parse_tail(
+    tail_result = await run_post_parse_tail(TailInputs(
         document=document,
         session=session,
         task=task,
@@ -1122,7 +1123,7 @@ async def _process_image_document_static(
         full_text=description_text,
         parse_fingerprint=image_parse_fp or None,
         user_id=document.uploader_id,
-    )
+    ))
 
     # 9. 标记任务完成
     result = {

@@ -270,7 +270,7 @@ async def test_image_parse_snapshot_hit_end_to_end(monkeypatch):
 
     tail_called = {"n": 0}
 
-    async def _fake_tail(**kwargs):
+    async def _fake_tail(inputs=None, **kwargs):
         tail_called["n"] += 1
         return {"chunk_count": 1, "total_questions": 0}
 
