@@ -7324,6 +7324,30 @@
         "title": "NotificationResponse",
         "type": "object"
       },
+      "NumericLimit": {
+        "description": "数值配置项的边界与默认（供前端表单 min/max/初始值，单一来源）。",
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "number"
+          },
+          "max": {
+            "title": "Max",
+            "type": "number"
+          },
+          "min": {
+            "title": "Min",
+            "type": "number"
+          }
+        },
+        "required": [
+          "default",
+          "min",
+          "max"
+        ],
+        "title": "NumericLimit",
+        "type": "object"
+      },
       "Paper": {
         "description": "单篇论文（标题/作者排序/发表载体/引用数/个人贡献/关联项目）。",
         "properties": {
@@ -7642,6 +7666,57 @@
           }
         },
         "title": "ParsingConfig",
+        "type": "object"
+      },
+      "ParsingDescriptorsResponse": {
+        "description": "解析与上传能力描述符：前端 accept 映射、策略白名单、数值边界的单一来源。\n\n新增文件格式/切分策略/配置项后，前端经本端点感知，无需同步修改静态表\n（批次 3：此前同一事实在前端 types.ts/kbConfig.ts/表单三处手抄）。",
+        "properties": {
+          "formats": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "模态 → 上传扩展名列表（带点），即各模态的 accept 串来源",
+            "title": "Formats",
+            "type": "object"
+          },
+          "parsing_strategies": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "文档类型 → 可用解析策略（自各 ParsingConfig 的 Literal 派生）",
+            "title": "Parsing Strategies",
+            "type": "object"
+          },
+          "splitting_limits": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NumericLimit"
+            },
+            "description": "切分配置数值边界（default/min/max），键与 SplittingConfig 字段同名",
+            "title": "Splitting Limits",
+            "type": "object"
+          },
+          "splitting_strategies": {
+            "description": "可用切分策略名（自 DocumentRegistry 派生）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Splitting Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "formats",
+          "splitting_strategies",
+          "splitting_limits",
+          "parsing_strategies"
+        ],
+        "title": "ParsingDescriptorsResponse",
         "type": "object"
       },
       "Patent": {
@@ -21167,6 +21242,55 @@
           }
         ],
         "summary": "创建知识库",
+        "tags": [
+          "知识库管理",
+          "知识库管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/parsing-descriptors": {
+      "get": {
+        "description": "前端上传 accept 映射、切分策略白名单、配置数值边界的单一来源；后端新增格式/策略后前端无需同步改动静态表",
+        "operationId": "get_parsing_descriptors_api_v1_spaces__space_id__knowledge_bases_parsing_descriptors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParsingDescriptorsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取解析与上传能力描述符",
         "tags": [
           "知识库管理",
           "知识库管理"
