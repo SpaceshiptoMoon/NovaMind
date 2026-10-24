@@ -3,6 +3,8 @@
 构造器精简为 (session)——任务编排不触碰 MinIO/ES/模型配置，管道执行由 document_pipeline 在 worker 侧经端口注入完成。
 """
 
+import structlog
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -32,6 +34,15 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+
+def _current_trace_id() -> str | None:
+    """取当前请求日志上下文中的 trace_id（无 HTTP 上下文时为 None）。
+
+    API 入队 → worker 执行跨 contextvars 边界（arq job 是独立 asyncio task，
+    不继承请求协程上下文），trace_id 需显式随 job 参数传递（批次 5 贯通）。
+    """
+    return structlog.contextvars.get_contextvars().get("trace_id")
 
 class DocumentTaskService:
     """文档任务/批次服务：处理编排、入队、取消与状态查询。"""
@@ -547,6 +558,7 @@ class DocumentTaskService:
                     document_id=task.document_id,
                     kb_id=task.kb_id,
                     space_id=task.space_id,
+                    trace_id=_current_trace_id(),
                     _job_id=job_id,
                 )
                 if job is None:

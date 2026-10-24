@@ -1,4 +1,5 @@
 """文档处理 arq 任务函数与宿主编排：入队/重试观测/终态通知/自愈对账。"""
+import structlog
 import traceback
 from datetime import timedelta
 from pathlib import Path
@@ -114,6 +115,7 @@ async def process_document_task(
     document_id: int,
     kb_id: int,
     space_id: int,
+    trace_id: str | None = None,
 ) -> None:
     """
     arq 任务函数：执行完整的文档处理 pipeline
@@ -132,6 +134,9 @@ async def process_document_task(
         document_id: 文档 ID
         kb_id: 知识库 ID
         space_id: 空间 ID
+        trace_id: 入队请求的追踪 id（enqueue 侧从日志上下文取出随 job 传递）。
+            缺失时 worker 日志沿用 "no-trace"——API→worker 的 trace 链路曾全程
+            断裂，异步解析日志只能靠 document_id 人工串联（批次 5 贯通）。
     """
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.document_task import TaskProcessMode, TaskStatus
@@ -154,6 +159,11 @@ async def process_document_task(
 
 
     job_id = ctx.get("job_id", "unknown")
+
+    if trace_id:
+        # API 请求的 trace_id 随 job 参数传入并绑定本协程日志上下文（arq 每
+        # job 独立 asyncio task，contextvars 天然隔离，无需 unbind）
+        structlog.contextvars.bind_contextvars(trace_id=trace_id)
 
     logger.info(
         "arq 任务开始：文档处理",

@@ -17,6 +17,7 @@
 import copy
 import gc
 import logging
+import threading
 import os
 import time
 
@@ -50,6 +51,9 @@ from . import operators
 from .postprocess import build_post_process
 
 loaded_models = {}
+# 并发首载双检锁（load_model 内使用）：OCR 推理在 to_thread 线程池，
+# 多任务并发首载无锁会重复建 ONNX session
+_model_load_lock = threading.Lock()
 
 
 def transform(data, ops=None):
@@ -97,6 +101,8 @@ def load_model(model_dir, nm, device_id: int | None = None):
     优先 CUDA（需 torch 可用且目标 device_id 存在），否则 CPU；线程数与显存
     由 OCR_INTRA_OP_NUM_THREADS / OCR_INTER_OP_NUM_THREADS /
     OCR_GPU_MEM_LIMIT_MB 等环境变量注入；CPU 恒开内存 arena 收缩。
+    并发安全：OCR 推理跑在 to_thread 线程池，多任务并发首载时经双检锁串行化
+    构造段——无锁时两个线程会各建一份 ONNX session，重复占显存/内存。
 
     Returns:
         (InferenceSession, RunOptions) 二元组。
@@ -113,54 +119,61 @@ def load_model(model_dir, nm, device_id: int | None = None):
         logging.info(f"load_model {model_file_path} reuses cached model")
         return loaded_model
 
-    if not os.path.exists(model_file_path):
-        raise ValueError(f"not find model file path {model_file_path}")
+    with _model_load_lock:
+        # 双检：等锁期间其他线程可能已完成同一模型的加载
+        loaded_model = loaded_models.get(model_cached_tag)
+        if loaded_model:
+            logging.info(f"load_model {model_file_path} reuses cached model (post-lock)")
+            return loaded_model
 
-    def cuda_is_available():
-        # CUDA 可用性探测（懒装 torch；失败/无 GPU 均视为不可用）。
-        try:
-            pip_install_torch()
-            import torch
+        if not os.path.exists(model_file_path):
+            raise ValueError(f"not find model file path {model_file_path}")
 
-            target_id = 0 if device_id is None else device_id
-            if torch.cuda.is_available() and torch.cuda.device_count() > target_id:
-                return True
-        except Exception:
+        def cuda_is_available():
+            # CUDA 可用性探测（懒装 torch；失败/无 GPU 均视为不可用）。
+            try:
+                pip_install_torch()
+                import torch
+
+                target_id = 0 if device_id is None else device_id
+                if torch.cuda.is_available() and torch.cuda.device_count() > target_id:
+                    return True
+            except Exception:
+                return False
             return False
-        return False
 
-    options = ort.SessionOptions()
-    options.enable_cpu_mem_arena = False
-    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    # Prevent CPU oversubscription by allowing explicit thread control in multi-worker environments
-    options.intra_op_num_threads = int(os.environ.get("OCR_INTRA_OP_NUM_THREADS", "2"))
-    options.inter_op_num_threads = int(os.environ.get("OCR_INTER_OP_NUM_THREADS", "2"))
+        options = ort.SessionOptions()
+        options.enable_cpu_mem_arena = False
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        # Prevent CPU oversubscription by allowing explicit thread control in multi-worker environments
+        options.intra_op_num_threads = int(os.environ.get("OCR_INTRA_OP_NUM_THREADS", "2"))
+        options.inter_op_num_threads = int(os.environ.get("OCR_INTER_OP_NUM_THREADS", "2"))
 
-    # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
-    # Shrink GPU memory after execution
-    run_options = ort.RunOptions()
-    if cuda_is_available():
-        gpu_mem_limit_mb = int(os.environ.get("OCR_GPU_MEM_LIMIT_MB", "2048"))
-        arena_strategy = os.environ.get("OCR_ARENA_EXTEND_STRATEGY", "kNextPowerOfTwo")
-        provider_device_id = 0 if device_id is None else device_id
-        cuda_provider_options = {
-            "device_id": provider_device_id,  # Use specific GPU
-            "gpu_mem_limit": max(gpu_mem_limit_mb, 0) * 1024 * 1024,
-            "arena_extend_strategy": arena_strategy,  # gpu memory allocation strategy
-        }
-        sess = ort.InferenceSession(model_file_path, options=options, providers=["CUDAExecutionProvider"], provider_options=[cuda_provider_options])
-        # Explicit arena shrinkage for GPU to release VRAM back to the system after each run
-        if os.environ.get("OCR_GPUMEM_ARENA_SHRINKAGE") == "1":
-            run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", f"gpu:{provider_device_id}")
-            logging.info(f"load_model {model_file_path} enabled GPU memory arena shrinkage on device {provider_device_id}")
-        logging.info(f"load_model {model_file_path} uses GPU (device {provider_device_id}, gpu_mem_limit={cuda_provider_options['gpu_mem_limit']}, arena_strategy={arena_strategy})")
-    else:
-        sess = ort.InferenceSession(model_file_path, options=options, providers=["CPUExecutionProvider"])
-        run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
-        logging.info(f"load_model {model_file_path} uses CPU")
-    loaded_model = (sess, run_options)
-    loaded_models[model_cached_tag] = loaded_model
-    return loaded_model
+        # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
+        # Shrink GPU memory after execution
+        run_options = ort.RunOptions()
+        if cuda_is_available():
+            gpu_mem_limit_mb = int(os.environ.get("OCR_GPU_MEM_LIMIT_MB", "2048"))
+            arena_strategy = os.environ.get("OCR_ARENA_EXTEND_STRATEGY", "kNextPowerOfTwo")
+            provider_device_id = 0 if device_id is None else device_id
+            cuda_provider_options = {
+                "device_id": provider_device_id,  # Use specific GPU
+                "gpu_mem_limit": max(gpu_mem_limit_mb, 0) * 1024 * 1024,
+                "arena_extend_strategy": arena_strategy,  # gpu memory allocation strategy
+            }
+            sess = ort.InferenceSession(model_file_path, options=options, providers=["CUDAExecutionProvider"], provider_options=[cuda_provider_options])
+            # Explicit arena shrinkage for GPU to release VRAM back to the system after each run
+            if os.environ.get("OCR_GPUMEM_ARENA_SHRINKAGE") == "1":
+                run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", f"gpu:{provider_device_id}")
+                logging.info(f"load_model {model_file_path} enabled GPU memory arena shrinkage on device {provider_device_id}")
+            logging.info(f"load_model {model_file_path} uses GPU (device {provider_device_id}, gpu_mem_limit={cuda_provider_options['gpu_mem_limit']}, arena_strategy={arena_strategy})")
+        else:
+            sess = ort.InferenceSession(model_file_path, options=options, providers=["CPUExecutionProvider"])
+            run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
+            logging.info(f"load_model {model_file_path} uses CPU")
+        loaded_model = (sess, run_options)
+        loaded_models[model_cached_tag] = loaded_model
+        return loaded_model
 
 
 class TextRecognizer:
