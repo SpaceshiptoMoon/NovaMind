@@ -5,9 +5,12 @@
   返回版面 layouts（块类型/坐标/页码/markdownContent）——信息最全；
 - multi_lan：DashScope MultiModalConversation 单图识别，返回纯文本。
 
-注意：dashscope SDK 的 api_key/base_http_api_url 是进程级全局状态，本模块
-每次调用前在同一线程内 configure；与 ASR Paraformer 并发时存在互踩窗口
-（ASR 侧同款已知限制），彻底解法需 per-call client，超出当前范围。
+并发语义（批次 6.3）：api_key 恒经 ``MultiModalConversation.call(api_key=...)``
+per-call 传递，不依赖全局态；base_http_api_url 是 SDK 唯一的进程级全局且
+无 per-call 透传——SDK 默认值与本模块标准百炼地址恒相同，因此标准场景
+不再每次 configure 写全局（与 ASR Paraformer 并发的互踩窗口根除）；仅当
+配置了非默认私有化地址时才写全局并记 warning（该场景与 ASR 并发仍有
+互踩窗口，属 SDK 限制）。
 """
 from __future__ import annotations
 
@@ -226,9 +229,16 @@ async def recognize_image_with_qwen_ocr(
         import dashscope
         from dashscope import MultiModalConversation
 
-        configure_dashscope(config.api_key, config.dashscope_base_url)
+        # api_key 恒 per-call 传递；base url 仅在偏离 SDK 默认（私有化部署）时
+        # 写全局——标准百炼场景与 ASR 并发的全局互踩窗口由此根除（批次 6.3）
+        if config.dashscope_base_url.rstrip("/") != "https://dashscope.aliyuncs.com/api/v1":
+            configure_dashscope(config.api_key, config.dashscope_base_url)
+            logger.warning(
+                "OCR 使用非默认 DashScope 地址（私有化部署），base url 为进程级全局，"
+                "与 ASR Paraformer 并发时存在互踩窗口"
+            )
         response = MultiModalConversation.call(
-            api_key=dashscope.api_key or None,
+            api_key=config.api_key or None,
             model=config.model,
             messages=[{
                 "role": "user",
