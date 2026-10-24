@@ -1,22 +1,18 @@
-"""切分策略分派链守护测试（扩展性重构批次 0 安全网）。
+"""切分策略装配守护测试（批次 2 工厂化后的结构锁定）。
 
-三条装配链当前是三份 if/elif 手工同步副本——
-A. ``DocumentProcessor.split_text_items``（文本主链路，deepdoc 哨兵重切与默认
-   reader 路径都经它）；
-B. ``DocumentProcessor.load_with_strategy``（agent 附件等组合入口）；
-C. ``pipeline_steps.split_md_text``（音视频/图片媒体路径，含 line_aware 锚点
-   保护特例）——批次 2 将收敛为统一的 SplitterFactory。本文件在重构前锁定
-   两条事实，重构后被断言必须原样成立或显式更新：
+装配知识单一归属 ``splitter_factory`` 注册表后，本文件锁定三层事实：
 
-1. **装配快照**：每条链对每个策略传给切分器构造函数的参数。表中的默认值
-   漂移（recursive chunk_size 500 vs 2000、delimiter min_chunk_size 50 vs
-   500、链 C recursive 直调 ``_split_text`` 绕过 split()）是**已知现状**，
-   先显式记录再消除——重构后这些差异行应收敛为单一值。
-2. **行为金样**：真实切分器对固定文本的切分产物（文本块 + 关系元数据）。
-   重构只允许换装配方式，不允许改变切分产物；快照不一致即回归。
+1. **工厂默认值**：``build_splitter`` 对空参数产出的真实切分器实例属性
+   （默认值从三份 if/elif 拷贝收敛到 builder 后的权威值——DIRECT/TEXT 组）。
+2. **调用层零夹带**：链 A/B（split_text_items / load_with_strategy）不再
+   在调用层 prefill 默认——桩切分器捕获的构造参数恒为调用方显式值；
+   链 C（split_md_text）唯一有权 prefill 媒体语境默认（recursive 加大块、
+   delimiter 合并阈值放大），媒体默认表由此锁定。
+3. **行为金样**：真实切分器对固定文本的切分产物逐字节一致（重构只许换
+   装配方式，不许改切分行为）。
 
-金样重生成：环境变量 ``SPLITTER_GOLDEN_GENERATE=1`` 运行本文件，
-快照写入 goldens/splitter_dispatch_golden.json（人工审阅后入库）。
+金样重生成：``SPLITTER_GOLDEN_GENERATE=1`` 运行本文件，快照写入
+goldens/splitter_dispatch_golden.json（人工审阅后入库）。
 """
 from __future__ import annotations
 
@@ -26,7 +22,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -35,9 +30,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.engines.document.pipeline.document_loader import (
-    DocumentProcessor,
-    DocumentRegistry,
+from novamind.engines.document.pipeline import splitter_factory
+from novamind.engines.document.pipeline.document_loader import DocumentProcessor
+from novamind.engines.document.pipeline.splitter_factory import (
+    SplitterDeps,
+    UnknownSplitterStrategyError,
+    build_splitter,
 )
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.features.knowledge_space.services.pipeline_steps import split_md_text
@@ -58,48 +56,40 @@ STRATEGIES = [
     "hierarchical",
 ]
 
-# ---------------------------------------------------------------------------
-# 装配快照期望表：三条链各自「空 kwargs 时」传给切分器构造函数的参数。
-# 漂移行已用注释标注——这是现状记录，不是期望规范。
-# ---------------------------------------------------------------------------
-CHAIN_A_DEFAULTS = {  # split_text_items：文本主链路
+# 工厂默认值（真实切分器实例属性；= 历史上链 A 的装配结果，DRIFT 已收敛归属）
+FACTORY_DEFAULTS: dict[str, dict[str, Any]] = {
     "recursive": {"chunk_size": 500, "chunk_overlap": 50, "min_chunk_size": 50},
-    # semantic 额外携带 embedding_client 键，单独断言（见 test_..._semantic）
+    "semantic": {"max_chunk_size": 1000, "similarity_threshold": 0.7, "batch_size": 20},
     "fixed_size": {"chunk_size": 500, "chunk_overlap": 0},
     "markdown": {"max_chunk_size": 1000, "min_chunk_size": 50},
-    "delimiter": {"chunk_size": 500, "chunk_overlap": 50, "min_chunk_size": 50, "separators": None},
+    "delimiter": {"chunk_size": 500, "chunk_overlap": 50, "min_chunk_size": 50},
     "sentence_window": {"window_size": 2, "max_sentence_length": 1000},
     "parent_child": {"chunk_size": 1000, "chunk_overlap": 100, "parent_chunk_size": 2000},
     "hierarchical": {"chunk_size": 1000, "chunk_overlap": 100, "min_chunk_size": 200},
 }
-CHAIN_C_DEFAULTS = {  # split_md_text：媒体路径
-    # 漂移：recursive 默认 2000（链 A 是 500）、min_chunk_size 500（链 A 是 50）
+
+# 链 C 媒体语境默认（split_md_text prefill 后桩切分器捕获的构造参数；
+# 与工厂默认的差异点 = 媒体默认表内容）
+CHAIN_C_MEDIA_DEFAULTS: dict[str, dict[str, Any]] = {
     "recursive": {"chunk_size": 2000, "chunk_overlap": 50, "min_chunk_size": 500},
     "fixed_size": {"chunk_size": 500, "chunk_overlap": 0},
-    "markdown": {"max_chunk_size": 1000, "min_chunk_size": 50},
-    # 漂移：delimiter min_chunk_size 500（链 A 是 50）
-    "delimiter": {"chunk_size": 500, "chunk_overlap": 50, "min_chunk_size": 500, "separators": None},
-    "sentence_window": {"window_size": 2, "max_sentence_length": 1000},
+    "delimiter": {"chunk_size": 500, "chunk_overlap": 50, "min_chunk_size": 500},
+    "sentence_window": {"chunk_size": 1000, "chunk_overlap": 0, "window_size": 2},
     "parent_child": {"chunk_size": 1000, "chunk_overlap": 100, "parent_chunk_size": 2000},
     "hierarchical": {"chunk_size": 1000, "chunk_overlap": 100, "min_chunk_size": 200},
+    "markdown": {"max_chunk_size": 1000, "min_chunk_size": 50},
+    "semantic": {"max_chunk_size": 1000, "similarity_threshold": 0.7, "batch_size": 20},
 }
-# 链 B（load_with_strategy）与链 A 逐参相同（纯拷贝副本），直接复用期望表。
-# 链 C 的 meta 透传分叉（漂移记录）：只有关系策略拾取切分器 meta，其余策略
-# （recursive/fixed_size/markdown/delimiter）输出恒空 dict——桩切分器携带的
-# {"stub": True} 会被吃掉。链 A 对全部策略统一透传 meta。
-CHAIN_C_META_PASSTHROUGH = {
-    "recursive": False,
-    "fixed_size": False,
-    "markdown": False,
-    "delimiter": False,
-    "sentence_window": True,
-    "parent_child": True,
-    "hierarchical": True,
-}
+
+# line_aware 行切分支持策略（与 pipeline_steps._LINE_AWARE_STRATEGIES 对齐；
+# 拆分到本测试避免 import 私有符号）
+LINE_AWARE_STRATEGIES = frozenset({
+    "recursive", "fixed_size", "delimiter", "sentence_window", "parent_child", "hierarchical",
+})
 
 
 class RecordingSplitter(BaseSplitter):
-    """捕获构造参数与调用路径的桩切分器（替换注册表内全部策略）。"""
+    """捕获构造参数与调用路径的桩切分器（替换工厂 builder 表）。"""
 
     last_init_kwargs: dict[str, Any] | None = None
     split_called: bool = False
@@ -118,121 +108,122 @@ class RecordingSplitter(BaseSplitter):
 
 
 @pytest.fixture()
-def recording_registry():
-    """把注册表内全部策略临时替换为 RecordingSplitter，结束后原样恢复。"""
-    saved = dict(DocumentRegistry._splitters_registry)
+def recording_builders():
+    """把工厂 builder 表临时替换为 RecordingSplitter 装配器，结束后原样恢复。"""
+    saved = dict(splitter_factory._BUILDERS)
     for name in saved:
-        DocumentRegistry.register_splitter(name, RecordingSplitter)
+        splitter_factory.register_splitter_builder(
+            name, lambda p, deps, _n=name: RecordingSplitter(**p)
+        )
     RecordingSplitter.last_init_kwargs = None
     RecordingSplitter.split_called = False
     RecordingSplitter.split_text_called = False
     yield
-    DocumentRegistry._splitters_registry.clear()
-    DocumentRegistry._splitters_registry.update(saved)
+    splitter_factory._BUILDERS.clear()
+    splitter_factory._BUILDERS.update(saved)
 
 
 def _processor() -> DocumentProcessor:
     return DocumentProcessor(embedding_client=None)
 
 
-class TestChainAAssembly:
-    """链 A：split_text_items 的装配快照。"""
+class TestFactoryDefaults:
+    """工厂默认值：空参数装配出的真实切分器实例属性（权威默认单一归属）。"""
 
-    @pytest.mark.parametrize("strategy", [s for s in STRATEGIES if s != "semantic"])
-    def test_default_kwargs(self, recording_registry, strategy):
+    @pytest.mark.parametrize("strategy", STRATEGIES)
+    def test_defaults(self, strategy):
+        splitter = build_splitter(strategy, {}, SplitterDeps(embedding_client=None))
+        for attr, expected in FACTORY_DEFAULTS[strategy].items():
+            assert getattr(splitter, attr) == expected, (
+                f"{strategy}.{attr} 默认值漂移：{getattr(splitter, attr)} != {expected}"
+            )
+
+    def test_unknown_strategy_raises(self):
+        with pytest.raises(UnknownSplitterStrategyError, match="Unknown strategy"):
+            build_splitter("nonexistent", {}, SplitterDeps())
+
+    def test_registry_and_factory_strategies_aligned(self):
+        """类注册表与工厂 builder 表策略集合一致（防两套注册漂移）。"""
+        from novamind.engines.document.pipeline.document_loader import DocumentRegistry
+
+        assert set(DocumentRegistry.get_available_strategies()) == set(
+            splitter_factory.get_available_builder_strategies()
+        )
+
+
+class TestChainAAssembly:
+    """链 A：split_text_items 调用层零夹带（默认全在 builder）。"""
+
+    @pytest.mark.parametrize("strategy", STRATEGIES)
+    def test_no_prefill_by_caller(self, recording_builders, strategy):
         asyncio.run(_processor().split_text_items("文本内容。", strategy=strategy))
-        assert RecordingSplitter.last_init_kwargs == CHAIN_A_DEFAULTS[strategy]
+        assert RecordingSplitter.last_init_kwargs == {}, (
+            "调用层不应 prefill 默认值（缺省取值单一归属 builder）"
+        )
         assert RecordingSplitter.split_called is True
 
-    def test_semantic_receives_embedding_client(self, recording_registry):
-        """semantic 构造除数值参数外还携带 embedding_client（None 也显式传）。"""
-        asyncio.run(_processor().split_text_items("文本内容。", strategy="semantic"))
-        assert RecordingSplitter.last_init_kwargs == {
-            "embedding_client": None,
-            "max_chunk_size": 1000,
-            "similarity_threshold": 0.7,
-            "batch_size": 20,
-        }
-
-    def test_explicit_kwargs_win_over_defaults(self, recording_registry):
-        """显式参数覆盖默认值（recursive）。"""
+    def test_explicit_kwargs_pass_through(self, recording_builders):
         asyncio.run(
-            _processor().split_text_items(
-                "文本内容。", strategy="recursive", chunk_size=123,
-            )
+            _processor().split_text_items("文本内容。", strategy="recursive", chunk_size=123)
         )
-        assert RecordingSplitter.last_init_kwargs["chunk_size"] == 123
+        assert RecordingSplitter.last_init_kwargs == {"chunk_size": 123}
 
-    def test_unknown_strategy_raises(self, recording_registry):
-        """未注册策略显式 ValueError（含可用策略清单）。"""
-        with pytest.raises(ValueError, match="Unknown strategy"):
+    def test_unknown_strategy_propagates(self, recording_builders):
+        with pytest.raises(UnknownSplitterStrategyError, match="Unknown strategy"):
             asyncio.run(_processor().split_text_items("文本", strategy="nonexistent"))
 
 
 class TestChainBAssembly:
-    """链 B：load_with_strategy 的装配快照（与链 A 逐参相同的纯拷贝副本）。"""
+    """链 B：load_with_strategy 与链 A 同源（共享工厂）。"""
 
-    @pytest.mark.parametrize("strategy", [s for s in STRATEGIES if s != "semantic"])
-    def test_default_kwargs(self, recording_registry, strategy, tmp_path):
+    @pytest.mark.parametrize("strategy", STRATEGIES)
+    def test_no_prefill_by_caller(self, recording_builders, strategy, tmp_path):
         doc = tmp_path / "doc.txt"
         doc.write_text("文件内容。", encoding="utf-8")
         asyncio.run(_processor().load_with_strategy(doc, strategy=strategy))
-        assert RecordingSplitter.last_init_kwargs == CHAIN_A_DEFAULTS[strategy]
-
-    def test_semantic_receives_embedding_client(self, recording_registry, tmp_path):
-        doc = tmp_path / "doc.txt"
-        doc.write_text("文件内容。", encoding="utf-8")
-        asyncio.run(_processor().load_with_strategy(doc, strategy="semantic"))
-        assert RecordingSplitter.last_init_kwargs == {
-            "embedding_client": None,
-            "max_chunk_size": 1000,
-            "similarity_threshold": 0.7,
-            "batch_size": 20,
-        }
+        assert RecordingSplitter.last_init_kwargs == {}
 
 
-class TestChainCAssembly:
-    """链 C：split_md_text 的装配快照（媒体路径，含 line_aware 特例）。"""
+class TestChainCMediaDefaults:
+    """链 C：split_md_text 的媒体语境默认表（唯一有权 prefill 的调用层）。"""
 
     @pytest.mark.parametrize(
-        "strategy", [s for s in STRATEGIES if s not in ("semantic", "markdown")]
+        "strategy", [s for s in STRATEGIES if s not in ("semantic",)]
     )
-    def test_default_kwargs(self, recording_registry, strategy):
-        items = asyncio.run(split_md_text("媒体文本。", strategy=strategy))
-        assert RecordingSplitter.last_init_kwargs == CHAIN_C_DEFAULTS[strategy]
-        expected_meta = {"stub": True} if CHAIN_C_META_PASSTHROUGH[strategy] else {}
-        assert items == [("桩块", expected_meta)]
+    def test_media_defaults_prefilled(self, recording_builders, strategy):
+        asyncio.run(split_md_text("媒体文本。", strategy=strategy))
+        assert RecordingSplitter.last_init_kwargs == CHAIN_C_MEDIA_DEFAULTS[strategy]
 
-    def test_markdown_bypasses_registry(self):
-        """漂移记录：链 C 的 markdown 分支不经注册表取类，直接局部 import
-        MarkdownSplitter 构造——替换注册表条目对它无效。批次 2 工厂化时消除。"""
-        from novamind.engines.document.splitters import MarkdownSplitter
-
-        items = asyncio.run(
-            split_md_text("# 标题\n\n正文段落。", strategy="markdown",
-                          max_chunk_size=100, min_chunk_size=10)
+    def test_explicit_kwargs_win_over_media_defaults(self, recording_builders):
+        asyncio.run(
+            split_md_text("媒体文本。", strategy="recursive", chunk_size=777)
         )
-        assert items, "markdown 分支应产出非空块"
-        assert MarkdownSplitter is DocumentRegistry.get_splitter_class("markdown")
+        assert RecordingSplitter.last_init_kwargs["chunk_size"] == 777
 
-    def test_recursive_bypasses_split(self, recording_registry):
+    def test_recursive_bypasses_split(self, recording_builders):
         """漂移记录：链 C 的 recursive 非 line_aware 时直调 _split_text，
         绕过 split()（即绕过小碎块合并与 doc_id 编号）；其余策略走 split()。"""
         asyncio.run(split_md_text("媒体文本。", strategy="recursive"))
         assert RecordingSplitter.split_text_called is True
         assert RecordingSplitter.split_called is False
 
-    def test_line_aware_bypasses_splitter(self, recording_registry):
-        """line_aware=True 时音视频锚点保护生效：切分器完全不被构造/调用，
-        走 split_line_aware 行切分。"""
+    def test_all_strategies_route_through_factory(self, recording_builders):
+        """markdown 不再绕过注册表局部 import（历史分叉已消除）。"""
+        asyncio.run(split_md_text("# 标题\n\n正文。", strategy="markdown"))
+        assert RecordingSplitter.last_init_kwargs is not None
+
+    def test_line_aware_bypasses_splitter(self, recording_builders):
+        """line_aware=True 时锚点保护前置：切分器完全不被构造/调用。"""
 
         class NoInitSplitter(RecordingSplitter):
             def __init__(self, **kwargs):  # noqa: ARG002 — 构造即视为违规
                 raise AssertionError("line_aware 路径不得构造切分器")
 
-        saved = dict(DocumentRegistry._splitters_registry)
+        saved = dict(splitter_factory._BUILDERS)
         for name in saved:
-            DocumentRegistry.register_splitter(name, NoInitSplitter)
+            splitter_factory.register_splitter_builder(
+                name, lambda p, deps: NoInitSplitter(**p)
+            )
         try:
             anchored = "\n".join(
                 f"[00:00:{i:02d}#0] 第{i}句描述文本内容" for i in range(10)
@@ -242,13 +233,24 @@ class TestChainCAssembly:
                               chunk_size=40, chunk_overlap=10)
             )
         finally:
-            DocumentRegistry._splitters_registry.clear()
-            DocumentRegistry._splitters_registry.update(saved)
+            splitter_factory._BUILDERS.clear()
+            splitter_factory._BUILDERS.update(saved)
         assert items, "行切分应产出非空块"
         assert all("[00:00" in text for text, _meta in items), "锚点行不得被拦腰切开"
 
+    @pytest.mark.parametrize("strategy", sorted(LINE_AWARE_STRATEGIES))
+    def test_line_aware_supported_strategies(self, strategy):
+        """line_aware 支持集合与常量对齐（media_defaults 表覆盖全部支持策略）。"""
+        from novamind.features.knowledge_space.services.pipeline_steps import (
+            _LINE_AWARE_STRATEGIES,
+        )
+
+        assert strategy in _LINE_AWARE_STRATEGIES
+        assert strategy in CHAIN_C_MEDIA_DEFAULTS, (
+            f"{strategy} 支持 line_aware 但媒体默认表缺 chunk_size/chunk_overlap 前置取参"
+        )
+
     def test_semantic_without_client_raises(self):
-        """链 C 的 semantic 无 embedding_client 时显式报错（与链 A 静默传 None 不同）。"""
         with pytest.raises(ValueError, match="embedding_client"):
             asyncio.run(split_md_text("媒体文本。", strategy="semantic"))
 
@@ -269,7 +271,7 @@ GOLDEN_TEXT = (
     + "长句压测文本用于触发尺寸上限切分。" * 60
 )
 
-# 每策略显式参数（行为金样锁定「切分器产物」而非默认值；默认值漂移由装配快照管）。
+# 每策略显式参数（行为金样锁定「切分器产物」而非默认值；默认值由工厂默认测试管）。
 GOLDEN_PARAMS: dict[str, dict[str, Any]] = {
     "recursive": {"chunk_size": 200, "chunk_overlap": 20, "min_chunk_size": 50},
     "fixed_size": {"chunk_size": 200, "chunk_overlap": 20},
@@ -324,8 +326,7 @@ def _snapshot_outputs() -> dict[str, Any]:
     anchored = "\n".join(
         f"[00:00:{i:02d}#0] 第{i}句描述文本内容用于行切分压测" for i in range(30)
     )
-    for strategy in ("recursive", "fixed_size", "delimiter", "sentence_window",
-                     "parent_child", "hierarchical"):
+    for strategy in sorted(LINE_AWARE_STRATEGIES):
         items = asyncio.run(
             split_md_text(anchored, strategy=strategy, line_aware=True,
                           chunk_size=80, chunk_overlap=10,

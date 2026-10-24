@@ -1,6 +1,7 @@
 """知识库解析管道步骤定义：解析→切分→嵌入→入库的步骤编排与快照记录。"""
 from __future__ import annotations
 
+import json
 import traceback
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -222,6 +223,41 @@ def extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, 
     }
 
 
+# build_es_chunks 已显式消费的 meta 键（切分器关系元数据白名单段 + 音视频段）；
+# 之外的键放通进 metadata.custom
+_RESERVED_CHUNK_META_KEYS = frozenset({
+    "entry_kinds", "entry_source_ids", "pages", "entry_count",
+    "chunk_role", "parent_slot", "expansion_type", "content_type",
+    "section_slot", "expansion_window_size",
+    "start_time", "end_time", "confidence", "speaker_id", "frame_indices",
+})
+
+_CUSTOM_META_MAX_KEYS = 16
+_CUSTOM_META_MAX_STR = 200
+_CUSTOM_META_MAX_JSON = 500
+
+
+def _sanitize_custom_meta(custom: dict[str, Any]) -> dict[str, Any]:
+    """净化自定义切分元数据：标量直收、复合类型 JSON 串化、统一限长限键数。
+
+    Args:
+        custom: 非保留键的自定义 meta（原样引用，不改写入参）。
+
+    Returns:
+        可安全写入 ES metadata.custom 的扁平 dict；超出键数上限的键丢弃。
+    """
+    sanitized: dict[str, Any] = {}
+    for i, (key, value) in enumerate(custom.items()):
+        if i >= _CUSTOM_META_MAX_KEYS:
+            break
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            sanitized[key] = value[:_CUSTOM_META_MAX_STR] if isinstance(value, str) else value
+        else:
+            serialized = json.dumps(value, ensure_ascii=False, default=str)
+            sanitized[key] = serialized[:_CUSTOM_META_MAX_JSON]
+    return sanitized
+
+
 def build_es_chunks(
     document: Document,
     chunk_items: list[tuple[str, dict[str, Any]]],
@@ -353,6 +389,16 @@ def build_es_chunks(
                 anchor_pos = slot_to_anchor_position.get(meta["section_slot"])
                 if anchor_pos is not None:
                     chunk_meta["section_anchor_chunk_id"] = f"{document.id}_{anchor_pos}"
+        # 未知关系元数据放通（批次 2.6 决策）：白名单键之外的自定义键收进
+        # metadata.custom——新切分器（如 bbpe 的聚类指针）的自有元数据历史上
+        # 会被静默丢弃、检索期扩展能力无声消失（审计验证轮案例）。sanitize
+        # 限长限深防 ES mapping 膨胀：标量直收（str 截 200 字符），list/dict
+        # JSON 串化截 500，键数上限 16。
+        custom_meta = {
+            k: v for k, v in meta.items() if k not in _RESERVED_CHUNK_META_KEYS
+        }
+        if custom_meta:
+            chunk_meta["custom"] = _sanitize_custom_meta(custom_meta)
         chunk_data = {
             "space_id": document.space_id,
             "kb_id": document.kb_id,
@@ -403,6 +449,13 @@ def prepare_es_chunks(
         for i, c in enumerate(chunks)
     ]
     return build_es_chunks(document, chunk_items, ChunkType.TEXT, parse_metadata=parse_metadata)
+
+
+# line_aware 行切分（音视频锚点保护）支持的策略；markdown/semantic 不支持
+#（结构切分/语义切分没有「行内锚点」语义，行模式对它们无意义）
+_LINE_AWARE_STRATEGIES = frozenset({
+    "recursive", "fixed_size", "delimiter", "sentence_window", "parent_child", "hierarchical",
+})
 
 
 def split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
@@ -467,207 +520,100 @@ async def split_md_text(
         metadata 携带关系元数据（expansion_type / chunk_role / parent_slot /
         content_type / section_slot），其余策略为空 dict
     """
-    from novamind.engines.document.pipeline import DocumentRegistry
+    from novamind.engines.document.pipeline.splitter_factory import (
+        SplitterDeps,
+        build_splitter,
+    )
 
-    splitter_class = DocumentRegistry.get_splitter_class(strategy)
-    if splitter_class is None:
-        raise ValueError(
-            f"不支持的切分策略: {strategy}，可用策略: {DocumentRegistry.get_available_strategies()}"
-        )
+    # 媒体路径语境默认表：显式 kwargs 恒优先，缺失键按策略补媒体默认。
+    # 与文本链路（builder 默认 = DIRECT 组）的差异点只有 recursive 三参与
+    # delimiter 的 min_chunk_size（转写文本信息密度低 → 块更大、合并阈值随块
+    # 放大）；其余策略与 builder 默认一致，prefill 仅为 line_aware 前置取参
+    # 与语义自文档化。新增媒体感知策略在此表加一行即可。
+    media_defaults: dict[str, dict[str, Any]] = {
+        "recursive": {
+            "chunk_size": DEFAULT_MEDIA_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_MEDIA_CHUNK_OVERLAP,
+            "min_chunk_size": DEFAULT_MEDIA_MIN_CHUNK_SIZE,
+        },
+        "fixed_size": {
+            "chunk_size": DEFAULT_DIRECT_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_FIXED_SIZE_OVERLAP,
+        },
+        "delimiter": {
+            "chunk_size": DEFAULT_DIRECT_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_MEDIA_CHUNK_OVERLAP,
+            "min_chunk_size": DEFAULT_MEDIA_MIN_CHUNK_SIZE,
+        },
+        "sentence_window": {
+            "chunk_size": DEFAULT_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_FIXED_SIZE_OVERLAP,
+            "window_size": DEFAULT_WINDOW_SIZE,
+        },
+        "parent_child": {
+            "chunk_size": DEFAULT_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
+            "parent_chunk_size": DEFAULT_PARENT_CHUNK_SIZE,
+        },
+        "hierarchical": {
+            "chunk_size": DEFAULT_CHUNK_SIZE,
+            "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
+            "min_chunk_size": DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE,
+        },
+        "markdown": {
+            "max_chunk_size": DEFAULT_MARKDOWN_MAX_CHUNK_SIZE,
+            "min_chunk_size": DEFAULT_MARKDOWN_MIN_CHUNK_SIZE,
+        },
+        "semantic": {
+            "max_chunk_size": DEFAULT_SEMANTIC_MAX_CHUNK_SIZE,
+            "similarity_threshold": DEFAULT_SIMILARITY_THRESHOLD,
+            "batch_size": DEFAULT_EMBED_BATCH_SIZE,
+        },
+    }
+    params: dict[str, Any] = {**media_defaults.get(strategy, {}), **kwargs}
+
+    if line_aware and strategy in _LINE_AWARE_STRATEGIES:
+        # 音视频带 [HH:MM:SS#idx] 锚点文本：统一前置行边界切分，绝不切进
+        # 「[锚点] 描述」行内部（B3/B4——组描述 >chunk_size 时 recursive
+        # 分隔符层级退到行内会把锚点切分家）。min_chunk_size/窗口元数据
+        # 在行模式不适用——锚点完整性优先，元数据缺失 → 检索期不扩展
+        #（能力缺失优于错误结果）。
+        return [
+            (c, {})
+            for c in split_line_aware(md_text, params["chunk_size"], params["chunk_overlap"])
+        ]
+
+    if strategy == "semantic" and embedding_client is None:
+        raise ValueError("semantic splitting requires embedding_client")
+
+    # 装配统一走 splitter_factory（批次 2 收敛）；markdown 历史上绕过注册表
+    # 局部 import 的分叉一并消除。
+    splitter = build_splitter(
+        strategy, params, SplitterDeps(embedding_client=embedding_client)
+    )
 
     if strategy == "recursive":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_MEDIA_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_MEDIA_CHUNK_OVERLAP)
-        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MEDIA_MIN_CHUNK_SIZE)
-        if line_aware:
-            # 音视频带 [HH:MM:SS#idx] 锚点文本：按行边界切，避免组描述 >chunk_size 时
-            # recursive 分隔符层级退到行内把锚点切分家（B3/B4）。min_chunk_size 不适用行模式。
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            min_chunk_size=min_chunk_size,
-        )
+        # 漂移记录（行为金样锁定）：媒体路径 recursive 直调 _split_text，
+        # 绕过 split() 的小碎块合并与 doc_id 编号——与文本链路 recursive
+        # 行为不同是有意保持（转写文本行模式无关合并），非疏漏。
         chunk_texts = await splitter._split_text(md_text)
         return [(text, {}) for text in chunk_texts if text.strip()]
 
-    elif strategy == "markdown":
-        from novamind.engines.document.splitters import MarkdownSplitter
-        max_chunk_size = kwargs.get("max_chunk_size", DEFAULT_MARKDOWN_MAX_CHUNK_SIZE)
-        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MARKDOWN_MIN_CHUNK_SIZE)
-        splitter = MarkdownSplitter(
-            max_chunk_size=max_chunk_size,
-            min_chunk_size=min_chunk_size,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "markdown",
-            "title": "",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "fixed_size":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_DIRECT_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_FIXED_SIZE_OVERLAP)
-        if line_aware:
-            # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：抽公共 split_line_aware，
-            # 与 recursive 共用，绝不切进「[锚点] 描述」行内部，保证锚点反查不错位。
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        # 字符切（图片等无锚点文本）：原 FixedSizeSplitter 行为
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "semantic":
-        max_chunk_size = kwargs.get("max_chunk_size", DEFAULT_SEMANTIC_MAX_CHUNK_SIZE)
-        similarity_threshold = kwargs.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD)
-        batch_size = kwargs.get("batch_size", DEFAULT_EMBED_BATCH_SIZE)
-        if embedding_client is None:
-            raise ValueError("semantic splitting requires embedding_client")
-        splitter = splitter_class(
-            embedding_client=embedding_client,
-            max_chunk_size=max_chunk_size,
-            similarity_threshold=similarity_threshold,
-            batch_size=batch_size,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "delimiter":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_DIRECT_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_MEDIA_CHUNK_OVERLAP)
-        # 媒体路径 min 500 是媒体特化（文本路径为 50）——块合并阈值随块尺寸放大
-        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MEDIA_MIN_CHUNK_SIZE)
-        if line_aware:
-            # 音视频带锚点文本：与 recursive/fixed_size 共用行边界切分。分隔符
-            # 边界语义让位于锚点行完整性——硬切路径可能把「[锚点] 描述」行拦腰
-            # 切开导致时间反查错位，锚点完整性优先（与 fixed_size 忽略 overlap
-            # 是同性质取舍）。
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            min_chunk_size=min_chunk_size,
-            separators=kwargs.get("separators"),  # None → 引擎默认空行切分
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "sentence_window":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_FIXED_SIZE_OVERLAP)
-        window_size = kwargs.get("window_size", DEFAULT_WINDOW_SIZE)
-        if line_aware:
-            # 音视频带锚点文本：与 recursive/fixed_size/delimiter 共用行边界
-            # 切分，锚点行完整性优先；窗口元数据缺失 → 检索期不扩展（能力
-            # 缺失优于错误结果）。
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            window_size=window_size,
-            max_sentence_length=chunk_size,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [
-            (r["text"], r.get("meta") or {})
-            for r in results if r.get("text", "").strip()
-        ]
-
-    elif strategy == "parent_child":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
-        if line_aware:
-            # 音视频带锚点文本：行边界切分优先，同 sentence_window 的锚点保护
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            parent_chunk_size=kwargs.get("parent_chunk_size", DEFAULT_PARENT_CHUNK_SIZE),
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [
-            (r["text"], r.get("meta") or {})
-            for r in results if r.get("text", "").strip()
-        ]
-
-    elif strategy == "hierarchical":
-        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
-        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
-        if line_aware:
-            # 音视频带锚点文本：行边界切分优先，同 sentence_window/parent_child
-            # 的锚点保护；章节/特殊对象元数据缺失 → 检索期不扩展
-            return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            min_chunk_size=kwargs.get("min_chunk_size", DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE),
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [
-            (r["text"], r.get("meta") or {})
-            for r in results if r.get("text", "").strip()
-        ]
-
-    else:
-        # 其他策略兜底：尝试作为文档切分器处理
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        splitter = splitter_class(**kwargs)
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+    doc_wrapper = [{
+        "text": md_text,
+        "source": "media_pipeline",
+        "page": 1,
+        "doc_id": "0",
+        "type": "markdown" if strategy == "markdown" else "text",
+    }]
+    results = await splitter.split(doc_wrapper)
+    # meta 统一拾取（批次 2）：此前 recursive/fixed/markdown/delimiter 丢弃
+    # 切分器 meta、仅关系策略拾取的分叉消除——新策略的关系元数据不再静默丢。
+    return [
+        (r["text"], r.get("meta") or {})
+        for r in results
+        if r.get("text", "").strip()
+    ]
 
 
 async def maybe_semantic_embedding_client(

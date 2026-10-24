@@ -4,6 +4,7 @@ import copy
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.document.pipeline import DocumentRegistry
 from novamind.features.knowledge_space.exceptions import (
     InvalidParameterError,
     KnowledgeBaseAccessDeniedError,
@@ -449,10 +450,9 @@ class KnowledgeBaseService:
         """校验配置 Patch 合法性（未知键/非法切分策略在此拒绝）。"""
         splitting = config_updates.get("splitting", {})
         if "strategy" in splitting:
-            valid_strategies = {
-                "recursive", "fixed_size", "markdown", "semantic", "delimiter",
-                "sentence_window", "parent_child", "hierarchical",
-            }
+            # 白名单从切分装配注册表派生（批次 2 合一）：此前手写集合与 schema
+            # Literal 是两份独立白名单，新策略要双处同步，漏一处即 PATCH 被 422
+            valid_strategies = set(DocumentRegistry.get_available_strategies())
             if splitting["strategy"] not in valid_strategies:
                 raise InvalidParameterError(f"不支持的切分策略: {splitting['strategy']}")
         if "chunk_size" in splitting:

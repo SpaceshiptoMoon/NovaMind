@@ -294,6 +294,8 @@ class TestSplitTextItemsEngine:
         from novamind.engines.document.pipeline.document_loader import DocumentProcessor
 
         processor = DocumentProcessor.__new__(DocumentProcessor)
+        # 批次 2 后装配统一读 embedding_client（SplitterDeps 注入），桩实例补属性
+        processor.embedding_client = None
 
         import asyncio
 
@@ -316,6 +318,7 @@ class TestSplitTextItemsEngine:
         from novamind.engines.document.pipeline.document_loader import DocumentProcessor
 
         processor = DocumentProcessor.__new__(DocumentProcessor)
+        processor.embedding_client = None
         texts = asyncio.run(processor.split_text("甲句。乙句。", strategy="recursive", chunk_size=1000))
         assert texts == ["甲句。乙句。"]  # 贪心装填：短文本单块
 

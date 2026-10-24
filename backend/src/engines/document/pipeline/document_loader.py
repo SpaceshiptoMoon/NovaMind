@@ -7,23 +7,10 @@ from novamind.engines.document.integrations.deepdoc import (
     DeepDocParseResult,
     strip_position_tags,
 )
-from novamind.engines.document.pipeline.config_defaults import (
-    DEFAULT_CHUNK_OVERLAP,
-    DEFAULT_CHUNK_SIZE,
-    DEFAULT_DIRECT_CHUNK_OVERLAP,
-    DEFAULT_DIRECT_CHUNK_SIZE,
-    DEFAULT_DIRECT_MIN_CHUNK_SIZE,
-    DEFAULT_EMBED_BATCH_SIZE,
-    DEFAULT_FIXED_SIZE_OVERLAP,
-    DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE,
-    DEFAULT_MARKDOWN_MAX_CHUNK_SIZE,
-    DEFAULT_MARKDOWN_MIN_CHUNK_SIZE,
-    DEFAULT_MAX_CHUNK_SIZE,
-    DEFAULT_MIN_CHUNK_SIZE,
-    DEFAULT_PARENT_CHUNK_SIZE,
-    DEFAULT_SEMANTIC_MAX_CHUNK_SIZE,
-    DEFAULT_SIMILARITY_THRESHOLD,
-    DEFAULT_WINDOW_SIZE,
+from novamind.engines.document.pipeline.splitter_factory import (
+    SplitterDeps,
+    build_splitter,
+    extract_splitting_params,
 )
 from novamind.engines.document.pipeline.tagged_rechunk import (
     build_tagged_text,
@@ -391,74 +378,14 @@ class DocumentProcessor:
         Raises:
             ValueError: 策略名未注册。
         """
-        # 从注册表中获取切分器类
-        splitter_class = DocumentRegistry.get_splitter_class(strategy)
-        if splitter_class is None:
-            raise ValueError(
-                f"Unknown strategy: {strategy}. "
-                f"Supported: {DocumentRegistry.get_available_strategies()}"
-            )
-
-        # 根据不同策略创建实例
-        if strategy == 'recursive':
-            chunk_size = kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE)
-            chunk_overlap = kwargs.get('chunk_overlap', DEFAULT_DIRECT_CHUNK_OVERLAP)
-            min_chunk_size = kwargs.get('min_chunk_size', DEFAULT_DIRECT_MIN_CHUNK_SIZE)
-            splitter = splitter_class(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                min_chunk_size=min_chunk_size,
-            )
-        elif strategy == 'semantic':
-            max_chunk_size = kwargs.get('max_chunk_size', DEFAULT_SEMANTIC_MAX_CHUNK_SIZE)
-            similarity_threshold = kwargs.get('similarity_threshold', DEFAULT_SIMILARITY_THRESHOLD)
-            batch_size = kwargs.get('batch_size', DEFAULT_EMBED_BATCH_SIZE)
-            splitter = splitter_class(
-                embedding_client=self.embedding_client,
-                max_chunk_size=max_chunk_size,
-                similarity_threshold=similarity_threshold,
-                batch_size=batch_size,
-            )
-        elif strategy == 'fixed_size':
-            chunk_size = kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE)
-            chunk_overlap = kwargs.get('chunk_overlap', DEFAULT_FIXED_SIZE_OVERLAP)
-            splitter = splitter_class(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-        elif strategy == 'markdown':
-            max_chunk_size = kwargs.get('max_chunk_size', DEFAULT_MARKDOWN_MAX_CHUNK_SIZE)
-            min_chunk_size = kwargs.get('min_chunk_size', DEFAULT_MARKDOWN_MIN_CHUNK_SIZE)
-            splitter = splitter_class(
-                max_chunk_size=max_chunk_size,
-                min_chunk_size=min_chunk_size,
-            )
-        elif strategy == 'delimiter':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_DIRECT_CHUNK_OVERLAP),
-                min_chunk_size=kwargs.get('min_chunk_size', DEFAULT_DIRECT_MIN_CHUNK_SIZE),
-                separators=kwargs.get('separators'),  # None → 引擎默认空行切分
-            )
-        elif strategy == 'sentence_window':
-            splitter = splitter_class(
-                window_size=kwargs.get('window_size', DEFAULT_WINDOW_SIZE),
-                max_sentence_length=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-            )
-        elif strategy == 'parent_child':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_CHUNK_OVERLAP),
-                parent_chunk_size=kwargs.get('parent_chunk_size', DEFAULT_PARENT_CHUNK_SIZE),
-            )
-        elif strategy == 'hierarchical':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_CHUNK_OVERLAP),
-                min_chunk_size=kwargs.get('min_chunk_size', DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE),
-            )
-        else:
-            splitter = splitter_class(**kwargs)
+        # 装配统一走 splitter_factory（批次 2 收敛）：此前本方法与
+        # load_with_strategy / split_md_text 各持一份 if/elif 装配副本，
+        # 默认值已漂移；装配知识现单一归属 splitter_factory 注册表。
+        splitter = build_splitter(
+            strategy,
+            kwargs,
+            SplitterDeps(embedding_client=self.embedding_client),
+        )
 
         # 对全文进行切分 — 将文本包装为单页文档
         documents = [{"text": text, "content": text, "source": "", "metadata": {}}]
@@ -612,15 +539,7 @@ class DocumentProcessor:
             tagged_split_items = await self.split_text_items(
                 rechunk_source_text,
                 strategy=split_strategy,
-                chunk_size=splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-                chunk_overlap=splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-                min_chunk_size=splitting_config.get("min_chunk_size", DEFAULT_MIN_CHUNK_SIZE),
-                max_chunk_size=splitting_config.get("max_chunk_size", DEFAULT_MAX_CHUNK_SIZE),
-                similarity_threshold=splitting_config.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD),
-                batch_size=splitting_config.get("batch_size", DEFAULT_EMBED_BATCH_SIZE),
-                separators=splitting_config.get("separators"),
-                window_size=splitting_config.get("window_size", DEFAULT_WINDOW_SIZE),
-                parent_chunk_size=splitting_config.get("parent_chunk_size", DEFAULT_PARENT_CHUNK_SIZE),
+                **extract_splitting_params(splitting_config),
             )
             tagged_rechunked = [t for t, _meta in tagged_split_items]
             tagged_chunk_metas = [meta for _t, meta in tagged_split_items]
@@ -670,15 +589,7 @@ class DocumentProcessor:
         split_items = await self.split_text_items(
             full_text,
             strategy=str(splitting_config.get("strategy", "recursive")),
-            chunk_size=splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-            chunk_overlap=splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-            min_chunk_size=splitting_config.get("min_chunk_size", DEFAULT_MIN_CHUNK_SIZE),
-            max_chunk_size=splitting_config.get("max_chunk_size", DEFAULT_MAX_CHUNK_SIZE),
-            similarity_threshold=splitting_config.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD),
-            batch_size=splitting_config.get("batch_size", DEFAULT_EMBED_BATCH_SIZE),
-            separators=splitting_config.get("separators"),
-            window_size=splitting_config.get("window_size", DEFAULT_WINDOW_SIZE),
-            parent_chunk_size=splitting_config.get("parent_chunk_size", DEFAULT_PARENT_CHUNK_SIZE),
+            **extract_splitting_params(splitting_config),
         )
         chunks = [t for t, _meta in split_items]
         # 关系元数据（sentence_window/parent_child 的窗口参数/父子槽位）按位对齐
@@ -720,72 +631,11 @@ class DocumentProcessor:
         Raises:
             ValueError: 策略名未注册。
         """
-        # 从注册表中获取切分器类
-        splitter_class = DocumentRegistry.get_splitter_class(strategy)
-        if splitter_class is None:
-            raise ValueError(f"Unknown strategy: {strategy}. Supported: {DocumentRegistry.get_available_strategies()}")
-        
-        # 根据不同策略创建实例
-        if strategy == 'recursive':
-            chunk_size = kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE)
-            chunk_overlap = kwargs.get('chunk_overlap', DEFAULT_DIRECT_CHUNK_OVERLAP)
-            min_chunk_size = kwargs.get('min_chunk_size', DEFAULT_DIRECT_MIN_CHUNK_SIZE)
-            splitter = splitter_class(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                min_chunk_size=min_chunk_size,
-            )
-        elif strategy == 'semantic':
-            max_chunk_size = kwargs.get('max_chunk_size', DEFAULT_SEMANTIC_MAX_CHUNK_SIZE)
-            similarity_threshold = kwargs.get('similarity_threshold', DEFAULT_SIMILARITY_THRESHOLD)
-            batch_size = kwargs.get('batch_size', DEFAULT_EMBED_BATCH_SIZE)  # 批处理大小
-            splitter = splitter_class(
-                embedding_client=self.embedding_client,  # 使用共享的客户端实例
-                max_chunk_size=max_chunk_size,
-                similarity_threshold=similarity_threshold,
-                batch_size=batch_size
-            )
-        elif strategy == 'fixed_size':
-            chunk_size = kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE)
-            chunk_overlap = kwargs.get('chunk_overlap', DEFAULT_FIXED_SIZE_OVERLAP)
-            splitter = splitter_class(
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
-            )
-        elif strategy == 'markdown':
-            max_chunk_size = kwargs.get('max_chunk_size', DEFAULT_MARKDOWN_MAX_CHUNK_SIZE)
-            min_chunk_size = kwargs.get('min_chunk_size', DEFAULT_MARKDOWN_MIN_CHUNK_SIZE)
-            splitter = splitter_class(
-                max_chunk_size=max_chunk_size,
-                min_chunk_size=min_chunk_size
-            )
-        elif strategy == 'delimiter':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_DIRECT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_DIRECT_CHUNK_OVERLAP),
-                min_chunk_size=kwargs.get('min_chunk_size', DEFAULT_DIRECT_MIN_CHUNK_SIZE),
-                separators=kwargs.get('separators'),  # None → 引擎默认空行切分
-            )
-        elif strategy == 'sentence_window':
-            splitter = splitter_class(
-                window_size=kwargs.get('window_size', DEFAULT_WINDOW_SIZE),
-                max_sentence_length=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-            )
-        elif strategy == 'parent_child':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_CHUNK_OVERLAP),
-                parent_chunk_size=kwargs.get('parent_chunk_size', DEFAULT_PARENT_CHUNK_SIZE),
-            )
-        elif strategy == 'hierarchical':
-            splitter = splitter_class(
-                chunk_size=kwargs.get('chunk_size', DEFAULT_CHUNK_SIZE),
-                chunk_overlap=kwargs.get('chunk_overlap', DEFAULT_CHUNK_OVERLAP),
-                min_chunk_size=kwargs.get('min_chunk_size', DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE),
-            )
-        else:
-            # 对于其他可能注册的切分器，尝试通用初始化方法
-            splitter = splitter_class(**kwargs)
+        splitter = build_splitter(
+            strategy,
+            kwargs,
+            SplitterDeps(embedding_client=self.embedding_client),
+        )
 
         loader = DocumentLoader(splitter=splitter, embedding_client=self.embedding_client)  # 使用共享的客户端实例
         return await loader.load_and_split(file_path)

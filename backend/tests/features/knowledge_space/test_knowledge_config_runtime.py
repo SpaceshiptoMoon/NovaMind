@@ -806,7 +806,19 @@ async def test_split_md_text_semantic_uses_embedding_client(monkeypatch):
             captured["doc_wrapper"] = doc_wrapper
             return [{"text": "semantic chunk"}]
 
-    monkeypatch.setattr(DocumentRegistry, "get_splitter_class", lambda strategy: FakeSemanticSplitter)
+    # 批次 2 后装配走 splitter_factory._BUILDERS（DocumentRegistry 只存类映射），
+    # semantic builder 被 FakeSemanticSplitter 装配器替换以捕获构造参数
+    from novamind.engines.document.pipeline import splitter_factory as _sf
+
+    monkeypatch.setattr(
+        _sf, "_BUILDERS",
+        {"semantic": lambda params, deps: FakeSemanticSplitter(
+            embedding_client=deps.embedding_client,
+            max_chunk_size=params.get("max_chunk_size"),
+            similarity_threshold=params.get("similarity_threshold"),
+            batch_size=params.get("batch_size"),
+        )},
+    )
 
     chunks = await split_md_text(
         "semantic body",
