@@ -25,6 +25,16 @@ from novamind.engines.document.media.vlm import (
     generate_vlm_text_with_fallback,
 )
 from novamind.engines.document.pipeline import DocumentProcessor
+from novamind.engines.document.pipeline.config_defaults import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_EMBED_BATCH_SIZE,
+    DEFAULT_MAX_CHUNK_SIZE,
+    DEFAULT_MIN_CHUNK_SIZE,
+    DEFAULT_PARENT_CHUNK_SIZE,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_WINDOW_SIZE,
+)
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     PermanentProcessingError,
@@ -39,8 +49,6 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 )
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    DEFAULT_CHUNK_OVERLAP,
-    DEFAULT_CHUNK_SIZE,
     build_runtime_parsing_config,
 )
 from novamind.features.knowledge_space.services.document_file_types import (
@@ -1252,15 +1260,15 @@ async def _parse_pdf_with_external_ocr_static(
     split_items = await processor.split_text_items(
         full_text,
         strategy=str(splitting_config.get("strategy", "recursive")),
-        chunk_size=splitting_config.get("chunk_size", 1000),
-        chunk_overlap=splitting_config.get("chunk_overlap", 100),
-        min_chunk_size=splitting_config.get("min_chunk_size", 500),
-        max_chunk_size=splitting_config.get("max_chunk_size", 2000),
-        similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
-        batch_size=splitting_config.get("batch_size", 20),
+        chunk_size=splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+        chunk_overlap=splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+        min_chunk_size=splitting_config.get("min_chunk_size", DEFAULT_MIN_CHUNK_SIZE),
+        max_chunk_size=splitting_config.get("max_chunk_size", DEFAULT_MAX_CHUNK_SIZE),
+        similarity_threshold=splitting_config.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD),
+        batch_size=splitting_config.get("batch_size", DEFAULT_EMBED_BATCH_SIZE),
         separators=splitting_config.get("separators"),
-        window_size=splitting_config.get("window_size", 2),
-        parent_chunk_size=splitting_config.get("parent_chunk_size", 2000),
+        window_size=splitting_config.get("window_size", DEFAULT_WINDOW_SIZE),
+        parent_chunk_size=splitting_config.get("parent_chunk_size", DEFAULT_PARENT_CHUNK_SIZE),
     )
     chunks = [t for t, _meta in split_items]
     chunk_structure_meta = [m for _t, m in split_items]

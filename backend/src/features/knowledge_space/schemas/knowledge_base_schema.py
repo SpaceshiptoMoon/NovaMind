@@ -5,20 +5,26 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, model_validator
 
-# ========== Shared default constants ==========
-# Single source of truth for splitting defaults — all consumers should reference these
-# instead of hardcoding their own values.
+from novamind.engines.document.pipeline.config_defaults import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_CHUNK_STRATEGY,
+    DEFAULT_EMBED_BATCH_SIZE as DEFAULT_BATCH_SIZE,
+    DEFAULT_MAX_CHUNK_SIZE,
+    DEFAULT_MIN_CHUNK_SIZE,
+    DEFAULT_PARENT_CHUNK_SIZE,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_WINDOW_SIZE,
+)
 
-DEFAULT_CHUNK_STRATEGY = "recursive"
-DEFAULT_CHUNK_SIZE = 1000
-DEFAULT_CHUNK_OVERLAP = 100
-DEFAULT_MIN_CHUNK_SIZE = 500
-DEFAULT_MAX_CHUNK_SIZE = 2000
-DEFAULT_SIMILARITY_THRESHOLD = 0.7
-DEFAULT_BATCH_SIZE = 20
+# ========== Shared default constants ==========
+# 权威默认值单一来源在 engines/document/pipeline/config_defaults.py（TEXT 组，
+# 与 RecursiveCharacterSplitter 构造器默认一致）；此处 import 后以原名 re-export，
+# 存量 `from knowledge_base_schema import DEFAULT_*` 引用保持兼容。
+# 切分语义批大小（semantic 策略向量化批）即 DEFAULT_BATCH_SIZE（原 20）。
+
+# 生成 embedding 向量的批大小（嵌入客户端层参数），与切分批无关，仅本 schema 域使用
 DEFAULT_EMBEDDING_BATCH_SIZE = 32
-DEFAULT_WINDOW_SIZE = 2
-DEFAULT_PARENT_CHUNK_SIZE = 2000
 
 
 # ========== Splitting config ==========

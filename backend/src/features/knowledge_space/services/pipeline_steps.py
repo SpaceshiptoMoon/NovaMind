@@ -7,6 +7,23 @@ from typing import TYPE_CHECKING, Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.media.audio import upload_parsed_text_to_minio
+from novamind.engines.document.pipeline.config_defaults import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_DIRECT_CHUNK_SIZE,
+    DEFAULT_FIXED_SIZE_OVERLAP,
+    DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE,
+    DEFAULT_MARKDOWN_MAX_CHUNK_SIZE,
+    DEFAULT_MARKDOWN_MIN_CHUNK_SIZE,
+    DEFAULT_MEDIA_CHUNK_OVERLAP,
+    DEFAULT_MEDIA_CHUNK_SIZE,
+    DEFAULT_MEDIA_MIN_CHUNK_SIZE,
+    DEFAULT_PARENT_CHUNK_SIZE,
+    DEFAULT_SEMANTIC_MAX_CHUNK_SIZE,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_EMBED_BATCH_SIZE,
+    DEFAULT_WINDOW_SIZE,
+)
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     EmbeddingError,
@@ -459,9 +476,9 @@ async def split_md_text(
         )
 
     if strategy == "recursive":
-        chunk_size = kwargs.get("chunk_size", 2000)
-        chunk_overlap = kwargs.get("chunk_overlap", 50)
-        min_chunk_size = kwargs.get("min_chunk_size", 500)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_MEDIA_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_MEDIA_CHUNK_OVERLAP)
+        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MEDIA_MIN_CHUNK_SIZE)
         if line_aware:
             # 音视频带 [HH:MM:SS#idx] 锚点文本：按行边界切，避免组描述 >chunk_size 时
             # recursive 分隔符层级退到行内把锚点切分家（B3/B4）。min_chunk_size 不适用行模式。
@@ -476,8 +493,8 @@ async def split_md_text(
 
     elif strategy == "markdown":
         from novamind.engines.document.splitters import MarkdownSplitter
-        max_chunk_size = kwargs.get("max_chunk_size", 1000)
-        min_chunk_size = kwargs.get("min_chunk_size", 50)
+        max_chunk_size = kwargs.get("max_chunk_size", DEFAULT_MARKDOWN_MAX_CHUNK_SIZE)
+        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MARKDOWN_MIN_CHUNK_SIZE)
         splitter = MarkdownSplitter(
             max_chunk_size=max_chunk_size,
             min_chunk_size=min_chunk_size,
@@ -494,8 +511,8 @@ async def split_md_text(
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
 
     elif strategy == "fixed_size":
-        chunk_size = kwargs.get("chunk_size", 500)
-        chunk_overlap = kwargs.get("chunk_overlap", 0)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_DIRECT_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_FIXED_SIZE_OVERLAP)
         if line_aware:
             # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：抽公共 split_line_aware，
             # 与 recursive 共用，绝不切进「[锚点] 描述」行内部，保证锚点反查不错位。
@@ -516,9 +533,9 @@ async def split_md_text(
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
 
     elif strategy == "semantic":
-        max_chunk_size = kwargs.get("max_chunk_size", 1000)
-        similarity_threshold = kwargs.get("similarity_threshold", 0.7)
-        batch_size = kwargs.get("batch_size", 20)
+        max_chunk_size = kwargs.get("max_chunk_size", DEFAULT_SEMANTIC_MAX_CHUNK_SIZE)
+        similarity_threshold = kwargs.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD)
+        batch_size = kwargs.get("batch_size", DEFAULT_EMBED_BATCH_SIZE)
         if embedding_client is None:
             raise ValueError("semantic splitting requires embedding_client")
         splitter = splitter_class(
@@ -538,9 +555,10 @@ async def split_md_text(
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
 
     elif strategy == "delimiter":
-        chunk_size = kwargs.get("chunk_size", 500)
-        chunk_overlap = kwargs.get("chunk_overlap", 50)
-        min_chunk_size = kwargs.get("min_chunk_size", 500)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_DIRECT_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_MEDIA_CHUNK_OVERLAP)
+        # 媒体路径 min 500 是媒体特化（文本路径为 50）——块合并阈值随块尺寸放大
+        min_chunk_size = kwargs.get("min_chunk_size", DEFAULT_MEDIA_MIN_CHUNK_SIZE)
         if line_aware:
             # 音视频带锚点文本：与 recursive/fixed_size 共用行边界切分。分隔符
             # 边界语义让位于锚点行完整性——硬切路径可能把「[锚点] 描述」行拦腰
@@ -564,9 +582,9 @@ async def split_md_text(
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
 
     elif strategy == "sentence_window":
-        chunk_size = kwargs.get("chunk_size", 1000)
-        chunk_overlap = kwargs.get("chunk_overlap", 0)
-        window_size = kwargs.get("window_size", 2)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_FIXED_SIZE_OVERLAP)
+        window_size = kwargs.get("window_size", DEFAULT_WINDOW_SIZE)
         if line_aware:
             # 音视频带锚点文本：与 recursive/fixed_size/delimiter 共用行边界
             # 切分，锚点行完整性优先；窗口元数据缺失 → 检索期不扩展（能力
@@ -590,15 +608,15 @@ async def split_md_text(
         ]
 
     elif strategy == "parent_child":
-        chunk_size = kwargs.get("chunk_size", 1000)
-        chunk_overlap = kwargs.get("chunk_overlap", 100)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         if line_aware:
             # 音视频带锚点文本：行边界切分优先，同 sentence_window 的锚点保护
             return [(c, {}) for c in split_line_aware(md_text, chunk_size, chunk_overlap)]
         splitter = splitter_class(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            parent_chunk_size=kwargs.get("parent_chunk_size", 2000),
+            parent_chunk_size=kwargs.get("parent_chunk_size", DEFAULT_PARENT_CHUNK_SIZE),
         )
         doc_wrapper = [{
             "text": md_text,
@@ -614,8 +632,8 @@ async def split_md_text(
         ]
 
     elif strategy == "hierarchical":
-        chunk_size = kwargs.get("chunk_size", 1000)
-        chunk_overlap = kwargs.get("chunk_overlap", 100)
+        chunk_size = kwargs.get("chunk_size", DEFAULT_CHUNK_SIZE)
+        chunk_overlap = kwargs.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP)
         if line_aware:
             # 音视频带锚点文本：行边界切分优先，同 sentence_window/parent_child
             # 的锚点保护；章节/特殊对象元数据缺失 → 检索期不扩展
@@ -623,7 +641,7 @@ async def split_md_text(
         splitter = splitter_class(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            min_chunk_size=kwargs.get("min_chunk_size", 200),
+            min_chunk_size=kwargs.get("min_chunk_size", DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE),
         )
         doc_wrapper = [{
             "text": md_text,
