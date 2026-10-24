@@ -2357,7 +2357,7 @@ export interface NotificationPreference {
 
 /** 模态 → 文件扩展名 accept 映射 */
 export const MODALITY_ACCEPT_MAP: Record<string, string> = {
-  text: '.pdf,.docx,.doc,.txt,.md,.csv,.html,.json',
+  text: '.pdf,.docx,.doc,.epub,.txt,.md,.csv,.html,.json',
   image: '.jpg,.jpeg,.png,.gif,.webp',
   video: '.mp4,.mov,.avi,.mkv,.webm',
   audio: '.mp3,.wav,.flac,.aac,.ogg,.m4a',

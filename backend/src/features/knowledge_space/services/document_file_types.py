@@ -10,6 +10,7 @@ SUPPORTED_FILE_TYPES = [
     "pdf",
     "doc",
     "docx",
+    "epub",
     "txt",
     "md",
     "csv",
@@ -43,7 +44,7 @@ AUDIO_FILE_TYPES = frozenset({"mp3", "wav", "flac", "aac", "ogg", "m4a"})
 
 # 模态 → 文件类型映射（用于上传校验和管道分流）
 MODALITY_TO_FILE_TYPES = {
-    "text": frozenset({"pdf", "doc", "docx", "txt", "md", "csv", "html", "json"}),
+    "text": frozenset({"pdf", "doc", "docx", "epub", "txt", "md", "csv", "html", "json"}),
     "image": IMAGE_FILE_TYPES,
     "video": VIDEO_FILE_TYPES,
     "audio": AUDIO_FILE_TYPES,

@@ -66,6 +66,10 @@ class FileValidator:
 
     EXTENSION_TO_MIME = {
         "pdf": ["application/pdf"],
+        # epub 精确 MIME（OCF 规范）；zip 容器形态须经 is_office_document 深检
+        # 命中 mimetype 条目才放行——普通 zip 改名 .epub 无此条目即拒。
+        # 注意不放 "application/zip" 容差：那会让任意 zip 伪装直达通过。
+        "epub": ["application/epub+zip"],
         "doc": ["application/msword"],
         "docx": [
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -233,13 +237,14 @@ class FileValidator:
         return extension.lower() in self.DANGEROUS_EXTENSIONS
 
     def is_office_document(self, content: bytes) -> tuple[bool, str | None]:
-        """解压 zip 容器读 [Content_Types].xml 判定 docx/xlsx/pptx 具体类型；声明解压体积超限直接拒绝（zip 炸弹防护）。
+        """解压 zip 容器判定具体文档类型：OOXML 读 [Content_Types].xml 判 docx/xlsx/pptx，EPUB 读 mimetype 条目判 epub；声明解压体积超限直接拒绝（zip 炸弹防护）。
 
         Args:
             content: 文件原始字节（应为 zip 容器）。
 
         Returns:
-            (是否 OOXML 文档, 具体类型 docx/xlsx/pptx 或 None)；非 zip/解析失败/体积异常返回 (False, None)。
+            (是否受支持的容器文档, 具体类型 docx/xlsx/pptx/epub 或 None)；
+            非 zip/解析失败/体积异常返回 (False, None)。
         """
         import io
         import zipfile
@@ -267,6 +272,18 @@ class FileValidator:
                             return True, "xlsx"
                         if "presentationml" in content_types:
                             return True, "pptx"
+                    except Exception:
+                        pass
+                # EPUB（OCF 容器）：规范要求 mimetype 为首个未压缩条目、内容
+                # 恒为 application/epub+zip——读它判定，普通 zip 改名 .epub
+                # 无此条目 → 拒绝，防伪装能力与 OOXML 深检同级
+                if "mimetype" in namelist:
+                    try:
+                        mimetype_entry = zf.getinfo("mimetype")
+                        if mimetype_entry.file_size <= _MAX_CONTENT_TYPES_SIZE:
+                            mimetype_content = zf.read("mimetype").decode("utf-8", errors="ignore")
+                            if "application/epub+zip" in mimetype_content:
+                                return True, "epub"
                     except Exception:
                         pass
         except Exception:
@@ -328,7 +345,7 @@ class FileValidator:
                 detected_by = "header"
         info.detected_mime = detected_mime
 
-        if detected_mime == "application/zip" and extension in ("docx", "xlsx", "pptx"):
+        if detected_mime == "application/zip" and extension in ("docx", "xlsx", "pptx", "epub"):
             is_office, doc_type = self.is_office_document(content)
             if is_office:
                 info.detected_extension = doc_type
