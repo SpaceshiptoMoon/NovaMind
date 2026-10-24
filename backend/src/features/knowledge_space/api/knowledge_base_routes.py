@@ -28,8 +28,13 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseCreate,
     KnowledgeBaseListResponse,
+    NumericLimit,
+    ParsingDescriptorsResponse,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
+    PdfParsingConfig,
+    SplittingConfig,
+    TextParsingConfig,
 )
 from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.services.audit_service import AuditService
@@ -300,4 +305,73 @@ async def update_knowledge_base_config(
         name=kb.name,
         config=kb.get_config(),
         stats=stats,
+    )
+
+def _extract_parsing_strategies(fields: dict) -> dict[str, list[str]]:
+    """从解析配置模型字段提取「配置键 → 策略 Literal 值列表」。
+
+    Args:
+        fields: TextParsingConfig.model_fields（字段名 → FieldInfo）。
+
+    Returns:
+        如 {"docx": ["default", "deepdoc"], "pdf": ["default", "deepdoc",
+        "external_ocr"], ...}；strategy 字段非 Literal 的键跳过。
+    """
+    import typing
+
+    result: dict[str, list[str]] = {}
+    for name, field_info in fields.items():
+        annotation = field_info.annotation
+        args = typing.get_args(annotation)
+        if args:
+            annotation = args[0]
+        strategy_field = getattr(annotation, "model_fields", {}).get("strategy")
+        if strategy_field is None:
+            continue
+        literals = typing.get_args(strategy_field.annotation)
+        if literals:
+            result[name] = [str(v) for v in literals]
+    return result
+
+
+@router.get(
+    "/parsing-descriptors",
+    response_model=ParsingDescriptorsResponse,
+    summary="获取解析与上传能力描述符",
+    description=(
+        "前端上传 accept 映射、切分策略白名单、配置数值边界的单一来源；"
+        "后端新增格式/策略后前端无需同步改动静态表"
+    ),
+)
+async def get_parsing_descriptors(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    _member: SpaceMember = Depends(validate_space_member),
+) -> ParsingDescriptorsResponse:
+    """聚合解析/上传能力事实（格式表、策略白名单、数值边界）供前端渲染。"""
+    from novamind.engines.document.pipeline.document_loader import DocumentRegistry
+    from novamind.features.knowledge_space.services.document_file_types import (
+        MODALITY_TO_FILE_TYPES,
+    )
+
+    splitting_props = SplittingConfig.model_json_schema()["properties"]
+    limits = {
+        name: NumericLimit(
+            default=prop["default"], min=prop["minimum"], max=prop["maximum"]
+        )
+        for name, prop in splitting_props.items()
+        if "minimum" in prop and "maximum" in prop and "default" in prop
+    }
+
+    # 解析策略白名单：逐配置键从其 Literal 注解提取（各 doc 类型共用
+    # TextTypeParsingConfig，pdf 独用 PdfParsingConfig）
+    parsing_strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
+
+    return ParsingDescriptorsResponse(
+        formats={
+            modality: sorted(f".{ext}" for ext in exts)
+            for modality, exts in MODALITY_TO_FILE_TYPES.items()
+        },
+        splitting_strategies=sorted(DocumentRegistry.get_available_strategies()),
+        splitting_limits=limits,
+        parsing_strategies=parsing_strategies,
     )

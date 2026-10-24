@@ -1,8 +1,39 @@
 /**
  * Knowledge-base document helpers shared by document-related views.
  */
-import type { SpaceConfig } from '@/api/types'
+import { ref } from 'vue'
+import type { ParsingDescriptors, SpaceConfig } from '@/api/types'
 import { MODALITY_ACCEPT_MAP, MODALITY_MAX_SIZE_MB } from '@/api/types'
+import { knowledgeBaseApi } from '@/api/knowledge/knowledgeBase'
+
+/** 解析能力描述符缓存（formats 键 → accept 扩展名串）。在空间文档视图挂载时
+ * 调 loadParsingDescriptors 填充；未拉取/拉取失败时回落 MODALITY_ACCEPT_MAP 静态表。 */
+const descriptorAcceptMap = ref<Record<string, string> | null>(null)
+
+let _descriptorsLoading = false
+
+/** 拉取后端解析能力描述符并更新 accept 缓存（幂等；失败静默回落静态表）。
+ * 后端新增文件格式后，视图只需在挂载时调用本函数，前端静态表无需同步。 */
+export async function loadParsingDescriptors(spaceId: number): Promise<void> {
+  if (_descriptorsLoading) return
+  _descriptorsLoading = true
+  try {
+    const descriptors = await knowledgeBaseApi.getParsingDescriptors(spaceId)
+    const map: Record<string, string> = {}
+    for (const [modality, exts] of Object.entries(descriptors.formats)) {
+      map[modality] = exts.join(',')
+    }
+    descriptorAcceptMap.value = map
+  } catch {
+    descriptorAcceptMap.value = null
+  } finally {
+    _descriptorsLoading = false
+  }
+}
+
+function _acceptMap(): Record<string, string> {
+  return descriptorAcceptMap.value ?? MODALITY_ACCEPT_MAP
+}
 
 /** 任务状态码 → 展示文案与 el-tag 类型（数字键为后端原始枚举） */
 export const taskStatusMap: Record<
@@ -81,11 +112,13 @@ export function getFileTypeStyle(filename: string): { bg: string; color: string 
   return fileTypeStyles[ext] || { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' }
 }
 
-/** 按空间启用的模态聚合出上传 accept 扩展名串（逗号分隔、去重） */
+/** 按空间启用的模态聚合出上传 accept 扩展名串（逗号分隔、去重）。
+ * 优先取描述符缓存（loadParsingDescriptors 已拉取时），否则静态表。 */
 export function getUploadAccept(spaceTypes: string[]): string {
+  const acceptMap = _acceptMap()
   const exts = new Set<string>()
   for (const t of spaceTypes) {
-    const accept = MODALITY_ACCEPT_MAP[t]
+    const accept = acceptMap[t]
     if (accept) accept.split(',').forEach((e) => exts.add(e))
   }
   return [...exts].join(',')
@@ -93,7 +126,7 @@ export function getUploadAccept(spaceTypes: string[]): string {
 
 /** 按扩展名反查所属模态的上传大小上限（MB），未命中回退 100MB */
 export function getFileMaxSize(ext: string): number {
-  for (const [modality, accept] of Object.entries(MODALITY_ACCEPT_MAP)) {
+  for (const [modality, accept] of Object.entries(_acceptMap())) {
     const exts = accept.split(',').map((e) => e.replace('.', '').trim())
     if (exts.includes(ext.toLowerCase())) return MODALITY_MAX_SIZE_MB[modality] || 100
   }

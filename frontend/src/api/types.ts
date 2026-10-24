@@ -2356,6 +2356,17 @@ export interface NotificationPreference {
 // ===================== 全模态常量 =====================
 
 /** 模态 → 文件扩展名 accept 映射 */
+/** 解析能力描述符（GET /spaces/{id}/knowledge-bases/parsing-descriptors）：
+ * 后端格式/策略/数值边界的单一来源；静态表仅作拉取失败时的 fallback */
+export interface ParsingDescriptors {
+  formats: Record<string, string[]>
+  splitting_strategies: string[]
+  splitting_limits: Record<string, { default: number; min: number; max: number }>
+  parsing_strategies: Record<string, string[]>
+}
+
+/** 静态 fallback：运行时优先用 loadParsingDescriptors 拉取的描述符（epub 曾因
+ * 此表漏 .epub 而成为「解析支持但传不上来」的半接线格式） */
 export const MODALITY_ACCEPT_MAP: Record<string, string> = {
   text: '.pdf,.docx,.doc,.epub,.txt,.md,.csv,.html,.json',
   image: '.jpg,.jpeg,.png,.gif,.webp',

@@ -1,6 +1,7 @@
 import { request } from '../index'
 import type {
   KnowledgeBase,
+  ParsingDescriptors,
   KnowledgeBaseListResponse,
   KnowledgeBaseConfigResponse,
   KnowledgeBaseConfigUpdateRequest,
@@ -17,6 +18,13 @@ export const knowledgeBaseApi = {
   /** 知识库列表（分页；可按状态过滤） */
   getKnowledgeBases(spaceId: number, params?: { status?: number; skip?: number; limit?: number }) {
     return request.get<KnowledgeBaseListResponse>(`/spaces/${spaceId}/knowledge-bases`, params)
+  },
+
+  /** 解析与上传能力描述符（格式/策略/数值边界单一来源） */
+  getParsingDescriptors(spaceId: number) {
+    return request.get<ParsingDescriptors>(
+      `/spaces/${spaceId}/knowledge-bases/parsing-descriptors`,
+    )
   },
 
   /** 知识库详情（含统计与配置快照） */

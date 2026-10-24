@@ -684,6 +684,35 @@ class KnowledgeBaseResponse(BaseModel):
         return int(value) if value is not None else 1
 
 
+class NumericLimit(BaseModel):
+    """数值配置项的边界与默认（供前端表单 min/max/初始值，单一来源）。"""
+
+    default: float
+    min: float
+    max: float
+
+
+class ParsingDescriptorsResponse(BaseModel):
+    """解析与上传能力描述符：前端 accept 映射、策略白名单、数值边界的单一来源。
+
+    新增文件格式/切分策略/配置项后，前端经本端点感知，无需同步修改静态表
+    （批次 3：此前同一事实在前端 types.ts/kbConfig.ts/表单三处手抄）。
+    """
+
+    formats: dict[str, list[str]] = Field(
+        description="模态 → 上传扩展名列表（带点），即各模态的 accept 串来源",
+    )
+    splitting_strategies: list[str] = Field(
+        description="可用切分策略名（自 DocumentRegistry 派生）",
+    )
+    splitting_limits: dict[str, NumericLimit] = Field(
+        description="切分配置数值边界（default/min/max），键与 SplittingConfig 字段同名",
+    )
+    parsing_strategies: dict[str, list[str]] = Field(
+        description="文档类型 → 可用解析策略（自各 ParsingConfig 的 Literal 派生）",
+    )
+
+
 class KnowledgeBaseListResponse(BaseModel):
     """Knowledge-base list response."""
 
