@@ -279,18 +279,29 @@ class FileValidator:
         content: bytes,
         filename: str,
         allowed_extensions: list | None = None,
+        *,
+        max_file_size: int | None = None,
     ) -> FileInfo:
         """完整校验：大小/空文件/危险扩展名/白名单 → 魔数探测真实 MIME（libmagic 优先、内置签名表兜底，
         不信任扩展名）→ 扩展名与实际类型比对。
 
         文本类无魔数按扩展名放行；二进制类两级探测均失败则拒绝（防伪装/损坏文件凭扩展名入库）。
+
+        Args:
+            content: 文件字节内容。
+            filename: 文件名（取扩展名并做白名单/危险类型判定）。
+            allowed_extensions: 允许的扩展名白名单；None 表示不启用白名单校验。
+            max_file_size: 本次校验的大小上限覆盖值；None 时用实例默认。
+                以参数传入而非临时改写实例属性——全局单例被并发共享，
+                写实例字段会让 A 调用方的上限泄漏进 B 的校验窗口（竞态）。
         """
         extension = self.get_extension_from_filename(filename)
         file_size = len(content)
         info = FileInfo(filename=filename, size=file_size, extension=extension)
 
-        if file_size > self.max_file_size:
-            info.validation_message = f"文件大小 ({file_size} 字节) 超过限制 ({self.max_file_size} 字节)"
+        effective_max_size = self.max_file_size if max_file_size is None else max_file_size
+        if file_size > effective_max_size:
+            info.validation_message = f"文件大小 ({file_size} 字节) 超过限制 ({effective_max_size} 字节)"
             return info
 
         if file_size == 0:
@@ -409,14 +420,9 @@ def validate_file(
     """验证文件（便捷函数）。
 
     max_file_size: 本次校验的大小上限覆盖值（调用方按模态传入权威上限，
-    如 video 500MB）。全局单例默认 100MB（qa 聊天附件等场景）。
+    如 video 500MB）。全局单例默认 100MB（qa 聊天附件等场景）。覆盖值经
+    参数传入 validate()，不改写单例状态——单例被并发共享，历史上「临时
+    替换 + finally 还原」的写法在并发校验下会把 A 的上限泄漏进 B 的窗口。
     """
     validator = get_file_validator()
-    if max_file_size is not None:
-        # 按调用覆盖临时替换（全局单例默认值不变，qa 等其它调用方不受影响）
-        validator.max_file_size = max_file_size
-    try:
-        return validator.validate(content, filename, allowed_extensions)
-    finally:
-        if max_file_size is not None:
-            validator.max_file_size = 100 * 1024 * 1024
+    return validator.validate(content, filename, allowed_extensions, max_file_size=max_file_size)
