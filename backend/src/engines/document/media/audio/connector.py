@@ -131,11 +131,11 @@ class AsrConnector:
 
         return await acquire_asr_or_busy()
 
-    def release_local_slot(self) -> None:
-        """释放本地 ASR 忙碌锁（幂等，未持锁时无操作）。"""
-        from novamind.engines.document.media.audio import force_release_asr_slot
+    async def release_local_slot(self) -> None:
+        """释放本地 ASR 忙碌权（租约+进程内锁，幂等，未持有时无操作）。"""
+        from novamind.engines.document.media.audio import release_asr_slot
 
-        force_release_asr_slot()
+        await release_asr_slot()
 
     async def transcribe(
         self,
@@ -263,7 +263,7 @@ class AsrConnector:
                     diarization_enabled=diarization_enabled,
                 )
             finally:
-                self.release_local_slot()
+                await self.release_local_slot()
         return await self._transcribe_local_locked(
             file_content=file_content,
             file_type=file_type,

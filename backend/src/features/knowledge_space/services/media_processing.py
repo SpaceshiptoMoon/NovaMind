@@ -420,7 +420,7 @@ async def _transcribe_video_audio(
         if asr_protocol == "local":
             from novamind.engines.document.media.audio import (
                 acquire_asr_or_busy,
-                force_release_asr_slot,
+                release_asr_slot,
             )
 
             if not await acquire_asr_or_busy():
@@ -458,9 +458,9 @@ async def _transcribe_video_audio(
             return []
         finally:
             if local_lock_acquired:
-                from novamind.engines.document.media.audio import force_release_asr_slot
+                from novamind.engines.document.media.audio import release_asr_slot
 
-                force_release_asr_slot()
+                await release_asr_slot()
     finally:
         if tmp_audio_src is not None:
             from pathlib import Path as _P
@@ -1676,8 +1676,8 @@ async def process_audio_document(
                 ) from local_exc
             finally:
                 # 无论成功失败都释放 ASR 锁，让下一个任务可以进入
-                from novamind.engines.document.media.audio import force_release_asr_slot
-                force_release_asr_slot()
+                from novamind.engines.document.media.audio import release_asr_slot
+                await release_asr_slot()
     else:
         segments = await _run_asr(asr_protocol, asr_model, asr_api_key, asr_base_url)
     logger.info(

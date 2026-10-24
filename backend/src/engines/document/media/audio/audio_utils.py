@@ -259,7 +259,7 @@ _asr_busy_lock = asyncio.Lock()
 
 
 def is_local_asr_busy() -> bool:
-    """本地 ASR 是否正在转写（非阻塞检查）。
+    """本进程内 ASR 是否正在转写（非阻塞检查；跨进程租约状态另见 asr_lease.lease_held）。
 
     供日志/监控使用。上游路由决策应使用 acquire_asr_or_busy()，
     后者是非阻塞原子操作，消除 is_local_asr_busy() + acquire 之间的竞态。
@@ -268,16 +268,24 @@ def is_local_asr_busy() -> bool:
 
 
 async def acquire_asr_or_busy() -> bool:
-    """非阻塞尝试获取 ASR 忙碌锁。
+    """非阻塞尝试获取 ASR 忙碌权：Redis 跨进程租约优先，退化进程内锁。
 
-    使用 asyncio.Lock 的 acquire() 配合极短超时模拟非阻塞获取。
-    相比 locked() + acquire() 两步操作，这种方式是原子的——
-    要么成功获取锁，要么超时返回 False，没有竞态窗口。
+    双层语义（批次 6.1）：多 worker 进程部署下同一 GPU 至多一个本地 ASR
+    由 Redis 租约保证（TTL 兜底僵尸租约，见 asr_lease 模块说明）；Redis
+    不可用时退化 asyncio.Lock（单进程部署语义不变）。进程内锁的获取用
+    acquire() 配合极短超时模拟非阻塞——原子，无 locked()+acquire() 竞态窗口。
 
     Returns:
-        True — 锁已获取，调用方应正常执行转写，完成后释放锁。
+        True — 忙碌权已获取，调用方应正常执行转写，完成后 force_release_asr_slot()。
         False — ASR 正在转写，调用方应抛出 LocalASRBusyError 让 arq 延后重入队。
     """
+    from novamind.engines.document.media.audio import asr_lease
+
+    if await asr_lease.acquire_lease():
+        return True
+    if await asr_lease.lease_held():
+        # 租约确实被其他进程持有——忙碌明确，不再竞争进程内锁
+        return False
     try:
         await asyncio.wait_for(_asr_busy_lock.acquire(), timeout=0.05)
         return True
@@ -285,14 +293,36 @@ async def acquire_asr_or_busy() -> bool:
         return False
 
 
-def force_release_asr_slot() -> None:
-    """强制释放 ASR 忙碌锁（供云端 ASR 回退路径的 finally 清理）。
+async def release_asr_slot() -> None:
+    """释放 ASR 忙碌权：跨进程租约 + 进程内锁（异步上下文的规范释放口）。
 
-    幂等：未持锁时无操作（locked 检查防 RuntimeError）。
-    批次 4.4：替代上游直接 import ``_asr_busy_lock`` 私有锁的写法。
+    两者各自幂等：本进程未持租约时 release_lease 无操作（token 防误删），
+    未持本地锁时 locked 检查防 RuntimeError。
     """
+    from novamind.engines.document.media.audio import asr_lease
+
+    await asr_lease.release_lease()
     if _asr_busy_lock.locked():
         _asr_busy_lock.release()
+
+
+def force_release_asr_slot() -> None:
+    """同步上下文的释放口：本地锁立即释放，租约 fire-and-forget 释放。
+
+    供同步 finally 等无 await 位置调用；租约释放任务若因进程退出未执行，
+    由租约 TTL（略超 arq job_timeout）兜底过期，不会永久锁死。
+    """
+    import asyncio as _asyncio
+
+    if _asr_busy_lock.locked():
+        _asr_busy_lock.release()
+    try:
+        loop = _asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    from novamind.engines.document.media.audio import asr_lease
+
+    loop.create_task(asr_lease.release_lease())
 
 
 def _segments_to_dict(segments_result) -> list[dict]:
