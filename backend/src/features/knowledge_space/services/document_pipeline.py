@@ -18,6 +18,7 @@ _FIGURE_PLACEHOLDER_RE = re.compile(r"__FIGURE_URL__(?!__)[^\s_]*(?:_[^\s_]+)*__
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
     from novamind.features.knowledge_space.models.document_task import DocumentTask
+    from novamind.features.knowledge_space.services.pipeline_steps import PipelineContext
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.media.vlm import (
@@ -351,19 +352,11 @@ async def execute_document_pipeline(
                 "figure 短路径补算失败（保留原文）", document_id=document_id, error=str(url_exc),
             )
         full_text = parse_snapshot_payload["full_text"]
-        if image_url_map:
-            full_text = _replace_figure_placeholders(full_text, image_url_map)
+        resume_chunks = [text for text, _meta in resume_prechunked]
         # 历史快照/上传失败残留的占位符剥除（不进 embedding/ES content）。
         # 旧快照正文里已替换的历史预签名 URL 不在占位符形态，无法回收——按原文
         # 复用（过期链接由重解析刷新）。
-        full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
-
-        resume_chunks = [text for text, _meta in resume_prechunked]
-        if image_url_map:
-            resume_chunks = [_replace_figure_placeholders(c, image_url_map) for c in resume_chunks]
-        resume_chunks = [
-            _replace_figure_placeholders(c, {}, strip_unresolved=True) for c in resume_chunks
-        ]
+        full_text, resume_chunks = _restore_figure_links(full_text, resume_chunks, image_url_map)
 
         if split_config_drifted:
             _logger.info(
@@ -421,33 +414,25 @@ async def execute_document_pipeline(
         parse_duration_ms = (
             int((now_china() - task.started_at).total_seconds() * 1000) if task.started_at else None
         )
+        _resume_reading_orders = (
+            resume_meta.get("reading_order") if isinstance(resume_meta, dict) else None
+        )
         task.mark_completed(
-            result={
-                "chunk_count": _resume_tail_result["chunk_count"],
-                "total_tokens": sum(len(c.split()) for c in resume_chunks),
-                "parse_strategy": (resume_meta.get("strategy") if isinstance(resume_meta, dict) else None) or "",
-                "split_strategy": splitting_config.get("strategy", "recursive"),
-                "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-                "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-                "parser_class": parse_summary["parser_class"],
-                "pdf_mode": parse_summary["pdf_mode"],
-                "layout_source": parse_summary["layout_source"],
-                "vision_strategy": parse_summary["vision_strategy"],
-                "table_region_count": parse_summary["table_region_count"],
-                "figure_region_count": parse_summary["figure_region_count"],
-                "reading_order_count": resume_meta.get("reading_order") and len(resume_meta.get("reading_order") or []) or parse_summary["reading_order_count"],
-                "page_count": parse_summary["page_count"],
-                "outline_count": parse_summary["outline_count"],
-                "section_count": parse_summary["section_count"],
-                "table_count": parse_summary["table_count"],
-                "image_count": parse_summary["image_count"],
-                "char_count": len(full_text),
-                "embedding_model": ctx.embedding_model_name,
-                "embedding_dim": ctx.embedding_dim,
-                "parse_duration_ms": parse_duration_ms,
-                "resumed_from_snapshot": True,
-                "indexed_at": now_china().isoformat(),
-            }
+            result=_build_completion_result(
+                chunk_count=_resume_tail_result["chunk_count"],
+                total_tokens=sum(len(c.split()) for c in resume_chunks),
+                parse_strategy=(resume_meta.get("strategy") if isinstance(resume_meta, dict) else None) or "",
+                splitting_config=splitting_config,
+                parse_summary=parse_summary,
+                reading_order_count=(
+                    len(_resume_reading_orders) if _resume_reading_orders
+                    else parse_summary["reading_order_count"]
+                ),
+                char_count=len(full_text),
+                ctx=ctx,
+                parse_duration_ms=parse_duration_ms,
+                resumed_from_snapshot=True,
+            )
         )
         await session.commit()
         _logger.info("文档处理完成（断点续跑）", document_id=document_id, chunk_count=len(resume_chunks))
@@ -538,23 +523,12 @@ async def execute_document_pipeline(
             image_url_map = await _upload_figure_images_to_minio(
                 document, figure_regions, _logger, minio_client=minio_client
             )
-        if image_url_map:
-            full_text = _replace_figure_placeholders(full_text, image_url_map)
-            parse_result.chunks = [
-                _replace_figure_placeholders(chunk, image_url_map)
-                for chunk in parse_result.chunks
-            ]
+        if figure_regions or image_url_map:
+            full_text, parse_result.chunks = _restore_figure_links(
+                full_text, parse_result.chunks, image_url_map
+            )
             chunks = parse_result.chunks
-        # 上传失败的 figure 占位符必须剥除（审计 P1#7）：垃圾串进 embedding
-        # 污染向量、检索命中原样返回给用户/LLM。有 figure_regions 但 map 不含
-        # 的即失败项——全文与分块统一 strip_unresolved 兜底剥除。
         if figure_regions:
-            full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
-            parse_result.chunks = [
-                _replace_figure_placeholders(c, {}, strip_unresolved=True)
-                for c in parse_result.chunks
-            ]
-            chunks = parse_result.chunks
             if len(image_url_map) < len(figure_regions):
                 _logger.warning(
                     "部分 PDF figure 图片上传失败，残留占位符已剥除（figure 能力降级）",
@@ -656,31 +630,17 @@ async def execute_document_pipeline(
         int((now_china() - task.started_at).total_seconds() * 1000) if task.started_at else None
     )
     task.mark_completed(
-        result={
-            "chunk_count": tail_result["chunk_count"],
-            "total_tokens": sum(len(c.split()) for c in chunks),
-            "parse_strategy": parsing_config.get("strategy", "default"),
-            "split_strategy": splitting_config.get("strategy", "recursive"),
-            "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-            "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-            "parser_class": parse_result.metadata.get("parser_class", ""),
-            "pdf_mode": parse_result.metadata.get("pdf_mode", ""),
-            "layout_source": parse_result.metadata.get("layout_source", ""),
-            "vision_strategy": parse_result.metadata.get("vision_strategy", ""),
-            "table_region_count": parse_summary["table_region_count"],
-            "figure_region_count": parse_summary["figure_region_count"],
-            "reading_order_count": parse_summary["reading_order_count"],
-            "page_count": parse_summary["page_count"],
-            "outline_count": parse_summary["outline_count"],
-            "section_count": parse_summary["section_count"],
-            "table_count": parse_summary["table_count"],
-            "image_count": parse_summary["image_count"],
-            "char_count": len(full_text),
-            "embedding_model": ctx.embedding_model_name,
-            "embedding_dim": ctx.embedding_dim,
-            "parse_duration_ms": parse_duration_ms,
-            "indexed_at": now_china().isoformat(),
-        }
+        result=_build_completion_result(
+            chunk_count=tail_result["chunk_count"],
+            total_tokens=sum(len(c.split()) for c in chunks),
+            parse_strategy=parsing_config.get("strategy", "default"),
+            splitting_config=splitting_config,
+            parse_summary=parse_summary,
+            reading_order_count=parse_summary["reading_order_count"],
+            char_count=len(full_text),
+            ctx=ctx,
+            parse_duration_ms=parse_duration_ms,
+        )
     )
     await session.commit()
 
@@ -690,6 +650,76 @@ async def execute_document_pipeline(
         chunk_count=len(chunks),
     )
 
+
+
+def _restore_figure_links(
+    full_text: str, chunks: list[str], image_url_map: dict[str, str]
+) -> tuple[str, list[str]]:
+    """figure 占位符统一处理（正常/resume 双分支共享，批次 4）：有 map 先替换
+    为短路径 URL，再无条件剥除未解析占位符（上传失败项/历史残留——审计 P1#7，
+    占位符进 embedding 污染向量、检索命中原样返回给用户/LLM）。无占位符文本
+    strip 为正则无匹配 no-op。"""
+    if image_url_map:
+        full_text = _replace_figure_placeholders(full_text, image_url_map)
+        chunks = [_replace_figure_placeholders(c, image_url_map) for c in chunks]
+    full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
+    chunks = [_replace_figure_placeholders(c, {}, strip_unresolved=True) for c in chunks]
+    return full_text, chunks
+
+
+def _build_completion_result(
+    *,
+    chunk_count: int,
+    total_tokens: int,
+    parse_strategy: str,
+    splitting_config: dict[str, Any],
+    parse_summary: dict[str, Any],
+    reading_order_count: int,
+    char_count: int,
+    ctx: "PipelineContext",
+    parse_duration_ms: int | None,
+    resumed_from_snapshot: bool = False,
+) -> dict[str, Any]:
+    """构造 mark_completed 的 result dict（正常/resume 双分支共享，批次 4）。
+
+    此前两分支各写一份近 30 键 dict，新增键需双处人工同步——resume 侧漏改
+    无编译期报错，前端展示契约静默缺键。两分支全部差异点已参数化（策略名、
+    reading_order 兜底、resumed 标记）。
+
+    Args:
+        parse_summary: extract_parse_metadata_summary 产物（parser_class 等
+            字符串键与各 count 均从中取，与原两分支逐键等价）。
+        reading_order_count: reading_order 键数；resume 分支带快照兜底逻辑，
+            正常分支传 parse_summary 的同名值。
+    """
+    result: dict[str, Any] = {
+        "chunk_count": chunk_count,
+        "total_tokens": total_tokens,
+        "parse_strategy": parse_strategy,
+        "split_strategy": splitting_config.get("strategy", "recursive"),
+        "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+        "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+        "parser_class": parse_summary["parser_class"],
+        "pdf_mode": parse_summary["pdf_mode"],
+        "layout_source": parse_summary["layout_source"],
+        "vision_strategy": parse_summary["vision_strategy"],
+        "table_region_count": parse_summary["table_region_count"],
+        "figure_region_count": parse_summary["figure_region_count"],
+        "reading_order_count": reading_order_count,
+        "page_count": parse_summary["page_count"],
+        "outline_count": parse_summary["outline_count"],
+        "section_count": parse_summary["section_count"],
+        "table_count": parse_summary["table_count"],
+        "image_count": parse_summary["image_count"],
+        "char_count": char_count,
+        "embedding_model": ctx.embedding_model_name,
+        "embedding_dim": ctx.embedding_dim,
+        "parse_duration_ms": parse_duration_ms,
+        "indexed_at": now_china().isoformat(),
+    }
+    if resumed_from_snapshot:
+        result["resumed_from_snapshot"] = True
+    return result
 
 
 def _replace_figure_placeholders(
