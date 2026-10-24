@@ -5,6 +5,28 @@ from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.shared.ai_models.base_model import BaseEmbedding
 
 
+def _is_cjk(char: str) -> bool:
+    """判断单字符是否属于 CJK 表意文字或全角标点（中文文本边界判据）。"""
+    code = ord(char)
+    return (
+        0x4E00 <= code <= 0x9FFF      # CJK 统一表意文字
+        or 0x3400 <= code <= 0x4DBF   # CJK 扩展 A
+        or 0x3000 <= code <= 0x303F   # CJK 标点
+        or 0xFF00 <= code <= 0xFFEF   # 全角形式
+    )
+
+
+def _join_chunks(left: str, right: str) -> str:
+    """按两侧边界字符决定连接符：CJK 相邻零空格拼接，其余单空格。
+
+    中文块间插入英文空格会成为检索分词噪声；英文/数字边界保留空格
+    防止单词粘连。
+    """
+    if left and right and _is_cjk(left[-1]) and _is_cjk(right[0]):
+        return left + right
+    return f"{left} {right}"
+
+
 class SemanticSplitter(BaseSplitter):
     """语义切分器，基于语义相似度进行文本切分"""
 
@@ -45,8 +67,12 @@ class SemanticSplitter(BaseSplitter):
             doc_type = doc.get('type', 'unknown')
             
             chunks = await self._split_text_semantically(text)
-            
+
             for i, chunk in enumerate(chunks):
+                if not chunk.strip():
+                    # 空文本/纯空白输入时初步切分会返回 ['']——空白块不产出，
+                    # 与其他切分器「空白块不落库」的行为对齐
+                    continue
                 split_docs.append({
                     'text': chunk,
                     'source': source,
@@ -84,9 +110,16 @@ class SemanticSplitter(BaseSplitter):
             # 将numpy数组转换为列表以确保兼容性
             emb1 = np.array(embeddings[i]).reshape(1, -1)
             emb2 = np.array(embeddings[i+1]).reshape(1, -1)
-            
-            # 计算余弦相似度
-            cosine_sim = (emb1 @ emb2.T)[0][0] / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
+
+            # 零向量（embedding 客户端退化/异常返回）无法度量相似度：判 0
+            # （完全不相似 → 切分）。NaN 会让 `similarity < threshold` 恒为
+            # False，把全部块静默合并成一块——过度切分（能力缺失）优于
+            # 错误合并（错误结果）。
+            norm_product = float(np.linalg.norm(emb1) * np.linalg.norm(emb2))
+            if norm_product == 0.0:
+                similarities.append(0.0)
+                continue
+            cosine_sim = (emb1 @ emb2.T)[0][0] / norm_product
             similarities.append(cosine_sim)
         
         # 根据相似度阈值确定切分点
@@ -107,8 +140,8 @@ class SemanticSplitter(BaseSplitter):
                         chunks.append(current_chunk.strip())
                     current_chunk = chunk_text
                 else:
-                    # 否则合并到当前块
-                    current_chunk += " " + chunk_text
+                    # 否则合并到当前块（CJK 相邻零空格，其余单空格）
+                    current_chunk = _join_chunks(current_chunk, chunk_text)
         
         # 添加最后一个块
         if current_chunk.strip():
