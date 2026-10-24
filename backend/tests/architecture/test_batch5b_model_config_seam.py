@@ -152,7 +152,23 @@ def test_document_static_helpers_accept_model_config_port(helper_name: str):
     else:
         fn = getattr(ds, helper_name)
     params = inspect.signature(fn).parameters
-    assert "model_config_port" in params, f"{helper_name} 缺少 model_config_port 参数"
+    if "model_config_port" in params:
+        return
+    # 批次 4.3 豁免：run_post_parse_tail 收敛 TailInputs 聚合后，port 作为
+    # dataclass 必填字段传递——注入语义不变（调用方仍显式传入，函数体零
+    # 具体类依赖），门禁改为校验聚合类型的字段
+    if "inputs" in params:
+        import dataclasses
+        import typing
+
+        from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
+
+        inputs_ann = params["inputs"].annotation
+        if isinstance(inputs_ann, str):
+            inputs_ann = typing.get_type_hints(fn).get("inputs")
+        if inputs_ann is TailInputs and "model_config_port" in {f.name for f in dataclasses.fields(TailInputs)}:
+            return
+    assert False, f"{helper_name} 缺少 model_config_port 参数（直接参数或 TailInputs 字段）"
 
 
 _MEDIA_HELPERS = [
