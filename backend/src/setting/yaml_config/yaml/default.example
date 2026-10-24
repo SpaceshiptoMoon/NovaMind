@@ -117,6 +117,9 @@ knowledge_ops:
 
 knowledge_base:
   parsing:
+    # 解析快照与断点续跑总开关：false 全局关闭快照读写，重试走全量重算
+    # （排障时可临时关闭以隔离快照层；读取失败按开启兜底）
+    snapshots_enabled: true
     # 图片 VLM 描述入库文本上限（字符，默认 4000）。结构化 caption 含图中文字
     # 逐字转录；超限时逐字段（图中文字/实体/图表数据）受保护、其余段整段丢弃。
     # 按 embedding 模型上下文调整（换长文本 embedding 可调大）。

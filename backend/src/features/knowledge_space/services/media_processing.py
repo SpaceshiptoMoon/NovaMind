@@ -42,7 +42,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     build_runtime_parsing_config,
 )
 from novamind.features.knowledge_space.services.pipeline_snapshots import (
-    SNAPSHOTS_ENABLED,
+    snapshots_enabled,
     build_parse_snapshot_payload,
     compute_parse_fingerprint,
     load_parse_snapshot,
@@ -856,7 +856,7 @@ async def process_video_document(
     # ===== 解析快照命中检查（审计 P1#2：此前音视频快照只写不读，RETRY 时
     # VLM 描述全量白烧）。指纹匹配即复用快照全文/时间线/帧路径，跳过抽帧+VLM。
     video_parse_fp = ""
-    if SNAPSHOTS_ENABLED:
+    if snapshots_enabled():
         try:
             video_parse_fp = compute_parse_fingerprint(document, parsing_config)
         except Exception as fp_exc:
@@ -1360,7 +1360,7 @@ async def process_video_document(
     # 断点续跑：计算解析指纹 + 保存带 time_alignment/frame_paths 的解析快照
     # （音视频解析产物含时间对齐/帧路径，resume 时据此免重跑 VLM 描述）。
     video_parse_fp = ""
-    if SNAPSHOTS_ENABLED:
+    if snapshots_enabled():
         try:
             video_parse_fp = compute_parse_fingerprint(document, parsing_config)
         except Exception as fp_exc:
@@ -1560,7 +1560,7 @@ async def process_audio_document(
     # asr_engine 引擎参数块 + asr_clean 清洗配置块，两侧共用同一构造函数），
     # 匹配即复用转写全文与时间线，跳过 ASR。
     audio_parse_fp = ""
-    if SNAPSHOTS_ENABLED:
+    if snapshots_enabled():
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
@@ -1812,7 +1812,7 @@ async def process_audio_document(
     # 断点续跑：计算解析指纹 + 保存带 time_alignment 的解析快照（resume 时免重跑 ASR）。
     # clean 配置进指纹：开关/模型变化 → 指纹变化 → RETRY 重新清洗并重建产物。
     audio_parse_fp = ""
-    if SNAPSHOTS_ENABLED:
+    if snapshots_enabled():
         audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
         audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(

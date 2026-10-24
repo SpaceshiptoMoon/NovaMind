@@ -79,6 +79,9 @@ class SplittingConfig:
 @dataclass
 class ParsingConfig:
     """knowledge_base.parsing 段：解析开关（图片/表格/结构保留/VLM 描述）与本地 whisper、视频 VLM 并发等媒体参数。"""
+    # 解析快照与断点续跑总开关（批次 6.4 配置化）：False 全局关闭快照读写，
+    # 重试走全量重算。排障时可临时关闭以隔离快照层；读取失败按开启兜底
+    snapshots_enabled: bool = True
     extract_images: bool = False
     extract_tables: bool = True
     preserve_structure: bool = True

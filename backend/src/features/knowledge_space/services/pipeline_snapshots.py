@@ -15,8 +15,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
-# 总开关：置 False 全局关闭快照与续跑（旧文档无 pipeline_snapshots 键，天然走全量路径）
-SNAPSHOTS_ENABLED = True
+def snapshots_enabled() -> bool:
+    """快照与续跑总开关（批次 6.4 配置化）：读 YAML ``knowledge_base.parsing.snapshots_enabled``。
+
+    False 时全局关闭快照读写（旧文档无 pipeline_snapshots 键，天然走全量路径；
+    关闭后重试走全量重算）。配置读取失败按开启兜底——快照是性能优化层，
+    fail-open 保留优化路径，而非因配置故障禁用续跑能力。
+
+    此前是模块常量 ``SNAPSHOTS_ENABLED = True``（置 False 需改代码）；
+    ``from import`` 值拷贝还使运行时改模块变量对已导入方无效，故改函数。
+    """
+    try:
+        from novamind.setting.yaml_config import get_config
+
+        return bool(get_config().knowledge_base.parsing.snapshots_enabled)
+    except Exception:
+        return True
 
 SNAPSHOT_VERSION = 1
 # v2 (2026-09-24)：DeepDoc rechunk 引入哨兵标记重切（tagged_rechunk），parse
@@ -224,7 +238,7 @@ async def _save_snapshot(
     state_patch: dict[str, Any],
 ) -> bool:
     """上传快照 JSON → 更新 storage 指针 → commit。失败返回 False 不影响主流程。"""
-    if not SNAPSHOTS_ENABLED:
+    if not snapshots_enabled():
         return False
     try:
         await _upload_json(minio_client, object_name, payload)

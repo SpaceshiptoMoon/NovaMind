@@ -956,7 +956,7 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
     parse_fingerprint = inputs.parse_fingerprint
 
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        SNAPSHOTS_ENABLED,
+        snapshots_enabled,
         compute_embed_fingerprint,
         compute_split_fingerprint,
         load_embeddings_snapshot,
@@ -984,7 +984,7 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
     resume_minio = None
     split_fingerprint = ""
     embed_fingerprint = ""
-    if SNAPSHOTS_ENABLED and parse_fingerprint:
+    if snapshots_enabled() and parse_fingerprint:
         try:
             resume_minio = await ClientFactory.get_minio_client()
             # 切分模式并入停顿阈值有效值（音频 pause_topic 的边界参数）：

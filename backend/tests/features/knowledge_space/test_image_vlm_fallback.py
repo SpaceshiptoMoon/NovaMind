@@ -112,13 +112,10 @@ async def _drive(
     import novamind.shared.storage.client_factory as cf_mod
     from novamind.features.knowledge_space.services import pipeline_steps
 
-    class _EmptySnap:
-        SNAPSHOTS_ENABLED = False
-
-    monkeypatch.setattr(snap_mod, "SNAPSHOTS_ENABLED", False)
+    monkeypatch.setattr(snap_mod, "snapshots_enabled", lambda: False)
 
     async def _fake_minio():
-        raise AssertionError("SNAPSHOTS_ENABLED=False 不应触碰 MinIO")
+        raise AssertionError("snapshots_enabled=False 不应触碰 MinIO")
 
     monkeypatch.setattr(cf_mod.ClientFactory, "get_minio_client", staticmethod(_fake_minio))
 
@@ -241,10 +238,10 @@ async def test_skip_on_quota_off_reraises(monkeypatch):
     import novamind.shared.storage.client_factory as cf_mod
     from novamind.features.knowledge_space.services import pipeline_steps
 
-    monkeypatch.setattr(snap_mod, "SNAPSHOTS_ENABLED", False)
+    monkeypatch.setattr(snap_mod, "snapshots_enabled", lambda: False)
 
     async def _fake_minio():
-        raise AssertionError("SNAPSHOTS_ENABLED=False 不应触碰 MinIO")
+        raise AssertionError("snapshots_enabled=False 不应触碰 MinIO")
 
     monkeypatch.setattr(cf_mod.ClientFactory, "get_minio_client", staticmethod(_fake_minio))
 

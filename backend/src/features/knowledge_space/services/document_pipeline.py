@@ -282,7 +282,7 @@ async def execute_document_pipeline(
     # 断点续跑：解析指纹匹配即复用快照，跳过昂贵解析（VLM/OCR 可能已付费成功）。
     # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        SNAPSHOTS_ENABLED,
+        snapshots_enabled,
         build_parse_snapshot_payload,
         canonical_json,
         compute_parse_fingerprint,
@@ -298,7 +298,7 @@ async def execute_document_pipeline(
 
     resume_minio_client = None
     parse_fingerprint = ""
-    if SNAPSHOTS_ENABLED:
+    if snapshots_enabled():
         try:
             resume_minio_client = await ClientFactory.get_minio_client()
             parsing_config_for_fp = build_runtime_parsing_config(
@@ -311,7 +311,7 @@ async def execute_document_pipeline(
             )
 
     parse_snapshot_payload: dict[str, Any] | None = None
-    if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
+    if snapshots_enabled() and parse_fingerprint and resume_minio_client is not None:
         if snapshot_fingerprint(document, "parse") == parse_fingerprint:
             snap = await load_parse_snapshot(document, resume_minio_client, _logger)
             # payload 内嵌指纹校验（防双 worker 交错写同名对象后指针/内容错配）
@@ -595,7 +595,7 @@ async def execute_document_pipeline(
     # 解析快照：persist 成功后保存（最终版全文 + 元数据 + 结构化分块 + 生效
     # 切分配置），供后续重试在指纹匹配时跳过昂贵解析。figure 短文件名不可变
     # 无时效，快照与最终产物同版。fail-open：保存失败不影响主流程。
-    if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
+    if snapshots_enabled() and parse_fingerprint and resume_minio_client is not None:
         snapshot_payload = build_parse_snapshot_payload(
             parse_fingerprint=parse_fingerprint,
             full_text=full_text,
@@ -908,7 +908,7 @@ async def _process_image_document_static(
     # 同型的 P1#2 缺口。命中判定（重算指纹 → DB 指针 → payload 内嵌指纹三重校验）
     # 与 execute_document_pipeline 文本分支完全同构。
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        SNAPSHOTS_ENABLED as _SNAP_ENABLED,
+        snapshots_enabled as _snap_enabled,
     )
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         build_parse_snapshot_payload as _build_snap_payload,
@@ -937,7 +937,7 @@ async def _process_image_document_static(
     # 失败时的降级行为不影响成功产物，不进指纹。
     image_parse_fp = ""
     snap_minio = None
-    if _SNAP_ENABLED:
+    if _snap_enabled:
         try:
             snap_minio = await _SnapCF.get_minio_client()
             image_fp_cfg = dict(parsing_config)
