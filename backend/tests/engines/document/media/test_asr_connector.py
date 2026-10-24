@@ -90,7 +90,7 @@ def test_transcribe_dispatches_local_with_slot(monkeypatch):
         calls.append("acquire")
         return True
 
-    def fake_release():
+    async def fake_release():
         released.append(True)
 
     async def fake_local(**kwargs):
@@ -99,7 +99,7 @@ def test_transcribe_dispatches_local_with_slot(monkeypatch):
 
     # 延迟 import 的真实来源是 audio/__init__（connector 内函数内 import）
     monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
-    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "release_asr_slot", fake_release)
     monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_local)
 
     result, route = asyncio.run(AsrConnector().transcribe(
@@ -121,14 +121,14 @@ def test_transcribe_local_busy_raises(monkeypatch):
     async def fake_acquire():
         return False
 
-    def fake_release():
+    async def fake_release():
         released.append(True)
 
     async def _should_not_run(**kwargs):
         raise AssertionError("忙碌时不应进入引擎转写")
 
     monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
-    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "release_asr_slot", fake_release)
     monkeypatch.setattr(audio_pkg, "transcribe_audio_local", _should_not_run)
 
     with pytest.raises(AsrBusyError):
@@ -247,7 +247,7 @@ def test_transcribe_with_route_lock_held_no_reacquire(monkeypatch):
         calls.append("acquire")
         return True
 
-    def fake_release():
+    async def fake_release():
         released.append(True)
 
     async def fake_local(**kwargs):
@@ -255,7 +255,7 @@ def test_transcribe_with_route_lock_held_no_reacquire(monkeypatch):
         return [{"text": "hi"}]
 
     monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
-    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "release_asr_slot", fake_release)
     monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_local)
 
     route = AsrRoute(protocol="local", model="faster-whisper-tiny")
@@ -277,14 +277,14 @@ def test_transcribe_engine_error_still_releases_slot(monkeypatch):
     async def fake_acquire():
         return True
 
-    def fake_release():
+    async def fake_release():
         released.append(True)
 
     async def fake_boom(**kwargs):
         raise RuntimeError("模型缺失")
 
     monkeypatch.setattr(audio_pkg, "acquire_asr_or_busy", fake_acquire)
-    monkeypatch.setattr(audio_pkg, "force_release_asr_slot", fake_release)
+    monkeypatch.setattr(audio_pkg, "release_asr_slot", fake_release)
     monkeypatch.setattr(audio_pkg, "transcribe_audio_local", fake_boom)
 
     with pytest.raises(RuntimeError, match="模型缺失"):
