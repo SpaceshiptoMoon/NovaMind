@@ -17,20 +17,8 @@ class HTMLReader(BaseReader):
         super().__init__()
 
     def _read_with_encoding_sync(self, file_path: str) -> str:
-        """按 utf-8/gbk/gb2312/latin-1/cp1252 顺序尝试解码，全部失败则忽略错误硬读。"""
-        encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1', 'cp1252']
-
-        for encoding in encodings:
-            try:
-                with open(file_path, encoding=encoding) as file:
-                    content = file.read()
-                return content
-            except UnicodeDecodeError:
-                continue
-
-        # 如果所有编码都失败，使用错误处理方式
-        with open(file_path, encoding='utf-8', errors='ignore') as file:
-            return file.read()
+        """BOM 感知解码（实现见 BaseReader.decode_text_file——红队 P1-1 统一收口）。"""
+        return self.decode_text_file(file_path)
 
     def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
         """用 BeautifulSoup 提取页面可见文本并拼成整块。"""

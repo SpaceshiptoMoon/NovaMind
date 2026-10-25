@@ -122,9 +122,15 @@ class TestExtractMultiLanText:
         output = {"choices": [{"message": SimpleNamespace(content=content)}]}
         assert _extract_multi_lan_text(output) == "第一段\n第二段"
 
-    def test_malformed_degrades_to_str(self):
-        text = _extract_multi_lan_text(SimpleNamespace(unexpected="shape"))
-        assert isinstance(text, str)
+    def test_malformed_raises_not_pollute(self):
+        """P2-3 新语义：畸形响应显式抛 OcrRequestError，不再降级 str(output)
+        把整个响应 dump 流进 chunk 污染正文与向量。"""
+        import pytest as _pytest
+
+        from novamind.engines.document.media.ocr.qwen import OcrRequestError
+
+        with _pytest.raises(OcrRequestError, match="响应结构异常"):
+            _extract_multi_lan_text(SimpleNamespace(unexpected="shape"))
 
 
 class TestRecognizeImage:

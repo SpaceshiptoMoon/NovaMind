@@ -213,10 +213,11 @@ def _extract_multi_lan_text(output: Any) -> str:
         for piece in content:
             if isinstance(piece, dict) and piece.get("text"):
                 parts.append(piece["text"])
-    except (KeyError, IndexError, AttributeError, TypeError):
-        text = str(output).strip()
-        logger.warning("multi_lan 响应结构异常，降级为字符串输出: %.200s", text)
-        return text
+    except (KeyError, IndexError, AttributeError, TypeError) as exc:
+        # 红队 P2-3：畸形响应此前降级 str(output)——整个响应 dump 会流进
+        # chunk 污染正文与向量。失败方向改为显式报错（瞬时性，调用方可重试）
+        logger.warning("multi_lan 响应结构异常: %.200s", str(output))
+        raise OcrRequestError(f"DashScope multi_lan 响应结构异常: {exc}") from exc
     return "\n".join(p for p in (part.strip() for part in parts) if p)
 
 

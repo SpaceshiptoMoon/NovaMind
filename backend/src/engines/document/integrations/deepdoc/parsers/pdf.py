@@ -930,6 +930,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         fused = self._fuse_page(img, page_chars, page_index, page_zoom)
                         if fused:
                             break
+                        # 上游语义恢复（红队 P0-1）：zoomin < 9 才递进重试——
+                        # 此前误写为「先递进再 min 封顶」，zoom 到 9 后 while
+                        # 恒真，空白页/纯图无字页/OCR detect 异常页让本循环
+                        # 无限自旋（每轮一次整页渲染 + det 推理），worker
+                        # 永久挂死（已实测复现）。
+                        if page_zoom >= 9:
+                            break
                         page_zoom = min(page_zoom * 3, 9)
                         logger.info("DeepDoc 页面在 zoom=%s 未检出文字，递进重试", page_zoom, page_index=page_index)
                     window_images.append(img if img is not None else np.zeros((1, 1, 3), dtype=np.uint8))

@@ -75,7 +75,18 @@ class RAGFlowDocxParser:
 
     def _extract_table_content(self, table: Any) -> list[str]:
         """把表格对象转为二维文本行，交由 _compose_table_content 拼装。"""
-        rows = [[cell.text for cell in row.cells] for row in table.rows]
+        # 合并单元格去重：python-docx 对 spanned 网格位返回同一 cell，
+        # 不去重会让合并表头/单元格文本重复 N 遍（红队 P1-2）
+        rows = []
+        for row in table.rows:
+            seen_tc = set()
+            row_texts = []
+            for cell in row.cells:
+                if id(cell._tc) in seen_tc:
+                    continue
+                seen_tc.add(id(cell._tc))
+                row_texts.append(cell.text)
+            rows.append(row_texts)
         return self._compose_table_content(rows)
 
     def _compose_table_content(self, rows: Sequence[Sequence[str]]) -> list[str]:

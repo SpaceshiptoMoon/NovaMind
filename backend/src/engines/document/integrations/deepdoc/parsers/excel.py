@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
 
@@ -31,9 +32,12 @@ class RAGFlowExcelParser:
         读 CSV；openpyxl 加载失败再降级 pandas（calamine 引擎兜底），统一包成工作簿。
         """
         _, load_workbook = RAGFlowExcelParser._import_openpyxl()
+        # 路径形态先读入内存（真机实测：runtime_parser 传 Path 的 str 形态时
+        # 无条件 seek(0) 崩溃——str 被当路径却从未打开），再统一包成字节流
+        if isinstance(file_like_object, (str, Path)):
+            file_like_object = Path(file_like_object).read_bytes()
         if isinstance(file_like_object, bytes):
             file_like_object = BytesIO(file_like_object)
-
         file_like_object.seek(0)
         file_head = file_like_object.read(4)
         file_like_object.seek(0)

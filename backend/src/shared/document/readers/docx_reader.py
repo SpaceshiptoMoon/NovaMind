@@ -31,7 +31,13 @@ class DocxReader(BaseReader):
             # 获取表格中的文本
             for table in doc.tables:
                 for row in table.rows:
+                    # 合并单元格去重：python-docx 对 spanned 网格位返回同一
+                    # cell 对象，不去重会让合并文本重复 N 遍污染全文（红队 P1-2）
+                    seen_tc = set()
                     for cell in row.cells:
+                        if id(cell._tc) in seen_tc:
+                            continue
+                        seen_tc.add(id(cell._tc))
                         full_text.append(cell.text)
 
             text = '\n'.join(full_text)

@@ -116,7 +116,8 @@ class SemanticSplitter(BaseSplitter):
             # False，把全部块静默合并成一块——过度切分（能力缺失）优于
             # 错误合并（错误结果）。
             norm_product = float(np.linalg.norm(emb1) * np.linalg.norm(emb2))
-            if norm_product == 0.0:
+            # NaN 向量穿透零向量判等（NaN != 0）——norm 非有限同样判切分
+            if not np.isfinite(norm_product) or norm_product == 0.0:
                 similarities.append(0.0)
                 continue
             cosine_sim = (emb1 @ emb2.T)[0][0] / norm_product
