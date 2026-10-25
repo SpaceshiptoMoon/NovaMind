@@ -17,10 +17,13 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-FORMULA_MODEL_REPO_ID = os.getenv(
-    "DEEPDOC_FORMULA_MODEL_REPO_ID",
-    "breezedeus/pix2text-mfr",
-)
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+
+def _formula_model_repo_id() -> str:
+    return get_settings().formula_model_repo_id
+
+
+FORMULA_MODEL_REPO_ID = "breezedeus/pix2text-mfr"  # 兼容别名（运行时经 _formula_model_repo_id）
 # fp32 权重与分词器（下载源）；INT8 量化版由 download_formula_model 本地生成。
 FORMULA_MODEL_FILES = (
     "encoder_model.onnx",
@@ -42,7 +45,7 @@ _LOADED_RECOGNIZERS: dict[str, FormulaRecognizer] = {}
 
 def default_formula_model_dir() -> Path:
     """公式模型目录（环境变量覆盖，缺省 models/deepdoc/pix2text_mfr）。"""
-    env_dir = os.getenv("DEEPDOC_FORMULA_MODEL_DIR")
+    env_dir = get_settings().formula_model_dir
     if env_dir:
         return Path(env_dir)
     return default_model_dir() / "pix2text_mfr"
@@ -59,7 +62,7 @@ def get_formula_model_status(model_dir: str | os.PathLike[str] | None = None) ->
     quantized = all((base_dir / name).exists() for name in FORMULA_INT8_FILES)
     return {
         "model_dir": str(base_dir),
-        "repo_id": FORMULA_MODEL_REPO_ID,
+        "repo_id": _formula_model_repo_id(),
         "files": list(FORMULA_MODEL_FILES),
         "missing": missing,
         "available": not missing,
@@ -89,7 +92,7 @@ def _quantize_to_int8(model_dir: Path) -> bool:
     幂等：INT8 文件已存在直接返回。`onnx` 包缺失或量化异常时 INFO 跳过，
     运行时回退 fp32——量化是体积优化，不是可用性前提。
     """
-    if os.getenv("DEEPDOC_FORMULA_QUANTIZE", "1") == "0":
+    if not get_settings().formula_quantize:
         return False
     if all((model_dir / name).exists() for name in FORMULA_INT8_FILES):
         return True
@@ -130,7 +133,7 @@ def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> P
     """
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
-    download_hf_files(base_dir, FORMULA_MODEL_REPO_ID, list(FORMULA_MODEL_FILES))
+    download_hf_files(base_dir, _formula_model_repo_id(), list(FORMULA_MODEL_FILES))
     _quantize_to_int8(base_dir)
     return base_dir
 

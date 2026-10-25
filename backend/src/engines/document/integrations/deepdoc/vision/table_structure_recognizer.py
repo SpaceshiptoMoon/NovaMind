@@ -13,10 +13,12 @@ import numpy as np
 from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+
 
 def _default_model_dir() -> Path:
     """模型目录：DEEPDOC_MODEL_DIR 环境变量优先，否则仓库根 ``.cache/deepdoc``。"""
-    env_dir = os.getenv("DEEPDOC_MODEL_DIR")
+    env_dir = get_settings().model_dir
     if env_dir:
         return Path(env_dir)
     repo_root = Path(__file__).resolve().parents[6]

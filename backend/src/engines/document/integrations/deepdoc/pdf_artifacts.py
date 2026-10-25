@@ -18,6 +18,8 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vi
 from novamind.shared.logging import get_logger
 from PIL import Image
 
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+
 logger = get_logger(__name__)
 
 # 纯公式编号框（如 "(3)"，允许内侧空白）：常被版面模型误标成 "figure caption"，
@@ -393,7 +395,7 @@ class PdfArtifactExtractor:
         content_boxes = [item for item in ordered if not self._is_caption_box(item)]
         crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
 
-        auto_rotate = os.environ.get("TABLE_AUTO_ROTATE", "true").lower() != "false"
+        auto_rotate = get_settings().table_auto_rotate
         if self._ocr is not None and auto_rotate and crop_descriptors:
             rotated_content_boxes: list[Any] = []
             for descriptor in crop_descriptors:
@@ -409,7 +411,7 @@ class PdfArtifactExtractor:
         # per-page row_offset 缝合（旋转 + 合成图坐标映射复杂，跨页旋转表属边缘情况）。
         angles = [int(descriptor.get("rotation_angle", 0)) for descriptor in crop_descriptors]
         modal_angle = max(set(angles), key=angles.count) if angles else 0
-        composite_enabled = os.environ.get("DEEPDOC_CROSSPAGE_COMPOSITE", "true").lower() != "false"
+        composite_enabled = get_settings().crosspage_composite
         composite_image: Image.Image | None = None
         y_offsets: list[int] = []
         eligible_crops = [descriptor["crop"] for descriptor in crop_descriptors if descriptor.get("crop") is not None]

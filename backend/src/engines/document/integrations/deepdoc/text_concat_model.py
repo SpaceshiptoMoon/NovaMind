@@ -5,15 +5,17 @@ import os
 from pathlib import Path
 from typing import Any
 
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_hf_files,
 )
 
-TEXT_CONCAT_MODEL_REPO_ID = os.getenv(
-    "DEEPDOC_TEXT_CONCAT_MODEL_REPO_ID",
-    "InfiniFlow/text_concat_xgb_v1.0",
-)
+def _text_concat_model_repo_id() -> str:
+    return get_settings().text_concat_model_repo_id
+
+
+TEXT_CONCAT_MODEL_REPO_ID = "InfiniFlow/text_concat_xgb_v1.0"  # 兼容别名（运行时经 _text_concat_model_repo_id）
 TEXT_CONCAT_MODEL_FILENAME = "updown_concat_xgb.model"
 
 _LOADED_MODELS: dict[str, Any] = {}
@@ -28,7 +30,7 @@ def _import_xgboost():
 
 def default_text_concat_model_dir() -> Path:
     """段落合并模型目录（环境变量覆盖，缺省 models/deepdoc/text_concat）。"""
-    env_dir = os.getenv("DEEPDOC_TEXT_CONCAT_MODEL_DIR")
+    env_dir = get_settings().text_concat_model_dir
     if env_dir:
         return Path(env_dir)
     return default_model_dir() / "text_concat"
@@ -56,7 +58,7 @@ def get_text_concat_model_status(model_dir: str | os.PathLike[str] | None = None
     model_path = text_concat_model_path(model_dir)
     return {
         "model_dir": str(model_path.parent),
-        "repo_id": TEXT_CONCAT_MODEL_REPO_ID,
+        "repo_id": _text_concat_model_repo_id(),
         "filename": TEXT_CONCAT_MODEL_FILENAME,
         "path": str(model_path),
         "available": model_path.exists(),
@@ -91,7 +93,7 @@ def download_text_concat_model(model_dir: str | os.PathLike[str] | None = None) 
     # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
     download_hf_files(
         model_path.parent,
-        TEXT_CONCAT_MODEL_REPO_ID,
+        _text_concat_model_repo_id(),
         [TEXT_CONCAT_MODEL_FILENAME],
     )
     return model_path

@@ -50,6 +50,8 @@ from novamind.shared.logging import get_logger
 from novamind.shared.utils.text_utils import normalize_pua_text
 from PIL import Image
 
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+
 # Structured logger (structlog BoundLogger) — accepts key=value context kwargs
 # and renders JSON. Do NOT use stdlib ``logging.info(msg, key=val)`` here: stdlib
 # Logger._log() rejects arbitrary kwargs and raises TypeError at the call site.
@@ -128,7 +130,7 @@ TEXT_PAGE_ZOOM_ENV = "DEEPDOC_TEXT_PAGE_ZOOM"
 
 def _text_page_zoom() -> int:
     """读取有文字层页的渲染 zoom（环境变量可配，默认 2，合法 2-4）。"""
-    raw = os.getenv(TEXT_PAGE_ZOOM_ENV, "").strip()
+    raw = str(get_settings().text_page_zoom or "").strip()
     if not raw:
         return 2
     try:
@@ -155,7 +157,7 @@ def _render_window_size() -> int:
     
     窗即一个 layout 推理 batch，渲染 buffer 驻留上限与文档总页数无关。
     """
-    raw = os.getenv(RENDER_WINDOW_SIZE_ENV, "").strip()
+    raw = str(get_settings().render_window_size or "").strip()
     if not raw:
         return _RENDER_WINDOW_DEFAULT
     try:

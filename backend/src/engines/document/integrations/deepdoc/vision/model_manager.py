@@ -10,7 +10,14 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-MODEL_REPO_ID = os.getenv("DEEPDOC_MODEL_REPO_ID", "InfiniFlow/deepdoc")
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+
+def _model_repo_id() -> str:
+    """模型仓库 ID（运行时配置注入，见 runtime_settings）。"""
+    return get_settings().model_repo_id
+
+
+MODEL_REPO_ID = "InfiniFlow/deepdoc"  # 兼容别名：模块导入期缺省值（运行时经 _model_repo_id）
 
 MODEL_GROUPS = {
     "ocr": ["det.onnx", "rec.onnx", "ocr.res"],
@@ -56,7 +63,7 @@ CHECKSUM_SKIP_ENV_VAR = "DEEPDOC_SKIP_MODEL_CHECKSUM"
 
 def default_model_dir() -> Path:
     """默认模型目录：DEEPDOC_MODEL_DIR 环境变量优先，否则仓库根 ``.cache/deepdoc``。"""
-    env_dir = os.getenv("DEEPDOC_MODEL_DIR")
+    env_dir = get_settings().model_dir
     if env_dir:
         return Path(env_dir)
     repo_root = Path(__file__).resolve().parents[6]
@@ -101,7 +108,7 @@ def get_model_status(model_dir: str | os.PathLike[str] | None = None) -> dict[st
             all_present = False
     return {
         "model_dir": str(base_dir),
-        "repo_id": MODEL_REPO_ID,
+        "repo_id": _model_repo_id(),
         "groups": groups,
         "available": all_present,
     }
@@ -134,7 +141,7 @@ def hf_model_endpoint() -> str:
     默认模板已配）。huggingface_hub 1.x 的元数据校验（x-repo-commit 头）拒绝
     镜像响应，snapshot_download 走镜像必败——非官方端点统一改走直链下载。
     """
-    return (os.getenv("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
+    return get_settings().hf_endpoint
 
 
 # ── 降级换源机制（地址全部来自部署配置，代码不含任何具体镜像地址）──
@@ -156,7 +163,7 @@ def get_mirror_sources() -> list[dict[str, Any]]:
     空配置/非法 JSON/非法条目一律告警并按「无降级源」处理——降级配置坏了
     只影响兜底能力，绝不影响主源下载。本函数只解析结构，不内置任何地址。
     """
-    raw = (os.getenv(MIRRORS_ENV_VAR) or "").strip()
+    raw = get_settings().mirrors_json
     if not raw:
         return []
     import json
@@ -219,7 +226,7 @@ def _file_digest(path: Path, kind: str) -> str:
 def verify_model_checksum(repo_id: str, file_name: str, target: Path) -> bool:
     """按 checksum 清单校验单个模型文件。清单未登记的文件放行（返回 True）——
     清单覆盖 6+4 个官方模型文件，未登记说明是新文件而非损坏。"""
-    if os.getenv(CHECKSUM_SKIP_ENV_VAR, "") == "1":
+    if get_settings().skip_checksum:
         return True
     entry = MODEL_CHECKSUMS.get(repo_id, {}).get(file_name)
     if entry is None:
@@ -402,8 +409,8 @@ def download_hf_files(
                 repo_id=repo_id,
                 local_dir=str(base_dir),
                 allow_patterns=files,
-                etag_timeout=int(os.getenv("DEEPDOC_HF_ETAG_TIMEOUT", "60")),
-                max_workers=int(os.getenv("DEEPDOC_HF_MAX_WORKERS", "4")),
+                etag_timeout=get_settings().hf_etag_timeout,
+                max_workers=get_settings().hf_max_workers,
             )
             # snapshot 自带 etag 语义校验，但对已存在的旧文件按「已下载」跳过；
             # checksum 复核补上「存量文件损坏」的缺口（校验失败删文件回退直链重下）。
@@ -453,4 +460,4 @@ def download_model_group(group: str | None = None, model_dir: str | os.PathLike[
     allow_patterns = expected_model_files(group)
     if not allow_patterns:
         allow_patterns = expected_model_files(None)
-    return download_hf_files(base_dir, MODEL_REPO_ID, allow_patterns)
+    return download_hf_files(base_dir, _model_repo_id(), allow_patterns)

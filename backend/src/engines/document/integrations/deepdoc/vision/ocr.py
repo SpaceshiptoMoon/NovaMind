@@ -17,6 +17,8 @@
 import copy
 import gc
 import logging
+
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 import threading
 import os
 import time
@@ -38,7 +40,7 @@ def pip_install_torch(*args, **kwargs):
 
 class _Settings:
     """进程级环境设置：PARALLEL_DEVICES 控制多 GPU 运行时副本数。"""
-    PARALLEL_DEVICES = int(os.environ.get("PARALLEL_DEVICES", "0"))
+    PARALLEL_DEVICES = get_settings().parallel_devices
 
 settings = _Settings()
 import math
@@ -146,15 +148,15 @@ def load_model(model_dir, nm, device_id: int | None = None):
         options.enable_cpu_mem_arena = False
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         # Prevent CPU oversubscription by allowing explicit thread control in multi-worker environments
-        options.intra_op_num_threads = int(os.environ.get("OCR_INTRA_OP_NUM_THREADS", "2"))
-        options.inter_op_num_threads = int(os.environ.get("OCR_INTER_OP_NUM_THREADS", "2"))
+        options.intra_op_num_threads = get_settings().ocr_intra_op_threads
+        options.inter_op_num_threads = get_settings().ocr_inter_op_threads
 
         # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
         # Shrink GPU memory after execution
         run_options = ort.RunOptions()
         if cuda_is_available():
-            gpu_mem_limit_mb = int(os.environ.get("OCR_GPU_MEM_LIMIT_MB", "2048"))
-            arena_strategy = os.environ.get("OCR_ARENA_EXTEND_STRATEGY", "kNextPowerOfTwo")
+            gpu_mem_limit_mb = get_settings().ocr_gpu_mem_limit_mb
+            arena_strategy = get_settings().ocr_arena_extend_strategy
             provider_device_id = 0 if device_id is None else device_id
             cuda_provider_options = {
                 "device_id": provider_device_id,  # Use specific GPU
@@ -163,7 +165,7 @@ def load_model(model_dir, nm, device_id: int | None = None):
             }
             sess = ort.InferenceSession(model_file_path, options=options, providers=["CUDAExecutionProvider"], provider_options=[cuda_provider_options])
             # Explicit arena shrinkage for GPU to release VRAM back to the system after each run
-            if os.environ.get("OCR_GPUMEM_ARENA_SHRINKAGE") == "1":
+            if get_settings().ocr_gpu_arena_shrinkage:
                 run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", f"gpu:{provider_device_id}")
                 logging.info(f"load_model {model_file_path} enabled GPU memory arena shrinkage on device {provider_device_id}")
             logging.info(f"load_model {model_file_path} uses GPU (device {provider_device_id}, gpu_mem_limit={cuda_provider_options['gpu_mem_limit']}, arena_strategy={arena_strategy})")
