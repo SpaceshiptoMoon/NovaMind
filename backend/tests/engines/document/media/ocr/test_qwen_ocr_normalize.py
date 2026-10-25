@@ -25,7 +25,12 @@ from novamind.engines.document.media.ocr.qwen import (
 
 pytestmark = pytest.mark.unit
 
-CONFIG = OcrEngineConfig(api_key="test-key")
+CONFIG = OcrEngineConfig(
+        api_key="test-key",
+        model="qwen3.5-ocr",
+        openai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        dashscope_base_url="https://dashscope.aliyuncs.com/api/v1",
+    )
 
 
 def _layout(**overrides):

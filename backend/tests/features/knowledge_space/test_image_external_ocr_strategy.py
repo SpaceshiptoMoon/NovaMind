@@ -35,7 +35,12 @@ def _stub_ocr_config(monkeypatch):
     from novamind.engines.document.media.ocr.qwen import OcrEngineConfig
 
     monkeypatch.setattr(
-        media_processing, "build_engine_ocr_config", lambda: OcrEngineConfig(api_key="k")
+        media_processing, "build_engine_ocr_config", lambda: OcrEngineConfig(
+        api_key="k",
+        model="qwen3.5-ocr",
+        openai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        dashscope_base_url="https://dashscope.aliyuncs.com/api/v1",
+    )
     )
 
 

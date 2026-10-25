@@ -43,12 +43,18 @@ class OcrRequestError(RuntimeError):
 
 @dataclass(frozen=True)
 class OcrEngineConfig:
-    """引擎层 OCR 配置（宿主从 YAML 构造注入；引擎不读 setting）。"""
+    """引擎层 OCR 配置（宿主从 YAML 构造注入；引擎不读 setting）。
+
+    发包模式：api_key/model/两个 base_url 均无默认值——外部服务端点、
+    模型名、凭据是宿主（部署）事实，不内嵌引擎包；缺省由宿主构造时
+    显式传入（唯一构造点 ``build_engine_ocr_config``），引擎在请求时
+    对空值显式报错，不兜底。
+    """
 
     api_key: str = ""
-    model: str = "qwen3.5-ocr"
-    openai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_base_url: str = "https://dashscope.aliyuncs.com/api/v1"
+    model: str = ""
+    openai_base_url: str = ""
+    dashscope_base_url: str = ""
     render_dpi: int = DEFAULT_RENDER_DPI
     timeout: int = 120
 
@@ -228,6 +234,11 @@ async def recognize_image_with_qwen_ocr(
     def _call() -> str:
         import dashscope
         from dashscope import MultiModalConversation
+
+        if not config.model or not config.api_key:
+            raise OcrRequestError(
+                "OCR multi_lan 配置缺失：model/api_key 必须由宿主透传（OcrEngineConfig），当前为空"
+            )
 
         # api_key 恒 per-call 传递；base url 仅在偏离 SDK 默认（私有化部署）时
         # 写全局——标准百炼场景与 ASR 并发的全局互踩窗口由此根除（批次 6.3）

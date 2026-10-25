@@ -373,10 +373,12 @@ def _resolve_local_whisper_model_dir(
          部署已配置具体路径的兼容通道，最高优先）
       2. ``AudioConfig.local_whisper_model``（档位名，如 ``large-v3``）→
          ``backend/.cache/faster-whisper/{档位}``（与下载脚本/部署预装同约定）
-      3. YAML ``asr.local_whisper_model_dir``（第二回退目录配置，值可来自
-         ``${VAR}`` 环境占位符——存量兼容）
-      4. 档位名缺省时用 ``DEFAULT_LOCAL_WHISPER_MODEL``（生产默认 large-v3；
+      3. 档位名缺省时用 ``DEFAULT_LOCAL_WHISPER_MODEL``（生产默认 large-v3；
          开发机在 YAML 显式降档）
+
+    YAML ``asr.local_whisper_model_dir`` 的第二回退已上移宿主
+    （``_build_engine_audio_config`` 合并进 ``AudioConfig.local_whisper_model_dir``
+    的构造）——引擎层零 ``novamind.setting`` 依赖，可独立发包（发包模式改造）。
 
     引擎侧不再 import `novamind.setting`；YAML 配置由宿主构造 ``AudioConfig``
     注入，从而切断 `shared/knowledge` -> `setting` 的导入边。
@@ -391,14 +393,8 @@ def _resolve_local_whisper_model_dir(
     if model_slug:
         return default_faster_whisper_cache_dir(model_slug)
 
-    # 3. 配置中心第二回退（asr.local_whisper_model_dir；值可来自 ${VAR} 占位）
-    from novamind.setting.yaml_config import get_config
-
-    cfg_dir = get_config().asr.local_whisper_model_dir
-    if cfg_dir:
-        return Path(cfg_dir).expanduser()
-
-    # 4. 默认档位
+    # 3. 默认档位（发包纪律：引擎零 setting 依赖——原第 3 级 YAML
+    # asr.local_whisper_model_dir 回退已上移宿主 _build_engine_audio_config）
     return default_faster_whisper_cache_dir(DEFAULT_LOCAL_WHISPER_MODEL)
 
 
@@ -1009,9 +1005,9 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger, *, minio
 async def transcribe_audio_with_timestamps(
     file_content: bytes,
     file_type: str = "mp3",
-    model: str = "whisper-1",
+    model: str = "",
     api_key: str | None = None,
-    base_url: str | None = None,
+    base_url: str = "",
     language: str | None = None,
 ) -> list[dict]:
     """
@@ -1022,23 +1018,22 @@ async def transcribe_audio_with_timestamps(
     Args:
         file_content: 音频文件二进制内容
         file_type: 音频文件类型 (mp3/wav/flac/ogg/m4a)
-        model: Whisper 模型名，默认 whisper-1
-        api_key: OpenAI API Key，不传则从环境变量读取
-        base_url: API Base URL，不传则用默认
+        model: Whisper 模型名（必传，宿主从用户模型配置/YAML 解析）
+        api_key: OpenAI API Key（必传，宿主透传）
+        base_url: API Base URL（必传，宿主从 YAML asr.openai_base_url 解析）
 
     Returns:
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
     """
     import httpx
 
-    if not api_key or not base_url:
-        from novamind.setting.yaml_config import get_config
-
-        asr_cfg = get_config().asr
-        api_key = api_key or asr_cfg.openai_api_key
-        base_url = base_url or asr_cfg.openai_base_url
-    if not api_key:
-        raise RuntimeError("未配置 OPENAI_API_KEY（asr.openai_api_key），无法使用 Whisper API")
+    # 发包纪律（批次：发包模式）：凭据/模型名/端点由调用方透传，引擎不回读
+    # 全局配置（原 YAML asr 段兜底已上移宿主 _resolve_asr_route）
+    if not model or not api_key or not base_url:
+        raise RuntimeError(
+            "云端 Whisper 转写需要调用方透传 model/api_key/base_url"
+            "（部署级默认端点由宿主路由层从 YAML asr.openai_base_url 解析），当前缺失"
+        )
 
     # 通过 Magic Bytes 检测真实音频格式，不再依赖文件扩展名
     ext, mime_type = _detect_audio_format(file_content)
@@ -1086,7 +1081,7 @@ async def transcribe_audio_with_timestamps(
 async def transcribe_audio_with_dashscope(
     file_content: bytes,
     file_type: str = "mp3",
-    model: str = "paraformer-v2",
+    model: str = "",
     api_key: str | None = None,
     base_url: str | None = None,
     minio_bucket: str | None = None,
@@ -1128,12 +1123,12 @@ async def transcribe_audio_with_dashscope(
         submit_transcription,
     )
 
-    if not api_key:
-        from novamind.setting.yaml_config import get_config
-
-        api_key = get_config().asr.dashscope_api_key
-        if not api_key:
-            raise RuntimeError("未配置 DASHSCOPE_API_KEY（asr.dashscope_api_key），无法使用 DashScope Paraformer API")
+    # 发包纪律：api_key 由调用方透传（原 YAML asr 段兜底已上移宿主路由层）
+    if not model or not api_key:
+        raise RuntimeError(
+            "云端 DashScope 转写需要调用方透传 model 与 api_key"
+            "（部署级兜底由宿主路由层从 YAML asr 段解析），当前缺失"
+        )
     configure_dashscope(api_key, base_url)
 
     # 通过 Magic Bytes 检测真实音频格式，不再依赖文件扩展名

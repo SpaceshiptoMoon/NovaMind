@@ -360,12 +360,8 @@ async def test_transcribe_audio_with_timestamps_includes_language(monkeypatch, t
             captured["data"] = data
             return FakeResponse()
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    # 批次 4.7：audio_utils 改读 get_config().asr——patch 配置对象而非纯 env
-    from novamind.setting.yaml_config import get_config
-    cfg = get_config()
-    cfg.asr.openai_api_key = "test-key"
-
+    # 发包模式改造：引擎不读全局配置，凭据由调用方透传（原 YAML asr 段兜底
+    # 已上移宿主路由层）
     import httpx
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
@@ -374,11 +370,27 @@ async def test_transcribe_audio_with_timestamps_includes_language(monkeypatch, t
         file_content=b"ID3fake-mp3",
         file_type="mp3",
         model="whisper-1",
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
         language="zh",
     )
 
     assert segments[0]["text"] == "hello"
     assert captured["data"]["language"] == "zh"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_transcribe_openai_requires_passthrough_credentials():
+    """发包纪律反例：未透传 model/api_key 时显式报错，引擎不回读全局配置。"""
+    import pytest as _pytest
+
+    with _pytest.raises(RuntimeError, match="透传"):
+        await transcribe_audio_with_timestamps(
+            file_content=b"ID3fake-mp3",
+            file_type="mp3",
+            model="",
+            api_key=None,
+        )
 
 
 @pytest.mark.anyio("asyncio")

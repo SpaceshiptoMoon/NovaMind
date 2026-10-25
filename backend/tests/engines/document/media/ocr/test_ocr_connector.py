@@ -23,7 +23,12 @@ from novamind.engines.document.media.ocr.blocks import OcrBlock, OcrResult
 
 pytestmark = pytest.mark.unit
 
-CONFIG = OcrEngineConfig(api_key="test-key")
+CONFIG = OcrEngineConfig(
+        api_key="test-key",
+        model="qwen3.5-ocr",
+        openai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        dashscope_base_url="https://dashscope.aliyuncs.com/api/v1",
+    )
 
 
 def _result(protocol: str = "dashscope", text: str = "内容") -> OcrResult:
@@ -61,7 +66,12 @@ class TestResolveRoute:
 
     def test_missing_api_key_raises(self):
         with pytest.raises(OcrCredentialsMissingError, match="api_key"):
-            OcrConnector(OcrEngineConfig(api_key="")).resolve_route(file_type="pdf")
+            OcrConnector(OcrEngineConfig(
+            api_key="",
+            model="qwen3.5-ocr",
+            openai_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            dashscope_base_url="https://dashscope.aliyuncs.com/api/v1",
+        )).resolve_route(file_type="pdf")
 
     def test_missing_engine_config_raises(self):
         with pytest.raises(OcrCredentialsMissingError, match="未注入"):

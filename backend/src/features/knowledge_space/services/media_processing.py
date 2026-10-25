@@ -168,7 +168,20 @@ async def _resolve_asr_route(
         )
     except AsrCredentialsMissingError as exc:
         raise PermanentProcessingError(document_id=document.id, error_message=str(exc)) from exc
-    return route.protocol, route.model, route.api_key, route.base_url
+    api_key, base_url = route.api_key, route.base_url
+    # 部署级兜底（发包模式改造上移）：云端协议凭证缺失时回读 YAML asr 段——
+    # 此兜底原在引擎函数内回读全局配置，违反「引擎零 setting 依赖、宿主透传」
+    # 的发包纪律；上移到宿主路由层后，引擎只消费透传值。
+    if route.protocol in ("openai", "dashscope") and not api_key:
+        from novamind.setting.yaml_config import get_config
+
+        # getattr 取值：测试桩的配置对象可能只构造了部分段，缺字段视为未配置
+        # （与「没选不兜底」一致，不做二次回退）
+        asr_cfg = getattr(get_config(), "asr", None)
+        api_key = getattr(asr_cfg, "openai_api_key", "") if route.protocol == "openai" else getattr(asr_cfg, "dashscope_api_key", "")
+        if route.protocol == "openai" and not base_url:
+            base_url = getattr(asr_cfg, "openai_base_url", "") or None
+    return route.protocol, route.model, api_key, base_url
 
 
 def _build_engine_audio_config() -> AudioConfig:
@@ -179,9 +192,18 @@ def _build_engine_audio_config() -> AudioConfig:
     """
     from novamind.setting.yaml_config import get_config
 
-    parsing = get_config().knowledge_base.parsing
+    _probe_cfg = get_config()
+    print("PROBE get_config type:", type(_probe_cfg), "has asr:", hasattr(_probe_cfg, "asr"), "module:", type(_probe_cfg).__module__)
+    parsing = _probe_cfg.knowledge_base.parsing
+    # 发包模式改造上移：parsing 段未配目录时回退 asr.local_whisper_model_dir
+    # （原引擎 _resolve_local_whisper_model_dir 的第 3 级 YAML 回退，随引擎
+    # 去 setting 依赖一并上移宿主）
+    whisper_model_dir = (
+        parsing.local_whisper_model_dir
+        or getattr(get_config(), "asr", None) and getattr(get_config().asr, "local_whisper_model_dir", "") or None
+    )
     return AudioConfig(
-        local_whisper_model_dir=parsing.local_whisper_model_dir,
+        local_whisper_model_dir=whisper_model_dir,
         local_whisper_model=parsing.local_whisper_model,
         local_whisper_cpu_threads=parsing.local_whisper_cpu_threads,
         local_whisper_device=parsing.local_whisper_device,

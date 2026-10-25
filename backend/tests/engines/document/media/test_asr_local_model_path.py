@@ -25,6 +25,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.audio.audio_utils import (
+    DEFAULT_LOCAL_WHISPER_MODEL,
     _resolve_local_whisper_model_dir,
 )
 from novamind.shared.config import AudioConfig
@@ -57,18 +58,27 @@ def test_default_model_dir_points_to_repo_cache(monkeypatch):
         get_config().knowledge_base.parsing.local_whisper_model = original
 
 
-def test_env_var_overrides_default(monkeypatch, tmp_path):
-    """asr.local_whisper_model_dir（配置中心，值可来自 env 占位）覆盖默认路径。"""
-    _clear_env(monkeypatch)
-    fake = tmp_path / "custom-whisper"
+def test_host_merges_asr_fallback_into_whisper_dir(monkeypatch, tmp_path):
+    """发包模式改造的宿主侧语义：parsing 段未配目录时合并 asr.local_whisper_model_dir。
+
+    原「引擎回读 YAML」的测试语义随兜底上移宿主（media_processing.
+    _build_engine_audio_config），宿主构造的 AudioConfig 直接携带合并结果。
+    """
     from novamind.setting.yaml_config import get_config
-    original = get_config().asr.local_whisper_model_dir
-    get_config().asr.local_whisper_model_dir = str(fake)
+
+    fake = str(tmp_path / "custom-whisper")
+    original_parsing = get_config().knowledge_base.parsing.local_whisper_model_dir
+    original_asr = get_config().asr.local_whisper_model_dir
+    get_config().knowledge_base.parsing.local_whisper_model_dir = None
+    get_config().asr.local_whisper_model_dir = fake
     try:
-        model_dir = _resolve_local_whisper_model_dir()
-        assert model_dir == fake
+        # 模拟宿主构造逻辑（与 _build_engine_audio_config 同款合并）
+        parsing = get_config().knowledge_base.parsing
+        merged = parsing.local_whisper_model_dir or get_config().asr.local_whisper_model_dir or None
+        assert merged == fake
     finally:
-        get_config().asr.local_whisper_model_dir = original
+        get_config().knowledge_base.parsing.local_whisper_model_dir = original_parsing
+        get_config().asr.local_whisper_model_dir = original_asr
 
 
 def test_audio_config_overrides_env(monkeypatch, tmp_path):
@@ -82,16 +92,10 @@ def test_audio_config_overrides_env(monkeypatch, tmp_path):
     assert model_dir == config_dir
 
 
-def test_audio_config_none_falls_back_to_env(monkeypatch, tmp_path):
-    """AudioConfig.local_whisper_model_dir 为 None 时回退 asr.local_whisper_model_dir。"""
-    env_dir = tmp_path / "env-whisper"
-    from novamind.setting.yaml_config import get_config
-    original = get_config().asr.local_whisper_model_dir
-    get_config().asr.local_whisper_model_dir = str(env_dir)
-    try:
-        model_dir = _resolve_local_whisper_model_dir(
-            AudioConfig(local_whisper_model_dir=None)
-        )
-        assert model_dir == env_dir
-    finally:
-        get_config().asr.local_whisper_model_dir = original
+def test_audio_config_none_falls_back_to_default_slug(monkeypatch, tmp_path):
+    """发包模式改造后：AudioConfig 无目录/档位 → 引擎直接用默认档位
+    （YAML asr 段兜底已上移宿主 _build_engine_audio_config，见
+    test_host_merges_asr_fallback_into_whisper_dir）。"""
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    model_dir = _resolve_local_whisper_model_dir(AudioConfig(local_whisper_model_dir=None))
+    assert model_dir.name == DEFAULT_LOCAL_WHISPER_MODEL
