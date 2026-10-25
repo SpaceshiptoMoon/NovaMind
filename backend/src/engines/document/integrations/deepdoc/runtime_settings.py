@@ -8,8 +8,8 @@
   保留既有环境变量名与默认值——存量部署零破坏；
 - ``set_settings()``：宿主注入口（启动期从 YAML/部署配置构造后覆盖，
   满足「参数由调用方透传」）；
-- ``get_settings()``：引擎内唯一允许的消费口（惰性缓存，未注入时按
-  ``load_settings()`` 解析一次）。
+- ``get_settings()``：引擎内唯一允许的消费口（无缓存现读进程环境，
+  运行期环境变更即时生效；宿主注入后 env 不再参与）。
 
 边界：``vendor/``（逐字拷贝）内的环境变量读取不在本收口范围，随上游
 升级单独处理。
@@ -31,9 +31,13 @@ def _env_int(env: Mapping[str, str], key: str, default: int) -> int:
         return default
 
 
-def _env_bool(env: Mapping[str, str], key: str, default: bool, *, off: str = "0") -> bool:
-    """「出现且 ≠ off 值」为开（TABLE_AUTO_ROTATE=false 关 等关开关型）。"""
-    raw = (env.get(key) or "").strip()
+def _env_bool(env: Mapping[str, str], key: str, default: bool, *, off: str = "false") -> bool:
+    """「出现且 ≠ off 值」为开（TABLE_AUTO_ROTATE=false 关 等关开关型）。
+
+    比较大小写不敏感（原散落实现含 ``.lower()``——``False``/``FALSE``
+    与 ``false`` 同义，红队 P1-1 大小写回归修复）。
+    """
+    raw = (env.get(key) or "").strip().lower()
     if not raw:
         return default
     return raw != off
@@ -60,6 +64,7 @@ class DeepDocSettings:
     model_dir: str = ""                                 # DEEPDOC_MODEL_DIR（空=仓库根 .cache/deepdoc）
     hf_endpoint: str = "https://huggingface.co"         # HF_ENDPOINT
     mirrors_json: str = ""                              # DEEPDOC_MIRRORS（JSON 降级源清单）
+    disable_mirrors: bool = False                       # DEEPDOC_DISABLE_MIRRORS=1（降级换源逃生门）
     skip_checksum: bool = False                         # DEEPDOC_SKIP_MODEL_CHECKSUM=1
     hf_etag_timeout: int = 60                           # DEEPDOC_HF_ETAG_TIMEOUT
     hf_max_workers: int = 4                             # DEEPDOC_HF_MAX_WORKERS
@@ -84,7 +89,9 @@ class DeepDocSettings:
     render_window_size: int = 0                         # DEEPDOC_RENDER_WINDOW_SIZE（0=默认窗）
     table_auto_rotate: bool = True                      # TABLE_AUTO_ROTATE=false 关
     crosspage_composite: bool = True                    # DEEPDOC_CROSSPAGE_COMPOSITE=false 关
-    page_batch_size: int = 50                           # PDF_PARSER_PAGE_BATCH_SIZE
+    # PDF_PARSER_PAGE_BATCH_SIZE——注意：当前唯一消费者在 vendored
+    # pdf_parser（vendor 豁免直读 env），本字段为接缝预留，注入暂无行为效果
+    page_batch_size: int = 50
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> DeepDocSettings:
@@ -102,6 +109,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> DeepDocSettings:
         model_dir=(e.get("DEEPDOC_MODEL_DIR") or "").strip(),
         hf_endpoint=(e.get("HF_ENDPOINT") or DeepDocSettings.hf_endpoint).rstrip("/"),
         mirrors_json=(e.get("DEEPDOC_MIRRORS") or "").strip(),
+        disable_mirrors=_env_flag(e, "DEEPDOC_DISABLE_MIRRORS", False),
         skip_checksum=_env_flag(e, "DEEPDOC_SKIP_MODEL_CHECKSUM", False),
         hf_etag_timeout=_env_int(e, "DEEPDOC_HF_ETAG_TIMEOUT", 60),
         hf_max_workers=_env_int(e, "DEEPDOC_HF_MAX_WORKERS", 4),
@@ -117,7 +125,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> DeepDocSettings:
             e.get("DEEPDOC_FORMULA_MODEL_REPO_ID") or DeepDocSettings.formula_model_repo_id
         ),
         formula_model_dir=(e.get("DEEPDOC_FORMULA_MODEL_DIR") or "").strip(),
-        formula_quantize=_env_bool(e, "DEEPDOC_FORMULA_QUANTIZE", True),
+        formula_quantize=_env_bool(e, "DEEPDOC_FORMULA_QUANTIZE", True, off="0"),
         text_concat_model_repo_id=(
             e.get("DEEPDOC_TEXT_CONCAT_MODEL_REPO_ID") or DeepDocSettings.text_concat_model_repo_id
         ),

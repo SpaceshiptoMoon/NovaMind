@@ -160,6 +160,14 @@ async def parse_document_with_qwen_ocr(*, file_content: bytes, config: OcrEngine
     Raises:
         OcrRequestError: 网络失败、超时、非 2xx、响应缺 ocr_result。
     """
+    if not config.model or not config.api_key or not config.openai_base_url:
+        # 与 multi_lan 通路同款显式校验：空配置由 OpenAI SDK 报错时信息不友好
+        # 且与 OcrEngineConfig「请求时对空值显式报错」的承诺不符（红队 P2-3）
+        raise OcrRequestError(
+            "OCR document_parsing 配置缺失：model/api_key/openai_base_url "
+            "必须由宿主透传（OcrEngineConfig），当前为空"
+        )
+
     from openai import OpenAI
 
     b64 = base64.b64encode(file_content).decode("ascii")
@@ -242,7 +250,7 @@ async def recognize_image_with_qwen_ocr(
 
         # api_key 恒 per-call 传递；base url 仅在偏离 SDK 默认（私有化部署）时
         # 写全局——标准百炼场景与 ASR 并发的全局互踩窗口由此根除（批次 6.3）
-        if config.dashscope_base_url.rstrip("/") != "https://dashscope.aliyuncs.com/api/v1":
+        if config.dashscope_base_url and config.dashscope_base_url.rstrip("/") != "https://dashscope.aliyuncs.com/api/v1":
             configure_dashscope(config.api_key, config.dashscope_base_url)
             logger.warning(
                 "OCR 使用非默认 DashScope 地址（私有化部署），base url 为进程级全局，"

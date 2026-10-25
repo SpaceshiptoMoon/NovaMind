@@ -434,7 +434,7 @@ def download_hf_files(
             return base_dir
     except Exception as exc:
         # HF 侧全部源（镜像直链/官方 snapshot/官方直链）均失败 → 按部署配置降级换源
-        if os.getenv(DISABLE_MIRRORS_ENV_VAR, "") == "1":
+        if get_settings().disable_mirrors:
             raise
         logger.warning(
             "DeepDoc 模型 HF 源下载失败，按部署配置降级换源",

@@ -192,16 +192,23 @@ def _build_engine_audio_config() -> AudioConfig:
     """
     from novamind.setting.yaml_config import get_config
 
-    _probe_cfg = get_config()
-    print("PROBE get_config type:", type(_probe_cfg), "has asr:", hasattr(_probe_cfg, "asr"), "module:", type(_probe_cfg).__module__)
-    parsing = _probe_cfg.knowledge_base.parsing
-    # 发包模式改造上移：parsing 段未配目录时回退 asr.local_whisper_model_dir
-    # （原引擎 _resolve_local_whisper_model_dir 的第 3 级 YAML 回退，随引擎
-    # 去 setting 依赖一并上移宿主）
-    whisper_model_dir = (
-        parsing.local_whisper_model_dir
-        or getattr(get_config(), "asr", None) and getattr(get_config().asr, "local_whisper_model_dir", "") or None
-    )
+    parsing = get_config().knowledge_base.parsing
+    # 发包模式改造上移：原引擎第 3 级「YAML asr.local_whisper_model_dir 回退」
+    # 收编进宿主构造。优先级保序（红队 P0-1：合并进 dir 字段会反转——
+    # 引擎视 dir 为第 1 级，「parsing 配档位名 + asr 配目录」组合下档位名
+    # 会被陈旧目录静默覆盖）：仅当 parsing 段既无目录也无档位名时，asr
+    # 目录才作为第 2.5 级兜底；档位名存在时保持档位名语义（其缓存目录由
+    # 引擎按档位推导）。
+    asr_cfg = getattr(get_config(), "asr", None)
+    asr_model_dir = getattr(asr_cfg, "local_whisper_model_dir", "") if asr_cfg else ""
+    if parsing.local_whisper_model_dir:
+        whisper_model_dir: str | None = parsing.local_whisper_model_dir
+    elif parsing.local_whisper_model:
+        whisper_model_dir = None  # 档位名语义，引擎按档位推导缓存目录
+    elif asr_model_dir:
+        whisper_model_dir = asr_model_dir
+    else:
+        whisper_model_dir = None
     return AudioConfig(
         local_whisper_model_dir=whisper_model_dir,
         local_whisper_model=parsing.local_whisper_model,

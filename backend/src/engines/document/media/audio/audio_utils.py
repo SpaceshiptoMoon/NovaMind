@@ -1099,7 +1099,7 @@ async def transcribe_audio_with_dashscope(
     Args:
         file_content: 音频文件二进制内容
         file_type: 音频文件类型 (mp3/wav/flac/ogg/m4a)
-        model: DashScope ASR 模型名，默认 paraformer-v2
+        model: DashScope ASR 模型名（必传，宿主透传）
         api_key: DashScope API Key，不传则从环境变量读取
         base_url: DashScope/百炼 平台 API 地址，不传则使用 SDK 默认
         minio_bucket: MinIO 桶名，用于上传临时文件生成预签名 URL

@@ -38,11 +38,7 @@ def pip_install_torch(*args, **kwargs):
     except ImportError:
         return None
 
-class _Settings:
-    """进程级环境设置：PARALLEL_DEVICES 控制多 GPU 运行时副本数。"""
-    PARALLEL_DEVICES = get_settings().parallel_devices
 
-settings = _Settings()
 import math
 
 import cv2
@@ -441,7 +437,11 @@ class OCR:
 
         """
         self.model_dir = str(model_dir or default_model_dir())
-        self.parallel_devices = settings.PARALLEL_DEVICES if parallel_devices is None else max(int(parallel_devices), 0)
+        # 发包模式：运行时配置注入（get_settings 现读，宿主 set_settings 即时生效；
+        # 原 _Settings 类在 import 期固化，注入值被静默忽略——红队 P1-3）
+        self.parallel_devices = (
+            get_settings().parallel_devices if parallel_devices is None else max(int(parallel_devices), 0)
+        )
         self.text_detector = []
         self.text_recognizer = []
         self.drop_score = 0.5
