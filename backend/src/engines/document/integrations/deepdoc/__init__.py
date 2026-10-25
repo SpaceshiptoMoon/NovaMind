@@ -8,6 +8,7 @@ _EXPORT_MAP = {
     "DeepDocParser": ("novamind.engines.document.integrations.deepdoc.core.runtime_parser", "DeepDocParser"),
     "DeepDocParseResult": ("novamind.engines.document.integrations.deepdoc.core.models", "DeepDocParseResult"),
     "strip_position_tags": ("novamind.engines.document.integrations.deepdoc.core.models", "strip_position_tags"),
+    "LayoutInferenceError": ("novamind.engines.document.integrations.deepdoc.parsers.pdf", "LayoutInferenceError"),
 }
 
 __all__ = list(_EXPORT_MAP.keys())

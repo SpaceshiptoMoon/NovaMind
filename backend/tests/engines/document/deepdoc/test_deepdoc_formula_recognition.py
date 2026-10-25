@@ -395,7 +395,7 @@ def test_runtime_formula_flag_passthrough(tmp_path, monkeypatch):
     captured = {}
 
     class _FakePdfParser:
-        def __call__(self, filename, *, pdf_mode, chunk_size, formula_recognition=None):
+        def __call__(self, filename, *, pdf_mode, chunk_size, formula_recognition=None, **_kwargs):
             captured["formula_recognition"] = formula_recognition
             from novamind.engines.document.integrations.deepdoc.core.models import (
                 DeepDocParseResult,

@@ -58,6 +58,16 @@ from novamind.engines.document.integrations.deepdoc.runtime_settings import get_
 logger = get_logger(__name__)
 
 
+class LayoutInferenceError(RuntimeError):
+    """版面识别推理失败（模型加载或 forward 异常）。
+
+    发包纪律：引擎不做「回退启发式」的降级决策——降级到启发式布局是业务
+    选择。调用方经 ``layout_failure_policy`` 显式声明策略：
+    ``"heuristic_fallback"``（默认，保持既有行为）由引擎在失败窗调用注入的
+    启发式计算继续；``"raise"`` 时本异常直接上抛，由宿主决定重试/失败/换路。
+    """
+
+
 @dataclass(slots=True)
 class DeepDocPdfBox:
     """DeepDoc PDF 文本框：页局部坐标的最小排版单元（行级）。
@@ -360,6 +370,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         pdf_mode: str = "full",
         chunk_size: int = 1000,
         formula_recognition: bool | None = None,
+        layout_failure_policy: str = "heuristic_fallback",
     ) -> DeepDocParseResult:
         """解析 PDF 入口：按 pdf_mode 分发到 plain 或 full 流水线。
         
@@ -369,6 +380,10 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 文本）；"layout"/"vision" 为 full 的兼容别名。
             chunk_size: chunk 目标字符长度。
             formula_recognition: 是否启用公式识别；None 走配置默认。
+            layout_failure_policy: 版面识别失败策略（发包模式——降级由调用方
+                声明）："heuristic_fallback"（默认，失败窗回退启发式布局，
+                layout_source 元数据可见）/ "raise"（抛 LayoutInferenceError，
+                由宿主决定重试或失败）。
         
         Returns:
             DeepDocParseResult：full_text / chunks / metadata（含 reading_order、
@@ -376,6 +391,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         
         Raises:
             ValueError: pdf_mode 不在支持列表。
+            LayoutInferenceError: layout_failure_policy="raise" 且版面推理失败。
         """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
         logger.info(
@@ -389,14 +405,16 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             result = self._parse_plain(filename, chunk_size=chunk_size)
         elif pdf_mode == "full":
             result = self._parse_full(
-                filename, chunk_size=chunk_size, formula_recognition=formula_recognition
+                filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
+                layout_failure_policy=layout_failure_policy,
             )
         elif pdf_mode in ("layout", "vision"):
             # 兼容别名：layout/vision 已并入 full（上游对齐的逐框融合流水线），
             # 保留一个发布周期，防止旧 runtime config / 测试漏迁移。
             logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
             result = self._parse_full(
-                filename, chunk_size=chunk_size, formula_recognition=formula_recognition
+                filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
+                layout_failure_policy=layout_failure_policy,
             )
         else:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
@@ -594,12 +612,15 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         chunk_size: int,
         formula_recognition: bool | None = None,
+        layout_failure_policy: str = "heuristic_fallback",
     ) -> DeepDocParseResult:
         """上游对齐的默认全量流水线：每页 OCR 检测 + 逐框文字层融合 + 乱码回退 OCR
         （_extract_fused_pages）→ ONNX 版面贴标签 → 段落合并 → 页眉过滤 → 表格/图片
         抽取 → 阅读顺序 → 结构化 chunks。后续步骤复用原 vision 路径的尾巴。"""
         plain_sections, _, outlines = self._plain_parser(filename)
-        image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(filename)
+        image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(
+            filename, layout_failure_policy=layout_failure_policy
+        )
         page_count = len(image_list)
         effective_zooms: list[int] = fusion_meta.get("effective_zooms", [2] * page_count)
         layout_boxes, page_layout = self._get_layout_recognizer()(
@@ -787,6 +808,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     def _extract_fused_pages(
         self,
         filename: str | bytes | Path,
+        layout_failure_policy: str = "heuristic_fallback",
     ) -> tuple[list[np.ndarray], list[list[dict[str, Any]]], list[list[dict[str, Any]]], dict[str, Any]]:
         """上游 RAGFlow __images__+__ocr 对齐：渲染每页 → 抽 pdfplumber 文字层字符 →
         每页 OCR.detect 拿框 → 文字层字符按坐标匹配进框 → 逐框裁决（干净用文字层 /
@@ -856,9 +878,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         logging.info("DeepDoc 布局识别器首次加载模型")
                         layout_recognizer.load()
                 except Exception as exc:
-                    # 模型加载失败 → 全部窗走启发式（与原单次加载失败语义一致）
-                    logger.warning("DeepDoc 布局识别 ONNX 推理失败，回退到启发式", error=str(exc))
+                    # 发包纪律：降级是业务决策——策略由调用方经
+                    # layout_failure_policy 显式声明（默认保持既有行为）
                     layout_model_error = str(exc)
+                    if layout_failure_policy == "raise":
+                        raise LayoutInferenceError(
+                            f"DeepDoc 布局识别模型加载失败: {exc}"
+                        ) from exc
+                    logger.warning("DeepDoc 布局识别 ONNX 推理失败，回退到启发式", error=str(exc))
                     layout_recognizer = None
                     window_heuristic_used = True
 
@@ -979,13 +1006,17 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         window_layout = layout_recognizer.forward(window_images, thr=0.2, batch_size=16)
                         layout_pages.extend(list(window_layout))
                     except Exception as exc:
+                        layout_model_error = str(exc)
+                        if layout_failure_policy == "raise":
+                            raise LayoutInferenceError(
+                                f"DeepDoc 布局识别推理失败（窗 {window_start}-{window_end}）: {exc}"
+                            ) from exc
                         logger.warning(
                             "DeepDoc 布局识别 ONNX 推理失败，该窗回退到启发式",
                             error=str(exc),
                             window_start=window_start,
                             window_end=window_end,
                         )
-                        layout_model_error = str(exc)
                         window_heuristic_used = True
                         layout_pages.extend(
                             _heuristic_for_window(window_fused, window_zooms, image_shapes[window_start:window_end])

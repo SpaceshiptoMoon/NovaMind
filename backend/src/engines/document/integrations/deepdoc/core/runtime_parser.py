@@ -202,11 +202,17 @@ class DeepDocParser:
         # 公式识别（pix2text-mfr）：None = 默认开启（模型在时识别 equation 区域），
         # 显式 False 关闭。模型缺失时解析器内部 WARNING 软降级，不影响可用性。
         formula_recognition = parsing_config.get("deepdoc_formula_recognition")
+        # 发包模式：版面识别失败策略由宿主经 parsing_config 声明（默认启发式
+        # 回退保持既有行为；"raise" 时抛 LayoutInferenceError 由宿主决策）
+        layout_failure_policy = parsing_config.get(
+            "deepdoc_layout_failure_policy", "heuristic_fallback"
+        )
         result = self._pdf_parser(
             pdf_input,
             pdf_mode=pdf_mode,
             chunk_size=int(splitting_config.get("chunk_size", 1000)),
             formula_recognition=None if formula_recognition is None else bool(formula_recognition),
+            layout_failure_policy=str(layout_failure_policy),
         )
         logger.info(
             "DeepDoc PDF 解析完成",
