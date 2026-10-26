@@ -1,4 +1,5 @@
 """Markdown 文档读取器。"""
+import hashlib
 import os
 from pathlib import Path
 
@@ -31,9 +32,13 @@ class MarkdownReader(BaseReader):
                     'text': content,
                     'source': os.path.basename(file_path),
                     'page': 1,
-                    'doc_id': f"md_{hash(file_path)}",
+                    'doc_id': f"md_{hashlib.sha1(os.path.abspath(file_path).encode()).hexdigest()[:16]}",
                     'type': 'markdown'
                 })
+        except (FileNotFoundError, PermissionError, IsADirectoryError):
+            # 打开类失败上抛（红队 P2-2：吞成空列表会让损坏/无权限文件被
+            # 上层误诊为「扫描件/空内容」，运维被引向错误的排查方向）
+            raise
         except Exception as e:
             logger.error("读取Markdown文件失败", file_path=str(file_path), error=str(e))
 

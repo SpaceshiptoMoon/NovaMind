@@ -554,7 +554,9 @@ def _transcribe_in_subprocess(
         logger.info(
             "子进程 ASR 幻觉段过滤: 丢弃 %d/%d 段", filtered_count, len(raw_segments),
         )
-    segments, phrase_dropped = _filter_stock_phrase_segments(segments)
+    segments, phrase_dropped = _filter_stock_phrase_segments(
+        segments, audio_pcm, min_dbfs=min_speech_dbfs
+    )
     if phrase_dropped:
         filtered_count += phrase_dropped
         logger.info("子进程 ASR 套话过滤: 丢弃 %d 段", phrase_dropped)
@@ -695,7 +697,12 @@ def _is_phrase_gate_structural_hit(seg: dict, prev: dict | None, nxt: dict | Non
     return True
 
 
-def _filter_stock_phrase_segments(segments: list[dict]) -> tuple[list[dict], int]:
+def _filter_stock_phrase_segments(
+    segments: list[dict],
+    audio_pcm=None,
+    sample_rate: int = 16000,
+    min_dbfs: float | None = None,
+) -> tuple[list[dict], int]:
     """幻觉套话双门控过滤：结构形态命中后才查短语表，子串匹配丢弃。
 
     判据分两层，避免黑名单误伤正常内容：
@@ -714,9 +721,27 @@ def _filter_stock_phrase_segments(segments: list[dict]) -> tuple[list[dict], int
     for i, seg in enumerate(segments):
         prev = kept[-1] if kept else None
         nxt = segments[i + 1] if i + 1 < len(segments) else None
+        is_last = nxt is None
         if _is_phrase_gate_structural_hit(seg, prev, nxt):
             normalized = (seg.get("text") or "").strip().lower()
             if any(phrase in normalized for phrase in _HALLUCINATION_PHRASES):
+                # 红队 P2-4 方向性修正：末段（nxt is None）的「边界视为邻接静音」
+                # 让间隔条件恒满足——真实片尾告别语会被误丢。末段命中时用声学
+                # 能量裁决：低能量（近静音）判幻觉丢弃；能量正常判真实语音保留；
+                # 能量不可算保留（失败方向安全）。非末段维持直接丢弃（中间孤段
+                # 短套话仍高度疑似幻觉）。
+                if is_last:
+                    if audio_pcm is None or min_dbfs is None:
+                        kept.append(seg)
+                        continue
+                    dbfs = _segment_rms_dbfs(audio_pcm, seg.get("start", 0.0), seg.get("end", 0.0), sample_rate)
+                    if dbfs is None or dbfs >= min_dbfs:
+                        kept.append(seg)
+                        logger.info(
+                            "幻觉套话门控: 末段短语但能量正常，保留真实语音 (dbfs=%s), text=%r",
+                            dbfs, normalized[:30],
+                        )
+                        continue
                 dropped += 1
                 logger.info(
                     "幻觉套话过滤: 丢弃孤立短语段, text=%r, [%.2f-%.2f]",

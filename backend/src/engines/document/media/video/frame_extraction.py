@@ -185,6 +185,7 @@ def _extract_scene_from_path(
         min_interval=min_interval,
         sample_step=sample_step,
         max_frames=max_frames,
+        valid_ts=valid_ts,
     )
 
     # 兜底：无有效切换点 → 候选帧均匀采样（红队 P0-2：_select_scene_keyframes
@@ -262,6 +263,7 @@ def _select_scene_keyframes(
     min_interval: float,
     sample_step: float,
     max_frames: int,
+    valid_ts: list[float] | None = None,
 ) -> list[int]:
     """从相邻候选帧距离序列选场景切换关键帧，返回候选帧索引列表。
 
@@ -280,7 +282,9 @@ def _select_scene_keyframes(
         if dist < threshold:
             continue
         cand_idx = i + 1
-        cand_ts = cand_idx * sample_step
+        # 红队 P3：候选帧解码失败时名义时刻与 valid_ts 实际时刻错位——门控
+        # 优先用实际时刻（导出侧同源），无实测量表时退回名义值
+        cand_ts = valid_ts[cand_idx] if valid_ts and cand_idx < len(valid_ts) else cand_idx * sample_step
         if cand_ts - last_ts < min_interval:
             continue
         selected.append(cand_idx)
@@ -302,6 +306,9 @@ def _uniform_sample_indices(
     ``base`` 为 None 时候选即 ``range(total)``；非 None 时从 ``base`` 列表里按均匀步长抽样。
     """
     if total <= 0:
+        return []
+    if max_frames <= 0:
+        # 防御（红队 P3）：schema 默认 60 难触发，但显式 0/负值时除零崩溃
         return []
     if total <= max_frames:
         return list(base) if base is not None else list(range(total))

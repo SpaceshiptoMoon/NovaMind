@@ -25,7 +25,9 @@ class RAGFlowPptParser:
         
         同页形状集合按对象 id 缓存，避免组内递归重复排序。
         """
-        cache_key = id(shapes)
+        # 红队 P2：id(shapes) 做键——代理对象 GC 后 id 复用会命中陈旧排序。
+        # 绑定形状数量 + 首个形状 id 的组合键（同页形状组稳定）。
+        cache_key = (len(shapes), id(shapes[0]) if shapes else 0)
         if cache_key not in self._shape_cache:
             self._shape_cache[cache_key] = sorted(
                 shapes,

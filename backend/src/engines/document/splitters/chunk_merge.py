@@ -9,7 +9,9 @@ def merge_small_chunks(
     """合并文本长度小于 min_chunk_size 的碎块与相邻块。
 
     策略：从左到右扫描，小块优先向后合并（与下一个块拼接），
-    如果向后合并会超过 chunk_size，则尝试向前合并（与上一个块拼接）。
+    如果向后合并会超过 chunk_size，则尝试向前合并（与上一个块拼接）；
+    末尾碎块（无后继块）也向前合并——此前末块直接保留成检索碎片
+    （红队 P2：「向前合并」只在向后合并超限时可达，末块永不前并）。
 
     Args:
         chunks: 切分器产出的分块列表，每项含 text/source/page/type 与
@@ -32,6 +34,16 @@ def merge_small_chunks(
     i = 0
     while i < len(texts):
         current_text = texts[i]
+        # 红队 P2：末尾碎块（<min 且无后继块）此前直接保留成检索碎片——
+        # 能向前并入上一个结果（受 chunk_size 硬限）时优先前并。
+        if (
+            len(current_text) < min_chunk_size
+            and result
+            and len(result[-1]['text'] + "\n" + current_text) <= chunk_size
+        ):
+            result[-1]['text'] += "\n" + current_text
+            i += 1
+            continue
         if len(current_text) < min_chunk_size and i + 1 < len(texts):
             combined = current_text + "\n" + texts[i + 1]
             if len(combined) <= chunk_size:

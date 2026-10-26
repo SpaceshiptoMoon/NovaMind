@@ -372,16 +372,52 @@ def test_subprocess_wires_min_speech_dbfs_from_config(monkeypatch):
 # ==================== 幻觉套话双门控 ====================
 
 
+def _pcm(level: float, dur_sec: float = 2.0, rate: int = 16000):
+    """构造 float32 ndarray 音频（faster-whisper decode_audio 同款形态）。"""
+    import math
+
+    import numpy as np
+
+    n = int(rate * dur_sec)
+    if level <= 0:
+        return np.zeros(n, dtype=np.float32)
+    return np.asarray(
+        [level * math.sin(2 * 3.14159 * 440 * i / rate) for i in range(n)],
+        dtype=np.float32,
+    )
+    return b"".join(
+        struct.pack("<h", int(level * 32767 * math.sin(2 * 3.14159 * 440 * i / rate)))
+        for i in range(n)
+    )
+
+
 def test_phrase_filter_drops_isolated_stock_phrase():
-    """正：片尾静音残留的孤立套话（短时长+短文本+大间隔）→ 丢。"""
+    """正：片尾静音残留的孤立套话（短时长+短文本+大间隔+低能量）→ 丢。
+
+    红队 P2-4 后末段命中改由声学能量裁决：近静音能量判幻觉。"""
     segments = [
         _seg("大家好今天我们讲知识库检索的内容", start=1.0, end=8.0),
         # 与前段间隔 3s、时长 2s、6 字 —— 结构+短语双命中
         _seg("谢谢观看", start=11.0, end=13.0),
     ]
-    kept, dropped = _filter_stock_phrase_segments(segments)
+    kept, dropped = _filter_stock_phrase_segments(
+        segments, _pcm(0.0, 13.5), min_dbfs=-40.0
+    )
     assert dropped == 1
     assert len(kept) == 1
+
+
+def test_phrase_filter_keeps_last_phrase_with_real_energy():
+    """红队 P2-4 反例：真实片尾告别语（能量正常）→ 留，不因末段位置误丢。"""
+    segments = [
+        _seg("大家好今天我们讲知识库检索的内容", start=1.0, end=8.0),
+        _seg("谢谢观看", start=11.0, end=13.0),
+    ]
+    kept, dropped = _filter_stock_phrase_segments(
+        segments, _pcm(0.3, 13.5), min_dbfs=-40.0
+    )
+    assert dropped == 0
+    assert len(kept) == 2
 
 
 def test_phrase_filter_keeps_phrase_with_dense_context():

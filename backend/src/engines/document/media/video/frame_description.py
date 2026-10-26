@@ -726,12 +726,30 @@ async def describe_video_native(
                 )
                 seg_bytes = Path(tmp_path).read_bytes()
 
+                # 红队 P2-1：-c copy 流复制只能从 ≤t0 的最近关键帧起复制，产物
+                # 实际起点早于名义 t0（长 GOP 可偏移数秒）——用 av 探测产物实际
+                # 起点，注入 prompt 的 t0 与锚点时间按实际值校正；探测失败退回
+                # 名义 t0（维持既有语义）
+                t0_effective = t0
+                try:
+                    import av as _av
+
+                    with _av.open(tmp_path) as container:
+                        raw_start = getattr(container, "start_time", None)
+                        if raw_start is not None:
+                            t0_effective = round(t0 - (raw_start / _av.time_base), 2)
+                except Exception:
+                    pass
+
                 url = await upload_segment(seg_bytes, si)
-                prompt = prompt_template.format(t0=f"{t0:.1f}")
+                prompt = prompt_template.format(t0=f"{t0_effective:.1f}")
                 desc = await gen(
                     url, prompt,
                     max_tokens=max_tokens, temperature=temperature,
                 )
+                # 注：result["start_ts"/"end_ts"] 保持名义分片边界（前端分段
+                # 展示契约）；prompt 口径用 t0_effective 让 VLM 描述与真实
+                # 画面内容对齐
         except Exception as exc:
             result["exc"] = exc
             logger.warning(

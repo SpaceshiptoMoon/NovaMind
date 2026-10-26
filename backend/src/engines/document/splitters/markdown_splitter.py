@@ -252,7 +252,10 @@ class MarkdownSplitter(BaseSplitter):
     def _split_by_sentences(self, text: str) -> list[str]:
         """按中英文句读标点切句并组合短句，无标点段整段保留不丢弃。"""
         # 匹配中文和英文的句子结束标点
-        sentence_endings = r'[.!?。！？]'
+        # 复用 sentence_segment 权威边界正则（裸 [.!?。！？] 会把 3.14/e.g. 切碎——红队 P2）
+        sentence_endings = (
+            r'(?<=[。！？])|(?<=[.!?！？])(?=\s|$)'
+        )
 
         
         # 重构句子，把标点符号加回去
