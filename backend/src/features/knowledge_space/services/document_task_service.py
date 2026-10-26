@@ -432,6 +432,10 @@ class DocumentTaskService:
                 field="document_id",
             )
 
+        # 模型/解析配置修复后重试必须生效（红队实测反馈：用户把 vlm_model
+        # 换成有额度的模型后点重试，旧快照 override 使修复永远不生效——
+        # 改配置→重试→仍旧配置→失败 的死路）。重试现读 KB 当前配置；
+        # process_mode=RETRY 仍保留（worker 端重试语义与配置来源解耦）。
         task_info = await self._enqueue_document_processing(
             document,
             "重试",
@@ -441,7 +445,6 @@ class DocumentTaskService:
             process_mode=TaskProcessMode.RETRY,
             batch_note=batch_note,
             retry_count=0,
-            pipeline_config_override=latest_task.pipeline_config,
         )
 
         self.logger.info(
