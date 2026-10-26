@@ -66,7 +66,7 @@ def extract_audio_track(source_path: str, *, max_duration_sec: int = 7200) -> by
         result = subprocess.run(
             command,
             capture_output=True,
-            text=True,
+            text=True, errors='replace',
             check=False,
             timeout=max(120, max_duration_sec),
         )
@@ -109,6 +109,17 @@ def extract_audio_track(source_path: str, *, max_duration_sec: int = 7200) -> by
             extra={"source_path": source_path},
         )
         return b""
+
+    if result.returncode != 0:
+        # 红队 P2-2：ffmpeg 失败但留有部分产物——此前静默返回截断音频，
+        # 旁白内容缺失且不可观测。保留部分产物（部分旁白优于没有）但必须
+        # 显式告警，让下游与运维知晓内容可能截断。
+        detail = extract_ffmpeg_error(stderr, stdout)
+        logger.warning(
+            "音轨提取 ffmpeg 非零退出但存在部分产物，返回截断音频（可能缺旁白）",
+            extra={"source_path": source_path, "detail": detail,
+                   "bytes": out_file.stat().st_size},
+        )
 
     try:
         content = out_file.read_bytes()

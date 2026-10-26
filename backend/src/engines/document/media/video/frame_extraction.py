@@ -42,7 +42,7 @@ async def extract_frames_scene(
     file_content: bytes,
     max_frames: int = 60,
     *,
-    scene_threshold: float = 0.3,
+    scene_threshold: float = 0.003,
     min_interval: float = 2.0,
     sample_step: float | None = None,
 ) -> list[tuple[bytes, float, int]]:
@@ -68,7 +68,7 @@ async def extract_frames_scene_from_path(
     filepath: str,
     max_frames: int = 60,
     *,
-    scene_threshold: float = 0.3,
+    scene_threshold: float = 0.003,
     min_interval: float = 2.0,
     sample_step: float | None = None,
 ) -> list[tuple[bytes, float, int]]:
@@ -187,8 +187,10 @@ def _extract_scene_from_path(
         max_frames=max_frames,
     )
 
-    # 兜底：无切换点 → 候选帧均匀采样。
-    if not selected_candidate_idx:
+    # 兜底：无有效切换点 → 候选帧均匀采样（红队 P0-2：_select_scene_keyframes
+    # 首帧必选使 selected 恒非空，`not selected` 判断是死代码——静态幻灯片类
+    # 视频只会产出首帧。改判「≤1 个选中」即无切换点形态）
+    if len(selected_candidate_idx) <= 1:
         selected_candidate_idx = _uniform_sample_indices(len(valid_ts), max_frames)
 
     # 导出选中帧为 JPEG。
@@ -232,10 +234,15 @@ def compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
 
 
 def histogram_chi_square(h1: np.ndarray, h2: np.ndarray) -> float:  # noqa: F821
-    """两归一化直方图的卡方距离，归一化到 [0, 1] 区间近似。
+    """两归一化直方图的平均卡方距离（红队 P0-1 量级标定修正）。
 
-    卡方距离 ``sum((h1-h2)^2 / (h1+h2))``，分母为 0 的 bin 跳过；
-    再除以 bin 数得到平均量级，约 [0, 1]，便于 ``scene_threshold`` 跨视频可调。
+    卡方距离 ``sum((h1-h2)^2 / (h1+h2))``，分母为 0 的 bin 跳过；除以活跃
+    bin 数得平均量级。**注意量级**：归一化直方图的卡方上界为 2，除以活跃
+    bin 数（真实视频 100~256）后实际量级被压缩约两个数量级——硬切点实测
+    ≈0.0065，同场景相邻帧接近 0。消费方默认阈值按此实测标定：
+    ``scene_threshold=0.003``、dedup 相似度 cutoff=0.995（合成硬切视频
+    对照实验验证）。此前注释声称「约 [0, 1]」导致默认阈值 0.3/0.95 在
+    真实视频上永不触发（scene 检测失效、dedup 全部误判相似丢帧）。
     """
     import numpy as np
 

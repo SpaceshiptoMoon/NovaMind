@@ -596,7 +596,7 @@ def _slice_video_segment(
         cmd = [*base_cmd, *extra, output_path]
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=False,
+                cmd, capture_output=True, text=True, errors='replace', check=False,
                 timeout=max(60, timeout_sec),
             )
         except subprocess.TimeoutExpired as exc:
@@ -716,12 +716,16 @@ async def describe_video_native(
         try:
             with tempfile.NamedTemporaryFile(suffix=f"_vseg{si:03d}.mp4", delete=False) as tmp:
                 tmp_path = tmp.name
-            await asyncio.to_thread(
-                _slice_video_segment, video_path, t0, t1, tmp_path
-            )
-            seg_bytes = Path(tmp_path).read_bytes()
 
             async with sem:
+                # 切片+读入也纳入并发限流（红队 P1-1）：此前在 sem 外全量并发，
+                # 长视频所有分片的 seg_bytes（百 MB 级/片）同时驻留内存等
+                # semaphore，2h@1080p ≈ 数 GB 峰值——与分窗渲染 OOM 教训同型
+                await asyncio.to_thread(
+                    _slice_video_segment, video_path, t0, t1, tmp_path
+                )
+                seg_bytes = Path(tmp_path).read_bytes()
+
                 url = await upload_segment(seg_bytes, si)
                 prompt = prompt_template.format(t0=f"{t0:.1f}")
                 desc = await gen(

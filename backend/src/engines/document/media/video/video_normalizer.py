@@ -87,7 +87,7 @@ def normalize_video_for_frame_extraction(source_path: str) -> str:
         result = subprocess.run(
             command,
             capture_output=True,
-            text=True,
+            text=True, errors='replace',
             check=False,
             timeout=600,
         )
