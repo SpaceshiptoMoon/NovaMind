@@ -38,18 +38,38 @@ const showHeader = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(
-    160deg,
-    var(--color-bg) 0%,
-    var(--color-bg-card-elevated) 50%,
-    var(--color-bg) 100%
-  );
+  position: relative;
+  isolation: isolate;
   padding: var(--space-6);
+  /* 氛围背景：径向墨水晕 + 斜向光带——给登录玻璃卡提供可透的层次 */
+  background:
+    radial-gradient(900px 640px at 14% -6%, rgba(32, 97, 143, 0.09), transparent 60%),
+    radial-gradient(760px 600px at 106% 106%, rgba(10, 10, 10, 0.055), transparent 56%),
+    linear-gradient(160deg, var(--color-bg) 0%, var(--color-bg-card-elevated) 50%, var(--color-bg) 100%);
+}
+
+html[data-theme='dark'] .auth-layout {
+  background:
+    radial-gradient(900px 640px at 14% -6%, rgba(96, 165, 250, 0.075), transparent 60%),
+    radial-gradient(760px 600px at 106% 106%, rgba(255, 255, 255, 0.04), transparent 56%),
+    linear-gradient(160deg, var(--color-bg) 0%, var(--color-bg-card-elevated) 50%, var(--color-bg) 100%);
 }
 
 .auth-container {
   width: 100%;
   max-width: 400px;
+  padding: var(--space-8) var(--space-6);
+  border-radius: var(--radius-2xl);
+  /* 登录卡玻璃（strong 档：表单高可读） */
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .auth-container { background: var(--color-bg-card); }
 }
 
 .auth-header {

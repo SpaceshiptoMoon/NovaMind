@@ -304,10 +304,18 @@ const handleCommand = async (command: string) => {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-6);
-  background: var(--color-bg-card);
-  border-bottom: 1px solid var(--color-border);
+  /* 顶栏磨砂玻璃（sticky 悬浮于内容之上，滚动时透出下方内容） */
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  border-bottom: 1px solid var(--glass-border-hairline);
+  box-shadow: var(--glass-highlight);
   position: relative;
   z-index: var(--z-sticky);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .app-header { background: var(--color-bg-card); }
 }
 
 .header-nav {

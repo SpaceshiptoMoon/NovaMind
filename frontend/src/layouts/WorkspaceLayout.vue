@@ -1208,13 +1208,21 @@ onMounted(async () => {
   width: var(--sidebar-width);
   flex-shrink: 0;
   height: 100%;
-  background: var(--color-bg-sidebar);
-  border-right: 1px solid var(--color-border-light);
+  /* 侧栏磨砂玻璃：透出全局氛围背景（body::before 墨水晕） */
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+  border-right: 1px solid var(--glass-border-hairline);
+  box-shadow: inset -1px 0 0 var(--glass-border), 1px 0 8px rgba(10, 10, 10, 0.03);
   display: flex;
   flex-direction: column;
   overflow: visible; /* 右缘折叠手柄外突一半，hidden 会裁掉；内层各自管理滚动 */
   position: relative; /* 折叠手柄 absolute 定位锚点 */
   transition: width var(--transition-slow);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .workspace-sidebar { background: var(--color-bg-sidebar); }
 }
 
 .workspace-sidebar.collapsed {

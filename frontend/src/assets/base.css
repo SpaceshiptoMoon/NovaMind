@@ -172,6 +172,17 @@
   --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.05);
   --shadow-inner: inset 0 1px 3px rgba(0, 0, 0, 0.04);
 
+  /* Glass — 磨砂玻璃材质（backdrop-filter 模糊 + 内高光描边）。
+     依附于全局氛围背景层（body::before 墨水晕）才有可透内容；
+     颜色仍守「零色度」纪律——玻璃只动透明度与白度，不引入新色相 */
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-border-hairline: rgba(10, 10, 10, 0.07);
+  --glass-blur: 18px;
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --glass-shadow: 0 8px 32px rgba(10, 10, 10, 0.07), 0 1px 3px rgba(10, 10, 10, 0.04);
+
   /* Transition */
   --transition-fast: 120ms ease;
   --transition-base: 200ms ease;
@@ -345,6 +356,18 @@ html[data-theme='dark'] {
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.32);
   --shadow-inner: inset 0 1px 4px rgba(0, 0, 0, 0.24);
 
+  /* Glass 暗色（墨黑上更依赖描边与高光，底透明度略高保可读） */
+  /* 渐变标题色暗色提亮（auth 页 NovaMind 渐变字，亮色深渐变贴暗底不可读） */
+  --color-gradient-start: #e8f1f8;
+  --color-gradient-end: #9fc3e0;
+  --glass-bg: rgba(24, 24, 27, 0.55);
+  --glass-bg-strong: rgba(24, 24, 27, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hairline: rgba(255, 255, 255, 0.05);
+  --glass-blur: 18px;
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+
   /* Element Plus — main.css :root 中硬编码的 el 色板需在此重定义；
      经 var(--color-*) 间接映射的 el 变量自动跟随 */
   --el-color-primary: #86afd4;
@@ -425,4 +448,49 @@ html[data-theme='dark'] .el-checkbox__input.is-indeterminate .el-checkbox__inner
 html[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
   background: #2e6da0;
   border-color: #2e6da0;
+}
+
+
+/* ========================================
+   Glass — 磨砂玻璃工具类与全局氛围背景
+   （body::before 固定墨水晕层，玻璃面板透出它才有「磨砂」观感）
+   ======================================== */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 760px at 10% -10%, rgba(32, 97, 143, 0.055), transparent 62%),
+    radial-gradient(900px 720px at 104% 108%, rgba(10, 10, 10, 0.04), transparent 58%);
+}
+
+html[data-theme='dark'] body::before {
+  background:
+    radial-gradient(1100px 760px at 10% -10%, rgba(96, 165, 250, 0.045), transparent 62%),
+    radial-gradient(900px 720px at 104% 108%, rgba(255, 255, 255, 0.028), transparent 58%);
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  border: 1px solid var(--glass-border-hairline);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+
+/* 强玻璃：更实底面（承载表单/正文等高可读内容） */
+.glass-panel-strong {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+
+/* 无 backdrop-filter 时退化：提高底不透明度保可读 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel { background: var(--color-bg-card); }
+  .glass-panel-strong { background: var(--color-bg-card); }
 }
