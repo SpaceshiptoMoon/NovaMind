@@ -1295,6 +1295,14 @@ async def process_video_document(
     except AllFrameDescriptionsFailedError as e:
         # 全帧/全组描述均失败：按 vlm_skip_on_quota_error 决策写占位描述或抛业务异常
         all_quota = e.total_frames > 0 and e.quota_failures == e.total_frames
+        if all_quota and not vlm_skip_on_quota_error:
+            # 全部帧均为配额/鉴权类失败且未配置跳过：永久错误直接终判——
+            # 额度耗尽不会自愈，按可重试白烧 max_tries-1 次 VLM 调用（红队
+            # 多模态审查实测：403 额度错误重试 2 次每次同败）
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message=f"视频 VLM 描述失败（全部帧为配额/鉴权类错误）: {e.first_error}",
+            ) from e
         if vlm_skip_on_quota_error and all_quota:
             logger.warning(
                 "视频所有帧VLM描述均失败（配额/鉴权），已按配置跳过并写占位描述",

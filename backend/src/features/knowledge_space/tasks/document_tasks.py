@@ -559,7 +559,13 @@ async def process_document_task(
             # 仍走下方 job_try < max_tries 的 raise Retry 分支。
             from novamind.features.knowledge_space.exceptions import PermanentProcessingError
 
-            if isinstance(e, PermanentProcessingError):
+            # 额度类错误与永久错误同判（红队多模态审查实测：DashScope 403
+            # 免费额度耗尽被当可重试，白烧 2 次重试每次同败——额度不会自愈，
+            # 「换有额度的模型」的修复经配置重试路径生效，重试本身无意义）
+            from novamind.shared.ai_models.errors import ModelQuotaError
+
+            if isinstance(e, (PermanentProcessingError, ModelQuotaError)):
+                # 永久性错误（含额度类）：跳过重试直接终判
                 logger.warning(
                     "永久性错误，跳过重试直接终判",
                     document_id=document_id,
@@ -575,7 +581,6 @@ async def process_document_task(
                     detail=str(e)[:200],
                 )
                 return
-
             if job_try >= max_tries:
                 # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED。
                 # 回滚用安全版：内存耗尽时 rollback 自身可能 MemoryError，

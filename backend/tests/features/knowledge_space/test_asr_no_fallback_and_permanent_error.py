@@ -185,6 +185,9 @@ def test_worker_branches_permanent_error_before_retry():
     perm_pos = src.find("isinstance(e, PermanentProcessingError)")
     retry_pos = src.find("if job_try >= max_tries")
     assert 0 < perm_pos < retry_pos, "永久错误分流未置于重试判定之前"
+    # 额度类错误（红队多模态实测：403 额度耗尽被当可重试白烧）同判永久
+    quota_pos = src.find("ModelQuotaError")
+    assert 0 < quota_pos < retry_pos, "额度类错误未纳入永久分流（或分流在重试判定之后）"
 
 
 def test_permanent_error_is_subclass_of_document_processing_error():
