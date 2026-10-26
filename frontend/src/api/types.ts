@@ -2368,7 +2368,7 @@ export interface ParsingDescriptors {
 /** 静态 fallback：运行时优先用 loadParsingDescriptors 拉取的描述符（epub 曾因
  * 此表漏 .epub 而成为「解析支持但传不上来」的半接线格式） */
 export const MODALITY_ACCEPT_MAP: Record<string, string> = {
-  text: '.pdf,.docx,.doc,.epub,.txt,.md,.csv,.html,.json',
+  text: '.pdf,.docx,.doc,.epub,.txt,.md,.csv,.html,.json,.xlsx,.pptx',
   image: '.jpg,.jpeg,.png,.gif,.webp',
   video: '.mp4,.mov,.avi,.mkv,.webm',
   audio: '.mp3,.wav,.flac,.aac,.ogg,.m4a',

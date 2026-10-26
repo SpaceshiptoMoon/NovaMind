@@ -7,12 +7,13 @@ epub 曾因此成为「解析侧已支持、上传侧传不进来」的半接线
 
 解析配置域类型（TEXT_DOC_TYPES / _DEEPDOC_ONLY_DOC_TYPES / parser 迁移表）
 与其描述的 TextParsingConfig 字段同文件（knowledge_base_schema.py）维护，
-不跨文件派生——它们与扩展名不是一一映射（excel/ppt 是合法配置域但无
-上传路径；json 的配置键是 json_file）。
+不跨文件派生——它们与扩展名不是一一映射（json 的配置键是 json_file）。
 
-已知半接线（本表刻意不登记，放开前需端到端验证）：excel/ppt 有配置域与
-deepdoc parser，但 xls/xlsx/ppt/pptx 扩展名未登记上传；放开需同步验证
-runtime_parser 路由与 deepdoc excel/ppt 解析链。
+半接线历史：excel/ppt 曾只有配置域与 deepdoc parser 而无上传路径（本表
+刻意不登记）。xlsx/pptx 已于 2026-10-27 经配置矩阵端到端真测放开（上传→
+deepdoc 解析→切分→索引→检索全链通过）。旧版二进制 xls/ppt 保持不登记：
+runtime_parser 路由存在（xls 走 pandas+calamine 兜底），但缺真实夹具
+端到端验证，放开前不冒「传得进、解析必失败」的新半接线风险。
 """
 
 from dataclasses import dataclass
@@ -48,6 +49,8 @@ _FILE_FORMAT_SPECS: tuple[FileFormatSpec, ...] = (
     FileFormatSpec("csv", "text"),
     FileFormatSpec("html", "text"),
     FileFormatSpec("json", "text"),
+    FileFormatSpec("xlsx", "text"),
+    FileFormatSpec("pptx", "text"),
     FileFormatSpec("jpg", "image"),
     FileFormatSpec("jpeg", "image"),
     FileFormatSpec("png", "image"),
