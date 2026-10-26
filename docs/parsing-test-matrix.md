@@ -7,7 +7,30 @@
 
 ## 执行记录
 
-**2026-10-27 配置矩阵端到端真测**（真实服务全链：建 KB→上传→arq worker→ES 索引→BM25 检索命中；
+**2026-10-27（下）门禁后真测与云端依赖定性**（承接当日上轮；VLM 凭证临时翻转
+openai_video 后已还原）：
+
+- **frame_seq 真测 PASS**（hardcut.mp4×1s 间隔凑足帧数，4 chunks）——openai_video
+  门禁过后的全链真跑。注意 DashScope 帧序列单次请求有 **≥4 帧下限**（probe.mp4
+  4 秒仅 1 帧时引擎显式报「帧序列不足单次请求下限：1 < 4」，不白烧调用）→ 四区 🟡
+- **video_native 环境阻塞定性**：代码路径已通到真实服务商请求，DashScope 返回
+  400「provided URL does not appear to be valid」——切片走 MinIO URL，云端 VLM
+  拉不到 NAT 后的本机 MinIO。与云端 ASR 同根：**需要公网可达的
+  minio.public_endpoint 才能真测**。报错原文精确上浮，失败方向安全。
+- **云端 ASR（DashScope filetrans）环境阻塞定性**：凭证路由/提交/轮询/报错上浮
+  全链代码路径已验证；阻塞点同样是音频经 MinIO 预签名 URL 交云端拉取——本机
+  不可达 → SERVER_ERROR。另发现凭证 id37 模型名 `paraformer-v1` 对文件转写
+  API 已失效（提交即 404 Model not exist），需换 paraformer-v2 等有效名。
+- runner 传输层教训：uvicorn keep-alive 竞态会让复用连接的轮询偶发
+  RemoteProtocolError/ReadError，被误报成文档失败——runner 已改
+  `Connection: close` + HTTPTransport(retries=3)，判定以 worker 日志为最终权威。
+- 全量 pytest 回归：3190 passed / 4 failed——wiki_reprocess_scrub×2（已知存量）+
+  agent 工具注册基线×2（`test_baseline_tools_registered`/
+  `test_all_builtin_tools_pass_registration_validation`，10-19 工具工程化批次
+  cc97c5ef 起基线漂移：features/agent 的 consult_member/todo/group_messaging/
+  local_workspace 等入册未同步基线，与本轮改动无关，归属 agent 模块待修）。
+
+**2026-10-27（上）配置矩阵端到端真测**（真实服务全链：建 KB→上传→arq worker→ES 索引→BM25 检索命中；
 runner：`backend/test_data/_probe/probe_config_matrix.py`，结果 JSON 同目录）——35 组合 34 PASS：
 
 - **文本族 ×8 切分**（recursive/fixed_size/markdown/semantic/delimiter/sentence_window/
