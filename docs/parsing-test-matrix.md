@@ -5,6 +5,30 @@
 > 状态标记：✅ 已有自动化覆盖 / ⬜ 待补 / 🔶 需外部依赖（API key / 模型下载）后实测 / 🟡 本机已真机验证（probe 脚本）。
 > 依赖服务不可达时集成项自动 skip；外部依赖项以「桩验证报错路径 + 有 key 后真测」两段覆盖。
 
+## 执行记录
+
+**2026-10-26 首轮全量执行**（本机：模型已缓存 + ffmpeg + 无外部 API key）：
+
+- **批 1+2 文本族**：`tests/engines/document/test_parsing_matrix.py` —— 56 passed
+  （TXT/MD/HTML/JSON/DOCX/PDF default × 8 切分 = 48；deepdoc × 8 文档类型全组合 = 8，
+  每类内层循环 8 切分策略）。→ 一区 T-PDF-DEF/T-DOCX-DEF/T-MD-DEF/T-HTML-DEF/
+  T-JSON-DEF ×8、T-DOCX-DD/T-EPUB/T-EXCEL/T-PPT/T-MD-DD/T-HTML-DD/T-JSON-DD/T-TXT-DD 全 ✅
+- **批 3 多模态**：`tests/integration/test_media_matrix.py` —— 10 passed
+  （真实语音 ASR/静音/损坏/格式探测/音轨提取/固定抽帧/场景硬切/串联 ASR/时间对齐/
+  片尾告别语保留）。→ 三区 T-AUD-LOCAL-REC/PAUSE 部分/SILENT/BROKEN/HOTWORDS(单测)/
+  BUSY/POOL-CRASH、四区抽帧层与 T-VID-TRANSCRIBE/T-VID-TIMEALIGN 全 ✅
+- **批 4 图片**：`tests/engines/document/deepdoc/test_image_deepdoc_ocr.py` —— 2 passed
+  （png OCR 文字识别 + 无字图空产物）。→ 二区 T-IMG-DDOCR 代表项 ✅
+- **批 5 PDF deepdoc full（高内存末批）**：TestPdfDeepdocFull 2 passed
+  （full+recursive / full+fixed_size）+ 扫描件 OCR 真跑（视觉文字完整识别）。
+  → T-PDF-DD 的 REC/FIX 两切分 ✅（其余 6 切分待补，同引擎参数差异低风险）
+- **F 系列**：22 passed（layout/formula 两态、注入点、策略导出）→ 五区全 ✅
+
+**剩余 ⬜**：文本族 deepdoc×8 切分中 6 个未跑切分（同引擎参数差异，低风险）、
+🔶 VLM/云端 ASR/外部 OCR 真测（需 API key 环境）。
+
+## 组合编号规则
+
 ## 组合编号规则
 
 `T-<模态>-<解析>-<切分/策略>-<变体>`；边界专项 `B-*`；失败策略 `F-*`。
