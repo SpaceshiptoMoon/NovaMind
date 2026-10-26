@@ -1537,6 +1537,17 @@ def _audio_clean_fingerprint_params(audio_config: dict[str, Any]) -> dict[str, A
     }
 
 
+def _space_asr_cfg(space_config: dict | None) -> dict:
+    """取空间默认 ASR 配置节，显式 null 视同未配置。
+
+    历史空间行的 config 可能存显式 "asr": null（旧创建序列化未 exclude_none），
+    而 dict.get(key, default) 的默认值只对键缺失生效、对显式 null 不生效——
+    直接 .get("asr", {}).get("model") 会对未配置 ASR 的新空间 AttributeError
+    （2026-10 配置矩阵真测暴露），故统一在此 or {} 归一。
+    """
+    return (space_config or {}).get("asr") or {}
+
+
 async def process_audio_document(
     document: Document,
     file_content: bytes,
@@ -1556,7 +1567,7 @@ async def process_audio_document(
     ctx = await load_pipeline_context(session, document, task)
     pipeline_config = ctx.pipeline_config
     audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
-    space_asr_cfg = (ctx.space.config or {}).get("asr", {}) if ctx.space else {}
+    space_asr_cfg = _space_asr_cfg(ctx.space.config if ctx.space else None)
     # 默认本地 ASR（用户裁定 2026-09-23）：未显式选 ASR 模型时默认走本地
     # faster-whisper（本地推理免费，部署期预装模型，见 deploy.sh
     # prepare_local_whisper_model）——这不是「串用别的云端配置」的静默兜底，

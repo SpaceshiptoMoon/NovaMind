@@ -859,7 +859,7 @@ class DocumentUploadService:
     def _get_max_file_size(self, kb: KnowledgeBase, file_type: str = "") -> int:
         """获取最大文件大小限制，按模态区分默认值"""
         config = kb.get_config()
-        limits = config.get("limits", {})
+        limits = config.get("limits") or {}  # 显式 null 视同未配置
         if limits.get("max_file_size_mb"):
             return limits["max_file_size_mb"] * 1024 * 1024
         # 按模态取默认值
@@ -871,5 +871,5 @@ class DocumentUploadService:
     def _get_allowed_file_types(self, kb: KnowledgeBase) -> list[str]:
         """获取允许的文件类型"""
         config = kb.get_config()
-        limits = config.get("limits", {})
+        limits = config.get("limits") or {}  # 显式 null 视同未配置
         return limits.get("allowed_file_types", self.SUPPORTED_FILE_TYPES)

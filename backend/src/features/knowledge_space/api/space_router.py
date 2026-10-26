@@ -40,8 +40,10 @@ async def create_space(
     audit_service: AuditService = Depends(get_audit_service),
 ):
     """创建知识空间；落审计日志，创建者默认 owner 角色。"""
-    # 准备配置（包含描述）
-    config = data.config.model_dump() if data.config else {}
+    # 准备配置（包含描述）。exclude_none：未配置段不落显式 null——JSON 列里
+    # "asr": null 会让读侧 .get("asr", {}) 拿到 None 而非默认 {}，音频管道
+    # 曾因此对未配置 ASR 的新空间直接崩溃（2026-10 配置矩阵真测暴露）。
+    config = data.config.model_dump(exclude_none=True) if data.config else {}
 
     space = await space_service.create_space(
         name=data.name,

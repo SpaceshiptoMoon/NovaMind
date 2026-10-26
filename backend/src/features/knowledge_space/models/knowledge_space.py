@@ -86,12 +86,12 @@ class KnowledgeSpace(BaseModel):
         return self.config or {}
 
     def get_description(self) -> str | None:
-        """从配置取空间描述（列表页摘要用）。"""
-        return self.get_config().get("description", "")
+        """从配置取空间描述（列表页摘要用）。显式 null 视同空串（历史行兼容）。"""
+        return self.get_config().get("description") or ""
 
     def get_storage_config(self) -> dict:
-        """读取存储节（配额/生命周期等约束）。"""
-        return self.get_config().get("storage", {})
+        """读取存储节（配额/生命周期等约束）。显式 null 视同未配置（历史行兼容）。"""
+        return self.get_config().get("storage") or {}
 
     # ========== Embedding 配置 ==========
 
@@ -127,12 +127,12 @@ class KnowledgeSpace(BaseModel):
         return parsing.get("vlm_description_enabled", False)
 
     def get_defaults_config(self) -> dict:
-        """读取新建知识库的默认参数节。"""
-        return self.get_config().get("defaults", {})
+        """读取新建知识库的默认参数节。显式 null 视同未配置（历史行兼容）。"""
+        return self.get_config().get("defaults") or {}
 
     def get_limits_config(self) -> dict:
-        """读取空间级限额节（文档数/容量等上限）。"""
-        return self.get_config().get("limits", {})
+        """读取空间级限额节（文档数/容量等上限）。显式 null 视同未配置（历史行兼容）。"""
+        return self.get_config().get("limits") or {}
 
     def get_default_splitting_config(self) -> dict:
         """读取默认切分参数，未配置时回退 recursive/1000/100 内置值。"""
