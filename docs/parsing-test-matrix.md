@@ -7,6 +7,33 @@
 
 ## 执行记录
 
+**2026-10-27 配置矩阵端到端真测**（真实服务全链：建 KB→上传→arq worker→ES 索引→BM25 检索命中；
+runner：`backend/test_data/_probe/probe_config_matrix.py`，结果 JSON 同目录）——35 组合 34 PASS：
+
+- **文本族 ×8 切分**（recursive/fixed_size/markdown/semantic/delimiter/sentence_window/
+  parent_child/hierarchical）：全 PASS，均含唯一标记检索命中断言 → 一区 ×8 列全部补齐 🟡
+- **文本族 8 文档类型**（docx/epub/html/json/txt/csv/xlsx/pptx）：全 PASS；
+  **xlsx/pptx 上传白名单已放开**（FileFormatSpec 登记 + 校验器 OOXML 深检本就就绪 + 前端 accept 同步），
+  「excel/ppt 半接线」收口 → 1.4 节 🟡
+- **PDF 三路径**：default ✅ / deepdoc full（扫描件 OCR 真跑，24s）✅ /
+  external_ocr（DashScope qwen3.5-ocr 真调用，chunk 内容即扫描页文字）✅ → 1.1 节 EO 行 🟡
+- **图片四策略**：deepdoc_ocr ✅ / vlm（qwen3.7-flash 真描述）✅ /
+  combined（结构化 caption + OCR 交叉校验【图中文字】段）✅ / external_ocr ✅ → 二区 🟡
+- **视频六策略**：simple ✅ / scene+transcribe_audio（hardcut 双硬切+音轨 ASR）✅ /
+  grouped ✅ / rewrite（LLM 真重写）✅ / frame_seq 🔒GATE / video_native 🔒GATE
+  （两者门禁报错精确可行动：「请在模型管理中把所选 VLM 模型的协议改为 openai_video」——
+  显式暴露原则生效，非缺陷）→ 四区 🟡
+- **音频三配置**：本地 faster-whisper × recursive / pause_topic / clean_enabled 全 PASS
+  （首跑暴露空间 config 显式 null 段崩溃 bug，已修——见下）→ 三区 🟡
+- **本轮揪出并修复**：空间 config 历史行显式 `"asr": null`（旧创建序列化未 exclude_none）
+  令 `.get("asr", {})` 拿到 None，音频文档对未配置 ASR 的新空间解析必崩
+  （`'NoneType' object has no attribute 'get'`）。三层修复：创建序列化
+  `exclude_none`（堵源头）+ Space 模型段 getter `or {}`（兜存量）+
+  `_space_asr_cfg` 归一（消费点）；回归测试
+  `test_space_config_null_sections.py`（写/模型/消费三层正反用例）。
+- 判定口径说明：chunks API 读 ES，任务完成后 ~1s 刷新窗口内可能读到 0，
+  runner 已带重试；该窗口属 ES 最终一致性，非管道缺陷。
+
 **2026-10-26 首轮全量执行**（本机：模型已缓存 + ffmpeg + 无外部 API key）：
 
 - **批 1+2 文本族**：`tests/engines/document/test_parsing_matrix.py` —— 56 passed
@@ -26,8 +53,6 @@
 
 **剩余 ⬜**：文本族 deepdoc×8 切分中 6 个未跑切分（同引擎参数差异，低风险）、
 🔶 VLM/云端 ASR/外部 OCR 真测（需 API key 环境）。
-
-## 组合编号规则
 
 ## 组合编号规则
 
