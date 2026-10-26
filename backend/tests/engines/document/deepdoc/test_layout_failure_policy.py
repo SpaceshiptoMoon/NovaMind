@@ -16,7 +16,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.engines.document.integrations.deepdoc import LayoutInferenceError
+from novamind.engines.document.integrations.deepdoc import (
+    FormulaModelUnavailableError,
+    LayoutInferenceError,
+)
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
 pytestmark = pytest.mark.unit
@@ -35,3 +38,8 @@ def _parser_with_failing_layout(monkeypatch) -> RAGFlowPdfParser:
 def test_exported_from_package():
     """LayoutInferenceError 从包门面导出（宿主 except 依赖）。"""
     assert issubclass(LayoutInferenceError, RuntimeError)
+
+
+def test_formula_model_unavailable_exported():
+    """公式模型不可用异常从包门面导出。"""
+    assert issubclass(FormulaModelUnavailableError, RuntimeError)

@@ -25,7 +25,8 @@ def test_deepdoc_facade_exports_production_surface_only():
         "DeepDocParser",
         "DeepDocParseResult",
         "strip_position_tags",
-        "LayoutInferenceError",
+        "FormulaModelUnavailableError",
+    "LayoutInferenceError",
 ]
     assert callable(deepdoc.strip_position_tags)
     assert deepdoc.DeepDocParseResult.__name__ == "DeepDocParseResult"

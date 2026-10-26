@@ -62,9 +62,19 @@ class LayoutInferenceError(RuntimeError):
     """版面识别推理失败（模型加载或 forward 异常）。
 
     发包纪律：引擎不做「回退启发式」的降级决策——降级到启发式布局是业务
-    选择。调用方经 ``layout_failure_policy`` 显式声明策略：
+    选择。调用方经 ``model_failure_policy`` 显式声明策略：
     ``"heuristic_fallback"``（默认，保持既有行为）由引擎在失败窗调用注入的
     启发式计算继续；``"raise"`` 时本异常直接上抛，由宿主决定重试/失败/换路。
+    """
+
+
+class FormulaModelUnavailableError(RuntimeError):
+    """公式识别模型不可用（目录缺失/文件不完整）。
+
+    发包纪律：模型缺失时引擎不做「保留 OCR 文本继续」的降级决策——
+    公式输出质量下降是业务可感知的损失，是否接受由调用方经
+    ``formula_failure_policy`` 显式声明：``"keep_ocr_text"``（默认，保持
+    既有行为）引擎返回空公式结果；``"raise"`` 时本异常上抛由宿主决策。
     """
 
 
@@ -370,7 +380,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         pdf_mode: str = "full",
         chunk_size: int = 1000,
         formula_recognition: bool | None = None,
-        layout_failure_policy: str = "heuristic_fallback",
+        model_failure_policy: str = "heuristic_fallback",
     ) -> DeepDocParseResult:
         """解析 PDF 入口：按 pdf_mode 分发到 plain 或 full 流水线。
         
@@ -380,7 +390,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 文本）；"layout"/"vision" 为 full 的兼容别名。
             chunk_size: chunk 目标字符长度。
             formula_recognition: 是否启用公式识别；None 走配置默认。
-            layout_failure_policy: 版面识别失败策略（发包模式——降级由调用方
+            model_failure_policy: 模型不可用类失败策略（发包模式——降级由调用方
                 声明）："heuristic_fallback"（默认，失败窗回退启发式布局，
                 layout_source 元数据可见）/ "raise"（抛 LayoutInferenceError，
                 由宿主决定重试或失败）。
@@ -391,7 +401,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         
         Raises:
             ValueError: pdf_mode 不在支持列表。
-            LayoutInferenceError: layout_failure_policy="raise" 且版面推理失败。
+            LayoutInferenceError: model_failure_policy="raise" 且版面推理失败。
         """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
         logger.info(
@@ -406,7 +416,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         elif pdf_mode == "full":
             result = self._parse_full(
                 filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
-                layout_failure_policy=layout_failure_policy,
+                model_failure_policy=model_failure_policy,
             )
         elif pdf_mode in ("layout", "vision"):
             # 兼容别名：layout/vision 已并入 full（上游对齐的逐框融合流水线），
@@ -414,7 +424,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
             result = self._parse_full(
                 filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
-                layout_failure_policy=layout_failure_policy,
+                model_failure_policy=model_failure_policy,
             )
         else:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
@@ -612,14 +622,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         chunk_size: int,
         formula_recognition: bool | None = None,
-        layout_failure_policy: str = "heuristic_fallback",
+        model_failure_policy: str = "heuristic_fallback",
     ) -> DeepDocParseResult:
         """上游对齐的默认全量流水线：每页 OCR 检测 + 逐框文字层融合 + 乱码回退 OCR
         （_extract_fused_pages）→ ONNX 版面贴标签 → 段落合并 → 页眉过滤 → 表格/图片
         抽取 → 阅读顺序 → 结构化 chunks。后续步骤复用原 vision 路径的尾巴。"""
         plain_sections, _, outlines = self._plain_parser(filename)
         image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(
-            filename, layout_failure_policy=layout_failure_policy
+            filename, model_failure_policy=model_failure_policy
         )
         page_count = len(image_list)
         effective_zooms: list[int] = fusion_meta.get("effective_zooms", [2] * page_count)
@@ -679,6 +689,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             page_layout,
             zoom_map=page_zoom_map,
             enabled=formula_recognition,
+            failure_policy=model_failure_policy,
         )
         if formula_results:
             all_boxes, replaced_fragments = self._apply_formula_boxes(all_boxes, formula_results)
@@ -808,7 +819,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     def _extract_fused_pages(
         self,
         filename: str | bytes | Path,
-        layout_failure_policy: str = "heuristic_fallback",
+        model_failure_policy: str = "heuristic_fallback",
     ) -> tuple[list[np.ndarray], list[list[dict[str, Any]]], list[list[dict[str, Any]]], dict[str, Any]]:
         """上游 RAGFlow __images__+__ocr 对齐：渲染每页 → 抽 pdfplumber 文字层字符 →
         每页 OCR.detect 拿框 → 文字层字符按坐标匹配进框 → 逐框裁决（干净用文字层 /
@@ -879,9 +890,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         layout_recognizer.load()
                 except Exception as exc:
                     # 发包纪律：降级是业务决策——策略由调用方经
-                    # layout_failure_policy 显式声明（默认保持既有行为）
+                    # model_failure_policy 显式声明（默认保持既有行为）
                     layout_model_error = str(exc)
-                    if layout_failure_policy == "raise":
+                    if model_failure_policy == "raise":
                         raise LayoutInferenceError(
                             f"DeepDoc 布局识别模型加载失败: {exc}"
                         ) from exc
@@ -1007,7 +1018,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         layout_pages.extend(list(window_layout))
                     except Exception as exc:
                         layout_model_error = str(exc)
-                        if layout_failure_policy == "raise":
+                        if model_failure_policy == "raise":
                             raise LayoutInferenceError(
                                 f"DeepDoc 布局识别推理失败（窗 {window_start}-{window_end}）: {exc}"
                             ) from exc
@@ -1784,11 +1795,15 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         *,
         zoom_map: dict[int, float] | None = None,
         enabled: bool | None = None,
+        failure_policy: str = "keep_ocr_text",
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """equation 区域 → LaTeX 识别结果 + 元信息。
 
         返回的每个 result dict 含 page/bbox/latex/inline/text（text 已带 $ 格式），
-        供 _apply_formula_boxes 合成 box。模型缺失/识别失败均软降级，不抛错。
+        供 _apply_formula_boxes 合成 box。模型不可用按 ``failure_policy``：
+        ``"keep_ocr_text"``（默认）返回空公式结果（软降级，元数据可见）；
+        ``"raise"`` 抛 :class:`FormulaModelUnavailableError` 由宿主决策。
+        单区域识别失败仍逐项容错（解析健壮性，非能力降级）。
         """
         if enabled is False:
             return [], {"source": "disabled", "equation_regions": 0}
@@ -1798,6 +1813,12 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         status = get_formula_model_status()
         if not status["available"]:
             # 回退必须可见（历史教训：xgboost 静默回退 4 个月无人知）。
+            # 发包模式：是否接受「保留 OCR 文本」由调用方经 failure_policy 声明
+            if failure_policy == "raise":
+                raise FormulaModelUnavailableError(
+                    f"DeepDoc 公式识别模型不可用（{', '.join(status['missing'])}）: "
+                    f"{status['model_dir']}"
+                )
             logger.warning(
                 "DeepDoc 公式识别模型不可用，公式区域保留 OCR 文本（公式输出质量下降）",
                 model_dir=status["model_dir"],
