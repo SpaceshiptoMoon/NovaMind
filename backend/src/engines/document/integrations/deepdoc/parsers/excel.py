@@ -4,10 +4,16 @@ from __future__ import annotations
 import datetime
 import logging
 import re
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import pandas as pd
+
+from novamind.engines.document.exceptions import EncryptedDocumentError
+from novamind.engines.document.integrations.deepdoc.compat import (
+    decode_text_binary,
+    guard_office_zip,
+)
 
 # Adapted from RAGFlow deepdoc/parser/excel_parser.py
 
@@ -26,27 +32,66 @@ class RAGFlowExcelParser:
         return Workbook, load_workbook
 
     @staticmethod
-    def _load_excel_to_workbook(file_like_object):
+    def _load_excel_to_workbook(file_like_object, max_loaded_mb: int = 0):
         """从路径/字节流加载为工作簿；非 Excel 载荷走 CSV 兜底。
-        
-        先按文件头魔数判断（zip 的 PK 头 / OLE 旧格式头），非 Excel 载荷用 pandas
-        读 CSV；openpyxl 加载失败再降级 pandas（calamine 引擎兜底），统一包成工作簿。
+
+        先按文件头魔数判断（zip 的 PK 头 / OLE 旧格式头），非 Excel 载荷
+        统一解码消毒后交给 pandas（分隔符自动探测）；OLE 头显式报错（加密
+        容器或旧版 .xls）；PK 头过 zip 结构守卫后 openpyxl 加载。超过
+        max_loaded_mb 切 read_only 流式加载——合并单元格展开/批注/嵌入图片/
+        图表提取/公式回填降级为不可用（能力缺失优于 OOM）。openpyxl 加载
+        失败再降级 pandas（calamine 引擎兜底），统一包成工作簿。
+
+        Args:
+            file_like_object: 文件路径、字节流或类文件对象。
+            max_loaded_mb: 全量 DOM 加载的文件大小上限（MB）。0 表示不限
+                （默认，行为与历史版本一致）；部署按宿主内存配置。
+
+        Returns:
+            openpyxl Workbook（read_only 降级时为只读工作簿）。
         """
         _, load_workbook = RAGFlowExcelParser._import_openpyxl()
         # 路径形态先读入内存（真机实测：runtime_parser 传 Path 的 str 形态时
         # 无条件 seek(0) 崩溃——str 被当路径却从未打开），再统一包成字节流
+        raw_bytes: bytes
         if isinstance(file_like_object, (str, Path)):
-            file_like_object = Path(file_like_object).read_bytes()
-        if isinstance(file_like_object, bytes):
-            file_like_object = BytesIO(file_like_object)
-        file_like_object.seek(0)
-        file_head = file_like_object.read(4)
-        file_like_object.seek(0)
+            raw_bytes = Path(file_like_object).read_bytes()
+        elif isinstance(file_like_object, bytes):
+            raw_bytes = file_like_object
+        else:
+            file_like_object.seek(0)
+            raw_bytes = file_like_object.read()
+        file_like_object = BytesIO(raw_bytes)
+        file_head = raw_bytes[:4]
 
-        if not (file_head.startswith(b"PK\x03\x04") or file_head.startswith(b"\xd0\xcf\x11\xe0")):
+        if file_head.startswith(b"\xd0\xcf\x11\xe0"):
+            # OLE 复合文档头对 xlsx 入口只有两种来源：加密容器（打开密码/
+            # IRM 标签）或被改名的旧版二进制 .xls（引擎本就不支持）
+            raise EncryptedDocumentError(
+                "Excel 文档已加密（或为旧版二进制 .xls 格式），请解密或另存为 .xlsx 后上传",
+                format_name="xlsx",
+            )
+        if not file_head.startswith(b"PK\x03\x04"):
             logging.info("DeepDoc excel parser received non-Excel payload; attempting CSV fallback")
-            df = pd.read_csv(file_like_object, on_bad_lines="skip")
+            # CSV 无魔数可依：编码/分隔符都不可假设（Excel 中文系统另存 GBK、
+            # 欧洲分号分隔、Excel「Unicode 文本」UTF-16 TSV 均常见）
+            text = decode_text_binary(raw_bytes)
+            try:
+                df = pd.read_csv(StringIO(text), sep=None, engine="python", on_bad_lines="skip")
+            except Exception:
+                # 分隔符探测失败（单列文本等 Sniffer 无法判定的形态）回退逗号
+                df = pd.read_csv(StringIO(text), on_bad_lines="skip")
             return RAGFlowExcelParser._dataframe_to_workbook(df)
+
+        guard_office_zip(raw_bytes, "xlsx")
+        size_limit = max(0, int(max_loaded_mb or 0)) * 1024 * 1024
+        if size_limit and len(raw_bytes) > size_limit:
+            logging.warning(
+                "Excel 文件 %d 字节超过全量加载上限 %d 字节，切换 read_only 流式解析："
+                "合并单元格展开/批注/嵌入图片/图表/公式回填降级为不可用",
+                len(raw_bytes), size_limit,
+            )
+            return load_workbook(file_like_object, data_only=True, read_only=True)
 
         try:
             wb = load_workbook(file_like_object, data_only=True)
@@ -345,7 +390,7 @@ class RAGFlowExcelParser:
         blocks, _images = self.parse_blocks(fnm, chunk_rows=chunk_rows)
         return blocks
 
-    def parse_blocks(self, fnm, chunk_rows=256):
+    def parse_blocks(self, fnm, chunk_rows=256, max_loaded_mb: int = 0):
         """工作表转 HTML 块 + 嵌入图片/图表提取（runtime 主入口，一次加载）。
 
         版面语义管线：值网格（excel_layout.build_grid）→ 多岛投影分割 →
@@ -356,6 +401,9 @@ class RAGFlowExcelParser:
         Args:
             fnm: 文件路径或字节流。
             chunk_rows: 每块包含的数据行数（超行窗口重复表头）。
+            max_loaded_mb: 全量 DOM 加载的文件大小上限（MB），0 不限；超限
+                切 read_only 流式解析，合并展开/批注/图片/图表/公式回填降级
+                为不可用（见 _load_excel_to_workbook）。
 
         Returns:
             (blocks, images) 二元组：blocks 为 HTML 块列表（表格/前置文本/
@@ -370,7 +418,9 @@ class RAGFlowExcelParser:
         _row_texts = layout._row_texts
 
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
-        wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
+        wb = RAGFlowExcelParser._load_excel_to_workbook(
+            file_like_object, max_loaded_mb=max_loaded_mb
+        )
         tb_chunks: list[str] = []
         images: list[dict] = []
 
@@ -683,14 +733,21 @@ class RAGFlowExcelParser:
             })
         return out
 
-    def __call__(self, fnm):
+    def __call__(self, fnm, max_loaded_mb: int = 0):
         """解析 Excel 为「复合表头：值；……」行文本列表（sheet 名作后缀）。
 
         与 html 出口同源的多级表头处理：前 N 表头行纵向折成复合表头，
         数据行从表头块之后开始；无表头表用列字母做前缀。
+
+        Args:
+            fnm: 文件路径或字节流。
+            max_loaded_mb: 全量 DOM 加载的文件大小上限（MB），0 不限（语义
+                同 parse_blocks）。
         """
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
-        wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
+        wb = RAGFlowExcelParser._load_excel_to_workbook(
+            file_like_object, max_loaded_mb=max_loaded_mb
+        )
 
         rows_out = []
         for sheetname in wb.sheetnames:

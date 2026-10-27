@@ -138,9 +138,11 @@ def build_grid(ws, format_value) -> SheetGrid:
                 comments[(row - 1, col - 1)] = f"[note({author}): {note}]"
     merged = getattr(ws, "_novamind_merged_pre", None)
     if merged is None:
+        # read_only 流式工作簿没有 merged_cells 属性（合并区不保留），按无
+        # 合并处理——降级语义：合并区仅锚点格有值
         merged = [
             (rng.min_row, rng.min_col, rng.max_row, rng.max_col)
-            for rng in getattr(ws.merged_cells, "ranges", []) or []
+            for rng in (getattr(getattr(ws, "merged_cells", None), "ranges", None) or [])
         ]
     outline_levels = {
         int(row_index) - 1: int(dim.outline_level or 0)

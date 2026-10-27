@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 import pdfplumber
+from novamind.engines.document.exceptions import EncryptedDocumentError
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,
@@ -373,6 +374,34 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             return False
         return suspicious / max(sample_size, 1) >= 0.5
 
+    @staticmethod
+    def _raise_if_encrypted(filename: str | bytes | Path) -> None:
+        """PDF 打开密码守卫：needs_pass 的文档页数据不可访问，尽早显式报错。
+
+        权限密码（owner password，空用户密码可开）不拦——文字层可正常抽取，
+        仅限制打印/复制等操作权限。fitz 的 needs_pass 即用户密码标记。
+        fitz 打开本身失败（损坏 PDF 等）不在此报——加密检测是前置快检，
+        打开类失败交给主管线按原有路径报错。
+        """
+        import fitz
+
+        try:
+            doc = (
+                fitz.open(stream=filename, filetype="pdf")
+                if isinstance(filename, bytes)
+                else fitz.open(os.fspath(filename))
+            )
+        except Exception:
+            return
+        try:
+            if doc.needs_pass:
+                raise EncryptedDocumentError(
+                    "PDF 文档已加密（打开密码保护），请解密后上传",
+                    format_name="pdf",
+                )
+        finally:
+            doc.close()
+
     def __call__(
         self,
         filename: str | bytes | Path,
@@ -404,6 +433,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             LayoutInferenceError: model_failure_policy="raise" 且版面推理失败。
         """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
+        self._raise_if_encrypted(filename)
         logger.info(
             "DeepDoc PDF 解析器开始",
             pdf_mode=pdf_mode,
@@ -448,6 +478,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         position_tag/positions 携带行坐标供前端高亮，col_id 为列号。
         本方法不做乱码检测与版面打标，适合仅需行级坐标的场景。
         """
+        self._raise_if_encrypted(filename)
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
         boxes: list[DeepDocPdfBox] = []
         with _pdfplumber_lock, pdfplumber.open(pdf_source) as pdf:

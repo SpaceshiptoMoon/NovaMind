@@ -254,7 +254,7 @@ def test_excel_runtime_figure_regions(tmp_path):
 
     xlsx = tmp_path / "complex.xlsx"
     _build_complex_xlsx(xlsx)
-    result = DeepDocParser()._parse_excel_sync(xlsx, "xlsx", {"chunk_size": 1000})
+    result = DeepDocParser()._parse_excel_sync(xlsx, "xlsx", {}, {"chunk_size": 1000})
     regions = result.metadata["figure_regions"]
     assert len(regions) == 1
     assert regions[0]["image_blobs"] and regions[0]["artifact_id"].startswith("xls_")

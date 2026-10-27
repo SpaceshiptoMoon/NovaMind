@@ -29,6 +29,8 @@ def _install_fake_pypdf(monkeypatch, pages_text: list[str]):
     class _FakePdf:
         def __init__(self, path):
             self.pages = [_FakePage(t) for t in pages_text]
+            # 反映 pypdf.PdfReader 真实契约（加密守卫读取该属性）
+            self.is_encrypted = False
 
     monkeypatch.setattr(reader_mod, "PyPdfReader", _FakePdf)
 

@@ -155,7 +155,7 @@ class DeepDocParser:
         if extension == "epub":
             return await asyncio.to_thread(self._parse_epub_sync, source, splitting_config)
         if extension in {"xls", "xlsx"}:
-            return await asyncio.to_thread(self._parse_excel_sync, source, extension, splitting_config)
+            return await asyncio.to_thread(self._parse_excel_sync, source, extension, parsing_config, splitting_config)
         if extension in {"ppt", "pptx"}:
             return await asyncio.to_thread(self._parse_ppt_sync, source, extension, splitting_config)
         if extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
@@ -316,19 +316,27 @@ class DeepDocParser:
         self,
         source: Path | bytes,
         extension: str,
+        parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         """Excel 同步解析：HTML 表格块（多级表头折成复合表头）+ 嵌入图片提取。
 
         图片经 figure_regions 契约交宿主 figure 管线（上传 MinIO + 占位符
         换短路径，与 PDF figure 同链）；行文本兜底路径无占位符，图片仍上传
-        可经 figure 代理访问。
+        可经 figure 代理访问。parsing_config 的 excel_max_loaded_mb（宿主
+        资源旋钮，0 不限）透传给解析器：超限时切换 read_only 流式解析，
+        合并展开/批注/图片/图表/公式回填降级为不可用。
         """
-        logger.info("DeepDoc Excel 解析开始", extension=extension)
+        max_loaded_mb = int(parsing_config.get("excel_max_loaded_mb") or 0)
+        logger.info(
+            "DeepDoc Excel 解析开始", extension=extension, max_loaded_mb=max_loaded_mb
+        )
         parser_input = str(source) if isinstance(source, Path) else source
-        blocks, embedded_images = self._excel_parser.parse_blocks(parser_input)
+        blocks, embedded_images = self._excel_parser.parse_blocks(
+            parser_input, max_loaded_mb=max_loaded_mb
+        )
         if not blocks:
-            blocks = list(self._excel_parser(parser_input))
+            blocks = list(self._excel_parser(parser_input, max_loaded_mb=max_loaded_mb))
         figure_regions = self._build_excel_figure_regions(embedded_images)
         full_text = "\n\n".join(block.strip() for block in blocks if block and block.strip()).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))

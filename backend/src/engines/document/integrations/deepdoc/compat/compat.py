@@ -103,8 +103,21 @@ def num_tokens_from_string(text: str) -> int:
     return len(tokenized.split()) if tokenized else 0
 
 
+def _has_utf16_signature(binary: bytes) -> bool:
+    """无 BOM 字节流是否具备 UTF-16 文本特征。
+
+    UTF-16 的拉丁字符高字节是 \\x00，NUL 占比显著（纯英文 ~50%，中英混排
+    ~10%+）；纯 CJK UTF-16 无 NUL，与 gb18030 存在真歧义——该场景让位
+    gb18030（中文环境默认编码）。5% 分界下：合法多字节文本（gb18030/
+    Shift-JIS/Big5 码位不含 0x00）占比恒为 0，两侧分离度充分。
+    """
+    if len(binary) < 4 or len(binary) % 2:
+        return False
+    return binary.count(0) / len(binary) >= 0.05
+
+
 def find_codec(binary: bytes) -> str:
-    """按 BOM → utf-8 → utf-16 → gb18030 → gbk → latin-1 顺序探测编码名。
+    """按 BOM → utf-8 → utf-16(特征) → gb18030 → 统计探测 → latin-1 探测。
 
     Args:
         binary: 待探测字节流。
@@ -113,19 +126,48 @@ def find_codec(binary: bytes) -> str:
         探测到的编码名。
 
     Notes:
-        utf-16 探测必须在 gb18030 之前——UTF-16 字节恰好能被 gb18030 成功
-        解码成 NUL 污染的乱码（ASCII 字符后跟 \\x00），探测顺序错误会把
-        Excel 导出的 UTF-16 文本变成满屏乱码。
+        - BOM 是编码的最强信号，前置直判；utf-8-sig 解码仍会在文本首保留
+          \\ufeff，消费方（decode_text_binary）负责剥除。
+        - utf-16 探测必须有 NUL 特征门控：utf-16-le 几乎接受任何偶数长度
+          字节流，「能解码」不代表「是 UTF-16」——无门控会把 gb18030 中文
+          全部劫持成乱码（6d58ee1f 回归实测）；门控后仍覆盖原修复场景
+          （Excel 导出的 ASCII 为主 UTF-16 文本，NUL 占比高）。
+        - latin-1 接受一切字节，「解码成功」不等于「编码正确」——日文/
+          繁中/韩文字节流会在 gb18030 或 latin-1 静默乱码，因此 latin-1
+          之前先做一次统计探测（charset-normalizer，requests 依赖树自带，
+          覆盖 Shift-JIS/Big5/EUC-KR 等）。
     """
-    for encoding in (
-        "utf-8-sig", "utf-8", "utf-16", "gb18030", "gbk", "latin-1",
-    ):
+    if binary.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    if binary.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+    # NUL 特征优先于 utf-8：纯 ASCII 的 UTF-16LE 字节流是合法 UTF-8（NUL
+    # 是合法码点），但正常文本不含 NUL——显著 NUL 占比即判 UTF-16
+    if _has_utf16_signature(binary):
         try:
-            binary.decode(encoding)
-            return encoding
+            binary.decode("utf-16")
+            return "utf-16"
         except Exception:
-            continue
-    return "utf-8"
+            pass
+    try:
+        binary.decode("utf-8")
+        return "utf-8"
+    except Exception:
+        pass
+    try:
+        binary.decode("gb18030")
+        return "gb18030"
+    except Exception:
+        pass
+    try:
+        from charset_normalizer import from_bytes
+
+        match = from_bytes(binary).best()
+        if match and match.encoding:
+            return str(match.encoding)
+    except Exception:
+        pass
+    return "latin-1"
 
 
 def decode_text_binary(binary: bytes) -> str:
@@ -144,6 +186,83 @@ def decode_text_binary(binary: bytes) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace("\x00", "")
     return text
+
+
+def safe_fromstring(blob: bytes):
+    """解析不可信 XML（禁 DTD/实体展开/网络取用），防实体炸弹与 XXE。
+
+    OOXML part（脚注/页眉/图表/SmartArt 等）经 lxml 直解析时默认展开实体——
+    恶意文档可在 part 里藏「billion laughs」放大器拖垮 worker。所有解析器
+    对文档内嵌 XML 的解析必须经此入口。
+
+    Args:
+        blob: 待解析 XML 字节流。
+
+    Returns:
+        lxml 根元素。
+    """
+    from lxml import etree
+
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        dtd_validation=False,
+        huge_tree=False,
+    )
+    return etree.fromstring(blob, parser=parser)
+
+
+# zip 解压比下限：单 entry 解压后体积超过该值且压缩比低于下限时判为炸弹。
+# 与 Apache POI ZipSecureFile 默认 minInflateRatio（0.01）同款依据——已压缩
+# 格式（png/jpg）在 zip 内 ratio 接近 1，全 NUL 炸弹 ratio 趋近 0，1% 分界
+# 两侧分离度充分。
+_ZIP_MIN_INFLATE_RATIO = 0.01
+_ZIP_BOMB_MIN_UNCOMPRESSED = 1024 * 1024
+
+
+def guard_office_zip(binary: bytes, format_name: str) -> None:
+    """OOXML zip 包结构守卫：拒收损坏包/重复条目/解压炸弹。
+
+    Args:
+        binary: 文件字节流（调用方已确认以 PK 魔数开头）。
+        format_name: 声明格式名，用于错误消息。
+
+    Raises:
+        MismatchedPayloadError: zip 目录损坏 / 同名条目重复（不同读取器会
+            选中不同条目导致内容静默不一致，对齐 POI 5.4.0 拒收语义）/
+            高膨胀低压缩比条目（解压炸弹）。
+    """
+    import zipfile
+    from collections import Counter
+    from io import BytesIO
+
+    from novamind.engines.document.exceptions import MismatchedPayloadError
+
+    try:
+        zf = zipfile.ZipFile(BytesIO(binary))
+    except zipfile.BadZipFile as exc:
+        raise MismatchedPayloadError(
+            f"{format_name} 内容不是有效的 OOXML zip 包（文件损坏或扩展名与实际格式不符）",
+            format_name=format_name,
+        ) from exc
+    with zf:
+        names = zf.namelist()
+        duplicated = [name for name, count in Counter(names).items() if count > 1]
+        if duplicated:
+            raise MismatchedPayloadError(
+                f"{format_name} 包内存在重复条目：{duplicated[:3]}（文件结构异常，可能被拼接篡改）",
+                format_name=format_name,
+            )
+        for info in zf.infolist():
+            if info.file_size <= _ZIP_BOMB_MIN_UNCOMPRESSED:
+                continue
+            if info.compress_size / info.file_size < _ZIP_MIN_INFLATE_RATIO:
+                raise MismatchedPayloadError(
+                    f"{format_name} 包内条目 {info.filename} 压缩比异常"
+                    f"（解压后 {info.file_size} 字节），疑似解压炸弹，已拒收",
+                    format_name=format_name,
+                )
 
 
 @dataclass(slots=True)

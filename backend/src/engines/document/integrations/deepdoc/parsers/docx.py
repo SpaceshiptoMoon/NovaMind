@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Sequence
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from docx import Document
@@ -18,11 +19,20 @@ from docx.oxml.ns import nsmap as _DOCX_NSMAP
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from novamind.engines.document.exceptions import (
+    EncryptedDocumentError,
+    MismatchedPayloadError,
+)
 from novamind.engines.document.integrations.deepdoc.compat import (
     MAXIMUM_PAGE_NUMBER,
     LazyImage,
+    guard_office_zip,
     rag_tokenizer,
+    safe_fromstring,
 )
+
+# OLE 复合文档魔数（旧版 .doc/.xls/.ppt 与 OOXML 加密容器共用此头）
+_OLE_HEADER_MAGIC = b"\xd0\xcf\x11\xe0"
 
 # python-docx 全局 nsmap 无 VML 前缀，而 w:pict/v:imagedata 旧式图在 Word 2003
 # 工具链与公式对象 fallback 中仍常见；注册类元素的 .xpath 只认这张表，缺前缀
@@ -225,11 +235,27 @@ class RAGFlowDocxParser:
             列表（表格位置项额外带 table_index），tables 为表格文本行列表的
             列表，顺序与 doc.tables 一致。
         """
-        self.doc = (
-            Document(file_name_or_binary)
+        payload = (
+            Path(file_name_or_binary).read_bytes()
             if isinstance(file_name_or_binary, str)
-            else Document(BytesIO(file_name_or_binary))
+            else file_name_or_binary
         )
+        # 载荷守卫：OOXML 是 zip 包。OLE 复合文档头对 docx 入口只有两种来源
+        # ——加密容器（打开密码/IRM 敏感度标签）或被误改扩展名的旧版 .doc；
+        # 非两者即伪格式/损坏包。后续 python-docx 对这些会抛误导性的
+        # PackageNotFoundError/BadZipFile 裸栈。
+        if not payload.startswith(b"PK\x03\x04"):
+            if payload.startswith(_OLE_HEADER_MAGIC):
+                raise EncryptedDocumentError(
+                    "docx 文档已加密（打开密码或敏感度标签），请解密后上传",
+                    format_name="docx",
+                )
+            raise MismatchedPayloadError(
+                "docx 内容不是 OOXML 包（可能是旧版 .doc 改名或文件损坏）",
+                format_name="docx",
+            )
+        guard_office_zip(payload, "docx")
+        self.doc = Document(BytesIO(payload))
         self._footnotes = self._load_footnotes()
         header_footer_sections = self._load_header_footer_sections()
         parsed_page = 0
@@ -353,9 +379,7 @@ class RAGFlowDocxParser:
                     break
             else:
                 return {}
-            from lxml import etree
-
-            root = etree.fromstring(blob)
+            root = safe_fromstring(blob)
             out: dict[str, str] = {}
             for fn in root.xpath(".//w:footnote", namespaces=nsmap):
                 if fn.get(qn("w:type")):
@@ -445,7 +469,6 @@ class RAGFlowDocxParser:
         正文提取。
         """
         from docx.oxml.ns import nsmap
-        from lxml import etree
 
         out: list[tuple[str, str]] = []
         for style, suffix in (("Header", "/header"), ("Footer", "/footer")):
@@ -455,7 +478,7 @@ class RAGFlowDocxParser:
                 if not rel.reltype.endswith(suffix):
                     continue
                 try:
-                    root = etree.fromstring(rel.target_part.blob)
+                    root = safe_fromstring(rel.target_part.blob)
                 except Exception:
                     continue
                 for p in root.xpath(".//w:p", namespaces=nsmap):
@@ -506,9 +529,7 @@ class RAGFlowDocxParser:
             "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
         }
         try:
-            from lxml import etree
-
-            root = etree.fromstring(blob)
+            root = safe_fromstring(blob)
         except Exception:
             return ""
         title = "".join(root.xpath(".//c:title//a:t/text()", namespaces=chart_ns)).strip()
@@ -550,9 +571,7 @@ class RAGFlowDocxParser:
             except Exception:
                 continue
             try:
-                from lxml import etree
-
-                root = etree.fromstring(blob)
+                root = safe_fromstring(blob)
             except Exception:
                 continue
             texts = []

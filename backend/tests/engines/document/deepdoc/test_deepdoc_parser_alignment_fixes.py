@@ -103,7 +103,11 @@ def test_excel_call_skips_bad_sheet(monkeypatch):
         # 第二个 sheet（bad）抛异常
         raise RuntimeError("bad sheet")
 
-    monkeypatch.setattr(excel_mod.RAGFlowExcelParser, "_load_excel_to_workbook", staticmethod(lambda f: _FakeWB()))
+    monkeypatch.setattr(
+        excel_mod.RAGFlowExcelParser,
+        "_load_excel_to_workbook",
+        staticmethod(lambda f, max_loaded_mb=0: _FakeWB()),
+    )
     monkeypatch.setattr(excel_mod.RAGFlowExcelParser, "_get_rows_limited", staticmethod(lambda ws: _rows_limited(ws)))
 
     parser = excel_mod.RAGFlowExcelParser()
