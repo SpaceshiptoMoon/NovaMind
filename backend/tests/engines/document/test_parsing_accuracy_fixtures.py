@@ -168,6 +168,38 @@ def test_excel_multi_level_header_folded_to_composite(tmp_path):
     assert "<td>华东区</td>" in detail and "<td>120</td>" in detail
 
 
+def test_excel_three_level_and_uneven_header(tmp_path):
+    """三级表头折成「年 > 半年 > 科目」；部分列缺级的复合表头正确降级。"""
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "三级表头"
+    ws["A1"] = "产品"; ws["B1"] = "2024年"; ws.merge_cells("B1:E1"); ws["F1"] = "备注"
+    ws["A2"] = "产品"; ws["B2"] = "上半年"; ws.merge_cells("B2:C2")
+    ws["D2"] = "下半年"; ws.merge_cells("D2:E2")
+    ws["B3"] = "收入"; ws["C3"] = "成本"; ws["D3"] = "收入"; ws["E3"] = "成本"
+    ws["A4"] = "A产品"; ws["B4"] = 100; ws["C4"] = 60
+    ws["D4"] = 120; ws["E4"] = 70; ws["F4"] = "已审核"
+    ws["A5"] = "B产品"; ws["B5"] = 80; ws["C5"] = 45; ws["D5"] = 90; ws["E5"] = 50
+    buf = BytesIO()
+    wb.save(buf)
+    blocks, _images = RAGFlowExcelParser().parse_blocks(buf.getvalue())
+    joined = "\n".join(blocks)
+    # 三级复合表头
+    assert "<th>2024年 &gt; 上半年 &gt; 收入</th>" in joined
+    assert "<th>2024年 &gt; 下半年 &gt; 成本</th>" in joined
+    # 不规则级数：备注列只有一级，复合后就是自身
+    assert "<th>备注</th>" in joined
+    # 表头行不混进数据
+    assert "<td>上半年</td>" not in joined
+
+
 def test_excel_embedded_image_extracted(tmp_path):
     """嵌入图片提取：png 化 blob + 锚点位置，随解析产物交付 figure 管线。"""
     from novamind.engines.document.integrations.deepdoc.parsers.excel import (
