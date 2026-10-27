@@ -384,6 +384,13 @@ def _build_complex_docx(path: Path) -> None:
     for idx, value in enumerate(["人力", "100", "90"]):
         table.rows[1].cells[idx].text = value
     doc.add_paragraph("表格之后的结论段落。")
+    # 文本框：锚定在中部段落内（真实形态：textbox 挂在段落 drawing 中）
+    mid = doc.add_paragraph()
+    mid._p.append(parse_xml(
+        f'<w:txbxContent {nsdecls("w")}>'
+        f'<w:p><w:r><w:t>文本框内的流程标注ABC</w:t></w:r></w:p>'
+        f"</w:txbxContent>"
+    ))
     # 列表段（numPr）
     list_p = doc.add_paragraph("第一条行动项")
     p_pr = list_p._p.get_or_add_pPr()
@@ -391,11 +398,22 @@ def _build_complex_docx(path: Path) -> None:
         f'<w:numPr {nsdecls("w")}><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
     )
     p_pr.append(num_pr)
-    # 文本框（此前整体丢失）：txbxContent 直挂 body，解析器按 .//w:txbxContent 提取
+    # 超链接段（此前 runs 累加丢 hyperlink 显示文本）
+    link_p = doc.add_paragraph()
+    link_p._p.append(parse_xml(
+        f'<w:hyperlink {nsdecls("w")} r:id="rIdLink" '
+        f'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f"<w:r><w:t>点击访问文档门户</w:t></w:r></w:hyperlink>"
+    ))
+    # 内容控件包裹的段落与表格（此前整块跳过）
     doc.element.body.append(parse_xml(
-        f'<w:txbxContent {nsdecls("w")}>'
-        f"<w:p><w:r><w:t>文本框内的流程标注ABC</w:t></w:r></w:p>"
-        f"</w:txbxContent>"
+        f'<w:sdt {nsdecls("w")}><w:sdtContent>'
+        f'<w:p><w:r><w:t>附件说明条款</w:t></w:r></w:p>'
+        f'<w:tbl><w:tr><w:tc><w:p><w:r><w:t>条款</w:t></w:r></w:p></w:tc>'
+        f'<w:tc><w:p><w:r><w:t>内容</w:t></w:r></w:p></w:tc></w:tr>'
+        f'<w:tr><w:tc><w:p><w:r><w:t>违约金</w:t></w:r></w:p></w:tc>'
+        f'<w:tc><w:p><w:r><w:t>合同额两倍</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+        f"</w:sdtContent></w:sdt>"
     ))
     doc.save(path)
 
@@ -442,12 +460,100 @@ def test_docx_list_item_gets_bullet_prefix(tmp_path):
 
 
 def test_docx_textbox_content_extracted(tmp_path):
-    """文本框内容以 TextBox 段落保留（此前整体丢失）。"""
+    """文本框内容以 TextBox 段落保留，且原位锚定在所属段落之后。"""
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
         DeepDocParser,
     )
 
     docx = tmp_path / "complex.docx"
     _build_complex_docx(docx)
-    result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 1000})
+    result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
     assert "文本框内的流程标注ABC" in result.full_text
+    pos_conclusion = result.full_text.find("表格之后的结论段落")
+    pos_box = result.full_text.find("文本框内的流程标注ABC")
+    pos_list = result.full_text.find("第一条行动项")
+    assert 0 <= pos_conclusion < pos_box < pos_list, "文本框应锚定在其所属段落位置"
+
+
+def test_docx_hyperlink_text_preserved(tmp_path):
+    """超链接显示文本保全（runs 累加会丢 hyperlink 内文字）。"""
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    docx = tmp_path / "complex.docx"
+    _build_complex_docx(docx)
+    result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
+    assert "点击访问文档门户" in result.full_text
+
+
+def test_docx_sdt_content_passthrough(tmp_path):
+    """内容控件（sdt）内的段落与表格穿透提取（此前整块跳过）。"""
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    docx = tmp_path / "complex.docx"
+    _build_complex_docx(docx)
+    result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
+    assert "附件说明条款" in result.full_text
+    assert "条款" in result.full_text and "内容" in result.full_text
+
+
+def test_docx_footnote_inlined(tmp_path):
+    """脚注引用内联为 [脚注N: 文本]（此前完全丢失）。"""
+    import io
+    import zipfile
+
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    docx = tmp_path / "complex.docx"
+    _build_complex_docx(docx)
+    # zip 级注入 footnotes part + 关系 + 内容类型 + 段内引用（模拟真实脚注文档）
+    src = docx.read_bytes()
+    footnotes_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/'
+        'wordprocessingml/2006/main">'
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/>'
+        "</w:r></w:p></w:footnote>"
+        '<w:footnote w:id="2"><w:p><w:r><w:t>有效期自双方签字之日起算</w:t>'
+        "</w:r></w:p></w:footnote></w:footnotes>"
+    )
+    rels_patch = (
+        b'<Relationship Id="rIdFnX" Type="http://schemas.openxmlformats.org/'
+        b'officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>'
+    )
+    ct_patch = (
+        b'<Override PartName="/word/footnotes.xml" ContentType='
+        b'"application/vnd.openxmlformats-officedocument.wordprocessingml.'
+        b'footnotes+xml"/>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(
+        buf, "w", zipfile.ZIP_DEFLATED
+    ) as zout:
+        for item in zin.namelist():
+            data = zin.read(item)
+            if item == "word/document.xml":
+                text = data.decode("utf-8")
+                marker = "项目背景说明段落。"
+                idx = text.find(marker)
+                assert idx >= 0
+                insert_at = text.find("</w:p>", idx)
+                ref = '<w:r><w:footnoteReference w:id="2"/></w:r>'
+                text = text[:insert_at] + ref + text[insert_at:]
+                data = text.encode("utf-8")
+            elif item == "word/_rels/document.xml.rels":
+                data = data.replace(b"</Relationships>", rels_patch + b"</Relationships>")
+            elif item == "[Content_Types].xml":
+                data = data.replace(b"</Types>", ct_patch + b"</Types>")
+            zout.writestr(item, data)
+        zout.writestr("word/footnotes.xml", footnotes_xml.encode("utf-8"))
+    docx.write_bytes(buf.getvalue())
+
+    result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
+    assert "[脚注2: 有效期自双方签字之日起算]" in result.full_text
+    assert "项目背景说明段落。 [脚注2:" in result.full_text, "脚注应内联在所属段落"

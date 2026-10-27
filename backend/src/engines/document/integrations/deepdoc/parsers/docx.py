@@ -15,6 +15,7 @@ from docx.image.exceptions import (
     UnrecognizedImageError,
 )
 from docx.oxml.ns import qn
+from docx.table import Table
 from docx.text.paragraph import Paragraph
 from novamind.engines.document.integrations.deepdoc.compat import (
     MAXIMUM_PAGE_NUMBER,
@@ -210,9 +211,43 @@ class RAGFlowDocxParser:
             if isinstance(file_name_or_binary, str)
             else Document(BytesIO(file_name_or_binary))
         )
+        self._footnotes = self._load_footnotes()
         parsed_page = 0
         sections: list[dict[str, Any]] = []
         table_index = 0
+        sdt_tables: list[Any] = []
+
+        def _emit_paragraph(paragraph: Paragraph) -> None:
+            """按分页窗口产出单个段落的 section（含脚注/文本框原位锚定）。"""
+            nonlocal parsed_page
+            if parsed_page > to_page:
+                return
+            # paragraph.text 含超链接显示文本（runs 累加会丢 hyperlink 内文字，
+            # python-docx 1.2 实测：hyperlink-only 段落 runs 为空而 text 完整）
+            text = (paragraph.text or "").strip()
+            breaks = paragraph._element.xpath(".//w:lastRenderedPageBreak")
+            parsed_page += len(breaks)
+            if from_page <= parsed_page < to_page and text:
+                # 脚注引用内联：正文词句与注释同 context 进 chunk
+                ref_ids = paragraph._element.xpath(".//w:footnoteReference/@w:id")
+                for fid in ref_ids:
+                    note = self._footnotes.get(str(fid))
+                    if note:
+                        text = f"{text} [脚注{fid}: {note}]"
+                style_name = (
+                    paragraph.style.name if hasattr(paragraph.style, "name") else ""
+                )
+                # 列表段：numPr 编号语义由 Word 渲染期生成、python-docx 拿不到
+                # 真实序号，以「• 」前缀保住"这是列表成员"的语义
+                p_pr = paragraph._p.pPr
+                is_list_item = p_pr is not None and p_pr.numPr is not None
+                if is_list_item and not text.startswith("•"):
+                    text = f"• {text}"
+                image = self.get_picture(self.doc, paragraph)
+                sections.append({"text": text, "style": style_name, "image": image})
+            # 段内文本框（流程图/标注框）原位锚定：紧跟所属段落，不再堆文档尾
+            for box_text in self._paragraph_textbox_texts(paragraph._element):
+                sections.append({"text": box_text, "style": "TextBox", "image": None})
 
         for child in self.doc.element.body.iterchildren():
             if child.tag == qn("w:tbl"):
@@ -221,59 +256,77 @@ class RAGFlowDocxParser:
                 )
                 table_index += 1
                 continue
+            if child.tag == qn("w:sdt"):
+                # 内容控件包裹的文档（模板生成的合同/表单）整块跳过=丢内容：
+                # 穿透取其内段落（排除表格内段落，表格走占位协议）与表格。
+                # iterchildren 返回裸 lxml 元素，xpath 必须显式 nsmap
+                from docx.oxml.ns import nsmap
+
+                for inner_p in child.xpath(
+                    ".//w:p[not(ancestor::w:tbl)]", namespaces=nsmap
+                ):
+                    _emit_paragraph(Paragraph(inner_p, self.doc))
+                for inner_tbl in child.xpath(".//w:tbl", namespaces=nsmap):
+                    sections.append(
+                        {"text": "", "style": "", "image": None,
+                         "table_index": table_index}
+                    )
+                    table_index += 1
+                    sdt_tables.append(Table(inner_tbl, self.doc))
+                continue
             if child.tag != qn("w:p"):
                 continue
+            _emit_paragraph(Paragraph(child, self.doc))
 
-            paragraph = Paragraph(child, self.doc)
-            if parsed_page > to_page:
-                break
-
-            runs_within_single_paragraph: list[str] = []
-            for run in paragraph.runs:
-                if parsed_page > to_page:
-                    break
-                if from_page <= parsed_page < to_page and paragraph.text.strip():
-                    runs_within_single_paragraph.append(run.text)
-
-                if "lastRenderedPageBreak" in run._element.xml:
-                    parsed_page += 1
-
-            style_name = paragraph.style.name if hasattr(paragraph.style, "name") else ""
-            text = "".join(runs_within_single_paragraph)
-            # 列表段：numPr 编号语义由 Word 渲染期生成、python-docx 拿不到
-            # 真实序号，以「• 」前缀保住"这是列表成员"的语义
-            is_list_item = (
-                paragraph._p.pPr is not None and paragraph._p.pPr.numPr is not None
-            )
-            if is_list_item and text and not text.startswith("•"):
-                text = f"• {text}"
-            image = self.get_picture(self.doc, paragraph)
-            sections.append(
-                {
-                    "text": text,
-                    "style": style_name,
-                    "image": image,
-                }
-            )
-
-        # 文本框内容（流程图/标注框）：body 序无法可靠锚定，追加在文档尾
-        for textbox_text in self._extract_textbox_texts():
-            sections.append({"text": textbox_text, "style": "TextBox", "image": None})
-
-        tables = [self._extract_table_content(table) for table in self.doc.tables]
+        tables = [
+            self._extract_table_content(table)
+            for table in list(self.doc.tables) + sdt_tables
+        ]
         return sections, tables
 
-    def _extract_textbox_texts(self) -> list[str]:
-        """提取文本框（w:txbxContent）内的可见文本，非空段落逐框返回。
+    def _load_footnotes(self) -> dict[str, str]:
+        """读取脚注 part（python-docx 无公开 API，经关系直取 footnotes part）。
 
-        w:txbxContent 非 python-docx 注册类，xpath 返回裸 lxml 元素——
-        其 .xpath 无内置 nsmap，必须显式传 namespaces。
+        Returns:
+            {脚注 id: 注释文本}；无脚注 part 或解析失败返回空 dict。
+        """
+        from docx.oxml.ns import nsmap
+
+        try:
+            for rel in self.doc.part.rels.values():
+                if rel.reltype.endswith("/footnotes"):
+                    blob = rel.target_part.blob
+                    break
+            else:
+                return {}
+            from lxml import etree
+
+            root = etree.fromstring(blob)
+            out: dict[str, str] = {}
+            for fn in root.xpath(".//w:footnote", namespaces=nsmap):
+                if fn.get(qn("w:type")):
+                    continue  # separator/continuationSeparator 非真实注释
+                fid = fn.get(qn("w:id"))
+                text = "".join(
+                    t.text or "" for t in fn.xpath(".//w:t", namespaces=nsmap)
+                ).strip()
+                if fid is not None and text:
+                    out[fid] = " ".join(text.split())
+            return out
+        except Exception:
+            return {}
+
+    def _paragraph_textbox_texts(self, p_element) -> list[str]:
+        """提取段落内文本框（w:txbxContent）的可见文本（原位锚定）。
+
+        w:txbxContent 非 python-docx 注册类，其返回元素的 .xpath 无内置
+        nsmap，必须显式传 namespaces。
         """
         from docx.oxml.ns import nsmap
 
         texts: list[str] = []
         try:
-            boxes = self.doc.element.body.xpath(".//w:txbxContent")
+            boxes = p_element.xpath(".//w:txbxContent")
         except Exception:
             return texts
         for box in boxes:
