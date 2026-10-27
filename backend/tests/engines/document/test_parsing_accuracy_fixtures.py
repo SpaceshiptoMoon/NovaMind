@@ -6,6 +6,7 @@
 - DOCX：表格在文档中部（此前全部堆到文档尾）、标题层级（此前全部单个 #）、
   列表段（此前丢列表语义）、文本框（此前整体丢失）。
 """
+import base64
 import json
 import sys
 from datetime import datetime
@@ -722,3 +723,210 @@ def test_docx_footnote_inlined(tmp_path):
     result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
     assert "[脚注2: 有效期自双方签字之日起算]" in result.full_text
     assert "项目背景说明段落。 [脚注2:" in result.full_text, "脚注应内联在所属段落"
+
+
+# ---------- DOCX 高级部件夹具（python-docx API 造不出的 OOXML 元素） ----------
+
+_PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+def _advanced_pic(pic_id: str) -> str:
+    """DrawingML 图片引用（r:embed 指向 rel id）。"""
+    return (
+        f'<pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="p"/><pic:cNvPicPr/></pic:nvPicPr>'
+        f'<pic:blipFill><a:blip r:embed="{pic_id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+        f'<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="990600" cy="792480"/></a:xfrm>'
+        f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>'
+    )
+
+
+def _build_docx_with_advanced_parts() -> bytes:
+    """手工构造 OOXML 包：页眉页脚（含 PAGE 域）/chart/SmartArt/VML/浮动图。
+
+    python-docx 不暴露 header/footer part 内容、chart/diagram part 与 VML
+    图片，这些元素只能直接写 OOXML 构造。
+    """
+    import zipfile
+    from io import BytesIO
+
+    png_b64 = base64.b64encode(_PNG_1PX).decode()
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Default Extension="png" ContentType="image/png"/>'
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
+        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
+        '<Override PartName="/word/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
+        '<Override PartName="/word/diagrams/data1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml"/>'
+        "</Types>"
+    )
+    root_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+        "</Relationships>"
+    )
+    doc_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rIdH1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>'
+        '<Relationship Id="rIdF1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
+        '<Relationship Id="rIdI1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>'
+        '<Relationship Id="rIdI2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image2.png"/>'
+        '<Relationship Id="rIdI3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image3.png"/>'
+        '<Relationship Id="rIdC1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/>'
+        '<Relationship Id="rIdD1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData" Target="diagrams/data1.xml"/>'
+        "</Relationships>"
+    )
+    header1 = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:p><w:r><w:t>XX科技有限公司机密文档 v2.3</w:t></w:r></w:p>"
+        "<w:p>"
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>7</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        "</w:p></w:hdr>"
+    )
+    footer1 = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:p><w:r><w:t>内部资料请勿外传</w:t></w:r></w:p>"
+        "<w:p><w:r><w:t>第 </w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>7</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        "<w:r><w:t> 页</w:t></w:r></w:p></w:ftr>"
+    )
+    chart1 = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        "<c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>季度销量对比</a:t></a:r></a:p></c:rich></c:tx></c:title>"
+        "<c:plotArea><c:barChart>"
+        '<c:ser><c:idx val="0"/><c:order val="0"/>'
+        '<c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>2024年</c:v></c:pt></c:strCache></c:strRef></c:tx>'
+        '<c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>Q1</c:v></c:pt><c:pt idx="1"><c:v>Q2</c:v></c:pt></c:strCache></c:strRef></c:cat>'
+        '<c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>120</c:v></c:pt><c:pt idx="1"><c:v>150</c:v></c:pt></c:numCache></c:numRef></c:val>'
+        "</c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>"
+    )
+    data1 = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<dgm:dataModel xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        "<dgm:ptLst>"
+        '<dgm:pt modelId="0" type="doc"/>'
+        '<dgm:pt modelId="1"><dgm:t><a:p><a:r><a:t>申请</a:t></a:r></a:p></dgm:t></dgm:pt>'
+        '<dgm:pt modelId="2"><dgm:t><a:p><a:r><a:t>审批</a:t></a:r></a:p></dgm:t></dgm:pt>'
+        "</dgm:ptLst></dgm:dataModel>"
+    )
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        "<w:document "
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+        'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" '
+        'xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram" '
+        'xmlns:v="urn:schemas-microsoft-com:vml">'
+        "<w:body>"
+        '<w:p><w:r><w:t>正文段落一：内联图片。</w:t></w:r><w:r><w:drawing>'
+        "<wp:inline><wp:extent cx=\"990600\" cy=\"792480\"/><wp:docPr id=\"1\" name=\"内联图\"/>"
+        f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">{_advanced_pic("rIdI1")}</a:graphicData></a:graphic>'
+        "</wp:inline></w:drawing></w:r></w:p>"
+        '<w:p><w:r><w:t>正文段落二：浮动图锚定于此段。</w:t></w:r><w:r><w:drawing>'
+        '<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="1" '
+        'behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">'
+        '<wp:simplePos x="0" y="0"/>'
+        '<wp:positionH relativeFrom="column"><wp:posOffset>4127500</wp:posOffset></wp:positionH>'
+        '<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+        '<wp:extent cx="990600" cy="792480"/><wp:effectExtent l="0" t="0" r="0" b="0"/>'
+        '<wp:wrapSquare wrapText="bothSides"/><wp:docPr id="2" name="侧边示意图"/><wp:cNvGraphicFramePr/>'
+        f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">{_advanced_pic("rIdI2")}</a:graphicData></a:graphic>'
+        "</wp:anchor></w:drawing></w:r></w:p>"
+        '<w:p><w:r><w:t>正文段落三：VML 旧式图片。</w:t></w:r><w:r><w:pict>'
+        '<v:shape style="width:78pt;height:62pt"><v:imagedata r:id="rIdI3"/></v:shape>'
+        "</w:pict></w:r></w:p>"
+        '<w:p><w:r><w:t>正文段落四：原生图表。</w:t></w:r><w:r><w:drawing>'
+        "<wp:inline><wp:extent cx=\"4476750\" cy=\"2652381\"/><wp:docPr id=\"5\" name=\"chart1\"/>"
+        '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">'
+        '<c:chart r:id="rIdC1"/></a:graphicData></a:graphic>'
+        "</wp:inline></w:drawing></w:r></w:p>"
+        '<w:p><w:r><w:t>正文段落五：SmartArt 流程。</w:t></w:r><w:r><w:drawing>'
+        "<wp:inline><wp:extent cx=\"4476750\" cy=\"2286000\"/><wp:docPr id=\"6\" name=\"diagram1\"/>"
+        '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/diagram">'
+        '<dgm:relIds r:dm="rIdD1" r:lo="rIdD1" r:cs="rIdD1"/></a:graphicData></a:graphic>'
+        "</wp:inline></w:drawing></w:r></w:p>"
+        "<w:sectPr>"
+        '<w:headerReference w:type="default" r:id="rIdH1"/>'
+        '<w:footerReference w:type="default" r:id="rIdF1"/>'
+        '<w:pgSz w:w="11906" w:h="16838"/>'
+        "</w:sectPr>"
+        "</w:body></w:document>"
+    )
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("_rels/.rels", root_rels)
+        zf.writestr("word/_rels/document.xml.rels", doc_rels)
+        zf.writestr("word/document.xml", document)
+        zf.writestr("word/header1.xml", header1)
+        zf.writestr("word/footer1.xml", footer1)
+        for idx in (1, 2, 3):
+            zf.writestr(f"word/media/image{idx}.png", base64.b64decode(png_b64))
+        zf.writestr("word/charts/chart1.xml", chart1)
+        zf.writestr("word/diagrams/data1.xml", data1)
+    return buf.getvalue()
+
+
+def test_docx_header_footer_extracted_with_page_fields_stripped():
+    """页眉页脚常量文本提取为文档级 section；页码/日期域缓存值剔除。
+
+    页眉「机密文档 v2.3」保留、PAGE 域缓存 "7" 剔除；页脚混合段
+    「内部资料请勿外传」保留而「第 7 页」剔除。
+    """
+    from novamind.engines.document.integrations.deepdoc.parsers.docx import (
+        RAGFlowDocxParser,
+    )
+
+    sections, _ = RAGFlowDocxParser()(_build_docx_with_advanced_parts())
+    headers = [s for s in sections if s.get("style") == "Header"]
+    footers = [s for s in sections if s.get("style") == "Footer"]
+    assert len(headers) == 1 and "机密文档 v2.3" in headers[0]["text"]
+    assert "7" not in headers[0]["text"], "PAGE 域的缓存页码应被剔除"
+    assert len(footers) == 1 and "内部资料请勿外传" in footers[0]["text"]
+    assert "7" not in footers[0]["text"] and "第" not in footers[0]["text"], (
+        "页脚含页码域的段落应整段剔除，不残留「第 页」框架词"
+    )
+
+
+def test_docx_chart_smartart_vml_floating_image_extracted():
+    """原生图表系列数据/SmartArt 节点文本/VML 旧图与浮动图 blob 全部保全。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.docx import (
+        RAGFlowDocxParser,
+    )
+
+    sections, _ = RAGFlowDocxParser()(_build_docx_with_advanced_parts())
+    chart_texts = [s["text"] for s in sections if s.get("style") == "Chart"]
+    assert len(chart_texts) == 1
+    assert "季度销量对比" in chart_texts[0]
+    assert "2024年: Q1=120" in chart_texts[0], "系列名+类别=值 重组"
+    smart_texts = [s["text"] for s in sections if s.get("style") == "SmartArt"]
+    assert smart_texts == ["[SmartArt] 申请 → 审批"]
+
+    # 三张图（内联/浮动/VML）各抽出 blob，VML 旧图不再丢
+    images = [s for s in sections if s.get("image") is not None]
+    assert [len(s["image"].blobs) for s in images] == [1, 1, 1]
+    vml_section = images[-1]
+    assert "VML 旧式图片" in vml_section["text"], "VML 图片应挂在所属段落"

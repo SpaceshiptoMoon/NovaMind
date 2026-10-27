@@ -14,6 +14,7 @@ from docx.image.exceptions import (
     UnexpectedEndOfFileError,
     UnrecognizedImageError,
 )
+from docx.oxml.ns import nsmap as _DOCX_NSMAP
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -23,29 +24,42 @@ from novamind.engines.document.integrations.deepdoc.compat import (
     rag_tokenizer,
 )
 
+# python-docx 全局 nsmap 无 VML 前缀，而 w:pict/v:imagedata 旧式图在 Word 2003
+# 工具链与公式对象 fallback 中仍常见；注册类元素的 .xpath 只认这张表，缺前缀
+# 直接查不到元素，模块加载期注入一次
+_DOCX_NSMAP.setdefault("v", "urn:schemas-microsoft-com:vml")
+
 
 class RAGFlowDocxParser:
     """RAGFlow DOCX 文档解析器（段落/图片/表格三路抽取）。"""
     def get_picture(self, document: Any, paragraph: Any) -> LazyImage | None:
         """抽取段落内嵌图片的二进制数据。
-        
+
+        覆盖 DrawingML（wp:inline/wp:anchor 内的 pic:pic）与 VML 旧式图
+        （w:pict/v:imagedata）两代表示；mc:AlternateContent 中同一图片以两种
+        表示并存时按关系 ID 去重。
+
         Args:
             document: python-docx Document 对象，用于解析图片关系 ID。
             paragraph: 待抽取的段落对象。
-        
+
         Returns:
             懒加载图片对象（惰性读取 blob，避免解析期占内存）；段落无图或图片损坏时返回 None。
         """
-        imgs = paragraph._element.xpath(".//pic:pic")
-        if not imgs:
-            return None
+        rel_ids: list[str] = []
+        for img in paragraph._element.xpath(".//pic:pic"):
+            rel_ids.extend(img.xpath(".//a:blip/@r:embed"))
+        if not rel_ids:
+            # DrawingML 未命中的旧式位图：Word 2003 工具链产物、公式对象的
+            # 位图 fallback 等
+            rel_ids = paragraph._element.xpath(".//v:imagedata/@r:id")
 
         image_blobs: list[bytes] = []
-        for img in imgs:
-            embed = img.xpath(".//a:blip/@r:embed")
-            if not embed:
+        seen_rel_ids: set[str] = set()
+        for rel_id in rel_ids:
+            if rel_id in seen_rel_ids:
                 continue
-            rel_id = embed[0]
+            seen_rel_ids.add(rel_id)
             image_blob = None
             try:
                 related_part = document.part.related_parts[rel_id]
@@ -90,7 +104,12 @@ class RAGFlowDocxParser:
                 seen_tc.add(id(cell._tc))
                 row_texts.append(cell.text)
             rows.append(row_texts)
-        return self._compose_table_content(rows)
+        lines = self._compose_table_content(rows)
+        # 表格单元格内嵌的原生图表/SmartArt：cell.text 不含（走独立 part），
+        # 追加在表格文本尾部避免整块丢失
+        lines.extend(self._chart_texts(table._tbl))
+        lines.extend(self._smartart_texts(table._tbl))
+        return lines
 
     def _compose_table_content(self, rows: Sequence[Sequence[str]]) -> list[str]:
         """按表头-数据行关系把表格行拼装为「表头: 值」文本。
@@ -212,6 +231,7 @@ class RAGFlowDocxParser:
             else Document(BytesIO(file_name_or_binary))
         )
         self._footnotes = self._load_footnotes()
+        header_footer_sections = self._load_header_footer_sections()
         parsed_page = 0
         sections: list[dict[str, Any]] = []
         table_index = 0
@@ -257,6 +277,12 @@ class RAGFlowDocxParser:
             # 段内文本框（流程图/标注框）原位锚定：紧跟所属段落，不再堆文档尾
             for box_text in self._paragraph_textbox_texts(paragraph._element):
                 sections.append({"text": box_text, "style": "TextBox", "image": None})
+            # 段内原生图表/SmartArt：数据存于独立 part，python-docx 不暴露，
+            # 默认整图丢失；此处重组为文本，与文本框同款原位锚定
+            for chart_text in self._chart_texts(paragraph._element):
+                sections.append({"text": chart_text, "style": "Chart", "image": None})
+            for smartart_text in self._smartart_texts(paragraph._element):
+                sections.append({"text": smartart_text, "style": "SmartArt", "image": None})
 
         for child in self.doc.element.body.iterchildren():
             if child.tag == qn("w:tbl"):
@@ -291,6 +317,10 @@ class RAGFlowDocxParser:
             self._extract_table_content(table)
             for table in list(self.doc.tables) + sdt_tables
         ]
+        # 页眉页脚是文档级元信息（密级/公司/版本），逐页重复只取一次，置于
+        # 文档最前；纯页码段已被域判据剔除
+        for offset, (style, text) in enumerate(header_footer_sections):
+            sections.insert(offset, {"text": text, "style": style, "image": None})
         return sections, tables
 
     def _accepted_text(self, p_element) -> str:
@@ -365,3 +395,175 @@ class RAGFlowDocxParser:
             if text:
                 texts.append(text)
         return texts
+
+    # 页码/日期时间类 Word 域：值由渲染期确定且逐页变化，对检索是噪音。
+    # FILENAME/TOC/REF 等承载语义的域不在列，其缓存文本保留
+    _AUTO_FIELD_TOKENS = (
+        "PAGE",
+        "NUMPAGES",
+        "SECTIONPAGES",
+        "DATE",
+        "TIME",
+        "PRINTDATE",
+        "SAVEDATE",
+        "CREATEDATE",
+    )
+
+    def _visible_text_without_fields(self, p_element) -> str:
+        """段落可见文本：剔除域的缓存渲染值。
+
+        复杂域（fldChar begin..separate..end）区间内与简单域（fldSimple
+        子树）内的 w:t 都是上次渲染缓存（如页码 "7"），对 RAG 无意义。
+        """
+        from docx.oxml.ns import nsmap
+
+        parts: list[str] = []
+        field_depth = 0
+        skip_ids: set[int] = set()
+        for node in p_element.iter():
+            if id(node) in skip_ids:
+                continue
+            if node.tag == qn("w:fldSimple"):
+                skip_ids.update(id(descendant) for descendant in node.iter())
+                continue
+            if node.tag == qn("w:fldChar"):
+                kind = node.get(qn("w:fldCharType"))
+                if kind == "begin":
+                    field_depth += 1
+                elif kind == "end":
+                    field_depth = max(0, field_depth - 1)
+            elif node.tag == qn("w:t") and field_depth == 0:
+                parts.append(node.text or "")
+        return "".join(parts)
+
+    def _load_header_footer_sections(self) -> list[tuple[str, str]]:
+        """提取页眉页脚常量文本为 (样式名, 文本) 列表（Header 在前）。
+
+        页眉页脚逐页重复，作为文档级元信息（密级/公司/版本号）只取一次；
+        含页码/日期类自动域的段落整段视为页码噪音跳过。多 part（default/
+        even/first）文本去重后按段落合并。解析异常时静默跳过该 part，不影响
+        正文提取。
+        """
+        from docx.oxml.ns import nsmap
+        from lxml import etree
+
+        out: list[tuple[str, str]] = []
+        for style, suffix in (("Header", "/header"), ("Footer", "/footer")):
+            lines: list[str] = []
+            seen: set[str] = set()
+            for rel in self.doc.part.rels.values():
+                if not rel.reltype.endswith(suffix):
+                    continue
+                try:
+                    root = etree.fromstring(rel.target_part.blob)
+                except Exception:
+                    continue
+                for p in root.xpath(".//w:p", namespaces=nsmap):
+                    instr = " ".join(
+                        node.text or ""
+                        for node in p.xpath(".//w:instrText", namespaces=nsmap)
+                    ).upper()
+                    if any(token in instr for token in self._AUTO_FIELD_TOKENS):
+                        continue
+                    text = self._visible_text_without_fields(p).strip()
+                    if text and text not in seen:
+                        seen.add(text)
+                        lines.append(text)
+            if lines:
+                out.append((style, "\n".join(lines)))
+        return out
+
+    def _chart_texts(self, p_element) -> list[str]:
+        """提取段落内原生图表（c:chart）的缓存系列数据为文本。
+
+        Word 图表不是图片：数值存于独立 chart part 的 strCache/numCache，
+        python-docx 不暴露该 part，默认整图丢失。按「系列名: 类别=值; ...」
+        重组，图表标题并入前缀。
+        """
+        out: list[str] = []
+        try:
+            rel_ids = p_element.xpath(".//c:chart/@r:id")
+        except Exception:
+            return out
+        for rel_id in rel_ids:
+            try:
+                blob = self.doc.part.related_parts[rel_id].blob
+            except Exception:
+                continue
+            text = self._chart_blob_to_text(blob)
+            if text:
+                out.append(text)
+        return out
+
+    @staticmethod
+    def _chart_blob_to_text(blob: bytes) -> str:
+        """chart part 字节流重组为文本（标题 + 各系列数据点）。
+
+        类别与值按缓存点序号 zip 对齐；无类别的系列只输出值。
+        """
+        chart_ns = {
+            "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        }
+        try:
+            from lxml import etree
+
+            root = etree.fromstring(blob)
+        except Exception:
+            return ""
+        title = "".join(root.xpath(".//c:title//a:t/text()", namespaces=chart_ns)).strip()
+        series_lines: list[str] = []
+        for ser in root.xpath(".//c:ser", namespaces=chart_ns):
+            name = "".join(ser.xpath("./c:tx//c:v/text()", namespaces=chart_ns)).strip()
+            cats = ser.xpath("./c:cat//c:pt/c:v/text()", namespaces=chart_ns)
+            vals = ser.xpath("./c:val//c:pt/c:v/text()", namespaces=chart_ns)
+            if not vals:
+                continue
+            points = [
+                f"{cats[idx]}={value}" if idx < len(cats) and str(cats[idx]).strip() else str(value)
+                for idx, value in enumerate(vals)
+            ]
+            series_lines.append(f"{name}: " + "; ".join(points) if name else "; ".join(points))
+        if not series_lines:
+            return ""
+        prefix = f"[图表《{title}》] " if title else "[图表] "
+        return prefix + " ｜ ".join(series_lines)
+
+    def _smartart_texts(self, p_element) -> list[str]:
+        """提取段落内 SmartArt（dgm:relIds）的节点文本。
+
+        SmartArt 渲染为图形但语义是流程/层级文本，存于 diagram data part
+        （dgm:pt 的 dgm:t）。仅取 node 类型节点，按文档顺序以「 → 」连接。
+        """
+        diagram_ns = {
+            "dgm": "http://schemas.openxmlformats.org/drawingml/2006/diagram",
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        }
+        out: list[str] = []
+        try:
+            rel_ids = p_element.xpath(".//dgm:relIds/@r:dm")
+        except Exception:
+            return out
+        for rel_id in rel_ids:
+            try:
+                blob = self.doc.part.related_parts[rel_id].blob
+            except Exception:
+                continue
+            try:
+                from lxml import etree
+
+                root = etree.fromstring(blob)
+            except Exception:
+                continue
+            texts = []
+            for pt in root.xpath(
+                ".//dgm:pt[not(@type) or @type='node']/dgm:t", namespaces=diagram_ns
+            ):
+                node_text = "".join(
+                    pt.xpath(".//a:t/text()", namespaces=diagram_ns)
+                ).strip()
+                if node_text:
+                    texts.append(node_text)
+            if texts:
+                out.append("[SmartArt] " + " → ".join(texts))
+        return out
