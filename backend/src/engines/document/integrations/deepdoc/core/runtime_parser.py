@@ -510,9 +510,9 @@ class DeepDocParser:
         started = time.perf_counter()
         with collect_warnings() as warnings:
             if isinstance(source, Path):
-                sections = self._epub_parser(str(source))
+                sections, epub_figures = self._epub_parser(str(source))
             else:
-                sections = self._epub_parser("memory.epub", binary=source)
+                sections, epub_figures = self._epub_parser("memory.epub", binary=source)
         full_text = "\n\n".join(section.strip() for section in sections if section and section.strip()).strip()
         chunks = self._chunk_blocks(sections, chunk_size=int(splitting_config.get("chunk_size", 1000)))
         logger.info("DeepDoc EPUB 解析完成", char_count=len(full_text), chunk_count=len(chunks), sections=len(sections))
@@ -526,6 +526,7 @@ class DeepDocParser:
                 "parser_class": "RAGFlowEpubParser",
                 "source": "ragflow-adapted",
                 "sections": len(sections),
+                "figure_regions": epub_figures,
                 "quality": build_quality_metadata("deepdoc", warnings, started),
             },
         )
@@ -541,7 +542,7 @@ class DeepDocParser:
         parser_input = str(source) if isinstance(source, Path) else source
         started = time.perf_counter()
         with collect_warnings() as warnings:
-            slides = self._ppt_parser(parser_input)
+            slides, ppt_figures = self._ppt_parser(parser_input)
         blocks = [f"# Slide {index + 1}\n{slide}".strip() for index, slide in enumerate(slides) if slide and slide.strip()]
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
@@ -549,6 +550,14 @@ class DeepDocParser:
             UnifiedBlock(kind=KIND_TEXT, text=block)
             for block in blocks
         ]
+        # 图片进 figure_regions 契约（blob 交宿主上传管线；占位符已由解析器
+        # 插在页文本流），business 门禁含 pptx 后即走统一上传呈现链
+        for figure in ppt_figures:
+            figure.setdefault("caption", f"幻灯片 {figure.get('page_start') or '?'} 图片")
+            figure.setdefault("bbox", {})
+            figure.setdefault("text", "")
+            figure.setdefault("member_texts", [])
+        ppt_figure_regions = ppt_figures
         logger.info("DeepDoc PPT 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), slides=len(slides))
         return DeepDocParseResult(
             full_text=full_text,
@@ -560,6 +569,7 @@ class DeepDocParser:
                 "parser_class": "RAGFlowPptParser",
                 "source": "ragflow-adapted",
                 "slides": len(slides),
+                "figure_regions": ppt_figure_regions,
                 "quality": build_quality_metadata("deepdoc", warnings, started),
                 "document_blocks": [b.to_dict() for b in doc_blocks],
             },

@@ -16,6 +16,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    document_salt,
+    figure_placeholder,
+)
+
 
 class MineruNotAvailableError(Exception):
     """MinerU 引擎未安装/未配置，或本地解析服务未运行。不可重试。"""
@@ -45,15 +50,22 @@ class MineruEngineConfig:
 
 
 _PAGE_MARKER = re.compile(r"<!--\s*page\s+\d+\s+of\s+(\d+)\s*-->")
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 _SERVER_NOT_RUNNING_MARK = "服务未运行"
 
 
 @dataclass(frozen=True)
 class MineruParseResult:
-    """MinerU 解析产物：markdown 全文（含页标记）+ 页数。"""
+    """MinerU 解析产物：markdown 全文（含页标记）+ 页数 + 图片契约。
+
+    figures 与 deepdoc figure_regions 同构（artifact_id/placeholder/
+    image_blobs/caption...），markdown 里的相对图片引用已替换为占位符——
+    宿主按统一上传链处理，无需感知 MinerU 产物目录结构。
+    """
 
     full_text: str
     page_count: int
+    figures: tuple[dict, ...] = ()
 
 
 def parse_pdf_sync(
@@ -93,6 +105,7 @@ def parse_pdf_sync(
         input_path = tmp_dir / (file_name or "input.pdf")
         input_path.write_bytes(content)
         output_path = tmp_dir / "result.md"
+        md_dir = output_path.parent
 
         # --force：同字节文件的 MinerU 内容寻址缓存会掩盖 tier/模型变更，禁用缓存
         # 保证「配置 → 产物」语义诚实；--wait 与子进程超时双保险防挂死
@@ -146,7 +159,42 @@ def parse_pdf_sync(
         # 提取页数后从入库全文剥离
         full_text = _PAGE_MARKER.sub("", full_text)
 
-        return MineruParseResult(full_text=full_text, page_count=page_count)
+        # 产物图片：MinerU 把抠出的图写进输出目录（images/ 相对引用）。临时
+        # 目录即将销毁——被 markdown 引用的图收进 figure 契约，引用就地替换
+        # 为内容绑定盐占位符，宿主按统一上传链处理
+        figures: list[dict] = []
+        salt = document_salt(content)
+        for image_path in sorted(md_dir.glob("**/*")):
+            if not image_path.is_file() or image_path.suffix.lower() not in _IMAGE_SUFFIXES:
+                continue
+            relative = image_path.relative_to(md_dir).as_posix()
+            link = f"]({relative})"
+            if link not in full_text:
+                continue  # 未被 markdown 引用的图不收（可能是版面碎片）
+            try:
+                blob = image_path.read_bytes()
+            except OSError:
+                continue
+            if not blob:
+                continue
+            artifact_id = f"mineru_fig_{len(figures)}"
+            placeholder = figure_placeholder(salt, artifact_id)
+            full_text = full_text.replace(link, f"]({placeholder})")
+            figures.append({
+                "artifact_id": artifact_id,
+                "placeholder": placeholder,
+                "pages": [],
+                "page_start": 0,
+                "bbox": {},
+                "caption": f"MinerU 提取图（{relative}）",
+                "text": "",
+                "member_texts": [],
+                "image_blobs": [blob],
+            })
+
+        return MineruParseResult(
+            full_text=full_text, page_count=page_count, figures=tuple(figures)
+        )
 
 
 def _extract_page_count(full_text: str) -> int:

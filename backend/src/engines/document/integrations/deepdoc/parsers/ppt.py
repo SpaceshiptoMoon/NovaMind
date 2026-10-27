@@ -10,6 +10,10 @@ from novamind.engines.document.exceptions import (
     MismatchedPayloadError,
 )
 from novamind.engines.document.integrations.deepdoc.compat import guard_office_zip
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    document_salt,
+    figure_placeholder,
+)
 
 # Adapted from RAGFlow deepdoc/parser/ppt_parser.py
 
@@ -58,8 +62,13 @@ class RAGFlowPptParser:
         )
         return f"{'  ' * paragraph.level}.{paragraph.text}" if is_bulleted else paragraph.text
 
-    def _extract(self, shape):
-        """抽取单个形状文本：文本框直取，图表/表格转数据行，组合形状递归。
+    def _extract(self, shape, figures=None, salt: str = ""):
+        """抽取单个形状文本：文本框直取，图片/图表/表格转产物，组合形状递归。
+
+        Args:
+            figures: 图片收集器（就地追加 figure 契约 dict）；None 表示调用方
+                不需要图片产物，图片形状按既有行为返回空串。
+            salt: 内容绑定盐（占位符生成）。
 
         处理异常时记日志并返回空串，不让单个坏形状中断整页解析。
         """
@@ -98,10 +107,28 @@ class RAGFlowPptParser:
                     )
                 return "\n".join(rows)
 
+            # 图片形状（MSO_SHAPE_TYPE.PICTURE=13）：blob 进 figure 契约，
+            # markdown 占位符进文本流——此前整图静默丢失
+            if shape_type == 13 and figures is not None:
+                try:
+                    blob = shape.image.blob
+                except Exception as exc:
+                    logging.warning("PPT picture blob extraction failed: %s", exc)
+                    return ""
+                if blob:
+                    artifact_id = f"ppt_fig_{len(figures)}"
+                    placeholder = figure_placeholder(salt, artifact_id)
+                    figures.append({
+                        "artifact_id": artifact_id,
+                        "placeholder": placeholder,
+                        "image_blobs": [blob],
+                    })
+                    return f"![图片]({placeholder})"
+
             if shape_type == 6:
                 texts = []
                 for child_shape in self._sort_shapes(shape.shapes):
-                    text = self._extract(child_shape)
+                    text = self._extract(child_shape, figures=figures, salt=salt)
                     if text:
                         texts.append(text)
                 return "\n".join(texts)
@@ -155,8 +182,10 @@ class RAGFlowPptParser:
             callback: 兼容参数（进度回调），未使用。
 
         Returns:
-            每页文本（页内形状按阅读序拼接，演讲者备注以「[备注]」前缀
-            附在页尾）的列表；实例属性 total_page 记录总页数。
+            (texts_by_slide, figures) 二元组：前者为每页文本（页内形状按阅读
+            序拼接，演讲者备注以「[备注]」前缀附在页尾）；后者为图片 figure
+            契约列表（artifact_id/placeholder/image_blobs/pages）。实例属性
+            total_page 记录总页数。
 
         Raises:
             MismatchedPayloadError: 内容不是 OOXML 包（伪扩展名/损坏）。
@@ -179,6 +208,8 @@ class RAGFlowPptParser:
         Presentation = self._import_presentation()
         ppt = Presentation(BytesIO(payload))
         texts_by_slide = []
+        figures: list[dict] = []
+        figure_salt = document_salt(payload)
         self.total_page = len(ppt.slides)
         upper = self.total_page if to_page is None else to_page
         for slide_index, slide in enumerate(ppt.slides):
@@ -187,10 +218,15 @@ class RAGFlowPptParser:
             if slide_index >= upper:
                 break
             texts = []
+            slide_figures_start = len(figures)
             for shape in self._sort_shapes(slide.shapes):
-                text = self._extract(shape)
+                text = self._extract(shape, figures=figures, salt=figure_salt)
                 if text:
                     texts.append(text)
+            # 本页图片的页码回填（占位符生成时还不知道所在 slide）
+            for figure in figures[slide_figures_start:]:
+                figure["pages"] = [slide_index + 1]
+                figure["page_start"] = slide_index + 1
             # 演讲者备注：内容在独立 notes part，形状遍历覆盖不到；空备注
             # 页（占位符未填写）has_notes_slide 为 False 自然跳过
             if getattr(slide, "has_notes_slide", False):
@@ -198,4 +234,4 @@ class RAGFlowPptParser:
                 if notes_text:
                     texts.append(f"[备注] {notes_text}")
             texts_by_slide.append("\n".join(texts))
-        return texts_by_slide
+        return texts_by_slide, figures

@@ -236,10 +236,11 @@ def test_pptx_chart_and_notes_extracted():
     path = Path(tempfile.mkdtemp()) / "chart.pptx"
     prs.save(path)
 
-    pages = RAGFlowPptParser()(str(path))
+    pages, ppt_figures = RAGFlowPptParser()(str(path))
     joined = "\n".join(pages)
     assert "2024年" in joined and "Q1=120" in joined, f"图表数据丢失: {joined!r}"
     assert "[备注] 本页讲解季度销量趋势" in joined, "演讲者备注丢失"
+    assert ppt_figures == [], "无图片形状时 figures 应为空"
 
 
 # ---------- PDF 加密 ----------

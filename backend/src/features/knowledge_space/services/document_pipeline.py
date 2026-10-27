@@ -547,7 +547,7 @@ async def execute_document_pipeline(
     # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
     figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
     image_url_map: dict[str, str] = {}
-    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls", "docx"):
+    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls", "docx", "ppt", "pptx"):
         from novamind.shared.storage.client_factory import ClientFactory
 
         minio_client = await ClientFactory.get_minio_client()
@@ -1481,6 +1481,9 @@ async def _parse_pdf_with_mineru_static(
         "file_type": (document.file_type or "pdf").lower(),
         "split_strategy": str(splitting_config.get("strategy", "recursive")),
         "mineru_page_count": result.page_count,
+        # 产物图片契约与 deepdoc figure_regions 同构：markdown 相对引用已替换
+        # 为带盐占位符，下面的统一上传链（门禁含 pdf）照常处理
+        "figure_regions": list(result.figures),
     }
     # 关系元数据仅在非空时写键，与 parse_document_result 的默认分支同约定
     if any(chunk_structure_meta):
