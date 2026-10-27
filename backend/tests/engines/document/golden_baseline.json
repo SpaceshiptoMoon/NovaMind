@@ -1,0 +1,34 @@
+{
+  "sample_001": {
+    "full_text_sha256": "cad8c02d8cc05d27c1ab7185afac4c79eafad6832e856a9929dd815bc9e8a925",
+    "markdown_sha256": "3e567ec2cb6f31ef721a71fc7b3008a6d01967241bbf519f20c612e30dcd2a93",
+    "chunk_count": 54,
+    "char_count": 51421,
+    "block_kinds": {
+      "text": 54
+    }
+  },
+  "sample_002": {
+    "full_text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "markdown_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "chunk_count": 0,
+    "char_count": 0,
+    "block_kinds": {}
+  },
+  "sample_003": {
+    "full_text_sha256": "045315d876d3af20274a5ca9041269101346273ea38654764ed2632867531bc6",
+    "markdown_sha256": "045315d876d3af20274a5ca9041269101346273ea38654764ed2632867531bc6",
+    "chunk_count": 1,
+    "char_count": 804,
+    "block_kinds": {}
+  },
+  "sample_004": {
+    "full_text_sha256": "441326a343ddd056a9469b628ad4989c701cd0f9a0c8652b881f6d924ccb668d",
+    "markdown_sha256": "7802950726637ace40810efdb05c09a29d30cf30dc6e9d42bd9ca4641179e67b",
+    "chunk_count": 2,
+    "char_count": 1252,
+    "block_kinds": {
+      "text": 2
+    }
+  }
+}
