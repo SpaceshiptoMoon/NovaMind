@@ -552,9 +552,14 @@ class RAGFlowExcelParser:
                 island_table_ranges.append((base, len(sheet_blocks), island))
 
             # 嵌入图片：占位符挂锚点所在岛的首块；岛外浮图挂锚点上方最近的岛
-            # （表尾浮图通常注解该表）；上方无岛才独立成块
+            # （表尾浮图通常注解该表）；上方无岛才独立成块。占位符必须是
+            # markdown 图片链接形态（![caption](placeholder)）——业务层替换后
+            # 恰为 ](figure_xxx.png)，读取端点的 presign 正则按此识别换签名
             for image_info in sheet_images:
-                placeholder = f"__FIGURE_URL__{image_info['artifact_id']}__\n"
+                placeholder = (
+                    f"![{image_info['sheet']} 嵌入图片]"
+                    f"(__FIGURE_URL__{image_info['artifact_id']}__)\n"
+                )
                 r0, c0 = image_info.get("row"), image_info.get("col")
                 placed = False
                 if r0 is not None and c0 is not None:

@@ -306,13 +306,27 @@ class DeepDocParser:
         image_count = 0
         flattened_tables: list[str] = []
         doc_blocks: list[UnifiedBlock] = []
+        docx_figure_regions: list[dict[str, Any]] = []
 
         for section in sections:
             image = section.get("image")
             if image:
                 image_count += 1
+                # 图片进 figure_regions 契约（与 pdf/xlsx 同构）：blob 随 region
+                # 交宿主上传管线，正文占位符已由解析器插在段落文本（docx_fig_N）
+                figure_id = str(section.get("figure_id") or f"docx_fig_{image_count}")
+                docx_figure_regions.append({
+                    "artifact_id": figure_id,
+                    "pages": [],
+                    "page_start": 0,
+                    "bbox": {},
+                    "caption": f"图片{image_count}",
+                    "text": "",
+                    "member_texts": [],
+                    "image_blobs": list(image.blobs),
+                })
                 doc_blocks.append(
-                    UnifiedBlock(kind=KIND_FIGURE, text="", caption=f"图片{image_count}")
+                    UnifiedBlock(kind=KIND_FIGURE, text=figure_id, caption=f"图片{image_count}")
                 )
             # 表格占位项：把对应表格文本插回文档原位（body 序），不再堆尾
             table_index = section.get("table_index")
@@ -381,6 +395,7 @@ class DeepDocParser:
                 "sections": sections,
                 "tables": flattened_tables,
                 "images": image_count,
+                "figure_regions": docx_figure_regions,
                 "source": "ragflow-adapted",
                 "quality": build_quality_metadata("deepdoc", warnings, started),
                 "document_blocks": [b.to_dict() for b in doc_blocks],

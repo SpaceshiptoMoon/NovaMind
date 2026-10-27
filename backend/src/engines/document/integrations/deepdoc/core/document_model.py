@@ -127,8 +127,15 @@ def block_to_markdown(block: UnifiedBlock) -> str:
             return html_table_to_markdown(block.text)
         return block.text
     if block.kind == KIND_FIGURE:
-        caption = block.caption or block.text or "图片"
-        return f"![{caption}]({block.text})" if block.text else f"![{caption}]"
+        caption = block.caption or "图片"
+        if block.text.startswith(("http://", "https://")):
+            # 已是实际 URL（业务层替换后的再序列化场景）直接用
+            return f"![{caption}]({block.text})"
+        if block.text:
+            # artifact_id 引用：统一 figure 占位协议，业务层把占位符替换为
+            # MinIO 路径后即为可渲染链接（解析层不做任何业务语义）
+            return f"![{caption}](__FIGURE_URL__{block.text}__)"
+        return f"![{caption}]"
     if block.kind == KIND_CHART:
         return block.text
     return block.text

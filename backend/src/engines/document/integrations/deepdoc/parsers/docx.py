@@ -257,6 +257,8 @@ class RAGFlowDocxParser:
         guard_office_zip(payload, "docx")
         self.doc = Document(BytesIO(payload))
         self._footnotes = self._load_footnotes()
+        # 图片 artifact_id 计数器（每文档重置；闭包内自增）
+        self._figure_counter = 0
         header_footer_sections = self._load_header_footer_sections()
         parsed_page = 0
         sections: list[dict[str, Any]] = []
@@ -299,7 +301,20 @@ class RAGFlowDocxParser:
                 if is_list_item and not text.startswith("•"):
                     text = f"• {text}"
                 image = self.get_picture(self.doc, paragraph)
-                sections.append({"text": text, "style": style_name, "image": image})
+                figure_id = ""
+                if image:
+                    # 图片进 figure 契约：artifact_id 定版于此（与 pdf/xlsx 同
+                    # 协议），markdown 图片链接占位符随段落文本入正文流——业务
+                    # 层替换后恰为 ](figure_xxx.png)，读取端点 presign 正则按此
+                    # 识别换签名。纯图片段也产出占位符（text 保证非空入 section）
+                    figure_id = f"docx_fig_{self._figure_counter}"
+                    self._figure_counter += 1
+                    link = f"![图片](__FIGURE_URL__{figure_id}__)"
+                    text = f"{text}\n{link}" if text else link
+                sections.append(
+                    {"text": text, "style": style_name, "image": image,
+                     "figure_id": figure_id}
+                )
             # 段内文本框（流程图/标注框）原位锚定：紧跟所属段落，不再堆文档尾
             for box_text in self._paragraph_textbox_texts(paragraph._element):
                 sections.append({"text": box_text, "style": "TextBox", "image": None})
