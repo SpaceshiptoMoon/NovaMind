@@ -79,9 +79,15 @@ class RAGFlowHtmlParser:
         if soup.body is None:
             logging.debug("html_parser: parsing HTML fragment without <body>; falling back to soup root")
         cls.read_text_recursively(root, temp_sections, chunk_token_num=chunk_token_num)
-        block_text_list, table_list = cls.merge_block_text(temp_sections)
-        sections = cls.chunk_block(block_text_list, chunk_token_num=chunk_token_num)
-        sections.extend(table.get("content", "") for table in table_list if table.get("content"))
+        ordered_blocks, _table_list = cls.merge_block_text(temp_sections)
+        # 文本块按 token 预算聚合切分；表格块整块原位输出（不进聚合器——
+        # 表格 HTML 被邻块合并或按字符窗硬切都会破坏结构）
+        sections = []
+        for kind, content in ordered_blocks:
+            if kind == "table":
+                sections.append(content)
+            else:
+                sections.extend(cls.chunk_block([content], chunk_token_num=chunk_token_num))
         return sections
 
     @classmethod
@@ -96,17 +102,35 @@ class RAGFlowHtmlParser:
             block_id: 当前块级元素 ID，同块文本靠它聚合。
         """
         if isinstance(element, NavigableString):
-            content = element.strip()
+            # 不间断空格归一：\xa0 对分词/向量是噪音（视觉上与空格无异）
+            content = element.replace("\xa0", " ").strip()
             if content:
                 info = {"content": content, "tag_name": parent_name or "inner_text", "metadata": {"block_id": block_id}}
                 return [info]
             return []
 
         if isinstance(element, Tag):
-            if element.name.lower() == "table":
+            name = element.name.lower()
+            if name == "table":
                 table_id = str(uuid.uuid1())
                 return [{"content": html.unescape(str(element)), "tag_name": "table", "metadata": {"table_id": table_id, "index": 0}}]
-            if element.name.lower() in BLOCK_TAGS:
+            if name == "li":
+                # 列表项语义保真：整项一行加「• 」前缀（嵌套列表会拍平进同行）
+                text = element.get_text(" ", strip=True)
+                if text:
+                    return [{"content": f"• {text}", "tag_name": "li",
+                             "metadata": {"block_id": str(uuid.uuid1())}}]
+                return []
+            if name == "img":
+                # alt 是 HTML 图片的官方语义描述（对照 Excel 图片提取链路）
+                alt = (element.get("alt") or "").strip()
+                if alt:
+                    return [{"content": alt, "tag_name": "img",
+                             "metadata": {"block_id": str(uuid.uuid1())}}]
+                return []
+            if name in ("script", "style"):
+                return []
+            if name in BLOCK_TAGS:
                 block_id = str(uuid.uuid1())
             for child in element.children:
                 parser_result.extend(cls.read_text_recursively(child, parser_result, chunk_token_num, element.name, block_id))
@@ -115,37 +139,48 @@ class RAGFlowHtmlParser:
 
     @classmethod
     def merge_block_text(cls, parser_result):
-        """按 block_id 聚合文本块；标题行加 Markdown 井号前缀，表格单独收集。
-        
+        """按 block_id 聚合文本块；标题行加 Markdown 井号前缀；表格原位输出。
+
         Returns:
-            (块文本列表, 表格信息列表) 二元组。
+            (有序块列表, 表格信息列表) 二元组。有序块为 ("text", 文本) /
+            ("table", 表格 HTML) 二元组——表格保持文档位置不堆尾（与 Word
+            表格原位修复同因）。表格信息列表仅为兼容旧签名保留。
         """
-        block_content = []
+        ordered: list[tuple[str, str]] = []
+        table_info_list: list[dict] = []
         current_content = ""
-        table_info_list = []
         last_block_id = None
+
+        def _flush():
+            nonlocal current_content, last_block_id
+            if current_content:
+                ordered.append(("text", current_content))
+            current_content = ""
+            last_block_id = None
+
         for item in parser_result:
             content = item.get("content", "")
             tag_name = item.get("tag_name")
             title_flag = tag_name in TITLE_TAGS
             block_id = item.get("metadata", {}).get("block_id")
+            if tag_name == "table":
+                _flush()
+                ordered.append(("table", content))
+                table_info_list.append(item)
+                continue
             if block_id:
                 if title_flag:
                     content = f"{TITLE_TAGS[tag_name]} {content}"
                 if last_block_id != block_id:
-                    if last_block_id is not None and current_content:
-                        block_content.append(current_content)
+                    _flush()
                     current_content = content
                     last_block_id = block_id
                 else:
                     current_content += (" " if current_content else "") + content
-            elif tag_name == "table":
-                table_info_list.append(item)
             else:
                 current_content += (" " if current_content else "") + content
-        if current_content:
-            block_content.append(current_content)
-        return block_content, table_info_list
+        _flush()
+        return ordered, table_info_list
 
     _SPACELESS = "぀-ヿ㐀-䶿一-鿿豈-﫿가-힯"
     _ATOM_RE = re.compile(rf"[{_SPACELESS}]|[^\s{_SPACELESS}]+|\s+")

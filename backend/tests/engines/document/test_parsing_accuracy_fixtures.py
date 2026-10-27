@@ -500,6 +500,47 @@ def test_docx_sdt_content_passthrough(tmp_path):
     assert "条款" in result.full_text and "内容" in result.full_text
 
 
+def test_html_quality_gaps(tmp_path):
+    """HTML 质量批次回归：nbsp 归一/列表语义/img alt/表格原位/标题层级。"""
+    from io import BytesIO
+
+    from novamind.engines.document.integrations.deepdoc.parsers.html import (
+        RAGFlowHtmlParser,
+    )
+
+    html = (
+        "<html><head><style>.x{color:red}</style><script>var a=1;</script></head><body>"
+        "<h1>产品说明书</h1><h2>安装步骤</h2>"
+        '<p>带&nbsp;nbsp 的段落 &amp; 符号。</p>'
+        "<table><tr><th>项目</th><th>数值</th></tr><tr><td>甲</td><td>1</td></tr></table>"
+        "<ul><li>列表项一</li><li>列表项二</li></ul>"
+        "<p>中间段落。</p>"
+        "<table><tr><th>另一表</th></tr><tr><td>数据</td></tr></table>"
+        '<img src="x.png" alt="图片替代文字">'
+        "</body></html>"
+    )
+    sections = RAGFlowHtmlParser.parser_txt(
+        BytesIO(html.encode("utf-8")).read().decode("utf-8"), chunk_token_num=512
+    )
+    joined = "\n".join(sections)
+    # nbsp 归一（此前 \xa0 残留为分词噪音）
+    assert "\xa0" not in joined
+    # 标题层级映射
+    assert "# 产品说明书" in joined and "## 安装步骤" in joined
+    # 列表语义（此前 li 变普通行）
+    assert "• 列表项一" in joined and "• 列表项二" in joined
+    # img alt 语义保留（此前丢失）
+    assert "图片替代文字" in joined
+    # 双表按文档序原位（此前表格堆尾）：表1 在列表项之前，表2 在中间段落之后
+    pos_table1 = joined.find("项目")
+    pos_list = joined.find("• 列表项一")
+    pos_middle = joined.find("中间段落")
+    pos_table2 = joined.find("另一表")
+    assert 0 <= pos_table1 < pos_list < pos_middle < pos_table2
+    # script/style/注释剔除
+    assert "var a=1" not in joined and ".x{color:red}" not in joined
+
+
 def test_docx_tracked_changes_accepted_text(tmp_path):
     """修订模式按「接受终稿」提取：插入文本保留、删除文本丢弃。
 
