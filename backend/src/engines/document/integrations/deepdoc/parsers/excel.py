@@ -159,6 +159,14 @@ class RAGFlowExcelParser:
             return str(value)
         if isinstance(value, str):
             return ILLEGAL_CHARACTERS_RE.sub(" ", value).strip()
+        if isinstance(value, (list, tuple)):
+            # openpyxl rich_text 模式的 CellRichText（list 子类）——str() 会把
+            # 对象表示写进索引；拼接其文本片段（TextBlock 有 .text 属性）
+            parts = [
+                str(getattr(part, "text", None) if getattr(part, "text", None) else part)
+                for part in value
+            ]
+            return ILLEGAL_CHARACTERS_RE.sub(" ", "".join(parts)).strip()
         return str(value)
 
     @staticmethod

@@ -1787,7 +1787,13 @@ def _downscale_image_for_vlm(file_content: bytes) -> tuple[bytes, str | None]:
         return file_content, None
     long_edge = max(img.size)
     if long_edge <= _VLM_IMAGE_MAX_LONG_EDGE:
-        return file_content, None
+        if img.mode in ("RGB", "RGBA", "L", "P", "1"):
+            return file_content, None
+        # 非常规色彩空间（印刷图 CMYK 等）：小图也转 RGB 重编码——服务商对
+        # CMYK JPEG 支持差（色彩反转），与降采样路径保持同一色彩
+        buf = BytesIO()
+        img.convert("RGB").save(buf, format="JPEG", quality=92)
+        return buf.getvalue(), "image/jpeg"
     scale = _VLM_IMAGE_MAX_LONG_EDGE / long_edge
     new_size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
     converted = img if img.mode in ("RGB", "L") else img.convert("RGB")

@@ -500,6 +500,41 @@ def test_docx_sdt_content_passthrough(tmp_path):
     assert "条款" in result.full_text and "内容" in result.full_text
 
 
+def test_docx_tracked_changes_accepted_text(tmp_path):
+    """修订模式按「接受终稿」提取：插入文本保留、删除文本丢弃。
+
+    此前 w:ins/w:del 段落整段消失（python-docx runs/text 均不含修订内容）。
+    """
+    from io import BytesIO
+
+    from docx import Document
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    doc = Document()
+    doc.add_paragraph("修订前的普通段落。")
+    p = doc.add_paragraph()
+    p._p.append(parse_xml(
+        f'<w:ins {nsdecls("w")} w:id="10" w:author="甲" '
+        f'w:date="2026-01-01T00:00:00Z">'
+        f"<w:r><w:t>插入的新条款文本</w:t></w:r></w:ins>"
+    ))
+    p2 = doc.add_paragraph()
+    p2._p.append(parse_xml(
+        f'<w:del {nsdecls("w")} w:id="11" w:author="甲" '
+        f'w:date="2026-01-01T00:00:00Z">'
+        f'<w:r><w:delText>被删除的旧条款文本</w:delText></w:r></w:del>'
+    ))
+    buf = BytesIO()
+    doc.save(buf)
+    result = DeepDocParser()._parse_docx_sync(buf.getvalue(), {"chunk_size": 10000})
+    assert "插入的新条款文本" in result.full_text, "接受的插入文本必须保留"
+    assert "被删除的旧条款文本" not in result.full_text, "拒绝的删除文本必须丢弃"
+
+
 def test_docx_footnote_inlined(tmp_path):
     """脚注引用内联为 [脚注N: 文本]（此前完全丢失）。"""
     import io

@@ -222,9 +222,18 @@ class RAGFlowDocxParser:
             nonlocal parsed_page
             if parsed_page > to_page:
                 return
-            # paragraph.text 含超链接显示文本（runs 累加会丢 hyperlink 内文字，
-            # python-docx 1.2 实测：hyperlink-only 段落 runs 为空而 text 完整）
-            text = (paragraph.text or "").strip()
+            # 修订模式段落：python-docx 对 w:ins/w:del 静默——runs/text 均不含
+            # 插入文本（实测修订段整段消失），需按「接受修订终稿」XML 级提取
+            has_revisions = bool(
+                paragraph._element.xpath(".//w:ins or .//w:del")
+            )
+            if has_revisions:
+                text = self._accepted_text(paragraph._element).strip()
+            else:
+                # paragraph.text 含超链接显示文本（runs 累加会丢 hyperlink 内
+                # 文字，python-docx 1.2 实测：hyperlink-only 段落 runs 为空而
+                # text 完整）
+                text = (paragraph.text or "").strip()
             breaks = paragraph._element.xpath(".//w:lastRenderedPageBreak")
             parsed_page += len(breaks)
             if from_page <= parsed_page < to_page and text:
@@ -283,6 +292,21 @@ class RAGFlowDocxParser:
             for table in list(self.doc.tables) + sdt_tables
         ]
         return sections, tables
+
+    def _accepted_text(self, p_element) -> str:
+        """接受修订视角的段落文本：保留插入（w:ins）文字，丢弃删除（w:del）文字。
+
+        知识库入库语义取「接受修订后的终稿」。w:del 内是被删除文字
+        （w:delText，不含 w:t），w:t 直取天然排除；普通/超链接/插入内文字
+        统一经 .//w:t 收集。纯文本拼接丢弃 tab/换行符（RAG 文本可接受）。
+        """
+        try:
+            # p_element 是 python-docx 注册类（CT_P），其 .xpath 自带命名空间表
+            # （不可传 namespaces 参数，会 TypeError）
+            nodes = p_element.xpath(".//w:t[not(ancestor::w:del)]")
+        except Exception:
+            return ""
+        return "".join(node.text or "" for node in nodes)
 
     def _load_footnotes(self) -> dict[str, str]:
         """读取脚注 part（python-docx 无公开 API，经关系直取 footnotes part）。
