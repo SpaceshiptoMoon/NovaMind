@@ -413,9 +413,60 @@ video-context-mcp / PixelML(av)（视频记忆类新形态）。
 
 ---
 
+## 七、Excel 解析难点专项调研（2026-10-27，针对 badcase 修复）
+
+> 方式：knowledgestack/excel-parser 全量源码深探 + docling msexcel 后端 /
+> unstructured partition_xlsx 对照（均本地源码）+ SpreadsheetLLM 论文算法调研。
+> 资产：`.tmp/oss-ref/excel-parser`（新增克隆）。
+
+### 7.1 三家对四大难点的解法对照
+
+| 难点 | knowledgestack/excel-parser | docling | unstructured |
+|---|---|---|---|
+| 一表多岛 | **两阶段投影连通域**（行投影分组→组内列投影分组）+ 密度自适应阈值（>0.9 填充率行 gap 放宽到 2，列 gap 永不放宽）+ 两级后处理（小标题块并入下方大块；被小节行/空行切断的表按列重叠率≥0.5 缝回） | **BFS 4-邻接连通分量** + gap_tolerance 可配置（默认 0 严格）+ 外接矩形补空 | numpy 掩码连通分量 + 行重叠合并 + **空行压缩读**（防远端杂散格撑爆） |
+| 表头检测 | **header_detector 746 行**（全库质量最高模块）：anchor=「给下方数据贴标签的多列行」（contrast 信号：本行文本标签+下方主体数据；styled 信号：过半加粗/填充）；band 下延最多 6 行（垂直合并、体类型签名刹车、freeze pane 裁剪）；**只识别 band 不合成复合列名** | 无折叠；合并语义以 span 保留（HTML 自然 colspan/rowspan），仅首行标 header | 无多级概念（pandas header=0） |
+| 前置标题区 | 三层：标题块物理并入下表 + `_is_title_or_preamble`（banner 横合并行 / "Label: value" KV 行 / 稀疏样式行，有 contrast 列的行永不判标题）+ 渲染层 `title (row N):` | 首行唯一跨列合并格且次行≥2 单列文本 → 拆独立标题+表体上移 | 前导/尾随单格行拆为 Title/NarrativeText |
+| 批注 | 读取+落库，**不进 RAG chunk**（半解决） | **最完整**：旧式 notes + Excel 365 threaded comments（直读 xl/threadedComments XML+作者映射+线程排序）+ NOTES 层 + bbox 回链单元格 | 无 |
+| 图表 | ZIP+ElementTree 提取 13 类 chart XML → 文本摘要（系列/类别 range 引用）；**不回读数值** | openpyxl `sheet._charts` → 类型分类 + **把 series range 解析回缓存值重建数据表**（零依赖）+ 可选 LibreOffice 渲染位图 | 无 |
+| 隐藏行列 | 提取 hidden 元数据进 chunk（不丢内容） | 仅隐藏 sheet → INVISIBLE 内容层（保留可过滤） | 无 |
+
+### 7.2 SpreadsheetLLM（微软）的算法事实
+
+- 结构锚 = 表格边界处的异质行/列；锚点邻域阈值 k=4（论文最优消融）
+- **纯启发式边界检测只有 46.3% F1（EoB-0）/ 65%（EoB-2）**——精判要靠 LLM
+  （微调后 78.9% F1，超 TableSense-CNN 12.3 分）
+- 边界三信号：语义不连续、公式模式（SUM/SUBTOTAL 聚合向上=表尾）、空白几何
+  （但要区分「有意分隔」与「稀疏数据间隙」）
+- 已知失败形态：跨表合并格（先分解为原子格）、嵌套子表（递归边界）、不规则间距
+
+### 7.3 excel-parser 的「宣传 vs 实现」差距（照搬前先知道）
+
+1. "多级表头归一化" = band 识别+完整渲染，**无复合列名合成**（我们的折叠已领先）
+2. "批注提取"不进 RAG chunk（只落库+独立线性化 API）
+3. "tiktoken 计数"未实现（chars/4 近似）
+4. 图表摘要只给 range 引用不回读数值（docling 的数据表重建更实用）
+5. 自适应 gap 其实只有一行密度判断，功力在投影连通域+两个后处理
+6. 它自己的坑：纯样式空格参与连通域会把并排表粘住——我们应以 value/formula 判占用
+
+### 7.4 NovaMind 移植清单（按性价比）
+
+1. **表头检测升级**：移植 header_detector 的 anchor/band/体签名刹车（替换我们的
+   数值占比启发式；复合列名合成保留我们的）——正确性收益最大
+2. **一表多岛**：投影连通域（分岛）+ 两级后处理（缝合），占用判定用 value/formula
+   排除纯样式格；阈值默认 1/1 + 密度放宽
+3. **前置区**：`_is_title_or_preamble` 三信号（banner/KV/稀疏）+ docling 的
+   合并 section label 拆分
+4. **图表**：docling 式 range→缓存值重建数据表（比 excel-parser 的纯引用摘要强）
+5. **批注**：旧式 `cell.comment` 并入 chunk 文本（`[note(作者): ...]`）起步；
+   threaded 直读 XML 进阶
+6. **性能防御**：unstructured 空行压缩读 + excel-parser 的 200 万格/sheet 上限
+7. **citation URI**：`path#Sheet!A1:F18` 进 chunk metadata（溯源）
+
+---
+
 ## 附：调研资产位置
 
-- `.tmp/oss-ref/{docling, marker, VideoRAG, RAG-Anything, opendataloader-pdf, unstructured, olmocr}`：镜像克隆源码（gitignore）
+- `.tmp/oss-ref/{docling, marker, VideoRAG, RAG-Anything, opendataloader-pdf, unstructured, olmocr, excel-parser}`：镜像克隆源码（gitignore）
 - `C:/Users/xl/Desktop/project/MinerU`：MinerU 本地快照（2026-08-14）
 - `C:/Users/xl/Desktop/project/WeKnora`：WeKnora 本地快照（解析模块见 `docreader/`）
 - `.tmp/ragflow`：ragflow 上游（本地基线 2a83ad6 + 已 fetch 的 main）
