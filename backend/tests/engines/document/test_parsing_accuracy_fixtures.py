@@ -70,6 +70,33 @@ def _build_complex_xlsx(path: Path) -> None:
     buf = BytesIO()
     PILImage.new("RGB", (80, 60), color=(30, 144, 255)).save(buf, format="PNG")
     ws2.add_image(XLImage(buf), "B5")
+    # 多岛 sheet：前置标题行 + 空列分隔的左右两表 + 批注（此前整表搅在一起）
+    from openpyxl.comments import Comment
+
+    ws3 = wb.create_sheet("多岛统计")
+    ws3["A1"] = "月度汇总（单位：件）"
+    ws3["A2"] = "名称"
+    ws3["B2"] = "数量"
+    ws3["A3"] = "甲"
+    ws3["B3"] = 10
+    ws3["A4"] = "乙"
+    ws3["B4"] = 20
+    ws3["D2"] = "编码"
+    ws3["E2"] = "单价"
+    ws3["D3"] = "X1"
+    ws3["E3"] = 9.5
+    ws3["D4"] = "X2"
+    ws3["E4"] = 8
+    ws3["B3"].comment = Comment("含返修品", "张三")
+    # 图表（此前完全丢失）：柱状图引用分季度明细数据
+    from openpyxl.chart import BarChart, Reference
+
+    chart = BarChart()
+    chart.title = "华东区季度收支"
+    chart.add_data(Reference(ws2, min_col=2, min_row=2, max_col=3, max_row=3),
+                   titles_from_data=True)
+    chart.set_categories(Reference(ws2, min_col=1, min_row=3, max_row=3))
+    ws2.add_chart(chart, "G3")
     wb.save(path)
 
 
@@ -174,6 +201,57 @@ def test_excel_runtime_figure_regions(tmp_path):
     assert len(regions) == 1
     assert regions[0]["image_blobs"] and regions[0]["artifact_id"].startswith("xls_")
     assert "分季度明细" in regions[0]["caption"]
+
+
+def test_excel_multi_island_sheet_split(tmp_path):
+    """一表多岛：空列分隔的左右两表切成独立表，前置标题行独立成文本块。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    parser = RAGFlowExcelParser()
+    blocks, _images = parser.parse_blocks(xlsx.read_bytes())
+    joined = "\n".join(blocks)
+    # 左右两表各自带表头（此前整表搅在一起）
+    assert "<th>名称</th>" in joined and "<th>编码</th>" in joined
+    assert "<td>甲</td>" in joined and "<td>X1</td>" in joined
+    # 前置标题行独立成文本块（此前被第 1 行表头吞掉）
+    assert "月度汇总（单位：件）" in joined
+    # 两表的 caption 引用坐标应不同（左表 A 区，右表 D 区）
+    assert "多岛统计!A" in joined and "多岛统计!D" in joined
+
+
+def test_excel_cell_comment_inlined(tmp_path):
+    """单元格批注内联进格文本（此前完全丢失）。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    parser = RAGFlowExcelParser()
+    blocks, _images = parser.parse_blocks(xlsx.read_bytes())
+    joined = "\n".join(blocks)
+    assert "[note(张三): 含返修品]" in joined
+
+
+def test_excel_chart_rebuilt_as_data_table(tmp_path):
+    """图表 XML：range 引用回读缓存值重建「类别+系列」数据表。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    parser = RAGFlowExcelParser()
+    blocks, _images = parser.parse_blocks(xlsx.read_bytes())
+    chart_blocks = [b for b in blocks if "图表（bar）" in b]
+    assert chart_blocks, "图表应重建为数据表"
+    assert "华东区季度收支" in chart_blocks[0]
+    assert "收入" in chart_blocks[0] and "<td>100</td>" in chart_blocks[0]
+    assert "<td>60</td>" in chart_blocks[0]
 
 
 # ---------- DOCX 夹具 ----------

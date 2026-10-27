@@ -332,78 +332,232 @@ class RAGFlowExcelParser:
         return blocks
 
     def parse_blocks(self, fnm, chunk_rows=256):
-        """工作表转 HTML 块 + 提取嵌入图片（runtime 主入口，一次加载）。
+        """工作表转 HTML 块 + 嵌入图片/图表提取（runtime 主入口，一次加载）。
+
+        版面语义管线：值网格（excel_layout.build_grid）→ 多岛投影分割 →
+        缝合后处理 → 逐岛前置区/表头识别 → 复合表头渲染（带 `Sheet!A1:F18`
+        引用坐标 caption 与单元格批注内联）→ 嵌入图片占位符挂锚点所在岛、
+        图表 range 回读缓存值重建数据表。
 
         Args:
             fnm: 文件路径或字节流。
-            chunk_rows: 每块包含的数据行数。
+            chunk_rows: 每块包含的数据行数（超行窗口重复表头）。
 
         Returns:
-            (blocks, images) 二元组：blocks 为 HTML 表格字符串列表（每块带
-            工作表名 caption，多级表头折成单行复合表头）；images 为嵌入图片
-            字典列表（sheet/row/col/blob，png 化重编码，不可解码图跳过）。
+            (blocks, images) 二元组：blocks 为 HTML 块列表（表格/前置文本/
+            图表摘要）；images 为嵌入图片字典列表（sheet/row/col/blob/
+            artifact_id，png 化重编码，不可解码图跳过）。
         """
         from html import escape
+
+        from novamind.engines.document.integrations.deepdoc.parsers import (
+            excel_layout as layout,
+        )
 
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
         wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
         tb_chunks: list[str] = []
         images: list[dict] = []
 
-        def fmt_text(value):
-            """单元格值转展示文本（数值/日期规范化，见 format_cell_value）。"""
-            return RAGFlowExcelParser.format_cell_value(value)
+        def cell_html(text: str, note: str = "") -> str:
+            """单元格转 HTML：换行转 <br/>，批注内联到格尾。"""
+            body = escape(text).replace("\n", "<br/>")
+            if note:
+                body = f"{body} {escape(note)}"
+            return f"<td>{body}</td>"
 
-        def cell_html(value):
-            """单元格转 HTML：换行转 <br/>，None 转空格。"""
-            if value is None:
-                return "<td></td>"
-            return f"<td>{escape(fmt_text(value)).replace(chr(10), '<br/>')}</td>"
+        # 阶段 1：全簿值网格（图表引用可能跨 sheet 回读）
+        grids: dict[str, Any] = {}
+        for sheetname in wb.sheetnames:
+            try:
+                grids[sheetname] = layout.build_grid(
+                    wb[sheetname], RAGFlowExcelParser.format_cell_value
+                )
+            except Exception:
+                logger.warning(
+                    "Skip sheet '%s': grid build failed", sheetname, exc_info=True
+                )
 
         for sheet_index, sheetname in enumerate(wb.sheetnames):
-            ws = wb[sheetname]
-            try:
-                rows = RAGFlowExcelParser._get_rows_limited(ws)
-            except Exception:
-                logger.warning("Skip sheet '%s' due to rows access error", sheetname, exc_info=True)
+            grid = grids.get(sheetname)
+            if grid is None:
                 continue
-
+            ws = wb[sheetname]
             sheet_images = RAGFlowExcelParser._extract_sheet_images(ws, sheetname)
-            # artifact_id 在此定版（占位符与 figure_regions 必须同一 id）
             for order, image_info in enumerate(sheet_images):
                 location = (
                     f"r{image_info['row'] + 1}c{image_info['col'] + 1}"
                     if image_info["row"] is not None and image_info["col"] is not None
                     else f"pos{order}"
                 )
-                image_info["artifact_id"] = (
-                    f"xls_s{sheet_index}_{location}_{order}"
-                )
-            if not rows:
-                images.extend(sheet_images)
-                continue
+                image_info["artifact_id"] = f"xls_s{sheet_index}_{location}_{order}"
 
-            header_rows = RAGFlowExcelParser._detect_header_rows(rows)
-            headers = RAGFlowExcelParser._build_composite_headers(rows, header_rows)
-            header_row = "<tr>" + "".join(f"<th>{escape(h)}</th>" for h in headers) + "</tr>"
-            n_data_rows = len(rows) - header_rows
-            sheet_chunks: list[str] = []
-            for chunk_i in range((n_data_rows + chunk_rows - 1) // chunk_rows):
-                table_html = f"<table><caption>{sheetname}</caption>{header_row}"
-                start = header_rows + chunk_i * chunk_rows
-                for row in list(rows[start : min(start + chunk_rows, len(rows))]):
-                    table_html += "<tr>" + "".join(cell_html(c.value) for c in row) + "</tr>"
-                table_html += "</table>\n"
-                sheet_chunks.append(table_html)
-            # 嵌入图片：占位符挂在本表首块（精确到格位的行内插入对分块漂移
-            # 太脆弱；挂首块保证图片随表入库，宿主上传后替换为短路径）
-            if sheet_images and sheet_chunks:
-                for image_info in sheet_images:
-                    placeholder = f"__FIGURE_URL__{image_info['artifact_id']}__"
-                    sheet_chunks[0] = placeholder + "\n" + sheet_chunks[0]
+            islands = layout.stitch_islands(
+                grid, layout.segment_islands(grid)
+            )
+            sheet_blocks: list[str] = []
+            island_table_ranges: list[tuple[int, int, Island]] = []  # (起, 止, 岛)
+            for island in islands:
+                base = len(sheet_blocks)
+                for line in island.preamble:
+                    sheet_blocks.append(line)
+                if island.bottom >= island.data_top:
+                    tl = f"{layout._column_letter(island.left)}{island.top + 1}"
+                    br = f"{layout._column_letter(island.right)}{island.bottom + 1}"
+                    caption = f"{sheetname}!{tl}:{br}"
+                    header_row = (
+                        "<tr>"
+                        + "".join(f"<th>{escape(h)}</th>" for h in island.headers)
+                        + "</tr>"
+                    )
+                    n_data = island.bottom - island.data_top + 1
+                    for window_i in range((n_data + chunk_rows - 1) // chunk_rows):
+                        start = island.data_top + window_i * chunk_rows
+                        table_html = (
+                            f"<table><caption>{escape(caption)}</caption>{header_row}"
+                        )
+                        for r in range(start, min(start + chunk_rows, island.bottom + 1)):
+                            tds = "".join(
+                                cell_html(
+                                    grid.text_at(r, c),
+                                    grid.comments.get((r, c), ""),
+                                )
+                                for c in range(island.left, island.right + 1)
+                            )
+                            table_html += f"<tr>{tds}</tr>"
+                        table_html += "</table>\n"
+                        sheet_blocks.append(table_html)
+                island_table_ranges.append((base, len(sheet_blocks), island))
+
+            # 嵌入图片：占位符挂锚点所在岛的首块；岛外浮图挂锚点上方最近的岛
+            # （表尾浮图通常注解该表）；上方无岛才独立成块
+            for image_info in sheet_images:
+                placeholder = f"__FIGURE_URL__{image_info['artifact_id']}__\n"
+                r0, c0 = image_info.get("row"), image_info.get("col")
+                placed = False
+                if r0 is not None and c0 is not None:
+                    for base, end, island in island_table_ranges:
+                        if (
+                            island.top <= r0 <= island.bottom
+                            and island.left <= c0 <= island.right
+                            and end > base
+                        ):
+                            sheet_blocks[base] = placeholder + sheet_blocks[base]
+                            placed = True
+                            break
+                if not placed and r0 is not None:
+                    above = [
+                        (base, end)
+                        for base, end, island in island_table_ranges
+                        if island.top <= r0 and end > base
+                    ]
+                    if above:
+                        base, _end = above[-1]
+                        sheet_blocks[base] = placeholder + sheet_blocks[base]
+                        placed = True
+                if not placed:
+                    sheet_blocks.append(placeholder.strip())
             images.extend(sheet_images)
-            tb_chunks.extend(sheet_chunks)
+
+            # 图表：range 引用回读缓存值重建数据表
+            for chart in getattr(ws, "_charts", []) or []:
+                block = self._chart_to_block(chart, sheetname, grids)
+                if block:
+                    sheet_blocks.append(block)
+
+            tb_chunks.extend(sheet_blocks)
         return tb_chunks, images
+
+    def _chart_to_block(self, chart, sheetname: str, grids: dict) -> str:
+        """图表对象 → 数据表 HTML：series range 引用回读缓存值重建
+        「类别列 + 系列列」表（对齐 docling `_chart_to_table_data` 的思路，
+        零外部依赖）。重建失败/无数值返回空串（诚实跳过）。
+        """
+        from html import escape
+        from io import BytesIO
+
+        from openpyxl.utils.cell import range_boundaries
+        from PIL import Image as PILImage
+
+        ctype = type(chart).__name__.replace("Chart", "").lower() or "chart"
+        title = RAGFlowExcelParser._chart_title_text(chart)
+
+        def resolve_values(ref) -> list[str]:
+            """把 Reference/numRef/strRef 的 range 引用解析为网格展示文本。"""
+            formula = getattr(ref, "f", None) or (
+                getattr(getattr(ref, "numRef", None), "f", None)
+            )
+            if not formula:
+                return []
+            sheet_part, _, range_part = str(formula).rpartition("!")
+            sheet_name = sheet_part.strip("'")
+            grid = grids.get(sheet_name)
+            if grid is None:
+                return []
+            try:
+                min_col, min_row, max_col, max_row = range_boundaries(range_part)
+            except Exception:
+                return []
+            if (max_row - min_row + 1) * (max_col - min_col + 1) > 100_000:
+                return []
+            out: list[str] = []
+            for r in range(min_row - 1, max_row):
+                for c in range(min_col - 1, max_col):
+                    out.append(grid.text_at(r, c))
+            return out
+
+        series_rows: list[tuple[str, list[str]]] = []
+        categories: list[str] = []
+        max_len = 0
+        for ser in getattr(chart, "series", []) or []:
+            name_ref = getattr(getattr(ser, "tx", None), "strRef", None)
+            name_values = resolve_values(name_ref)
+            name = name_values[0] if name_values else "系列"
+            val_ref = getattr(getattr(ser, "val", None), "numRef", None)
+            values = resolve_values(val_ref)
+            if not values:
+                continue
+            cat = getattr(ser, "cat", None)
+            cat_values = resolve_values(
+                getattr(cat, "strRef", None) or getattr(cat, "numRef", None)
+            ) if cat is not None else []
+            if cat_values and not categories:
+                categories = cat_values
+            series_rows.append((name, values))
+            max_len = max(max_len, len(values))
+        if not series_rows or max_len == 0:
+            return ""
+        if max_len * len(series_rows) > 100_000:
+            logger.warning("Chart data too large to rebuild, skipped (sheet=%s)", sheetname)
+            return ""
+
+        rows_html = ""
+        for i in range(max_len):
+            cat = categories[i] if i < len(categories) else ""
+            tds = f"<td>{escape(cat)}</td>" + "".join(
+                f"<td>{escape(vals[i] if i < len(vals) else '')}</td>"
+                for _name, vals in series_rows
+            )
+            rows_html += f"<tr>{tds}</tr>"
+        header = "".join(f"<th>{escape(name)}</th>" for name, _ in series_rows)
+        caption = f"图表（{escape(ctype)}）：{escape(title or sheetname)}（{sheetname}）"
+        return (
+            f"<table><caption>{caption}</caption>"
+            f"<tr><th>类别</th>{header}</tr>{rows_html}</table>\n"
+        )
+
+    @staticmethod
+    def _chart_title_text(chart) -> str:
+        """从图表 Title 富文本对象提取标题文本（取不到返回空串）。"""
+        try:
+            parts: list[str] = []
+            for paragraph in chart.title.tx.rich.p:
+                for run in getattr(paragraph, "r", None) or []:
+                    if run.t:
+                        parts.append(run.t)
+            return "".join(parts).strip()
+        except Exception:
+            return ""
 
     @staticmethod
     def _extract_sheet_images(ws, sheetname: str) -> list[dict]:
