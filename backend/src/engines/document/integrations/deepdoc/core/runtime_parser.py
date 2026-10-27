@@ -11,6 +11,18 @@ from typing import Any
 from novamind.engines.document.integrations.deepdoc.core.capabilities import (
     get_deepdoc_capabilities,
 )
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    KIND_FIGURE,
+    KIND_HEADING,
+    KIND_HEADER,
+    KIND_FOOTER,
+    KIND_TABLE,
+    KIND_TEXT,
+    KIND_TEXTBOX,
+    UnifiedBlock,
+    blocks_to_markdown,
+    chunks_to_markdown,
+)
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.integrations.deepdoc.core.quality import (
     build_quality_metadata,
@@ -225,6 +237,23 @@ class DeepDocParser:
         result.metadata["quality"] = build_quality_metadata(
             "deepdoc", warnings, started, pdf_mode=pdf_mode
         )
+        doc_blocks = [
+            UnifiedBlock(kind=KIND_TEXT, text=chunk)
+            for chunk in result.chunks
+            if chunk.strip()
+        ]
+        for region in result.metadata.get("figure_regions") or []:
+            if not isinstance(region, dict):
+                continue
+            doc_blocks.append(
+                UnifiedBlock(
+                    kind=KIND_FIGURE,
+                    text=str(region.get("artifact_id") or ""),
+                    caption=str(region.get("caption") or "图片"),
+                )
+            )
+        result.markdown = chunks_to_markdown(result.chunks)
+        result.metadata["document_blocks"] = [b.to_dict() for b in doc_blocks]
         logger.info(
             "DeepDoc PDF 解析完成",
             pdf_mode=pdf_mode,
@@ -255,6 +284,7 @@ class DeepDocParser:
         return DeepDocParseResult(
             full_text=full_text.strip(),
             chunks=chunks,
+            markdown=chunks_to_markdown(chunks),
             metadata={
                 "parser": "deepdoc",
                 "file_type": file_type,
@@ -275,11 +305,15 @@ class DeepDocParser:
         heading_stack: list[str] = []
         image_count = 0
         flattened_tables: list[str] = []
+        doc_blocks: list[UnifiedBlock] = []
 
         for section in sections:
             image = section.get("image")
             if image:
                 image_count += 1
+                doc_blocks.append(
+                    UnifiedBlock(kind=KIND_FIGURE, text="", caption=f"图片{image_count}")
+                )
             # 表格占位项：把对应表格文本插回文档原位（body 序），不再堆尾
             table_index = section.get("table_index")
             if table_index is not None and 0 <= table_index < len(tables):
@@ -287,7 +321,11 @@ class DeepDocParser:
                     item = item.strip()
                     if item:
                         flattened_tables.append(item)
-                        blocks.append(self._table_text_to_html(item))
+                        html = self._table_text_to_html(item)
+                        blocks.append(html)
+                        doc_blocks.append(
+                            UnifiedBlock(kind=KIND_TABLE, text=html, is_html=True)
+                        )
                 continue
             text = (section.get("text") or "").strip()
             style_name = section.get("style") or ""
@@ -299,9 +337,19 @@ class DeepDocParser:
                 heading_stack.append(text)
                 # # 数量反映层级（H1→#，H2→##…封顶 6），路径保留检索语境
                 prefix = "#" * min(level, 6)
-                blocks.append(f"{prefix} {' > '.join(heading_stack)}")
+                heading_path = " > ".join(heading_stack)
+                blocks.append(f"{prefix} {heading_path}")
+                doc_blocks.append(
+                    UnifiedBlock(kind=KIND_HEADING, text=heading_path, level=level)
+                )
             else:
                 blocks.append(text)
+                kind = {
+                    "TextBox": KIND_TEXTBOX,
+                    "Header": KIND_HEADER,
+                    "Footer": KIND_FOOTER,
+                }.get(style_name, KIND_TEXT)
+                doc_blocks.append(UnifiedBlock(kind=kind, text=text))
 
         # 兜底：body 序之外残留的表格（异常文档结构）按旧约定追加尾部
         seen_table_indexes = {
@@ -314,7 +362,11 @@ class DeepDocParser:
                 item = item.strip()
                 if item:
                     flattened_tables.append(item)
-                    blocks.append(self._table_text_to_html(item))
+                    html = self._table_text_to_html(item)
+                    blocks.append(html)
+                    doc_blocks.append(
+                        UnifiedBlock(kind=KIND_TABLE, text=html, is_html=True)
+                    )
 
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
@@ -322,6 +374,7 @@ class DeepDocParser:
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
+            markdown=blocks_to_markdown(doc_blocks),
             metadata={
                 "parser": "deepdoc",
                 "file_type": "docx",
@@ -330,6 +383,7 @@ class DeepDocParser:
                 "images": image_count,
                 "source": "ragflow-adapted",
                 "quality": build_quality_metadata("deepdoc", warnings, started),
+                "document_blocks": [b.to_dict() for b in doc_blocks],
             },
         )
 
@@ -363,6 +417,15 @@ class DeepDocParser:
         figure_regions = self._build_excel_figure_regions(embedded_images)
         full_text = "\n\n".join(block.strip() for block in blocks if block and block.strip()).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        doc_blocks = [
+            UnifiedBlock(
+                kind=KIND_TABLE if block.lstrip().startswith("<table") else KIND_TEXT,
+                text=block.strip(),
+                is_html=block.lstrip().startswith("<table"),
+            )
+            for block in blocks
+            if block and block.strip()
+        ]
         logger.info(
             "DeepDoc Excel 解析完成",
             extension=extension,
@@ -374,6 +437,7 @@ class DeepDocParser:
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
+            markdown=blocks_to_markdown(doc_blocks),
             metadata={
                 "parser": "deepdoc",
                 "file_type": extension,
@@ -382,6 +446,7 @@ class DeepDocParser:
                 "table_chunks": len(blocks),
                 "figure_regions": figure_regions,
                 "quality": build_quality_metadata("deepdoc", warnings, started),
+                "document_blocks": [b.to_dict() for b in doc_blocks],
             },
         )
 
@@ -434,6 +499,7 @@ class DeepDocParser:
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
+            markdown=chunks_to_markdown(chunks),
             metadata={
                 "parser": "deepdoc",
                 "file_type": "epub",
@@ -459,9 +525,14 @@ class DeepDocParser:
         blocks = [f"# Slide {index + 1}\n{slide}".strip() for index, slide in enumerate(slides) if slide and slide.strip()]
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        doc_blocks = [
+            UnifiedBlock(kind=KIND_TEXT, text=block)
+            for block in blocks
+        ]
         logger.info("DeepDoc PPT 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), slides=len(slides))
         return DeepDocParseResult(
             full_text=full_text,
+            markdown=blocks_to_markdown(doc_blocks),
             chunks=chunks,
             metadata={
                 "parser": "deepdoc",
@@ -470,6 +541,7 @@ class DeepDocParser:
                 "source": "ragflow-adapted",
                 "slides": len(slides),
                 "quality": build_quality_metadata("deepdoc", warnings, started),
+                "document_blocks": [b.to_dict() for b in doc_blocks],
             },
         )
 
@@ -490,7 +562,9 @@ class DeepDocParser:
         chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
         logger.info("DeepDoc 图片解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks))
         metadata["quality"] = build_quality_metadata("deepdoc", warnings, started)
-        return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+        return DeepDocParseResult(
+            full_text=full_text, chunks=chunks, markdown=full_text, metadata=metadata
+        )
 
     @staticmethod
     def _extract_heading_level(style_name: str) -> int:
