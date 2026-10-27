@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Sequence
 from functools import cached_property
 from pathlib import Path
@@ -11,6 +12,10 @@ from novamind.engines.document.integrations.deepdoc.core.capabilities import (
     get_deepdoc_capabilities,
 )
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.engines.document.integrations.deepdoc.core.quality import (
+    build_quality_metadata,
+    collect_warnings,
+)
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     ensure_vision_parser_available,
 )
@@ -208,12 +213,17 @@ class DeepDocParser:
         model_failure_policy = parsing_config.get(
             "deepdoc_model_failure_policy", "heuristic_fallback"
         )
-        result = self._pdf_parser(
-            pdf_input,
-            pdf_mode=pdf_mode,
-            chunk_size=int(splitting_config.get("chunk_size", 1000)),
-            formula_recognition=None if formula_recognition is None else bool(formula_recognition),
-            model_failure_policy=str(model_failure_policy),
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            result = self._pdf_parser(
+                pdf_input,
+                pdf_mode=pdf_mode,
+                chunk_size=int(splitting_config.get("chunk_size", 1000)),
+                formula_recognition=None if formula_recognition is None else bool(formula_recognition),
+                model_failure_policy=str(model_failure_policy),
+            )
+        result.metadata["quality"] = build_quality_metadata(
+            "deepdoc", warnings, started, pdf_mode=pdf_mode
         )
         logger.info(
             "DeepDoc PDF 解析完成",
@@ -232,25 +242,35 @@ class DeepDocParser:
     ) -> DeepDocParseResult:
         """文本族同步解析：路由到 txt/md/html/json 子解析器再统一聚块。"""
         logger.info("DeepDoc 文本解析开始", extension=extension, deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"))
-        if isinstance(source, Path):
-            full_text, default_chunks, parser_metadata = self._text_parser.parse(source, parser_id=parsing_config.get("deepdoc_parser_id"))
-            file_type = source.suffix.lower().lstrip(".")
-        else:
-            full_text, default_chunks, parser_metadata = self._text_parser.parse_bytes(source, extension, parser_id=parsing_config.get("deepdoc_parser_id"))
-            file_type = extension
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            if isinstance(source, Path):
+                full_text, default_chunks, parser_metadata = self._text_parser.parse(source, parser_id=parsing_config.get("deepdoc_parser_id"))
+                file_type = source.suffix.lower().lstrip(".")
+            else:
+                full_text, default_chunks, parser_metadata = self._text_parser.parse_bytes(source, extension, parser_id=parsing_config.get("deepdoc_parser_id"))
+                file_type = extension
         chunks = self._chunk_blocks(default_chunks or [full_text], chunk_size=int(splitting_config.get("chunk_size", 1000)))
         logger.info("DeepDoc 文本解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks))
         return DeepDocParseResult(
             full_text=full_text.strip(),
             chunks=chunks,
-            metadata={"parser": "deepdoc", "file_type": file_type, "source": "ragflow-adapted", **parser_metadata},
+            metadata={
+                "parser": "deepdoc",
+                "file_type": file_type,
+                "source": "ragflow-adapted",
+                "quality": build_quality_metadata("deepdoc", warnings, started),
+                **parser_metadata,
+            },
         )
 
     def _parse_docx_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
         """DOCX 同步解析：Heading 样式转 Markdown 层级标题，表格转 HTML。"""
         logger.info("DeepDoc DOCX 解析开始")
         parser_input = str(source) if isinstance(source, Path) else source
-        sections, tables = self._docx_parser(parser_input)
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            sections, tables = self._docx_parser(parser_input)
         blocks: list[str] = []
         heading_stack: list[str] = []
         image_count = 0
@@ -309,6 +329,7 @@ class DeepDocParser:
                 "tables": flattened_tables,
                 "images": image_count,
                 "source": "ragflow-adapted",
+                "quality": build_quality_metadata("deepdoc", warnings, started),
             },
         )
 
@@ -332,11 +353,13 @@ class DeepDocParser:
             "DeepDoc Excel 解析开始", extension=extension, max_loaded_mb=max_loaded_mb
         )
         parser_input = str(source) if isinstance(source, Path) else source
-        blocks, embedded_images = self._excel_parser.parse_blocks(
-            parser_input, max_loaded_mb=max_loaded_mb
-        )
-        if not blocks:
-            blocks = list(self._excel_parser(parser_input, max_loaded_mb=max_loaded_mb))
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            blocks, embedded_images = self._excel_parser.parse_blocks(
+                parser_input, max_loaded_mb=max_loaded_mb
+            )
+            if not blocks:
+                blocks = list(self._excel_parser(parser_input, max_loaded_mb=max_loaded_mb))
         figure_regions = self._build_excel_figure_regions(embedded_images)
         full_text = "\n\n".join(block.strip() for block in blocks if block and block.strip()).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
@@ -358,6 +381,7 @@ class DeepDocParser:
                 "source": "ragflow-adapted",
                 "table_chunks": len(blocks),
                 "figure_regions": figure_regions,
+                "quality": build_quality_metadata("deepdoc", warnings, started),
             },
         )
 
@@ -398,10 +422,12 @@ class DeepDocParser:
     def _parse_epub_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
         """EPUB 同步解析：按 spine 序章节切分聚块。"""
         logger.info("DeepDoc EPUB 解析开始")
-        if isinstance(source, Path):
-            sections = self._epub_parser(str(source))
-        else:
-            sections = self._epub_parser("memory.epub", binary=source)
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            if isinstance(source, Path):
+                sections = self._epub_parser(str(source))
+            else:
+                sections = self._epub_parser("memory.epub", binary=source)
         full_text = "\n\n".join(section.strip() for section in sections if section and section.strip()).strip()
         chunks = self._chunk_blocks(sections, chunk_size=int(splitting_config.get("chunk_size", 1000)))
         logger.info("DeepDoc EPUB 解析完成", char_count=len(full_text), chunk_count=len(chunks), sections=len(sections))
@@ -414,6 +440,7 @@ class DeepDocParser:
                 "parser_class": "RAGFlowEpubParser",
                 "source": "ragflow-adapted",
                 "sections": len(sections),
+                "quality": build_quality_metadata("deepdoc", warnings, started),
             },
         )
 
@@ -426,7 +453,9 @@ class DeepDocParser:
         """PPT 同步解析：每页加 Slide 标题行后聚块。"""
         logger.info("DeepDoc PPT 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
-        slides = self._ppt_parser(parser_input)
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            slides = self._ppt_parser(parser_input)
         blocks = [f"# Slide {index + 1}\n{slide}".strip() for index, slide in enumerate(slides) if slide and slide.strip()]
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
@@ -440,6 +469,7 @@ class DeepDocParser:
                 "parser_class": "RAGFlowPptParser",
                 "source": "ragflow-adapted",
                 "slides": len(slides),
+                "quality": build_quality_metadata("deepdoc", warnings, started),
             },
         )
 
@@ -451,12 +481,15 @@ class DeepDocParser:
     ) -> DeepDocParseResult:
         """图片同步解析：OCR 文本行 + 元数据直通。"""
         logger.info("DeepDoc 图片解析开始", extension=extension)
-        if isinstance(source, Path):
-            full_text, default_chunks, metadata = self._figure_parser.parse(source)
-        else:
-            full_text, default_chunks, metadata = self._figure_parser.parse_bytes(source, extension)
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            if isinstance(source, Path):
+                full_text, default_chunks, metadata = self._figure_parser.parse(source)
+            else:
+                full_text, default_chunks, metadata = self._figure_parser.parse_bytes(source, extension)
         chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
         logger.info("DeepDoc 图片解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks))
+        metadata["quality"] = build_quality_metadata("deepdoc", warnings, started)
         return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
 
     @staticmethod
