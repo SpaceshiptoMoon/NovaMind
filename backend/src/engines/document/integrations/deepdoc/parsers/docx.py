@@ -14,6 +14,8 @@ from docx.image.exceptions import (
     UnexpectedEndOfFileError,
     UnrecognizedImageError,
 )
+from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 from novamind.engines.document.integrations.deepdoc.compat import (
     MAXIMUM_PAGE_NUMBER,
     LazyImage,
@@ -185,16 +187,23 @@ class RAGFlowDocxParser:
         return ["\n".join(lines)] if lines else []
 
     def __call__(self, file_name_or_binary: str | bytes, from_page: int = 0, to_page: int = MAXIMUM_PAGE_NUMBER):
-        """解析 DOCX 为段落 section 列表与表格文本列表。
-        
+        """解析 DOCX 为段落 section 列表与表格文本列表（保持文档物理顺序）。
+
+        按 body 元素序交错遍历段落与表格：表格位置在 sections 中以
+        ``table_index`` 占位（消费方据此把表格文本插回原位），不再出现
+        「表格内容全部堆到文档尾」的顺序错乱。列表段（numPr）带「• 」前缀，
+        文本框内容以 TextBox 样式追加在文档尾（python-docx 无法锚定其
+        渲染位置，尾部保留优于丢失）。
+
         Args:
             file_name_or_binary: 文件路径或 DOCX 字节流。
             from_page: 起始页码（按 lastRenderedPageBreak 计数）。
             to_page: 结束页码（不含），超出范围的段落文本留空。
-        
+
         Returns:
-            (sections, tables) 二元组；section 为含 text/style/image 的字典列表，
-            tables 为表格文本行列表的列表。
+            (sections, tables) 二元组；section 为含 text/style/image 的字典
+            列表（表格位置项额外带 table_index），tables 为表格文本行列表的
+            列表，顺序与 doc.tables 一致。
         """
         self.doc = (
             Document(file_name_or_binary)
@@ -202,9 +211,20 @@ class RAGFlowDocxParser:
             else Document(BytesIO(file_name_or_binary))
         )
         parsed_page = 0
-        sections = []
+        sections: list[dict[str, Any]] = []
+        table_index = 0
 
-        for paragraph in self.doc.paragraphs:
+        for child in self.doc.element.body.iterchildren():
+            if child.tag == qn("w:tbl"):
+                sections.append(
+                    {"text": "", "style": "", "image": None, "table_index": table_index}
+                )
+                table_index += 1
+                continue
+            if child.tag != qn("w:p"):
+                continue
+
+            paragraph = Paragraph(child, self.doc)
             if parsed_page > to_page:
                 break
 
@@ -219,14 +239,52 @@ class RAGFlowDocxParser:
                     parsed_page += 1
 
             style_name = paragraph.style.name if hasattr(paragraph.style, "name") else ""
+            text = "".join(runs_within_single_paragraph)
+            # 列表段：numPr 编号语义由 Word 渲染期生成、python-docx 拿不到
+            # 真实序号，以「• 」前缀保住"这是列表成员"的语义
+            is_list_item = (
+                paragraph._p.pPr is not None and paragraph._p.pPr.numPr is not None
+            )
+            if is_list_item and text and not text.startswith("•"):
+                text = f"• {text}"
             image = self.get_picture(self.doc, paragraph)
             sections.append(
                 {
-                    "text": "".join(runs_within_single_paragraph),
+                    "text": text,
                     "style": style_name,
                     "image": image,
                 }
             )
 
+        # 文本框内容（流程图/标注框）：body 序无法可靠锚定，追加在文档尾
+        for textbox_text in self._extract_textbox_texts():
+            sections.append({"text": textbox_text, "style": "TextBox", "image": None})
+
         tables = [self._extract_table_content(table) for table in self.doc.tables]
         return sections, tables
+
+    def _extract_textbox_texts(self) -> list[str]:
+        """提取文本框（w:txbxContent）内的可见文本，非空段落逐框返回。
+
+        w:txbxContent 非 python-docx 注册类，xpath 返回裸 lxml 元素——
+        其 .xpath 无内置 nsmap，必须显式传 namespaces。
+        """
+        from docx.oxml.ns import nsmap
+
+        texts: list[str] = []
+        try:
+            boxes = self.doc.element.body.xpath(".//w:txbxContent")
+        except Exception:
+            return texts
+        for box in boxes:
+            try:
+                pieces = [
+                    node.text for node in box.xpath(".//w:t", namespaces=nsmap)
+                    if node.text
+                ]
+            except Exception:
+                continue
+            text = "".join(pieces).strip()
+            if text:
+                texts.append(text)
+        return texts

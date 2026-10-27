@@ -254,25 +254,42 @@ class DeepDocParser:
         blocks: list[str] = []
         heading_stack: list[str] = []
         image_count = 0
+        flattened_tables: list[str] = []
 
         for section in sections:
-            text = (section.get("text") or "").strip()
-            style_name = section.get("style") or ""
             image = section.get("image")
             if image:
                 image_count += 1
+            # 表格占位项：把对应表格文本插回文档原位（body 序），不再堆尾
+            table_index = section.get("table_index")
+            if table_index is not None and 0 <= table_index < len(tables):
+                for item in tables[table_index]:
+                    item = item.strip()
+                    if item:
+                        flattened_tables.append(item)
+                        blocks.append(self._table_text_to_html(item))
+                continue
+            text = (section.get("text") or "").strip()
+            style_name = section.get("style") or ""
             if not text:
                 continue
             if style_name.startswith("Heading"):
                 level = self._extract_heading_level(style_name)
                 heading_stack = heading_stack[: level - 1]
                 heading_stack.append(text)
-                blocks.append(f"# {' > '.join(heading_stack)}")
+                # # 数量反映层级（H1→#，H2→##…封顶 6），路径保留检索语境
+                prefix = "#" * min(level, 6)
+                blocks.append(f"{prefix} {' > '.join(heading_stack)}")
             else:
                 blocks.append(text)
 
-        flattened_tables: list[str] = []
-        for group in tables:
+        # 兜底：body 序之外残留的表格（异常文档结构）按旧约定追加尾部
+        seen_table_indexes = {
+            s.get("table_index") for s in sections if s.get("table_index") is not None
+        }
+        for group_index, group in enumerate(tables):
+            if group_index in seen_table_indexes:
+                continue
             for item in group:
                 item = item.strip()
                 if item:

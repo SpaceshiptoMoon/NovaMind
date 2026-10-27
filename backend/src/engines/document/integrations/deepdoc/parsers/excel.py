@@ -1,6 +1,7 @@
 """DeepDoc Excel 解析器。"""
 from __future__ import annotations
 
+import datetime
 import logging
 import re
 from io import BytesIO
@@ -48,7 +49,7 @@ class RAGFlowExcelParser:
             return RAGFlowExcelParser._dataframe_to_workbook(df)
 
         try:
-            return load_workbook(file_like_object, data_only=True)
+            wb = load_workbook(file_like_object, data_only=True)
         except Exception as exc:
             logging.info("openpyxl load failed, trying pandas fallback: %s", exc)
             file_like_object.seek(0)
@@ -58,6 +59,101 @@ class RAGFlowExcelParser:
                 file_like_object.seek(0)
                 dfs = pd.read_excel(file_like_object, engine="calamine")
             return RAGFlowExcelParser._dataframe_to_workbook(dfs)
+        RAGFlowExcelParser._expand_merged_cells(wb)
+        RAGFlowExcelParser._backfill_formula_values(wb, file_like_object)
+        return wb
+
+    @staticmethod
+    def _expand_merged_cells(wb):
+        """合并单元格值展开：左上角值填充整个合并区域。
+
+        openpyxl 里合并区域只有左上格有值、其余为 None——行遍历与 HTML 输出
+        中合并维度会变成空串（如「华东区」合并 3 行，第 2/3 行区域列为空），
+        行级语义断裂。展开后每行都携带区域值（代价是值在多行重复，属检索
+        友好的冗余而非错误）。
+        """
+        for ws in wb.worksheets:
+            merged_ranges = list(ws.merged_cells.ranges)
+            if not merged_ranges:
+                continue
+            for rng in merged_ranges:
+                top_left = ws.cell(row=rng.min_row, column=rng.min_col).value
+                ws.unmerge_cells(str(rng))
+                if top_left is None:
+                    continue
+                for row in range(rng.min_row, rng.max_row + 1):
+                    for col in range(rng.min_col, rng.max_col + 1):
+                        ws.cell(row=row, column=col).value = top_left
+
+    @staticmethod
+    def _backfill_formula_values(wb, file_like_object, size_limit_mb: int = 20):
+        """公式无缓存值回填：data_only 视角为 None 且公式视图有值的格填公式字面量。
+
+        程序生成的 xlsx（openpyxl/pandas 写出）只有公式没有缓存值，
+        data_only=True 视角这些格为 None——检索产物丢值（常见于部分格是
+        公式的常规报表，不限于整表公式）。以 data_only=False 二次加载，
+        把公式字符串（如 =SUM(A1:A2)）当字面内容填回：诚实暴露公式而非
+        静默丢值。文件超限不二次加载（内存防护）。
+        """
+        try:
+            file_like_object.seek(0)
+            head = file_like_object.read(4)
+            file_like_object.seek(0)
+        except Exception:
+            return
+        if not head.startswith(b"PK\x03\x04"):
+            return  # CSV 兜底产物没有公式概念
+        try:
+            file_size = file_like_object.getbuffer().nbytes
+        except AttributeError:
+            return
+        if file_size > size_limit_mb * 1024 * 1024:
+            logging.info(
+                "Excel formula backfill skipped: workbook too large (%d bytes)", file_size
+            )
+            return
+        _, load_workbook = RAGFlowExcelParser._import_openpyxl()
+        try:
+            formula_wb = load_workbook(file_like_object, data_only=False)
+        except Exception as exc:
+            logging.info("Formula-view reload failed: %s", exc)
+            return
+        backfilled = 0
+        for sheet_offset, ws in enumerate(wb.worksheets):
+            formula_ws = formula_wb.worksheets[sheet_offset]
+            for row in ws.iter_rows():
+                for cell in row:
+                    if cell.value is not None:
+                        continue
+                    formula_cell = formula_ws.cell(row=cell.row, column=cell.column)
+                    if formula_cell.value is not None and str(formula_cell.value).strip():
+                        cell.value = formula_cell.value
+                        backfilled += 1
+        if backfilled:
+            logging.info("Excel formula backfill: %d cells", backfilled)
+
+    @staticmethod
+    def format_cell_value(value):
+        """单元格值转展示文本：去浮点整尾、日期去零点时间、控制字符剔除。
+
+        str(value) 的默认形态带检索噪音：1.0 显示「1.0」、日期显示
+        「2024-01-01 00:00:00」——对 BM25 与阅读都是噪音。
+        """
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "是" if value else "否"
+        if isinstance(value, float) and value.is_integer() and abs(value) < 1e15:
+            return str(int(value))
+        if isinstance(value, datetime.datetime) and (
+            value.hour == 0 and value.minute == 0 and value.second == 0
+        ):
+            return value.date().isoformat()
+        if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+            return str(value)
+        if isinstance(value, str):
+            return ILLEGAL_CHARACTERS_RE.sub(" ", value).strip()
+        return str(value)
 
     @staticmethod
     def _clean_dataframe(df: pd.DataFrame):
@@ -178,10 +274,8 @@ class RAGFlowExcelParser:
         tb_chunks = []
 
         def fmt(value):
-            """单元格值转文本（None 转空串）。"""
-            if value is None:
-                return ""
-            return str(value).strip()
+            """单元格值转展示文本（数值/日期规范化，见 format_cell_value）。"""
+            return RAGFlowExcelParser.format_cell_value(value)
 
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
@@ -225,11 +319,14 @@ class RAGFlowExcelParser:
             for row in list(rows[1:]):
                 fields = []
                 for idx, cell in enumerate(row):
-                    if cell.value is None or str(cell.value).strip() == "":
+                    value_text = RAGFlowExcelParser.format_cell_value(cell.value)
+                    if not value_text:
                         continue
-                    title = str(header[idx].value) if idx < len(header) else ""
+                    title = RAGFlowExcelParser.format_cell_value(
+                        header[idx].value
+                    ) if idx < len(header) else ""
                     prefix = f"{title}：" if title else ""
-                    fields.append(prefix + str(cell.value))
+                    fields.append(prefix + value_text)
                 if not fields:
                     continue
                 line = "; ".join(fields)

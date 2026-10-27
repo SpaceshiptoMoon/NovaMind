@@ -1761,6 +1761,41 @@ def _image_caption_max_chars() -> int:
     return 4000
 
 
+_VLM_IMAGE_MAX_LONG_EDGE = 2000
+
+
+def _downscale_image_for_vlm(file_content: bytes) -> tuple[bytes, str | None]:
+    """超长边大图等比降采样到 VLM 友好区间（仅 VLM 通道；OCR 保持原分辨率）。
+
+    服务商对超大图会做服务端压缩（算法不可控，密集小字直接丢失）；主动做
+    LANCZOS 降采样可控保真。EXIF 方向先转正（避免 VLM 看到旋转图）。
+    解码失败原样返回（由服务商兜底，不在本地引入新的失败面）。
+
+    Returns:
+        (图片字节, 生效时的 mime 覆盖值)；未降采样时 mime 覆盖为 None。
+    """
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    try:
+        img = Image.open(BytesIO(file_content))
+        img = ImageOps.exif_transpose(img)
+        img.load()
+    except Exception:
+        return file_content, None
+    long_edge = max(img.size)
+    if long_edge <= _VLM_IMAGE_MAX_LONG_EDGE:
+        return file_content, None
+    scale = _VLM_IMAGE_MAX_LONG_EDGE / long_edge
+    new_size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    converted = img if img.mode in ("RGB", "L") else img.convert("RGB")
+    resized = converted.resize(new_size, Image.LANCZOS)
+    buf = BytesIO()
+    resized.save(buf, format="JPEG", quality=92)
+    return buf.getvalue(), "image/jpeg"
+
+
 async def _generate_image_description(
     file_content: bytes,
     document: Document,
@@ -1799,6 +1834,17 @@ async def _generate_image_description(
 
     file_ext = (document.file_type or "png").lower()
     mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
+
+    # 大图降采样（仅 VLM 通道）：超长边主动 LANCZOS 缩到 2000px，防服务商
+    # 端不可控压缩丢小字；未超限原样上送
+    file_content, downscale_mime = _downscale_image_for_vlm(file_content)
+    if downscale_mime:
+        mime_type = downscale_mime
+        _logger.info(
+            "图片VLM输入已降采样",
+            document_id=document.id,
+            max_long_edge=_VLM_IMAGE_MAX_LONG_EDGE,
+        )
 
     # 2. 获取结构化 caption prompt（固定分段：主体/文字/图表/实体/视觉/场景类型）
     description_prompt = PromptManager.get_template("image_description")
