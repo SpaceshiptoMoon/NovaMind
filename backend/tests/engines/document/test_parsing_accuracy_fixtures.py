@@ -500,6 +500,48 @@ def test_docx_sdt_content_passthrough(tmp_path):
     assert "条款" in result.full_text and "内容" in result.full_text
 
 
+def test_html_noise_tags_and_deep_nesting(tmp_path):
+    """噪音标签剔除（template/noscript/select/nav/ruby 注音）与深嵌套显式报错。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.html import (
+        RAGFlowHtmlParser,
+    )
+
+    noisy = (
+        "<body><template><p>模板内容不该入索引</p></template>"
+        "<noscript><p>无JS回退内容</p></noscript>"
+        "<select><option>选项甲</option><option>选项乙</option></select>"
+        "<nav><a href='/'>首页</a></nav>"
+        "<ruby>汉字<rt>hanzi</rt></ruby><p>正文段落。</p></body>"
+    )
+    joined = "\n".join(RAGFlowHtmlParser.parser_txt(noisy, chunk_token_num=512))
+    for noise in ("模板内容", "无JS回退内容", "选项甲", "首页", "hanzi"):
+        assert noise not in joined, f"噪音 {noise} 应被剔除"
+    assert "正文段落" in joined and "汉字" in joined
+
+    deep = "<body>" + "<div>" * 2000 + "深层文本" + "</div>" * 2000 + "</body>"
+    with pytest.raises(ValueError, match="嵌套层级过深"):
+        RAGFlowHtmlParser.parser_txt(deep, chunk_token_num=512)
+
+
+def test_html_big_table_windowed_with_repeated_header(tmp_path):
+    """超大表格按行窗口切分（每窗重复表头），不再产出超 embedding 上限的单块。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.html import (
+        RAGFlowHtmlParser,
+    )
+
+    rows = "".join(
+        f"<tr><td>行{i}</td><td>值{i}</td></tr>" for i in range(120)
+    )
+    html = f"<body><table><tr><th>列A</th><th>列B</th></tr>{rows}</table></body>"
+    sections = RAGFlowHtmlParser.parser_txt(html, chunk_token_num=512)
+    table_blocks = [s for s in sections if s.startswith("<table>")]
+    assert len(table_blocks) >= 2, "120 行表格应切出多个窗口"
+    for block in table_blocks:
+        assert "<th>列A</th>" in block, "每窗都应重复表头"
+    joined = "\n".join(sections)
+    assert "行0" in joined and "行119" in joined, "首尾行都不丢"
+
+
 def test_html_quality_gaps(tmp_path):
     """HTML 质量批次回归：nbsp 归一/列表语义/img alt/表格原位/标题层级。"""
     from io import BytesIO

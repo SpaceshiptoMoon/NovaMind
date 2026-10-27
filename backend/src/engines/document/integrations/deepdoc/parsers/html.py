@@ -33,6 +33,18 @@ BLOCK_TAGS = [
     "figcaption",
 ]
 TITLE_TAGS = {"h1": "#", "h2": "##", "h3": "###", "h4": "####", "h5": "#####", "h6": "######"}
+# 无表头表判定：数值形态格（含千分位/货币/百分号）
+_HTML_NUMERIC_RE = re.compile(r"^-?[$￥€]?\d[\d,，]*\.?\d*%?$")
+
+
+def _column_letter(index: int) -> str:
+    """0-based 列序号转 Excel 列字母（无表头表占位用）。"""
+    letters = ""
+    index += 1
+    while index:
+        index, rem = divmod(index - 1, 26)
+        letters = chr(ord("A") + rem) + letters
+    return letters
 
 
 class RAGFlowHtmlParser:
@@ -67,7 +79,13 @@ class RAGFlowHtmlParser:
 
         temp_sections = []
         soup = BeautifulSoup(text, "html.parser")
-        for removable in soup.find_all(["style", "script"]):
+        # style/script 剔除；template（不渲染的模板）/noscript（无 JS 回退，
+        # 通常与正文重复）/select（交互控件选项非内容）/nav（导航样板）同为
+        # 噪音源（网页存档类 HTML 会被导航与下拉选项淹没）；rt/rp 是 ruby
+        # 注音（剔除后保留注音基底字，防注音重复进索引）
+        for removable in soup.find_all(
+            ["style", "script", "template", "noscript", "select", "nav", "rt", "rp"]
+        ):
             removable.decompose()
         for tag in soup.find_all(True):
             if "style" in tag.attrs:
@@ -78,7 +96,11 @@ class RAGFlowHtmlParser:
         root = soup.body or soup
         if soup.body is None:
             logging.debug("html_parser: parsing HTML fragment without <body>; falling back to soup root")
-        cls.read_text_recursively(root, temp_sections, chunk_token_num=chunk_token_num)
+        try:
+            cls.read_text_recursively(root, temp_sections, chunk_token_num=chunk_token_num)
+        except RecursionError as exc:
+            # 深嵌套（恶意/异常文件，2000 层即可构造）递归爆栈：转显式可读错误
+            raise ValueError("HTML 嵌套层级过深，超出解析器递归上限") from exc
         ordered_blocks, _table_list = cls.merge_block_text(temp_sections)
         # 文本块按 token 预算聚合切分；表格块整块原位输出（不进聚合器——
         # 表格 HTML 被邻块合并或按字符窗硬切都会破坏结构）
@@ -112,8 +134,7 @@ class RAGFlowHtmlParser:
         if isinstance(element, Tag):
             name = element.name.lower()
             if name == "table":
-                table_id = str(uuid.uuid1())
-                return [{"content": html.unescape(str(element)), "tag_name": "table", "metadata": {"table_id": table_id, "index": 0}}]
+                return cls._table_to_blocks(element)
             if name == "li":
                 # 列表项语义保真：整项一行加「• 」前缀（嵌套列表会拍平进同行）
                 text = element.get_text(" ", strip=True)
@@ -136,6 +157,66 @@ class RAGFlowHtmlParser:
                 parser_result.extend(cls.read_text_recursively(child, parser_result, chunk_token_num, element.name, block_id))
 
         return []
+
+    @classmethod
+    def _table_to_blocks(cls, table_el, window_rows: int = 50):
+        """表格 → 按行窗口的多个表格块（每窗重复表头），防超大表格单块超
+        embedding 上限后 90% 行被静默截断（3000 行实测产出 5.4 万 token 单块）。
+
+        嵌套表格回退整体序列化（递归结构难以按行切）。单元格取 bs4 解码后
+        纯文本再转义（旧实现的 html.unescape 会把 &lt; 还原成裸 < 破坏表格
+        结构）。无 th 且首行数值占比 >0.3 判无表头表，列字母占位。
+        """
+        if table_el.find("table") or not table_el.find("tr"):
+            # 嵌套表格 / 无行表格：整体序列化
+            return [{
+                "content": str(table_el), "tag_name": "table",
+                "metadata": {"table_id": str(uuid.uuid1()), "index": 0},
+            }]
+
+        def row_cells(tr):
+            cells = tr.find_all(["th", "td"])
+            if not cells:
+                return [tr.get_text(" ", strip=True)]
+            return [c.get_text(" ", strip=True) for c in cells]
+
+        trs = table_el.find_all("tr")
+        header_cells = row_cells(trs[0])
+        body = trs[1:]
+        has_th = bool(trs[0].find("th"))
+        if not has_th:
+            non_empty = [t for t in header_cells if t]
+            numeric = sum(1 for t in non_empty if _HTML_NUMERIC_RE.match(t))
+            if non_empty and numeric / len(non_empty) > 0.3:
+                body = trs
+                header_cells = [_column_letter(i) for i in range(len(header_cells))]
+        header_html = (
+            "<tr>"
+            + "".join(f"<th>{html.escape(h)}</th>" for h in header_cells)
+            + "</tr>"
+        )
+        if not body:
+            # 仅表头行（无数据行）：表头即全部内容，原样保留不丢
+            return [{
+                "content": f"<table>{header_html}</table>\n",
+                "tag_name": "table",
+                "metadata": {"table_id": str(uuid.uuid1()), "index": 0},
+            }]
+        blocks = []
+        for window_start in range(0, len(body), window_rows):
+            window = body[window_start : window_start + window_rows]
+            rows_html = "".join(
+                "<tr>"
+                + "".join(f"<td>{html.escape(c)}</td>" for c in row_cells(tr))
+                + "</tr>"
+                for tr in window
+            )
+            blocks.append({
+                "content": f"<table>{header_html}{rows_html}</table>\n",
+                "tag_name": "table",
+                "metadata": {"table_id": str(uuid.uuid1()), "index": window_start},
+            })
+        return blocks
 
     @classmethod
     def merge_block_text(cls, parser_result):
