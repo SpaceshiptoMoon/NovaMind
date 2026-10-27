@@ -14,6 +14,10 @@ from novamind.engines.document.integrations.deepdoc.compat import (
     decode_text_binary,
     guard_office_zip,
 )
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    document_salt,
+    figure_placeholder,
+)
 
 # Adapted from RAGFlow deepdoc/parser/excel_parser.py
 
@@ -418,6 +422,8 @@ class RAGFlowExcelParser:
         _row_texts = layout._row_texts
 
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
+        # 内容绑定盐：占位符防正文同形伪造（见 document_model 协议注释）
+        figure_salt = document_salt(Path(fnm).read_bytes() if isinstance(fnm, str) else fnm)
         wb = RAGFlowExcelParser._load_excel_to_workbook(
             file_like_object, max_loaded_mb=max_loaded_mb
         )
@@ -456,6 +462,9 @@ class RAGFlowExcelParser:
                     else f"pos{order}"
                 )
                 image_info["artifact_id"] = f"xls_s{sheet_index}_{location}_{order}"
+                image_info["placeholder"] = figure_placeholder(
+                    figure_salt, image_info["artifact_id"]
+                )
 
             islands = layout.stitch_islands(
                 grid, layout.segment_islands(grid)
@@ -558,7 +567,7 @@ class RAGFlowExcelParser:
             for image_info in sheet_images:
                 placeholder = (
                     f"![{image_info['sheet']} 嵌入图片]"
-                    f"(__FIGURE_URL__{image_info['artifact_id']}__)\n"
+                    f"({image_info['placeholder']})\n"
                 )
                 r0, c0 = image_info.get("row"), image_info.get("col")
                 placed = False

@@ -63,7 +63,7 @@ def test_build_figure_regions_metadata_carries_image_blobs():
 
 
 def test_reading_order_figure_entry_has_image_placeholder():
-    """figure entry 应携带 image_placeholder，且文本渲染为 markdown 占位符。"""
+    """figure entry 应携带 image_placeholder（内容绑定盐形态），渲染为 markdown 占位符。"""
     figure_regions = [
         {
             "artifact_id": "1:page:0:10",
@@ -75,19 +75,29 @@ def test_reading_order_figure_entry_has_image_placeholder():
         }
     ]
 
-    reading_order = RAGFlowPdfParser._build_reading_order_metadata([], [], figure_regions)
+    parser = RAGFlowPdfParser()
+    parser._figure_salt = "a1b2c3d4e5f6"
+    reading_order = parser._build_reading_order_metadata(
+        [], [], figure_regions, figure_salt="a1b2c3d4e5f6"
+    )
 
     figure_entry = [e for e in reading_order if e["kind"] == "figure"][0]
     assert figure_entry["source_id"] == "1:page:0:10"
-    assert figure_entry["image_placeholder"] == "__FIGURE_URL__1:page:0:10__"
+    assert figure_entry["image_placeholder"] == "__FIGURE_URL__a1b2c3d4e5f6_1:page:0:10__"
     rendered = RAGFlowPdfParser._reading_order_entry_text(figure_entry)
-    assert rendered == "![示例图](__FIGURE_URL__1:page:0:10__)"
+    assert rendered == "![示例图](__FIGURE_URL__a1b2c3d4e5f6_1:page:0:10__)"
 
 
 def test_replace_figure_placeholders_replaces_multiple():
-    """_replace_figure_placeholders 应替换多个占位符。"""
-    text = "A\n\n![图1](__FIGURE_URL__id1__)\n\nB\n\n![图2](__FIGURE_URL__id2__)"
-    url_map = {"id1": "https://minio.example.com/fig1.png", "id2": "https://minio.example.com/fig2.png"}
+    """_replace_figure_placeholders 应替换多个占位符（map key=完整占位符串）。"""
+    text = (
+        "A\n\n![图1](__FIGURE_URL__a1b2c3d4e5f6_id1__)\n\n"
+        "B\n\n![图2](__FIGURE_URL__a1b2c3d4e5f6_id2__)"
+    )
+    url_map = {
+        "__FIGURE_URL__a1b2c3d4e5f6_id1__": "https://minio.example.com/fig1.png",
+        "__FIGURE_URL__a1b2c3d4e5f6_id2__": "https://minio.example.com/fig2.png",
+    }
     result = _replace_figure_placeholders(text, url_map)
     assert "https://minio.example.com/fig1.png" in result
     assert "https://minio.example.com/fig2.png" in result
@@ -96,7 +106,7 @@ def test_replace_figure_placeholders_replaces_multiple():
 
 def test_replace_figure_placeholders_preserves_unknown():
     """未上传成功的占位符应保留，便于排查。"""
-    text = "![图](__FIGURE_URL__missing__)"
+    text = "![图](__FIGURE_URL__a1b2c3d4e5f6_missing__)"
     result = _replace_figure_placeholders(text, {})
     assert result == text
 
@@ -112,6 +122,7 @@ async def test_upload_figure_images_to_minio_success():
     figure_regions = [
         {
             "artifact_id": "1:page:0:10",
+            "placeholder": "__FIGURE_URL__a1b2c3d4e5f6_1:page:0:10__",
             "page_start": 1,
             "caption": "示例图",
             "image_blobs": [png],
@@ -132,8 +143,10 @@ async def test_upload_figure_images_to_minio_success():
     )
 
     assert not _warning_messages, f"unexpected warnings: {_warning_messages}"
-    # 短文件名（不是预签名 URL）：artifact_id 的非白名单字符被 safe 化 + 页码
-    assert url_map == {"1:page:0:10": "figure_1_page_0_10_1.png"}
+    # 短文件名（不是预签名 URL）；map key = region 提供的完整占位符串（含盐）
+    assert url_map == {
+        "__FIGURE_URL__a1b2c3d4e5f6_1:page:0:10__": "figure_1_page_0_10_1.png"
+    }
     assert figure_regions[0]["minio_object_name"] == (
         "spaces/1/kbs/2/documents/42/abc.pdf_figures/figure_1_page_0_10_1.png"
     )
@@ -285,10 +298,12 @@ def test_placeholder_survives_strip_and_replacement():
     """端到端：占位符经 strip_position_tags 清洗后仍能被 pipeline 替换命中。"""
     from novamind.engines.document.integrations.deepdoc.core.models import strip_position_tags
 
-    artifact_id = "3:150:72"
-    text = f"正文段落\n\n![示例图](__FIGURE_URL__{artifact_id}__)\n\n尾段"
+    placeholder = "__FIGURE_URL__a1b2c3d4e5f6_3:150:72__"
+    text = f"正文段落\n\n![示例图]({placeholder})\n\n尾段"
     stripped = strip_position_tags(text)
-    result = _replace_figure_placeholders(stripped, {artifact_id: "https://minio.example.com/fig.png"})
+    result = _replace_figure_placeholders(
+        stripped, {placeholder: "https://minio.example.com/fig.png"}
+    )
     assert "https://minio.example.com/fig.png" in result
     assert "__FIGURE_URL__" not in result
     # strip 对干净 id 无副作用
@@ -403,3 +418,45 @@ def test_reading_order_table_entry_prefers_html():
     rendered = RAGFlowPdfParser._reading_order_entry_text(entry_without_html)
     assert rendered.startswith("[TABLE]")
     assert "表1:比较" in rendered
+
+
+# ---- 占位符防伪造（内容绑定盐，2026-10-28） ----
+
+def test_salt_bound_placeholder_immutable_to_forged_text():
+    """正文手写同形文本：无盐/编造盐形态不被替换也不被剥除（用户原文不丢）。
+
+    伪造面：技术文档里写 __FIGURE_URL__xxx__（无盐旧形态）或编造合法 12hex
+    盐的串——替换与剥除都是精确串匹配，目标只来自解析器占位符全集，伪造串
+    不在全集中，作为正文原文保留。上传失败的真占位符仍被精确剥除。
+    """
+    salt = "a1b2c3d4e5f6"
+    real_placeholder = f"__FIGURE_URL__{salt}_fig-1__"
+    failed_placeholder = f"__FIGURE_URL__{salt}_fig-2__"
+    text = (
+        f"正文讲解占位符协议：__FIGURE_URL__fig-1__（无盐旧形态）与 "
+        f"__FIGURE_URL__ffffffffffff_fig-1__（编造盐）都不应被触碰。\n\n"
+        f"![真图]({real_placeholder})\n\n![失败图]({failed_placeholder})"
+    )
+    url_map = {real_placeholder: "figure_fig_1_3.png"}
+    valid = {real_placeholder, failed_placeholder}
+    result = _replace_figure_placeholders(text, url_map, strip_targets=valid)
+    assert "figure_fig_1_3.png" in result, "真占位符应被替换"
+    assert "__FIGURE_URL__fig-1__" in result, "无盐伪造串应保留"
+    assert "__FIGURE_URL__ffffffffffff_fig-1__" in result, "编造盐伪造串应保留"
+    assert failed_placeholder not in result, "上传失败的真占位符应被剥除"
+    assert result.count("__FIGURE_URL__") == 2, "仅两个伪造串保留"
+
+
+def test_document_salt_stable_per_document():
+    """同文档同盐（金样/指纹/快照稳定的前提），跨文档不同。"""
+    from novamind.engines.document.integrations.deepdoc.core.document_model import (
+        document_salt,
+        figure_placeholder,
+    )
+
+    payload = b"same document bytes"
+    assert document_salt(payload) == document_salt(payload)
+    assert document_salt(payload) != document_salt(payload + b"x")
+    assert len(document_salt(payload)) == 12
+    ph = figure_placeholder(document_salt(payload), "fig-1")
+    assert ph == f"__FIGURE_URL__{document_salt(payload)}_fig-1__"

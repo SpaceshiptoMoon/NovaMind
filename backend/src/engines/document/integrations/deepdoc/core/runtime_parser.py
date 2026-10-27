@@ -22,6 +22,8 @@ from novamind.engines.document.integrations.deepdoc.core.document_model import (
     UnifiedBlock,
     blocks_to_markdown,
     chunks_to_markdown,
+    document_salt,
+    figure_placeholder,
 )
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.integrations.deepdoc.core.quality import (
@@ -307,16 +309,19 @@ class DeepDocParser:
         flattened_tables: list[str] = []
         doc_blocks: list[UnifiedBlock] = []
         docx_figure_regions: list[dict[str, Any]] = []
+        docx_salt = document_salt(source if isinstance(source, bytes) else source.read_bytes())
 
         for section in sections:
             image = section.get("image")
             if image:
                 image_count += 1
                 # 图片进 figure_regions 契约（与 pdf/xlsx 同构）：blob 随 region
-                # 交宿主上传管线，正文占位符已由解析器插在段落文本（docx_fig_N）
+                # 交宿主上传管线，正文占位符已由解析器插在段落文本（docx_fig_N）。
+                # placeholder 完整串随 region 出账，业务层替换不再自行拼接形态
                 figure_id = str(section.get("figure_id") or f"docx_fig_{image_count}")
                 docx_figure_regions.append({
                     "artifact_id": figure_id,
+                    "placeholder": figure_placeholder(docx_salt, figure_id),
                     "pages": [],
                     "page_start": 0,
                     "bbox": {},

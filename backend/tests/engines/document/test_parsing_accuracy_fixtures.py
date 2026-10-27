@@ -8,6 +8,7 @@
 """
 import base64
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -241,9 +242,9 @@ def test_excel_embedded_image_extracted(tmp_path):
     assert image["sheet"] == "分季度明细"
     assert image["row"] == 4 and image["col"] == 1, "锚点 B5 → 0-based (row=4, col=1)"
     assert image["blob"][:8] == b"\x89PNG\r\n\x1a\n", "应重编码为 PNG"
-    # 占位符挂本表首块
+    # 占位符挂本表首块（盐化形态：__FIGURE_URL__{12hex盐}_xls_...__）
     detail = "".join(b for b in blocks if "分季度明细" in b)
-    assert "__FIGURE_URL__xls_" in detail
+    assert re.search(r"__FIGURE_URL__[0-9a-f]{12}_xls_", detail)
 
 
 def test_excel_runtime_figure_regions(tmp_path):

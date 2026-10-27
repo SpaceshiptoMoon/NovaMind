@@ -447,9 +447,11 @@ def test_resolve_figure_short_paths_updates_regions():
     payload = {
         "parse_metadata": {
             "figure_regions": [
-                {"artifact_id": "fig-1", "minio_object_name": "x_figures/figure_fig_1_3.png",
+                {"artifact_id": "fig-1", "placeholder": "__FIGURE_URL__a1b2c3d4e5f6_fig-1__",
+                 "minio_object_name": "x_figures/figure_fig_1_3.png",
                  "image_url": "https://old/expired"},
-                {"artifact_id": "fig-2", "minio_object_name": "x_figures/figure_fig_2_5.png",
+                {"artifact_id": "fig-2", "placeholder": "__FIGURE_URL__a1b2c3d4e5f6_fig-2__",
+                 "minio_object_name": "x_figures/figure_fig_2_5.png",
                  "image_url": "https://old/expired-2"},
             ]
         }
@@ -458,8 +460,8 @@ def test_resolve_figure_short_paths_updates_regions():
     url_map = resolve_figure_short_paths(payload, _logger())
 
     assert url_map == {
-        "fig-1": "figure_fig_1_3.png",
-        "fig-2": "figure_fig_2_5.png",
+        "__FIGURE_URL__a1b2c3d4e5f6_fig-1__": "figure_fig_1_3.png",
+        "__FIGURE_URL__a1b2c3d4e5f6_fig-2__": "figure_fig_2_5.png",
     }
     regions = payload["parse_metadata"]["figure_regions"]
     assert regions[0]["image_url"] == "figure_fig_1_3.png"
@@ -475,7 +477,8 @@ def test_resolve_figure_short_paths_new_snapshot_noop():
     payload = {
         "parse_metadata": {
             "figure_regions": [
-                {"artifact_id": "fig-1", "minio_object_name": "x_figures/figure_fig_1_3.png",
+                {"artifact_id": "fig-1", "placeholder": "__FIGURE_URL__a1b2c3d4e5f6_fig-1__",
+                 "minio_object_name": "x_figures/figure_fig_1_3.png",
                  "image_url": "figure_fig_1_3.png"},
             ]
         }
@@ -483,7 +486,7 @@ def test_resolve_figure_short_paths_new_snapshot_noop():
 
     url_map = resolve_figure_short_paths(payload, _logger())
 
-    assert url_map == {"fig-1": "figure_fig_1_3.png"}
+    assert url_map == {"__FIGURE_URL__a1b2c3d4e5f6_fig-1__": "figure_fig_1_3.png"}
     assert payload["parse_metadata"]["figure_regions"][0]["image_url"] == "figure_fig_1_3.png"
 
 
@@ -515,7 +518,8 @@ def test_resolve_figure_short_paths_skips_regions_without_object_name():
 
     url_map = resolve_figure_short_paths(payload, _logger())
 
-    assert url_map == {"ok": "figure_ok_1.png"}
+    # region 无 placeholder 键 → 兜底无盐形态 key（旧存量快照兼容路径）
+    assert url_map == {"__FIGURE_URL__ok__": "figure_ok_1.png"}
 
 
 # ---- restore_frame_paths ----

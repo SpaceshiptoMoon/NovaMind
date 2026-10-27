@@ -30,6 +30,10 @@ from novamind.engines.document.integrations.deepdoc.compat import (
     rag_tokenizer,
     safe_fromstring,
 )
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    document_salt,
+    figure_placeholder,
+)
 
 # OLE 复合文档魔数（旧版 .doc/.xls/.ppt 与 OOXML 加密容器共用此头）
 _OLE_HEADER_MAGIC = b"\xd0\xcf\x11\xe0"
@@ -259,6 +263,8 @@ class RAGFlowDocxParser:
         self._footnotes = self._load_footnotes()
         # 图片 artifact_id 计数器（每文档重置；闭包内自增）
         self._figure_counter = 0
+        # 内容绑定盐：占位符防正文同形伪造（见 document_model 协议注释）
+        self._figure_salt = document_salt(payload)
         header_footer_sections = self._load_header_footer_sections()
         parsed_page = 0
         sections: list[dict[str, Any]] = []
@@ -309,7 +315,7 @@ class RAGFlowDocxParser:
                     # 识别换签名。纯图片段也产出占位符（text 保证非空入 section）
                     figure_id = f"docx_fig_{self._figure_counter}"
                     self._figure_counter += 1
-                    link = f"![图片](__FIGURE_URL__{figure_id}__)"
+                    link = f"![图片]({figure_placeholder(self._figure_salt, figure_id)})"
                     text = f"{text}\n{link}" if text else link
                 sections.append(
                     {"text": text, "style": style_name, "image": image,

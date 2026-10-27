@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from novamind.shared.utils.time_utils import now_china
 
-# figure 占位符模式：__FIGURE_URL__{artifact_id}__，artifact_id 为非空白且
-# 不含 __ 连续下划线的标识串（解析器 artifact_id 形如 fig_1_3 / a1b2c3）
-_FIGURE_PLACEHOLDER_RE = re.compile(r"__FIGURE_URL__(?!__)[^\s_]*(?:_[^\s_]+)*__")
+# figure 占位符协议：__FIGURE_URL__{salt}_{artifact_id}__（salt 为文档内容
+# 绑定盐，解析器生成，见 document_model 协议注释）。替换/剥除均为精确串
+# 匹配（目标只来自解析器占位符全集），不做模式匹配——同形正文不可伪造。
+# 旧的无盐形态仅存在于盐化之前解析的存量产物，重解析即消亡。
 
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
@@ -355,9 +356,24 @@ async def execute_document_pipeline(
         full_text = parse_snapshot_payload["full_text"]
         resume_chunks = [text for text, _meta in resume_prechunked]
         # 历史快照/上传失败残留的占位符剥除（不进 embedding/ES content）。
+        # 剥除全集 = 快照 region 的占位符串（新快照带盐/旧快照兜底旧形态）；
         # 旧快照正文里已替换的历史预签名 URL 不在占位符形态，无法回收——按原文
         # 复用（过期链接由重解析刷新）。
-        full_text, resume_chunks = _restore_figure_links(full_text, resume_chunks, image_url_map)
+        snapshot_regions = (
+            (parse_snapshot_payload.get("parse_metadata") or {}).get("figure_regions")
+            or []
+        )
+        valid_placeholders = {
+            str(
+                r.get("placeholder")
+                or f"__FIGURE_URL__{r.get('artifact_id')}__"
+            )
+            for r in snapshot_regions
+            if isinstance(r, dict) and r.get("artifact_id")
+        }
+        full_text, resume_chunks = _restore_figure_links(
+            full_text, resume_chunks, image_url_map, valid_placeholders
+        )
 
         if split_config_drifted:
             _logger.info(
@@ -539,8 +555,15 @@ async def execute_document_pipeline(
             document, figure_regions, _logger, minio_client=minio_client
         )
     if figure_regions or image_url_map:
+        # 剥除全集 = 解析器插入的全部占位符（region 无 placeholder 键的旧契约
+        # region 兜底旧形态串——与上传 map 的兜底 key 同构，两种 region 各自命中）
+        valid_placeholders = {
+            str(r.get("placeholder") or f"__FIGURE_URL__{r.get('artifact_id')}__")
+            for r in figure_regions
+            if r.get("artifact_id")
+        }
         full_text, parse_result.chunks = _restore_figure_links(
-            full_text, parse_result.chunks, image_url_map
+            full_text, parse_result.chunks, image_url_map, valid_placeholders
         )
         chunks = parse_result.chunks
     if figure_regions:
@@ -668,17 +691,29 @@ async def execute_document_pipeline(
 
 
 def _restore_figure_links(
-    full_text: str, chunks: list[str], image_url_map: dict[str, str]
+    full_text: str,
+    chunks: list[str],
+    image_url_map: dict[str, str],
+    valid_placeholders: set[str] | None = None,
 ) -> tuple[str, list[str]]:
     """figure 占位符统一处理（正常/resume 双分支共享，批次 4）：有 map 先替换
-    为短路径 URL，再无条件剥除未解析占位符（上传失败项/历史残留——审计 P1#7，
-    占位符进 embedding 污染向量、检索命中原样返回给用户/LLM）。无占位符文本
-    strip 为正则无匹配 no-op。"""
+    为短路径 URL，再精确剥除「解析器插入但上传失败」的占位符（审计 P1#7，
+    占位符进 embedding 污染向量、检索命中原样返回给用户/LLM）。
+
+    Args:
+        valid_placeholders: 解析器插入的占位符全集（figure_regions 全量提取）；
+            None 时不剥除（map 内已含全部可替换项的场景）。剥除目标=全集-已
+            替换，精确串匹配，正文同形文本不受影响。
+    """
     if image_url_map:
         full_text = _replace_figure_placeholders(full_text, image_url_map)
         chunks = [_replace_figure_placeholders(c, image_url_map) for c in chunks]
-    full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
-    chunks = [_replace_figure_placeholders(c, {}, strip_unresolved=True) for c in chunks]
+    if valid_placeholders:
+        full_text = _replace_figure_placeholders(full_text, {}, strip_targets=valid_placeholders)
+        chunks = [
+            _replace_figure_placeholders(c, {}, strip_targets=valid_placeholders)
+            for c in chunks
+        ]
     return full_text, chunks
 
 
@@ -741,22 +776,31 @@ def _replace_figure_placeholders(
     text: str,
     image_url_map: dict[str, str],
     *,
-    strip_unresolved: bool = False,
+    strip_targets: set[str] | None = None,
 ) -> str:
-    """把 full_text / chunk content 里的 __FIGURE_URL__{artifact_id}__ 替换为真实 URL。
+    """把 full_text / chunk content 里的 figure 占位符替换为短文件名 URL。
 
-    strip_unresolved=True 时同时剥除 map 中不存在的占位符（上传失败的 figure），
-    防垃圾串进 embedding 与 ES content（审计 P1#7——检索命中会把
-    ``__FIGURE_URL__xxx__`` 原样返回给用户/LLM，且占位符污染向量）。
+    Args:
+        image_url_map: **key 为完整占位符串**（region.placeholder，含内容绑定
+            盐——解析器生成，业务层不自行拼接形态），value 为短文件名。
+        strip_targets: 解析器插入的占位符全集（figure_regions 全量提取，含
+            上传失败者）。提供时，全集里不在 map 的占位符被精确剥除（上传
+            失败的 figure），防垃圾串进 embedding 与 ES content（审计
+            P1#7——检索命中会把占位符原样返回给用户/LLM，且污染向量）。
+
+    防伪造语义：替换与剥除都是**精确串匹配**，目标只来自解析器生成的
+    占位符全集；文档正文里任何同形文本（无盐旧形态、编造盐值）都不在
+    全集中，绝不触碰。占位符盐化的动机与协议见 document_model 注释。
     """
     if not text:
         return text
     if image_url_map:
-        for artifact_id, image_url in image_url_map.items():
-            placeholder = f"__FIGURE_URL__{artifact_id}__"
+        for placeholder, image_url in image_url_map.items():
             text = text.replace(placeholder, image_url)
-    if strip_unresolved:
-        text = _FIGURE_PLACEHOLDER_RE.sub("", text)
+    if strip_targets:
+        for placeholder in strip_targets:
+            if placeholder not in image_url_map:
+                text = text.replace(placeholder, "")
     return text
 
 
@@ -828,6 +872,11 @@ async def _upload_figure_images_to_minio(
         page = int(region.get("page_start") or 0)
         figure_file = f"figure_{safe_id}_{page}.png"
         object_name = f"{figures_dir}/{figure_file}"
+        # map key = 完整占位符串（region.placeholder，含内容绑定盐）；无 placeholder
+        # 键的 region（旧契约兜底）退回无盐形态——替换函数按 key 原文替换
+        placeholder = str(
+            region.get("placeholder") or f"__FIGURE_URL__{artifact_id}__"
+        )
         try:
             await minio_client.upload_file(object_name, image_bytes, "image/png")
             # image_url 存短文件名（相对文档 figure 目录），不再存预签名 URL：
@@ -836,7 +885,7 @@ async def _upload_figure_images_to_minio(
             # 渲染方经 figure 代理端点拼接。上传失败剥占位符语义不变。
             region["minio_object_name"] = object_name
             region["image_url"] = figure_file
-            image_url_map[artifact_id] = figure_file
+            image_url_map[placeholder] = figure_file
             region.pop("image_blobs", None)
             # MySQL 目录锚点（幂等写入）：figure 代理端点按它把短文件名还原成
             # 完整 object name；persist_parsed_text 随后的 commit 一并落库。

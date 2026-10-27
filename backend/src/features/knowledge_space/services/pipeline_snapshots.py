@@ -693,7 +693,11 @@ def resolve_figure_short_paths(
         short_path = match.group(0)
         if region.get("image_url") != short_path:
             region["image_url"] = short_path
-        url_map[artifact_id] = short_path
+        # map key 与替换函数对齐：完整占位符串优先（新快照 region 带内容绑定
+        # 盐），旧存量快照 region 无 placeholder 键时退回无盐形态（其正文占位
+        # 符同为旧形态，两种 key 各自命中各自的正文）
+        key = str(region.get("placeholder") or f"__FIGURE_URL__{artifact_id}__")
+        url_map[key] = short_path
     return url_map
 
 

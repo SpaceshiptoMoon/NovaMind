@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, field
 from html import unescape
 from html.parser import HTMLParser
@@ -24,6 +25,31 @@ KIND_CHART = "chart"
 KIND_TEXTBOX = "textbox"
 KIND_HEADER = "header"
 KIND_FOOTER = "footer"
+
+# figure 占位符协议：__FIGURE_URL__{salt}_{artifact_id}__
+# 盐 = 文档字节流 sha256 前 12 hex。文档原文若恰好含同形文本（讲本系统的
+# 技术文档/markdown 教程），无盐旧形态会被业务层 strip 误删（正文静默丢
+# 内容）或撞上真实图 id（图 URL 插错位置）——内容绑定后不可伪造：构造含
+# 盐正文需反推包含该正文的全文 hash 固定点（48bit 循环依赖，暴力不可行）。
+# 同文档同盐 → 金样快照/解析指纹/断点续跑全部稳定。
+_FIGURE_SALT_HEX_CHARS = 12
+
+
+def document_salt(payload: bytes) -> str:
+    """文档内容绑定盐：字节流 sha256 前 12 位 hex。
+
+    Args:
+        payload: 文档原始字节流。
+
+    Returns:
+        12 位 hex 盐串（同文档恒定，跨文档不同）。
+    """
+    return hashlib.sha256(payload).hexdigest()[:_FIGURE_SALT_HEX_CHARS]
+
+
+def figure_placeholder(salt: str, artifact_id: str) -> str:
+    """构造带盐 figure 占位符（各解析器唯一合法的占位符生成入口）。"""
+    return f"__FIGURE_URL__{salt}_{artifact_id}__"
 
 
 @dataclass

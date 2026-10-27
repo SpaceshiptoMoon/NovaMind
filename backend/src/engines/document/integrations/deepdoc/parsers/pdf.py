@@ -19,6 +19,10 @@ from typing import Any
 import numpy as np
 import pdfplumber
 from novamind.engines.document.exceptions import EncryptedDocumentError
+from novamind.engines.document.integrations.deepdoc.core.document_model import (
+    document_salt,
+    figure_placeholder,
+)
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,
@@ -433,6 +437,10 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             LayoutInferenceError: model_failure_policy="raise" 且版面推理失败。
         """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
+        # 内容绑定盐：figure 占位符防正文同形伪造（见 document_model 协议注释）
+        self._figure_salt = document_salt(
+            filename if isinstance(filename, bytes) else Path(filename).read_bytes()
+        )
         self._raise_if_encrypted(filename)
         logger.info(
             "DeepDoc PDF 解析器开始",
@@ -794,6 +802,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             reading_order_text_boxes,
             table_regions,
             figure_regions,
+            figure_salt=self._figure_salt,
         )
         # 分阶段诊断：定位「整页内容丢失」类问题。按页统计各阶段文本字符数，
         # 配合 filter_meta（toc/dirty 移除页）可一眼看出内容在哪一步被丢。
@@ -2288,6 +2297,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         text_boxes: Sequence[DeepDocPdfBox],
         table_regions: Sequence[dict[str, Any]],
         figure_regions: Sequence[dict[str, Any]],
+        figure_salt: str = "",
     ) -> list[dict[str, Any]]:
         """文本框 + 表/图 region 合成全局阅读序 entry 列表。
         
@@ -2349,7 +2359,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                     "layout_type": "figure",
                     "artifact_id": artifact_id,
                     "source_id": artifact_id,
-                    "image_placeholder": f"__FIGURE_URL__{artifact_id}__" if artifact_id else "",
+                    "image_placeholder": (
+                        figure_placeholder(figure_salt, artifact_id) if artifact_id else ""
+                    ),
                 }
             )
 
