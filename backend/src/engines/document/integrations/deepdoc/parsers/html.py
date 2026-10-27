@@ -6,9 +6,13 @@ import html
 import logging
 import re
 import uuid
+from pathlib import Path
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
-from novamind.engines.document.integrations.deepdoc.compat import find_codec, rag_tokenizer
+from novamind.engines.document.integrations.deepdoc.compat import (
+    decode_text_binary,
+    rag_tokenizer,
+)
 
 BLOCK_TAGS = [
     "h1",
@@ -51,20 +55,16 @@ class RAGFlowHtmlParser:
     """RAGFlow HTML 解析器：DOM 遍历抽文本块并按 token 预算分块。"""
     def __call__(self, file_name: str, binary: bytes | None = None, chunk_token_num: int = 512):
         """解析 HTML 为分块文本列表。
-        
+
         Args:
             file_name: 文件路径（binary 为 None 时使用）。
             binary: HTML 字节流；编码自动探测。
             chunk_token_num: 单块 token 上限。
         """
         if binary:
-            encoding = find_codec(binary)
-            text = binary.decode(encoding, errors="ignore")
+            text = decode_text_binary(binary)
         else:
-            with open(file_name, "rb") as handle:
-                raw = handle.read()
-            encoding = find_codec(raw)
-            text = raw.decode(encoding, errors="ignore")
+            text = decode_text_binary(Path(file_name).read_bytes())
         return self.parser_txt(text, chunk_token_num)
 
     @classmethod

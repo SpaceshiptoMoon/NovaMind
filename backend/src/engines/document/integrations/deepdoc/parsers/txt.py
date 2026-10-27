@@ -3,9 +3,12 @@ from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/txt_parser.py
 import re
+from pathlib import Path
 
-from novamind.engines.document.integrations.deepdoc.compat import num_tokens_from_string
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import get_text
+from novamind.engines.document.integrations.deepdoc.compat import (
+    decode_text_binary,
+    num_tokens_from_string,
+)
 
 
 class RAGFlowTxtParser:
@@ -25,7 +28,12 @@ class RAGFlowTxtParser:
             chunk_token_num: 单块 token 上限。
             delimiter: 分段分隔符，支持反引号包裹的多字符分隔符。
         """
-        text = get_text(file_name, binary)
+        if binary is None:
+            binary = Path(file_name).read_bytes()
+        # 统一解码消毒（BOM 剥除 / CRLF 与孤立 CR 归一 / NUL 剔除）。
+        # 不再走 get_text：它按本地默认编码打开路径文件，Windows GBK 环境
+        # 读 UTF-8 非 ASCII 文件会直接 UnicodeDecodeError
+        text = decode_text_binary(binary)
         return self.parser_txt(text, chunk_token_num, delimiter)
 
     @classmethod

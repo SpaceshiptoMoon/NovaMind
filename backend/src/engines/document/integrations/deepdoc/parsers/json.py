@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.compat import find_codec
+from novamind.engines.document.integrations.deepdoc.compat import decode_text_binary
 
 
 class RAGFlowJsonParser:
@@ -16,9 +16,14 @@ class RAGFlowJsonParser:
         self.min_chunk_size = min_chunk_size if min_chunk_size is not None else max(max_chunk_size - 200, 50)
 
     def __call__(self, binary: bytes):
-        """解析 JSON / JSONL 字节流为分块文本列表。"""
-        encoding = find_codec(binary)
-        text = binary.decode(encoding, errors="ignore")
+        """解析 JSON / JSONL 字节流为分块文本列表。
+
+        Raises:
+            ValueError: 单文档模式解析失败（无效 JSON / 嵌套过深 / 标量根），
+                显式暴露而非静默空列表——空内容守卫的报错不含 JSON 语境，
+                用户无从得知是格式问题。
+        """
+        text = decode_text_binary(binary)
         if self.is_jsonl_format(text):
             return self._parse_jsonl(text)
         return self._parse_json(text)
@@ -44,9 +49,15 @@ class RAGFlowJsonParser:
         return data
 
     def _json_split(self, data, current_path: list[str] | None, chunks: list[dict] | None) -> list[dict]:
-        """深度优先遍历嵌套结构，按 max/min_chunk_size 组装分块。"""
+        """深度优先遍历嵌套结构，按 max/min_chunk_size 组装分块。
+
+        标量根（如整个文件就是一个数字/字符串）无路径可挂——包一层 ``value``
+        键，修复此前 IndexError 裸栈崩溃。
+        """
         current_path = current_path or []
         chunks = chunks or [{}]
+        if not current_path and not isinstance(data, (dict, list)):
+            current_path = ["value"]
         if isinstance(data, dict):
             for key, value in data.items():
                 new_path = current_path + [key]
@@ -84,18 +95,26 @@ class RAGFlowJsonParser:
         return chunks
 
     def _parse_json(self, content: str) -> list[str]:
-        """解析单个 JSON 文档为分块文本列表；解析失败返回空列表。"""
-        sections = []
+        """解析单个 JSON 文档为分块文本列表。
+
+        Raises:
+            ValueError: 无效 JSON 或嵌套超出解析器递归上限（显式暴露格式
+                问题，不再静默返回空列表）。
+        """
         try:
             json_data = json.loads(content)
             chunks = self.split_json(json_data, True)
-            sections = [json.dumps(line, ensure_ascii=False) for line in chunks if line]
-        except json.JSONDecodeError:
-            pass
-        return sections
+        except RecursionError as exc:
+            raise ValueError("JSON 嵌套层级过深，超出解析器上限") from exc
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"JSON 解析失败（位置 {exc.pos}）：{exc.msg}") from exc
+        return [json.dumps(line, ensure_ascii=False) for line in chunks if line]
 
     def _parse_jsonl(self, content: str) -> list[str]:
-        """逐行解析 JSONL，每行独立切分；坏行跳过不报错。"""
+        """逐行解析 JSONL，每行独立切分；坏行跳过不报错（JSONL 容忍语义）。
+
+        深嵌套行的 RecursionError 与坏行同义处理（跳过不炸整个文件）。
+        """
         lines = content.strip().splitlines()
         all_chunks = []
         for line in lines:
@@ -105,7 +124,7 @@ class RAGFlowJsonParser:
                 data = json.loads(line)
                 chunks = self.split_json(data, convert_lists=True)
                 all_chunks.extend(json.dumps(chunk, ensure_ascii=False) for chunk in chunks if chunk)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 continue
         return all_chunks
 
@@ -124,6 +143,8 @@ class RAGFlowJsonParser:
         try:
             json.loads(text)
             return False
+        except RecursionError:
+            return False  # 深嵌套单文档：交由 _parse_json 统一转显式 ValueError
         except json.JSONDecodeError:
             pass
 

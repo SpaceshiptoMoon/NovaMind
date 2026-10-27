@@ -6,6 +6,7 @@ from importlib import import_module
 _EXPORT_MAP = {
     "LazyImage": ("novamind.engines.document.integrations.deepdoc.compat.compat", "LazyImage"),
     "SimpleTokenizer": ("novamind.engines.document.integrations.deepdoc.compat.compat", "SimpleTokenizer"),
+    "decode_text_binary": ("novamind.engines.document.integrations.deepdoc.compat.compat", "decode_text_binary"),
     "find_codec": ("novamind.engines.document.integrations.deepdoc.compat.compat", "find_codec"),
     "num_tokens_from_string": ("novamind.engines.document.integrations.deepdoc.compat.compat", "num_tokens_from_string"),
     "rag_tokenizer": ("novamind.engines.document.integrations.deepdoc.compat.compat", "rag_tokenizer"),

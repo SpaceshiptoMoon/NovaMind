@@ -6,6 +6,7 @@
 - DOCX：表格在文档中部（此前全部堆到文档尾）、标题层级（此前全部单个 #）、
   列表段（此前丢列表语义）、文本框（此前整体丢失）。
 """
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -498,6 +499,52 @@ def test_docx_sdt_content_passthrough(tmp_path):
     result = DeepDocParser()._parse_docx_sync(docx, {"chunk_size": 10000})
     assert "附件说明条款" in result.full_text
     assert "条款" in result.full_text and "内容" in result.full_text
+
+
+def test_txt_json_decode_and_edge_cases(tmp_path):
+    """txt/json 解码消毒与边界回归（2026-10 文本族质量批次）。
+
+    探针实锤五项：BOM 双重编码进首块 / UTF-16 被 gb18030 兜底成 NUL 乱码 /
+    CRLF 与孤立 CR 残留 / JSON 标量根 IndexError 裸栈 / JSON 深嵌套
+    RecursionError 裸栈。
+    """
+    from novamind.engines.document.integrations.deepdoc.parsers.json import (
+        RAGFlowJsonParser,
+    )
+    from novamind.engines.document.integrations.deepdoc.parsers.txt import (
+        RAGFlowTxtParser,
+    )
+
+    txt = RAGFlowTxtParser()
+    # BOM 剥除：首块不再出现 \ufeff（此前 UTF-8 BOM 会进首块污染检索）
+    out = txt("", "\ufeff第一行标题\n正文。".encode("utf-8"))
+    assert out and "\ufeff" not in out[0][0]
+    assert "第一行标题" in out[0][0]
+    # 行尾归一：CRLF 与孤立 CR（老 Mac）都归一为 \n
+    out = txt("", "第一行\r\n第二行\r第三行\r\n".encode("utf-8"))
+    assert "\r" not in out[0][0]
+    # UTF-16（Excel 导出常见）：正确解码且无 NUL 污染（此前 gb18030 兜底
+    # 成功产出 NUL 乱码）
+    out = txt("", "标题行\r\n数据行。".encode("utf-16"))
+    assert out and "标题行" in out[0][0]
+    assert "\x00" not in out[0][0]
+
+    jp = RAGFlowJsonParser()
+    # 标量根：此前 IndexError 裸栈，现包 value 键输出
+    assert jp(b"42") == ['{"value": 42}']
+    # 深嵌套：显式 ValueError（此前 RecursionError 裸栈）
+    deep = ("[" * 5000) + ("]" * 5000)
+    with pytest.raises(ValueError, match="嵌套层级过深"):
+        jp(deep.encode())
+    # 无效 JSON：显式 ValueError 带位置（此前静默空列表）
+    with pytest.raises(ValueError, match="JSON 解析失败"):
+        jp(b'{"broken": ')
+    # 数组根 + BOM JSON：正常解析
+    out = jp(
+        json.dumps([{"n": 1}, {"n": 2}], ensure_ascii=False).encode("utf-8")
+    )
+    assert out and '"n": 1' in out[0]
+    assert jp(b"\xef\xbb\xbf" + b'{"k": "v"}') == ['{"k": "v"}']
 
 
 def test_html_noise_tags_and_deep_nesting(tmp_path):

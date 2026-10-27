@@ -104,21 +104,46 @@ def num_tokens_from_string(text: str) -> int:
 
 
 def find_codec(binary: bytes) -> str:
-    """按 utf-8→gb18030→latin-1 顺序探测字节流编码名，全部失败回退 utf-8。
+    """按 BOM → utf-8 → utf-16 → gb18030 → gbk → latin-1 顺序探测编码名。
 
     Args:
         binary: 待探测字节流。
 
     Returns:
         探测到的编码名。
+
+    Notes:
+        utf-16 探测必须在 gb18030 之前——UTF-16 字节恰好能被 gb18030 成功
+        解码成 NUL 污染的乱码（ASCII 字符后跟 \\x00），探测顺序错误会把
+        Excel 导出的 UTF-16 文本变成满屏乱码。
     """
-    for encoding in ("utf-8", "utf-8-sig", "gb18030", "gbk", "latin-1"):
+    for encoding in (
+        "utf-8-sig", "utf-8", "utf-16", "gb18030", "gbk", "latin-1",
+    ):
         try:
             binary.decode(encoding)
             return encoding
         except Exception:
             continue
     return "utf-8"
+
+
+def decode_text_binary(binary: bytes) -> str:
+    """文本族字节流统一解码与消毒入口（BOM 剥除 + 行尾归一 + NUL 剔除）。
+
+    处理三类实测污染（2026-10 文本族质量批次）：
+    - BOM：utf-8-sig 解码仍会在文本首保留 \\ufeff 字符——显式剥除，防
+      「ï»¿」双重编码形态进首块；
+    - 行尾：\\r\\n 与孤立 \\r 归一为 \\n（Windows/老 Mac 导出文件）；
+    - NUL：UTF-16 误判等来源的 \\x00 剔除。
+    """
+    encoding = find_codec(binary)
+    text = binary.decode(encoding, errors="ignore")
+    if text.startswith("\ufeff"):
+        text = text.lstrip("\ufeff")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\x00", "")
+    return text
 
 
 @dataclass(slots=True)
