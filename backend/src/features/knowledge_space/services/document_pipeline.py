@@ -524,13 +524,14 @@ async def execute_document_pipeline(
     _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
     await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
 
-    # 上传 PDF figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。
-    # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
-    # 保证最终落盘的完整 MD 与 ES chunk content 都已含图片短路径。
+    # 上传 figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。
+    # PDF full 模式（版面 figure）与 Excel（工作表嵌入图片）都会产出
+    # figure_regions + image_blobs；上传在 persist 之前完成，保证最终落盘的
+    # 完整 MD 与 ES chunk content 都已含图片短路径。
     # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
     figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
     image_url_map: dict[str, str] = {}
-    if figure_regions and document.file_type.lower() == "pdf":
+    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls"):
         from novamind.shared.storage.client_factory import ClientFactory
 
         minio_client = await ClientFactory.get_minio_client()

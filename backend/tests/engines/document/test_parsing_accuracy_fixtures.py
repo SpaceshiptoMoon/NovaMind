@@ -27,7 +27,7 @@ pytestmark = pytest.mark.unit
 # ---------- Excel 夹具 ----------
 
 def _build_complex_xlsx(path: Path) -> None:
-    """两表工作簿：合并单元格 + 浮点/日期 + 程序生成公式（无缓存值）。"""
+    """三表工作簿：合并单元格 + 浮点/日期 + 程序生成公式 + 多级表头 + 嵌入图片。"""
     wb = Workbook()
     ws = wb.active
     ws.title = "区域销售"
@@ -45,6 +45,31 @@ def _build_complex_xlsx(path: Path) -> None:
     ws["B4"] = datetime(2024, 6, 30)
     # 程序生成公式：无缓存值，data_only=True 视角为 None
     ws["C4"] = "=SUM(C2:C3)"
+    # 多级表头 sheet：组头横向合并 + 次级子头（此前第 2 行表头被当数据行）
+    ws2 = wb.create_sheet("分季度明细")
+    ws2["A1"] = "区域"
+    ws2["B1"] = "Q1"
+    ws2.merge_cells("B1:C1")
+    ws2["D1"] = "Q2"
+    ws2.merge_cells("D1:E1")
+    ws2["B2"] = "收入"
+    ws2["C2"] = "成本"
+    ws2["D2"] = "收入"
+    ws2["E2"] = "成本"
+    ws2["A3"] = "华东区"
+    ws2["B3"] = 100
+    ws2["C3"] = 60
+    ws2["D3"] = 120
+    ws2["E3"] = 70
+    # 嵌入图片（此前完全丢失）
+    from io import BytesIO
+
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image as PILImage
+
+    buf = BytesIO()
+    PILImage.new("RGB", (80, 60), color=(30, 144, 255)).save(buf, format="PNG")
+    ws2.add_image(XLImage(buf), "B5")
     wb.save(path)
 
 
@@ -95,6 +120,60 @@ def test_excel_formula_backfill_for_uncached_workbook(tmp_path):
     lines = parser(xlsx.read_bytes())
     joined = "\n".join(lines)
     assert "=SUM(C2:C3)" in joined, "无缓存公式应以字面量兜底而非静默丢值"
+
+
+def test_excel_multi_level_header_folded_to_composite(tmp_path):
+    """多级表头：两级折成「Q1 > 收入」复合表头，表头行不再混进数据。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    parser = RAGFlowExcelParser()
+    blocks, _images = parser.parse_blocks(xlsx.read_bytes())
+    detail = "".join(b for b in blocks if "分季度明细" in b)
+    assert "<th>Q1 &gt; 收入</th>" in detail, "两级表头应折成复合表头"
+    assert "<th>Q2 &gt; 成本</th>" in detail
+    # 表头行不能混进数据行（此前「Q1：收入」成伪数据行）
+    assert "<td>收入</td>" not in detail
+    # 数据行完整
+    assert "<td>华东区</td>" in detail and "<td>120</td>" in detail
+
+
+def test_excel_embedded_image_extracted(tmp_path):
+    """嵌入图片提取：png 化 blob + 锚点位置，随解析产物交付 figure 管线。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    parser = RAGFlowExcelParser()
+    blocks, images = parser.parse_blocks(xlsx.read_bytes())
+    assert len(images) == 1
+    image = images[0]
+    assert image["sheet"] == "分季度明细"
+    assert image["row"] == 4 and image["col"] == 1, "锚点 B5 → 0-based (row=4, col=1)"
+    assert image["blob"][:8] == b"\x89PNG\r\n\x1a\n", "应重编码为 PNG"
+    # 占位符挂本表首块
+    detail = "".join(b for b in blocks if "分季度明细" in b)
+    assert "__FIGURE_URL__xls_" in detail
+
+
+def test_excel_runtime_figure_regions(tmp_path):
+    """runtime 层组装 figure_regions（复用 PDF figure 上传管线）。"""
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    result = DeepDocParser()._parse_excel_sync(xlsx, "xlsx", {"chunk_size": 1000})
+    regions = result.metadata["figure_regions"]
+    assert len(regions) == 1
+    assert regions[0]["image_blobs"] and regions[0]["artifact_id"].startswith("xls_")
+    assert "分季度明细" in regions[0]["caption"]
 
 
 # ---------- DOCX 夹具 ----------

@@ -318,13 +318,28 @@ class DeepDocParser:
         extension: str,
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
-        """Excel 同步解析：优先 HTML 表格块，空结果回退行文本。"""
+        """Excel 同步解析：HTML 表格块（多级表头折成复合表头）+ 嵌入图片提取。
+
+        图片经 figure_regions 契约交宿主 figure 管线（上传 MinIO + 占位符
+        换短路径，与 PDF figure 同链）；行文本兜底路径无占位符，图片仍上传
+        可经 figure 代理访问。
+        """
         logger.info("DeepDoc Excel 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
-        blocks = self._excel_parser.html(parser_input) or self._excel_parser(parser_input)
+        blocks, embedded_images = self._excel_parser.parse_blocks(parser_input)
+        if not blocks:
+            blocks = list(self._excel_parser(parser_input))
+        figure_regions = self._build_excel_figure_regions(embedded_images)
         full_text = "\n\n".join(block.strip() for block in blocks if block and block.strip()).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-        logger.info("DeepDoc Excel 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), table_chunks=len(blocks))
+        logger.info(
+            "DeepDoc Excel 解析完成",
+            extension=extension,
+            char_count=len(full_text),
+            chunk_count=len(chunks),
+            table_chunks=len(blocks),
+            embedded_images=len(figure_regions),
+        )
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
@@ -334,8 +349,43 @@ class DeepDocParser:
                 "parser_class": "RAGFlowExcelParser",
                 "source": "ragflow-adapted",
                 "table_chunks": len(blocks),
+                "figure_regions": figure_regions,
             },
         )
+
+    @staticmethod
+    def _build_excel_figure_regions(embedded_images: list[dict]) -> list[dict[str, Any]]:
+        """把 Excel 嵌入图片组装为 figure_regions 契约（复用 PDF figure 管线）。
+
+        artifact_id 由解析器（parse_blocks）定版——正文占位符与 region 必须
+        同一 id，此处复用不重生成。
+        """
+        figure_regions: list[dict[str, Any]] = []
+        for image in embedded_images:
+            blob = image.get("blob")
+            artifact_id = str(image.get("artifact_id") or "")
+            if not blob or not artifact_id:
+                continue
+            sheet = str(image.get("sheet") or "sheet")
+            row = image.get("row")
+            location = (
+                f"r{int(row) + 1}"
+                if row is not None
+                else "未知位置"
+            )
+            figure_regions.append({
+                "artifact_id": artifact_id,
+                "pages": [],
+                "page_start": 0,
+                "bbox": {},
+                "caption": f"{sheet} 工作表嵌入图片（{location}）",
+                "text": "",
+                "member_texts": [],
+                "member_bboxes": [],
+                "has_image": True,
+                "image_blobs": [blob],
+            })
+        return figure_regions
 
     def _parse_epub_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
         """EPUB 同步解析：按 spine 序章节切分聚块。"""
