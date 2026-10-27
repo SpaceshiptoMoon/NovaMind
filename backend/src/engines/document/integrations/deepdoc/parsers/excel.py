@@ -76,6 +76,12 @@ class RAGFlowExcelParser:
             merged_ranges = list(ws.merged_cells.ranges)
             if not merged_ranges:
                 continue
+            # 展开前快照：语义层（banner/小节行判定）需要原始合并信息
+            setattr(
+                ws,
+                "_novamind_merged_pre",
+                [(rng.min_row, rng.min_col, rng.max_row, rng.max_col) for rng in merged_ranges],
+            )
             for rng in merged_ranges:
                 top_left = ws.cell(row=rng.min_row, column=rng.min_col).value
                 ws.unmerge_cells(str(rng))
@@ -353,6 +359,7 @@ class RAGFlowExcelParser:
         from novamind.engines.document.integrations.deepdoc.parsers import (
             excel_layout as layout,
         )
+        _row_texts = layout._row_texts
 
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
         wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
@@ -402,31 +409,88 @@ class RAGFlowExcelParser:
                 for line in island.preamble:
                     sheet_blocks.append(line)
                 if island.bottom >= island.data_top:
+                    # 单位语义：前置区「单位：万元」挂到 caption，数值检索有量纲
+                    unit = layout.extract_unit(island.preamble)
+                    unit_suffix = f"（单位：{escape(unit)}）" if unit else ""
+                    transpose = layout.detect_transpose(grid, island, island.data_top)
+                    sections = layout.section_rows(grid, island, island.data_top)
                     tl = f"{layout._column_letter(island.left)}{island.top + 1}"
                     br = f"{layout._column_letter(island.right)}{island.bottom + 1}"
-                    caption = f"{sheetname}!{tl}:{br}"
-                    header_row = (
-                        "<tr>"
-                        + "".join(f"<th>{escape(h)}</th>" for h in island.headers)
-                        + "</tr>"
-                    )
+                    caption = f"{sheetname}!{tl}:{br}{unit_suffix}"
+                    if not island.has_header:
+                        # 诚实标注：列字母是占位不是作者表头
+                        caption += "（无表头，按列字母标注）"
+                    if transpose:
+                        caption += "（转置表：行头在首列）"
+                    if transpose:
+                        # 转置表：首列作行表头（th），列头用 band 或列字母
+                        corner = island.headers[0] if island.has_header else ""
+                        header_row = (
+                            f"<tr><th>{escape(corner)}</th>"
+                            + "".join(
+                                f"<th>{escape(layout._column_letter(i))}</th>"
+                                for i in range(island.right - island.left)
+                            )
+                            + "</tr>"
+                        )
+                    else:
+                        header_row = (
+                            "<tr>"
+                            + "".join(f"<th>{escape(h)}</th>" for h in island.headers)
+                            + "</tr>"
+                        )
                     n_data = island.bottom - island.data_top + 1
+                    table_open = False
+                    table_html = ""
                     for window_i in range((n_data + chunk_rows - 1) // chunk_rows):
                         start = island.data_top + window_i * chunk_rows
-                        table_html = (
-                            f"<table><caption>{escape(caption)}</caption>{header_row}"
-                        )
                         for r in range(start, min(start + chunk_rows, island.bottom + 1)):
-                            tds = "".join(
-                                cell_html(
-                                    grid.text_at(r, c),
-                                    grid.comments.get((r, c), ""),
+                            # 小节行：拆出为独立标注行（关闭当前表、开新表续排）
+                            if r in sections:
+                                if table_open:
+                                    sheet_blocks.append(table_html + "</table>\n")
+                                    table_open = False
+                                sheet_blocks.append(f"[节] {escape(sections[r])}")
+                                continue
+                            if not table_open:
+                                table_html = (
+                                    f"<table><caption>{escape(caption)}</caption>{header_row}"
                                 )
-                                for c in range(island.left, island.right + 1)
+                                table_open = True
+                            is_subtotal = layout.is_subtotal_row(
+                                _row_texts(grid, r, island.left, island.right)
                             )
-                            table_html += f"<tr>{tds}</tr>"
-                        table_html += "</table>\n"
-                        sheet_blocks.append(table_html)
+                            if transpose:
+                                head = f"<th>{escape(grid.text_at(r, island.left))}</th>"
+                                tds = "".join(
+                                    cell_html(
+                                        grid.text_at(r, c),
+                                        grid.comments.get((r, c), ""),
+                                    )
+                                    for c in range(island.left + 1, island.right + 1)
+                                )
+                                table_html += f"<tr>{head}{tds}</tr>"
+                            elif is_subtotal:
+                                texts = _row_texts(grid, r, island.left, island.right)
+                                cells = []
+                                for offset, c in enumerate(range(island.left, island.right + 1)):
+                                    text = grid.text_at(r, c)
+                                    note = grid.comments.get((r, c), "")
+                                    if offset == 0 and text:
+                                        text = f"[小计] {text}"
+                                    cells.append(cell_html(text, note))
+                                table_html += f"<tr>{''.join(cells)}</tr>"
+                            else:
+                                tds = "".join(
+                                    cell_html(
+                                        grid.text_at(r, c),
+                                        grid.comments.get((r, c), ""),
+                                    )
+                                    for c in range(island.left, island.right + 1)
+                                )
+                                table_html += f"<tr>{tds}</tr>"
+                    if table_open:
+                        sheet_blocks.append(table_html + "</table>\n")
                 island_table_ranges.append((base, len(sheet_blocks), island))
 
             # 嵌入图片：占位符挂锚点所在岛的首块；岛外浮图挂锚点上方最近的岛

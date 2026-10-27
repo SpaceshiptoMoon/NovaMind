@@ -97,6 +97,30 @@ def _build_complex_xlsx(path: Path) -> None:
                    titles_from_data=True)
     chart.set_categories(Reference(ws2, min_col=1, min_row=3, max_row=3))
     ws2.add_chart(chart, "G3")
+    # 小计/小节/单位 sheet：聚合行打标 + outline 分组行 + 前置单位说明
+    ws4 = wb.create_sheet("小计与分组")
+    ws4["A1"] = "单位：件"
+    ws4["A2"] = "名称"
+    ws4["B2"] = "数量"
+    ws4["A3"] = "甲"
+    ws4["B3"] = 10
+    ws4["A4"] = "乙"
+    ws4["B4"] = 20
+    ws4["A5"] = "小计"
+    ws4["B5"] = 30
+    ws4["A6"] = "华东分组"
+    ws4.row_dimensions[6].outlineLevel = 1
+    ws4["A7"] = "丙"
+    ws4["B7"] = 5
+    # 转置表：首行数值主导、维度在首列（行头在左）
+    ws5 = wb.create_sheet("转置月度")
+    ws5["A1"] = "指标"
+    for col, value in ((2, 100), (3, 200), (4, 300), (5, 400)):
+        ws5.cell(row=1, column=col, value=value)
+    for row, label in ((2, "销售额"), (3, "成本"), (4, "利润")):
+        ws5.cell(row=row, column=1, value=label)
+        for col, value in ((2, 50), (3, 60), (4, 70), (5, 80)):
+            ws5.cell(row=row, column=col, value=value + col)
     wb.save(path)
 
 
@@ -284,6 +308,65 @@ def test_excel_chart_rebuilt_as_data_table(tmp_path):
     assert "华东区季度收支" in chart_blocks[0]
     assert "收入" in chart_blocks[0] and "<td>100</td>" in chart_blocks[0]
     assert "<td>60</td>" in chart_blocks[0]
+
+
+def test_excel_subtotal_row_flagged(tmp_path):
+    """小计行打标 `[小计] ` 前缀——聚合值与明细值可区分，不丢数据。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    blocks, _images = RAGFlowExcelParser().parse_blocks(xlsx.read_bytes())
+    joined = "\n".join(blocks)
+    assert "[小计]" in joined
+    assert "<td>30</td>" in joined, "小计数值保留不剔除"
+
+
+def test_excel_section_row_split(tmp_path):
+    """outline 分组行拆为 `[节] 标注`，表按小节断开续排。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    blocks, _images = RAGFlowExcelParser().parse_blocks(xlsx.read_bytes())
+    joined = "\n".join(blocks)
+    assert "[节] 华东分组" in joined
+    assert "小计与分组!" in joined
+    # 表被小节行断开：同名 caption 出现 ≥2 次（续排）
+    assert joined.count("<table><caption>小计与分组!") >= 2
+
+
+def test_excel_unit_attached_to_caption(tmp_path):
+    """前置「单位：件」挂到表格 caption（数值量纲可见）。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    blocks, _images = RAGFlowExcelParser().parse_blocks(xlsx.read_bytes())
+    joined = "\n".join(blocks)
+    assert "（单位：件）" in joined
+
+
+def test_excel_transpose_table_row_headers(tmp_path):
+    """转置表：首列作行表头（th），caption 标注转置形态。"""
+    from novamind.engines.document.integrations.deepdoc.parsers.excel import (
+        RAGFlowExcelParser,
+    )
+
+    xlsx = tmp_path / "complex.xlsx"
+    _build_complex_xlsx(xlsx)
+    blocks, _images = RAGFlowExcelParser().parse_blocks(xlsx.read_bytes())
+    transposed = [b for b in blocks if "转置月度" in b]
+    assert transposed, "转置表应有产物"
+    assert "转置表：行头在首列" in transposed[0]
+    assert "<th>销售额</th>" in transposed[0]
+    assert "<td>100</td>" in transposed[0]
 
 
 # ---------- DOCX 夹具 ----------

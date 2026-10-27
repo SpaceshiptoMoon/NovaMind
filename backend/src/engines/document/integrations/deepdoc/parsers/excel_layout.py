@@ -55,6 +55,8 @@ class SheetGrid:
     values: dict[tuple[int, int], str]
     comments: dict[tuple[int, int], str]
     merged_ranges: list[tuple[int, int, int, int]]  # (min_row, min_col, max_row, max_col) 1-based 闭区间
+    # 行分组大纲（作者用「组合」功能折叠的层级，≥1 即分组行）
+    outline_levels: dict[int, int] = field(default_factory=dict)
 
     @property
     def n_rows(self) -> int:
@@ -107,8 +109,9 @@ def build_grid(ws, format_value) -> SheetGrid:
     """从 openpyxl 工作表构建值网格。
 
     优先走 ``ws._cells`` 字典（稀疏表避免为海量空格物化单元格，openpyxl 3.x
-    稳定私有形态），缺失时回落 iter_rows。批注随格收集；合并区记录展开前的
-    原始范围（表头 band 与 banner 判定需要）。
+    稳定私有形态），缺失时回落 iter_rows。批注随格收集；合并区优先读展开
+    前快照（``ws._novamind_merged_pre``，宿主展开时回写），否则读现存合并
+    区（未展开路径）。行分组大纲（outlineLevel）随行收集。
     """
     values: dict[tuple[int, int], str] = {}
     comments: dict[tuple[int, int], str] = {}
@@ -133,15 +136,23 @@ def build_grid(ws, format_value) -> SheetGrid:
                 note = note[:_NOTE_MAX_CHARS]
                 author = str(getattr(comment, "author", "") or "批注")
                 comments[(row - 1, col - 1)] = f"[note({author}): {note}]"
-    merged = [
-        (rng.min_row, rng.min_col, rng.max_row, rng.max_col)
-        for rng in getattr(ws.merged_cells, "ranges", []) or []
-    ]
+    merged = getattr(ws, "_novamind_merged_pre", None)
+    if merged is None:
+        merged = [
+            (rng.min_row, rng.min_col, rng.max_row, rng.max_col)
+            for rng in getattr(ws.merged_cells, "ranges", []) or []
+        ]
+    outline_levels = {
+        int(row_index) - 1: int(dim.outline_level or 0)
+        for row_index, dim in getattr(ws, "row_dimensions", {}).items()
+        if getattr(dim, "outline_level", 0)
+    }
     return SheetGrid(
         sheet_name=str(getattr(ws, "title", "") or ""),
         values=values,
         comments=comments,
         merged_ranges=merged,
+        outline_levels=outline_levels,
     )
 
 
@@ -337,6 +348,77 @@ def segment_islands(grid: SheetGrid, gap_rows: int = 1, gap_cols: int = 1) -> li
             ))
     islands.sort(key=lambda i: (i.top, i.left))
     return islands
+
+
+_SUBTOTAL_RE = re.compile(r"^(合计|总计|小计|累计|总和|total|subtotal)", re.IGNORECASE)
+# 单位词不含空白与括号（「件」「万元」；括号是前置句的包裹符）
+_UNIT_RE = re.compile(r"单位[：:]\s*([^\s（）()]{1,12})")
+
+
+def is_subtotal_row(texts: list[str]) -> bool:
+    """小计/总计行判定：首个非空格命中聚合词（Total/合计/小计/累计等）。
+
+    只做打标不做剔除——用户可能就是问总计，剔除属丢数据；打标后检索层
+    可降权、LLM 层可区分聚合值与明细值。
+    """
+    for t in texts:
+        if t:
+            return bool(_SUBTOTAL_RE.match(t.strip()))
+    return False
+
+
+def detect_transpose(grid: SheetGrid, island: Island, data_top: int) -> bool:
+    """转置表判定：首行数值主导（>0.7）而首列是文本维度（行头在左）。
+
+    满足时数据区按「首列作行表头」渲染，不再套列字母列头。
+    """
+    first_row = _numeric_ratio(_row_texts(grid, island.top, island.left, island.right))
+    if first_row <= 0.7:
+        return False
+    body_rows = list(range(data_top, min(data_top + 8, island.bottom + 1)))
+    first_col = [grid.text_at(r, island.left) for r in body_rows]
+    non_empty = [t for t in first_col if t]
+    if len(non_empty) < 2:
+        return False
+    text_density = sum(1 for t in non_empty if not _is_numeric_like(t)) / len(non_empty)
+    return text_density >= 0.6
+
+
+def section_rows(grid: SheetGrid, island: Island, data_top: int) -> dict[int, str]:
+    """表内小节行：outline 分组行（Tier 1）+ 左缘横向合并行（Tier 2）。
+
+    Excel 自带的作者意图信号，比文本启发式可靠。返回 {行号: 小节文本}，
+    渲染层把小节行从数据表中拆出为独立标注行。
+    """
+    sections: dict[int, str] = {}
+    for row in range(data_top, island.bottom + 1):
+        texts = _row_texts(grid, row, island.left, island.right)
+        non_empty = [t for t in texts if t]
+        if not non_empty:
+            continue
+        label = None
+        # Tier 1：行分组大纲（作者主动折叠/分组的行）
+        if grid.outline_levels.get(row, 0) >= 1 and len(non_empty) <= 2:
+            label = non_empty[0]
+        # Tier 2：左缘横向合并行（小节标签横跨表宽的一部分，行内唯一值）
+        if label is None:
+            for min_row, min_col, max_row, max_col in grid.merged_ranges:
+                if min_row - 1 == row and min_col - 1 <= island.left and max_col - 1 > min_col - 1:
+                    if len(non_empty) <= 2:
+                        label = non_empty[0]
+                    break
+        if label:
+            sections[row] = label
+    return sections
+
+
+def extract_unit(preamble_lines: list[str]) -> str | None:
+    """从前置文本行提取「单位：万元」形态的数值单位。"""
+    for line in preamble_lines:
+        m = _UNIT_RE.search(line)
+        if m:
+            return m.group(1)
+    return None
 
 
 def stitch_islands(grid: SheetGrid, islands: list[Island]) -> list[Island]:
