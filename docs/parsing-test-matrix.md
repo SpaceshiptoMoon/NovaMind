@@ -7,6 +7,19 @@
 
 ## 执行记录
 
+**2026-10-27（晚）MinerU 外部引擎接入**（strategy=mineru 新增为 PDF 第四解析路径）：
+
+- 适配层：`engines/document/integrations/mineru/`（适配 MinerU 4.x「常驻服务 +
+  CLI 客户端」形态——`mineru server start` 模型驻留，适配层经 `mineru parse`
+  子进程提交，tier 档位透传，页标记剥离后入库）；独立 venv 安装（mineru[core]
+  4.0.12），宿主从 YAML `mineru` 段透传 cli_path/tier/timeout（零 env 依赖）
+- 失败纪律：cli_path 为空/可执行缺失/服务未运行 → `MineruNotAvailableError`
+  （Permanent 不可重试，带安装与启动指引）；超时/非零退出/产物缺失 →
+  `MineruExecutionError`（可重试）
+- 真测：`pdf-mineru` 组合 PASS（16s，1 chunk，标记已剥离，检索命中标记）；
+  单测 8 项（fail-fast×3 / 产物收集×3 / 策略归一 / schema 流转）+ 描述符 9 项全绿；
+  策略基线测试更新为四策略门禁（default/deepdoc/external_ocr/mineru）
+
 **2026-10-27（下）门禁后真测与云端依赖定性**（承接当日上轮；VLM 凭证临时翻转
 openai_video 后已还原）：
 

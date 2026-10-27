@@ -314,6 +314,26 @@ class OcrConfig:
 
 
 @dataclass
+class MineruConfig:
+    """mineru 段：外部 MinerU 解析引擎（PDF strategy=mineru）的运行参数。
+
+    MinerU 本体不在主进程依赖树内——经独立环境的 CLI 子进程调用，宿主只
+    透传命令与参数（引擎侧零 env 依赖）；cli_path 为空即引擎未安装，
+    解析任务显式失败并给出安装指引，不做静默降级。
+    """
+
+    # MinerU 独立环境的 mineru 可执行文件完整路径（如 <venv>/Scripts/mineru.exe）；
+    # 空串 = 引擎未安装，strategy=mineru 的任务直接终态失败
+    cli_path: str = ""
+    # 解析档位：flash（最快）/ basic / standard / advanced（质量最高）
+    tier: str = "flash"
+    # 单文档解析超时（秒）；CPU 档位首跑含模型加载，留足裕量
+    timeout: int = 600
+    # 透传给 mineru CLI 的额外参数
+    extra_args: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SandboxConfigYaml:
     """agent 代码执行沙箱参数（features/agent/sandbox/config.py SandboxConfig 的 YAML 段）。"""
 
@@ -457,6 +477,7 @@ class AppConfig:
     external_search: ExternalSearchConfig = field(default_factory=ExternalSearchConfig)
     asr: ASRConfig = field(default_factory=ASRConfig)
     ocr: OcrConfig = field(default_factory=OcrConfig)
+    mineru: MineruConfig = field(default_factory=MineruConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)

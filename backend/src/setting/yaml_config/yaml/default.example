@@ -211,6 +211,18 @@ ocr:
   render_dpi: 300
   timeout: 120
 
+mineru:
+  # 外部 MinerU 解析引擎（PDF strategy=mineru）：独立环境子进程调用，不进主依赖树。
+  # cli_path 为空 = 引擎未安装，strategy=mineru 的任务显式终态失败并给出安装指引。
+  # 安装：uv venv <venv> && uv pip install --python <venv> "mineru[core]"（模型首次运行自动下载）
+  cli_path: ""
+  # 解析档位：flash（最快）/ basic / standard / advanced（质量最高）
+  tier: "flash"
+  # 单文档解析超时（秒）；CPU 首跑含模型加载，留足裕量
+  timeout: 600
+  # 透传给 mineru CLI 的额外参数（如指定模型源：["--source", "modelscope"]）
+  extra_args: []
+
 agent:
   sandbox:
     # 代码执行沙箱（agent code_execution 工具）；enabled=false 时工具不注册

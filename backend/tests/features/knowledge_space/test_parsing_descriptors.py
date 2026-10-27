@@ -52,9 +52,10 @@ class TestFormats:
 
 
 class TestStrategyExtraction:
-    def test_pdf_has_three_strategies(self):
+    def test_pdf_strategy_baseline(self):
+        """策略基线：新增解析策略时必须有意识地更新此清单（门禁测试）。"""
         strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
-        assert strategies["pdf"] == ["default", "deepdoc", "external_ocr"]
+        assert strategies["pdf"] == ["default", "deepdoc", "external_ocr", "mineru"]
 
     def test_common_text_types_default_and_deepdoc(self):
         strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)

@@ -243,6 +243,24 @@ def build_engine_ocr_config() -> "OcrEngineConfig":
     )
 
 
+def build_engine_mineru_config() -> "MineruEngineConfig":
+    """从 YAML 构造引擎 MineruEngineConfig（strategy=mineru 接线唯一构造点）。
+
+    引擎侧 integrations/mineru 不 import setting；宿主在此注入命令与参数。
+    cli_path 为空 = 引擎未安装，适配层显式上抛 MineruNotAvailableError。
+    """
+    from novamind.engines.document.integrations.mineru import MineruEngineConfig
+    from novamind.setting.yaml_config import get_config
+
+    mineru = get_config().mineru
+    return MineruEngineConfig(
+        cli_path=mineru.cli_path,
+        tier=mineru.tier,
+        timeout=mineru.timeout,
+        extra_args=tuple(mineru.extra_args),
+    )
+
+
 def _resolve_default_local_asr_model() -> str:
     """解析本地 ASR 默认档位名（faster-whisper-{slug}）。
 

@@ -167,12 +167,14 @@ class DeepDocOnlyParsingConfig(BaseModel):
 class PdfParsingConfig(TextTypeParsingConfig):
     """PDF parsing config.
 
-    strategy 除 default/deepdoc 外支持 external_ocr：整本 PDF 交外部 OCR
-    （配置中心 ocr 段，如 qwen3.5-ocr）识别后按用户切分配置继续分块。
-    适用于文字层为空的扫描件/图片型 PDF。
+    strategy 除 default/deepdoc 外支持：
+    - external_ocr：整本 PDF 交外部 OCR（配置中心 ocr 段，如 qwen3.5-ocr）
+      识别后按用户切分配置继续分块。适用于文字层为空的扫描件/图片型 PDF。
+    - mineru：交外部 MinerU 引擎（配置中心 mineru 段，独立环境 CLI 子进程）
+      解析。引擎未安装时任务显式终态失败（见 mineru.cli_path 配置）。
     """
 
-    strategy: Literal["default", "deepdoc", "external_ocr"] = Field(default="default")
+    strategy: Literal["default", "deepdoc", "external_ocr", "mineru"] = Field(default="default")
     parser: PdfParserName | None = Field(default=None)
     # 仅 external_ocr 消费：document_parsing（整本直传，带版面结构）/
     # multi_lan（逐页渲图纯文本）；None 默认走 document_parsing

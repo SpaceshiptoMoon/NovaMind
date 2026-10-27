@@ -27,6 +27,7 @@ from .config import (
     KnowledgeBaseConfig,
     KnowledgeOpsConfig,
     LLMConfig,
+    MineruConfig,
     MinioConfig,
     ParsingConfig,
     ProjectConfig,
@@ -369,6 +370,14 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         model=ocr.get("model", "qwen3.5-ocr"),
         render_dpi=ocr.get("render_dpi", 300),
         timeout=ocr.get("timeout", 120),
+    )
+
+    mineru = data.get("mineru", {})
+    config.mineru = MineruConfig(
+        cli_path=mineru.get("cli_path", ""),
+        tier=mineru.get("tier", "flash"),
+        timeout=mineru.get("timeout", 600),
+        extra_args=mineru.get("extra_args", []),
     )
 
     agent = data.get("agent", {})

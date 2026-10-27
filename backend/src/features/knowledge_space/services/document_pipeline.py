@@ -68,7 +68,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # 文本文档解析策略合法值域（与 schema PdfParsingConfig/TextParsingConfig 的
 # Literal 对齐；schema 校验正常拦截脏值，此处防御绕过 schema 的存量脏数据，
 # 如手改 DB）。图片等非文本模态的 strategy 走各自分发，不经此函数。
-_TEXT_PARSING_STRATEGIES = frozenset({"default", "deepdoc", "external_ocr"})
+_TEXT_PARSING_STRATEGIES = frozenset({"default", "deepdoc", "external_ocr", "mineru"})
 
 
 def resolve_text_parsing_strategy(parsing_config: dict[str, Any], document_id: int) -> str:
@@ -468,6 +468,18 @@ async def execute_document_pipeline(
         # 产物走与 default 分支相同的 splitter 链路（尊重用户切分配置），
         # 不混入 DeepDoc 的哨兵重切（那套依赖 reading_order 坐标）。
         parse_result = await _parse_pdf_with_external_ocr_static(
+            document=document,
+            file_content=file_content,
+            file_path=file_path,
+            parse_config=parsing_config,
+            splitting_config=splitting_config,
+            processor=processor,
+            _logger=_logger,
+        )
+    elif parsing_strategy == "mineru":
+        # 外部 MinerU 引擎（独立环境 CLI 子进程）：产物 markdown 走与
+        # external_ocr 相同的 splitter 链路；引擎未安装显式终态失败。
+        parse_result = await _parse_pdf_with_mineru_static(
             document=document,
             file_content=file_content,
             file_path=file_path,
@@ -1344,6 +1356,89 @@ async def _parse_pdf_with_external_ocr_static(
         document_id=document.id,
         protocol=ocr_result.protocol,
         page_count=ocr_result.page_count,
+        char_count=len(full_text),
+        chunk_count=len(chunks),
+    )
+    return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+
+
+async def _parse_pdf_with_mineru_static(
+    document: Document,
+    file_content: bytes | None,
+    file_path: str | None,
+    parse_config: dict[str, Any],
+    splitting_config: dict[str, Any],
+    processor,
+    _logger,
+):
+    """PDF strategy=mineru：交外部 MinerU 引擎（独立环境 CLI 子进程）解析。
+
+    与 external_ocr 分支同构——产物必须与文本分支同构，后续快照/切分/后置
+    尾复用同一条链路，因此这里产出 DeepDocParseResult。引擎未安装（cli_path
+    为空）属配置错误不可重试；子进程执行失败（超时/崩溃/产物缺失）可重试。
+    file_path 由调用方透传：大文件（worker 落盘）直接读盘，避免整包驻留内存。
+    """
+    from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
+    from novamind.engines.document.integrations.mineru import (
+        MineruExecutionError,
+        MineruNotAvailableError,
+        parse_pdf,
+    )
+    from novamind.features.knowledge_space.services.media_processing import (
+        build_engine_mineru_config,
+    )
+
+    config = build_engine_mineru_config()
+    _logger.info(
+        "MinerU 解析开始",
+        document_id=document.id,
+        tier=config.tier,
+        timeout=config.timeout,
+    )
+
+    if file_path is not None:
+        content = await asyncio.to_thread(Path(file_path).read_bytes)
+    else:
+        content = file_content or b""
+
+    try:
+        result = await parse_pdf(
+            content=content,
+            file_name=document.filename or "input.pdf",
+            config=config,
+        )
+    except MineruNotAvailableError as exc:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=f"MinerU 引擎不可用（不可重试）：{exc}",
+        ) from exc
+    except MineruExecutionError as exc:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"MinerU 解析失败（可重试）：{exc}",
+        ) from exc
+
+    full_text = result.full_text.strip()
+    split_items = await processor.split_text_items(
+        full_text,
+        strategy=str(splitting_config.get("strategy", "recursive")),
+        **extract_splitting_params(splitting_config),
+    )
+    chunks = [t for t, _meta in split_items]
+    chunk_structure_meta = [m for _t, m in split_items]
+    metadata: dict[str, Any] = {
+        "parser": "mineru",
+        "file_type": (document.file_type or "pdf").lower(),
+        "split_strategy": str(splitting_config.get("strategy", "recursive")),
+        "mineru_page_count": result.page_count,
+    }
+    # 关系元数据仅在非空时写键，与 parse_document_result 的默认分支同约定
+    if any(chunk_structure_meta):
+        metadata["chunk_structure_meta"] = chunk_structure_meta
+    _logger.info(
+        "MinerU 解析完成",
+        document_id=document.id,
+        page_count=result.page_count,
         char_count=len(full_text),
         chunk_count=len(chunks),
     )
