@@ -177,7 +177,7 @@ class DeepDocParser:
             return await asyncio.to_thread(self._parse_ppt_sync, source, extension, splitting_config)
         if extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
             return await asyncio.to_thread(self._parse_figure_sync, source, extension, splitting_config)
-        if extension in {"txt", "md", "markdown", "csv", "json", "html"}:
+        if extension in {"txt", "md", "markdown", "csv", "json", "html", "eml", "msg", "ofd"}:
             return await asyncio.to_thread(self._parse_text_sync, source, extension, parsing_config, splitting_config)
         raise ValueError(f"DeepDoc does not support file type: {extension}")
 

@@ -83,6 +83,9 @@ dependencies = [
     # 通知邮件通道（email_service 懒 import）：SMTP 配置后运行时才加载，
     # 缺失则配置了也发不出，core 声明保证开箱可用。
     "aiosmtplib>=3.0.0",
+    # Outlook MSG 邮件解析（deepdoc parsers/msg.py；纯 Python + olefile，
+    # OLE 复合文档结构读取）。eml 用标准库 email，msg 无标准库方案。
+    "extract-msg>=0.57.0",
 ]
 
 [project.optional-dependencies]

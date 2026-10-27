@@ -4,8 +4,11 @@ from __future__ import annotations
 # Unified text-family router backed by RAGFlow parser adaptations.
 from pathlib import Path
 
+from novamind.engines.document.integrations.deepdoc.parsers.eml import RAGFlowEmlParser
 from novamind.engines.document.integrations.deepdoc.parsers.html import RAGFlowHtmlParser
 from novamind.engines.document.integrations.deepdoc.parsers.json import RAGFlowJsonParser
+from novamind.engines.document.integrations.deepdoc.parsers.msg import RAGFlowMsgParser
+from novamind.engines.document.integrations.deepdoc.parsers.ofd import RAGFlowOfdParser
 from novamind.engines.document.integrations.deepdoc.parsers.txt import RAGFlowTxtParser
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser import (
     MarkdownElementExtractor,
@@ -17,11 +20,14 @@ from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils impor
 class RAGFlowTextParser:
     """文本族统一路由解析器：按后缀/parser_id 分发到 txt/markdown/html/json。"""
     def __init__(self):
-        """初始化文本族内部解析器（txt/markdown/html/json 四路）。"""
+        """初始化文本族内部解析器（txt/markdown/html/json/eml/msg/ofd 七路）。"""
         self._txt_parser = RAGFlowTxtParser()
         self._markdown_parser = RAGFlowMarkdownParser()
         self._html_parser = RAGFlowHtmlParser()
         self._json_parser = RAGFlowJsonParser()
+        self._eml_parser = RAGFlowEmlParser()
+        self._msg_parser = RAGFlowMsgParser()
+        self._ofd_parser = RAGFlowOfdParser()
 
     def parse(self, file_path: str | Path, parser_id: str | None = None) -> tuple[str, list[str], dict]:
         """解析本地文本文件为（全文、分块、元数据）三元组。
@@ -77,5 +83,20 @@ class RAGFlowTextParser:
             sections = self._json_parser(file_bytes)
             text = get_text("", binary=file_bytes)
             return text, sections or ([text] if text.strip() else []), {"parser_class": "RAGFlowJsonParser"}
+
+        if suffix == "eml" or parser_id == "eml":
+            sections = self._eml_parser(file_bytes)
+            text = "\n\n".join(sections)
+            return text, sections or ([text] if text.strip() else []), {"parser_class": "RAGFlowEmlParser"}
+
+        if suffix == "msg" or parser_id == "msg":
+            sections = self._msg_parser(file_bytes)
+            text = "\n\n".join(sections)
+            return text, sections or ([text] if text.strip() else []), {"parser_class": "RAGFlowMsgParser"}
+
+        if suffix == "ofd" or parser_id == "ofd":
+            sections = self._ofd_parser(file_bytes)
+            text = "\n\n".join(sections)
+            return text, sections, {"parser_class": "RAGFlowOfdParser"}
 
         raise ValueError(f"Unsupported text format for deepdoc text parser: {suffix}")
