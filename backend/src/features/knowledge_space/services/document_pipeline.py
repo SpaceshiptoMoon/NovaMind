@@ -547,7 +547,7 @@ async def execute_document_pipeline(
     # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
     figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
     image_url_map: dict[str, str] = {}
-    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls", "docx", "ppt", "pptx"):
+    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls", "docx", "ppt", "pptx", "epub"):
         from novamind.shared.storage.client_factory import ClientFactory
 
         minio_client = await ClientFactory.get_minio_client()
@@ -822,7 +822,15 @@ async def _upload_figure_images_to_minio(
     image_url_map: dict[str, str] = {}
     storage = document.storage or {}
     base = storage.get("minio_object_name", "")
-    if not base or not figure_regions:
+    if not base:
+        # 静默 return 曾把「图片白传」变成无日志之谜——必须可观测
+        logger.warning(
+            "figure 上传跳过：document.storage 缺 minio_object_name 锚点",
+            document_id=document.id,
+            figure_count=len(figure_regions),
+        )
+        return image_url_map
+    if not figure_regions:
         return image_url_map
 
     from io import BytesIO
@@ -834,9 +842,21 @@ async def _upload_figure_images_to_minio(
     for region in figure_regions:
         artifact_id = str(region.get("artifact_id") or "")
         if not artifact_id:
+            logger.warning(
+                "figure region 缺 artifact_id，跳过上传",
+                document_id=document.id,
+                region_keys=sorted(region.keys()),
+            )
             continue
         blobs = list(region.get("image_blobs") or [])
         if not blobs:
+            # 静默 continue 曾把「图片白传」变成无日志之谜——必须可观测
+            logger.warning(
+                "figure region 无 image_blobs，跳过上传",
+                document_id=document.id,
+                artifact_id=artifact_id,
+                region_keys=sorted(region.keys()),
+            )
             continue
         image_bytes = blobs[0]
         if len(image_bytes) < 100:
