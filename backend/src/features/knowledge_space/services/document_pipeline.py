@@ -29,7 +29,10 @@ if TYPE_CHECKING:
     from novamind.features.knowledge_space.services.pipeline_steps import PipelineContext
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.document.contracts import region_placeholder_of
+from novamind.engines.document.contracts import (
+    region_placeholder_of,
+    replace_figure_placeholders,
+)
 from novamind.engines.document.media.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
@@ -313,7 +316,11 @@ async def execute_document_pipeline(
             parsing_config_for_fp = build_runtime_parsing_config(
                 kb_config.get("parsing", {}), document.file_type
             )
-            parse_fingerprint = compute_parse_fingerprint(document, parsing_config_for_fp)
+            parse_fingerprint = compute_parse_fingerprint(
+                parsing_config_for_fp,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             _logger.warning(
                 "解析指纹计算失败，本次按无快照处理", document_id=document_id, error=str(fp_exc),
@@ -711,12 +718,12 @@ def _restore_figure_links(
             替换，精确串匹配，正文同形文本不受影响。
     """
     if image_url_map:
-        full_text = _replace_figure_placeholders(full_text, image_url_map)
-        chunks = [_replace_figure_placeholders(c, image_url_map) for c in chunks]
+        full_text = replace_figure_placeholders(full_text, image_url_map)
+        chunks = [replace_figure_placeholders(c, image_url_map) for c in chunks]
     if valid_placeholders:
-        full_text = _replace_figure_placeholders(full_text, {}, strip_targets=valid_placeholders)
+        full_text = replace_figure_placeholders(full_text, {}, strip_targets=valid_placeholders)
         chunks = [
-            _replace_figure_placeholders(c, {}, strip_targets=valid_placeholders)
+            replace_figure_placeholders(c, {}, strip_targets=valid_placeholders)
             for c in chunks
         ]
     return full_text, chunks
@@ -778,38 +785,6 @@ def _build_completion_result(
     return result
 
 
-def _replace_figure_placeholders(
-    text: str,
-    image_url_map: dict[str, str],
-    *,
-    strip_targets: set[str] | None = None,
-) -> str:
-    """把 full_text / chunk content 里的 figure 占位符替换为短文件名 URL。
-
-    Args:
-        image_url_map: **key 为完整占位符串**（region.placeholder，含内容绑定
-            盐——解析器生成，业务层不自行拼接形态），value 为短文件名。
-        strip_targets: 解析器插入的占位符全集（figure_regions 全量提取，含
-            上传失败者）。提供时，全集里不在 map 的占位符被精确剥除（上传
-            失败的 figure），防垃圾串进 embedding 与 ES content（审计
-            P1#7——检索命中会把占位符原样返回给用户/LLM，且污染向量）。
-
-    防伪造语义：替换与剥除都是**精确串匹配**，目标只来自解析器生成的
-    占位符全集；文档正文里任何同形文本（无盐旧形态、编造盐值）都不在
-    全集中，绝不触碰。占位符盐化的动机与协议见 document_model 注释。
-    """
-    if not text:
-        return text
-    if image_url_map:
-        for placeholder, image_url in image_url_map.items():
-            text = text.replace(placeholder, image_url)
-    if strip_targets:
-        for placeholder in strip_targets:
-            if placeholder not in image_url_map:
-                text = text.replace(placeholder, "")
-    return text
-
-
 async def _upload_figure_images_to_minio(
     document: Document,
     figure_regions: list[dict[str, Any]],
@@ -843,7 +818,9 @@ async def _upload_figure_images_to_minio(
 
     from PIL import Image as PILImage
 
-    figures_dir = f"{base}_figures"
+    from novamind.engines.document.contracts import figures_dir_name
+
+    figures_dir = figures_dir_name(base)
 
     for region in figure_regions:
         artifact_id = str(region.get("artifact_id") or "")

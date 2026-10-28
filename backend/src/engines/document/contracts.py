@@ -113,3 +113,76 @@ def region_placeholder_of(region: dict[str, Any]) -> str:
     if placeholder:
         return placeholder
     return unsalted_placeholder(str(region.get("artifact_id") or ""))
+
+
+def replace_figure_placeholders(
+    text: str,
+    image_url_map: dict[str, str],
+    *,
+    strip_targets: set[str] | None = None,
+) -> str:
+    """把文本里的 figure 占位符替换为短文件名 URL，可选拨除失败占位符。
+
+    Args:
+        image_url_map: **key 为完整占位符串**（region.placeholder，含内容
+            绑定盐），value 为短文件名。
+        strip_targets: 解析器插入的占位符全集（含上传失败者）。提供时，
+            全集里不在 map 的占位符被精确剥除，防垃圾串进 embedding 与
+            ES content（审计 P1#7）。
+
+    防伪造语义：替换与剥除都是**精确串匹配**，目标只来自解析器生成的
+    占位符全集；文档正文里任何同形文本（无盐旧形态、编造盐值）都不在
+    全集中，绝不触碰。
+    """
+    if not text:
+        return text
+    if image_url_map:
+        for placeholder, image_url in image_url_map.items():
+            text = text.replace(placeholder, image_url)
+    if strip_targets:
+        for placeholder in strip_targets:
+            if placeholder not in image_url_map:
+                text = text.replace(placeholder, "")
+    return text
+
+
+# ===== 解析产物 MinIO 对象名约定（单一权威） =====
+#
+# 全部以文档基础对象名（document.storage["minio_object_name"]，由
+# shared/storage/path_strategy 的协议生成）为前缀派生。此前这些后缀约定
+# 散落 pipeline_snapshots / audio_utils / document_pipeline 三处，改名即
+# 三处静默漂移——统一在此构造。
+
+_PARSED_DIR_SUFFIX = "_parsed"
+_ARTIFACTS_DIR_SUFFIX = "_artifacts"
+_FIGURES_DIR_SUFFIX = "_figures"
+
+
+def parsed_text_object_name(base: str) -> str:
+    """解析全文（persist_parsed_text / 音频转写）的 MinIO 对象名。"""
+    return f"{base}{_PARSED_DIR_SUFFIX}/full_text.md"
+
+
+def parse_meta_object_name(base: str) -> str:
+    """解析快照（parse_meta.json）的 MinIO 对象名。"""
+    return f"{base}{_PARSED_DIR_SUFFIX}/parse_meta.json"
+
+
+def split_snapshot_object_name(base: str) -> str:
+    """切分快照（chunks.json）的 MinIO 对象名。"""
+    return f"{base}{_ARTIFACTS_DIR_SUFFIX}/chunks.json"
+
+
+def embeddings_snapshot_object_name(base: str) -> str:
+    """向量快照（embeddings.json）的 MinIO 对象名。"""
+    return f"{base}{_ARTIFACTS_DIR_SUFFIX}/embeddings.json"
+
+
+def figures_dir_name(base: str) -> str:
+    """figure 图片目录（短文件名相对此目录；代理端点按此还原）。"""
+    return f"{base}{_FIGURES_DIR_SUFFIX}"
+
+
+def artifacts_dir_name(base: str) -> str:
+    """切分/向量快照目录名（删除清理按 ``{artifacts_dir_name(base)}/`` 前缀）。"""
+    return f"{base}{_ARTIFACTS_DIR_SUFFIX}"

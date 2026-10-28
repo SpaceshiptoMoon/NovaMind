@@ -905,7 +905,11 @@ async def process_video_document(
     video_parse_fp = ""
     if snapshots_enabled():
         try:
-            video_parse_fp = compute_parse_fingerprint(document, parsing_config)
+            video_parse_fp = compute_parse_fingerprint(
+                parsing_config,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             logger.warning("视频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
 
@@ -1417,7 +1421,11 @@ async def process_video_document(
     video_parse_fp = ""
     if snapshots_enabled():
         try:
-            video_parse_fp = compute_parse_fingerprint(document, parsing_config)
+            video_parse_fp = compute_parse_fingerprint(
+                parsing_config,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             logger.warning("视频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
         if video_parse_fp:
@@ -1635,7 +1643,11 @@ async def process_audio_document(
         )
         audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:
-            audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
+            audio_parse_fp = compute_parse_fingerprint(
+                audio_runtime_parsing,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             logger.warning("音频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
 
@@ -1887,7 +1899,11 @@ async def process_audio_document(
         )
         audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:
-            audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
+            audio_parse_fp = compute_parse_fingerprint(
+                audio_runtime_parsing,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             logger.warning("音频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
         if audio_parse_fp:

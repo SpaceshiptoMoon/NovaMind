@@ -1002,7 +1002,9 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger, *, minio
             logger.warning("文档无 minio_object_name，跳过解析全文上传", document_id=document.id)
             return ""
 
-        object_name = f"{base}_parsed/full_text.md"
+        from novamind.engines.document.contracts import parsed_text_object_name
+
+        object_name = parsed_text_object_name(base)
         # Windows 下很多查看器会优先按本地代码页猜测编码，UTF-8 BOM 能显著提升识别率
         data = full_text.encode("utf-8-sig")
 

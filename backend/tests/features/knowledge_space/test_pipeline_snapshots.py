@@ -52,6 +52,19 @@ def test_canonical_sha256_handles_non_serializable():
 
 # ---- parse 指纹 ----
 
+def _fp(cfg, doc):
+    """适配 helper：从测试 doc 桩取字段转显式入参（指纹已去 ORM 签名）。"""
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        compute_parse_fingerprint,
+    )
+
+    return compute_parse_fingerprint(
+        cfg,
+        file_hash=getattr(doc, "file_hash", "") or "",
+        file_type=getattr(doc, "file_type", "") or "",
+    )
+
+
 def test_parse_fingerprint_stable_for_same_inputs():
     """同文档同解析配置 → 指纹稳定。"""
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
@@ -60,8 +73,8 @@ def test_parse_fingerprint_stable_for_same_inputs():
 
     doc = _make_document()
     cfg = {"strategy": "deepdoc", "deepdoc_pdf_mode": "full"}
-    fp1 = compute_parse_fingerprint(doc, cfg)
-    fp2 = compute_parse_fingerprint(doc, cfg)
+    fp1 = _fp(cfg, doc)
+    fp2 = _fp(cfg, doc)
     assert fp1 == fp2
     assert len(fp1) == 64
 
@@ -73,8 +86,8 @@ def test_parse_fingerprint_changes_on_config_change():
     )
 
     doc = _make_document()
-    fp1 = compute_parse_fingerprint(doc, {"strategy": "deepdoc", "deepdoc_pdf_mode": "full"})
-    fp2 = compute_parse_fingerprint(doc, {"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"})
+    fp1 = _fp({"strategy": "deepdoc", "deepdoc_pdf_mode": "full"}, doc)
+    fp2 = _fp({"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"}, doc)
     assert fp1 != fp2
 
 
@@ -85,8 +98,8 @@ def test_parse_fingerprint_changes_on_file_change():
     )
 
     cfg = {"strategy": "default"}
-    fp1 = compute_parse_fingerprint(_make_document(file_hash="h1"), cfg)
-    fp2 = compute_parse_fingerprint(_make_document(file_hash="h2"), cfg)
+    fp1 = _fp(cfg, _make_document(file_hash="h1"))
+    fp2 = _fp(cfg, _make_document(file_hash="h2"))
     assert fp1 != fp2
 
 
@@ -97,8 +110,8 @@ def test_parse_fingerprint_file_type_case_insensitive():
     )
 
     cfg = {"strategy": "default"}
-    fp1 = compute_parse_fingerprint(_make_document(file_type="PDF"), cfg)
-    fp2 = compute_parse_fingerprint(_make_document(file_type="pdf"), cfg)
+    fp1 = _fp(cfg, _make_document(file_type="PDF"))
+    fp2 = _fp(cfg, _make_document(file_type="pdf"))
     assert fp1 == fp2
 
 

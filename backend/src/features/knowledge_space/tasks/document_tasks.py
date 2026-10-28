@@ -326,8 +326,10 @@ async def process_document_task(
                             )
                         # 清理管道快照目录（{base_object}_artifacts/ 前缀）+ storage 快照指针：
                         # REPROCESS 全量重做，旧切分/向量快照不应残留。
+                        from novamind.engines.document.contracts import artifacts_dir_name
+
                         deleted_artifacts = await minio_client.delete_objects_by_prefix(
-                            frame_bucket, f"{frame_base}_artifacts/",
+                            frame_bucket, f"{artifacts_dir_name(frame_base)}/",
                         )
                         if deleted_artifacts:
                             logger.info(

@@ -78,12 +78,19 @@ def canonical_json(payload: Any) -> str:
     )
 
 
-def compute_parse_fingerprint(document: Document, parsing_config: dict[str, Any]) -> str:
+def compute_parse_fingerprint(
+    parsing_config: dict[str, Any],
+    *,
+    file_hash: str = "",
+    file_type: str = "",
+) -> str:
     """解析指纹：文件内容哈希/类型 + 解析配置任一变化即失效。
 
     Args:
-        document: 文档 ORM 实例（取 file_hash/file_type）。
         parsing_config: 生效的解析配置字典。
+        file_hash: 文件内容哈希（调用方从文档字段显式取出——指纹算法
+            纯计算，不绑 ORM 形状）。
+        file_type: 文件类型（小写化在函数内做）。
 
     Returns:
         规范化 sha256 指纹串。
@@ -91,8 +98,8 @@ def compute_parse_fingerprint(document: Document, parsing_config: dict[str, Any]
     return canonical_sha256({
         "v": FINGERPRINT_VERSION,
         "kind": "parse",
-        "file_hash": getattr(document, "file_hash", "") or "",
-        "file_type": (getattr(document, "file_type", "") or "").lower(),
+        "file_hash": file_hash or "",
+        "file_type": (file_type or "").lower(),
         "parsing_config": parsing_config,
     })
 
@@ -165,7 +172,9 @@ def parse_meta_object_name(document: Document) -> str:
     Returns:
         基于 minio_object_name 前缀拼出的对象键。
     """
-    return f"{_base_object_name(document)}_parsed/parse_meta.json"
+    from novamind.engines.document.contracts import parse_meta_object_name as _build
+
+    return _build(_base_object_name(document))
 
 
 def chunks_object_name(document: Document) -> str:
@@ -177,7 +186,9 @@ def chunks_object_name(document: Document) -> str:
     Returns:
         基于 minio_object_name 前缀拼出的对象键。
     """
-    return f"{_base_object_name(document)}_artifacts/chunks.json"
+    from novamind.engines.document.contracts import split_snapshot_object_name as _build
+
+    return _build(_base_object_name(document))
 
 
 def embeddings_object_name(document: Document) -> str:
@@ -189,7 +200,9 @@ def embeddings_object_name(document: Document) -> str:
     Returns:
         基于 minio_object_name 前缀拼出的对象键。
     """
-    return f"{_base_object_name(document)}_artifacts/embeddings.json"
+    from novamind.engines.document.contracts import embeddings_snapshot_object_name as _build
+
+    return _build(_base_object_name(document))
 
 
 def snapshot_fingerprint(document: Document, level: str) -> str:

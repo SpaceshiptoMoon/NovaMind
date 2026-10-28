@@ -10,10 +10,8 @@ URL 清单/base64）返回空列表 → 整段静默丢弃。修复：剩余部�
 """
 import pytest
 
+from novamind.engines.document.contracts import replace_figure_placeholders
 from novamind.engines.document.splitters import MarkdownSplitter
-from novamind.features.knowledge_space.services.document_pipeline import (
-    _replace_figure_placeholders,
-)
 
 
 # ========== P1#7 figure 占位符剥除（盐化后契约：map key/剥除目标=完整占位符串） ==========
@@ -23,7 +21,7 @@ _SALT = "a1b2c3d4e5f6"
 
 def test_replace_placeholders_basic_substitution():
     text = f"前文 __FIGURE_URL__{_SALT}_fig_1__ 后文"
-    out = _replace_figure_placeholders(
+    out = replace_figure_placeholders(
         text, {f"__FIGURE_URL__{_SALT}_fig_1__": "http://x/1.png"}
     )
     assert out == "前文 http://x/1.png 后文"
@@ -34,7 +32,7 @@ def test_replace_placeholders_strips_unresolved():
     ok_ph = f"__FIGURE_URL__{_SALT}_ok_1__"
     fail_ph = f"__FIGURE_URL__{_SALT}_fail_2__"
     text = f"甲 {ok_ph} 乙 {fail_ph} 丙"
-    out = _replace_figure_placeholders(
+    out = replace_figure_placeholders(
         text, {ok_ph: "http://x/1.png"}, strip_targets={ok_ph, fail_ph}
     )
     assert "__FIGURE_URL__" not in out
@@ -45,7 +43,7 @@ def test_replace_placeholders_no_strip_without_targets():
     """不给剥除全集时保持原行为（失败占位符保留）——兼容旧调用。"""
     fail_ph = f"__FIGURE_URL__{_SALT}_fail_2__"
     text = f"甲 {fail_ph} 乙"
-    out = _replace_figure_placeholders(text, {})
+    out = replace_figure_placeholders(text, {})
     assert out == text
 
 
@@ -55,7 +53,7 @@ def test_strip_never_touches_forged_lookalikes():
         f"正文 __FIGURE_URL__fig_12_0__ 与 __FIGURE_URL__ffffffffffff_fig_12_0__ "
         f"真 __FIGURE_URL__{_SALT}_fig_12_0__ 尾"
     )
-    out = _replace_figure_placeholders(
+    out = replace_figure_placeholders(
         text,
         {},
         strip_targets={f"__FIGURE_URL__{_SALT}_fig_12_0__"},

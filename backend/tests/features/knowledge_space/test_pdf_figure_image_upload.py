@@ -15,8 +15,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
+from novamind.engines.document.contracts import replace_figure_placeholders
 from novamind.features.knowledge_space.services.document_pipeline import (
-    _replace_figure_placeholders,
     _upload_figure_images_to_minio,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import (
@@ -88,8 +88,8 @@ def test_reading_order_figure_entry_has_image_placeholder():
     assert rendered == "![示例图](__FIGURE_URL__a1b2c3d4e5f6_1:page:0:10__)"
 
 
-def test_replace_figure_placeholders_replaces_multiple():
-    """_replace_figure_placeholders 应替换多个占位符（map key=完整占位符串）。"""
+def testreplace_figure_placeholders_replaces_multiple():
+    """replace_figure_placeholders 应替换多个占位符（map key=完整占位符串）。"""
     text = (
         "A\n\n![图1](__FIGURE_URL__a1b2c3d4e5f6_id1__)\n\n"
         "B\n\n![图2](__FIGURE_URL__a1b2c3d4e5f6_id2__)"
@@ -98,16 +98,16 @@ def test_replace_figure_placeholders_replaces_multiple():
         "__FIGURE_URL__a1b2c3d4e5f6_id1__": "https://minio.example.com/fig1.png",
         "__FIGURE_URL__a1b2c3d4e5f6_id2__": "https://minio.example.com/fig2.png",
     }
-    result = _replace_figure_placeholders(text, url_map)
+    result = replace_figure_placeholders(text, url_map)
     assert "https://minio.example.com/fig1.png" in result
     assert "https://minio.example.com/fig2.png" in result
     assert "__FIGURE_URL__" not in result
 
 
-def test_replace_figure_placeholders_preserves_unknown():
+def testreplace_figure_placeholders_preserves_unknown():
     """未上传成功的占位符应保留，便于排查。"""
     text = "![图](__FIGURE_URL__a1b2c3d4e5f6_missing__)"
-    result = _replace_figure_placeholders(text, {})
+    result = replace_figure_placeholders(text, {})
     assert result == text
 
 
@@ -301,7 +301,7 @@ def test_placeholder_survives_strip_and_replacement():
     placeholder = "__FIGURE_URL__a1b2c3d4e5f6_3:150:72__"
     text = f"正文段落\n\n![示例图]({placeholder})\n\n尾段"
     stripped = strip_position_tags(text)
-    result = _replace_figure_placeholders(
+    result = replace_figure_placeholders(
         stripped, {placeholder: "https://minio.example.com/fig.png"}
     )
     assert "https://minio.example.com/fig.png" in result
@@ -439,7 +439,7 @@ def test_salt_bound_placeholder_immutable_to_forged_text():
     )
     url_map = {real_placeholder: "figure_fig_1_3.png"}
     valid = {real_placeholder, failed_placeholder}
-    result = _replace_figure_placeholders(text, url_map, strip_targets=valid)
+    result = replace_figure_placeholders(text, url_map, strip_targets=valid)
     assert "figure_fig_1_3.png" in result, "真占位符应被替换"
     assert "__FIGURE_URL__fig-1__" in result, "无盐伪造串应保留"
     assert "__FIGURE_URL__ffffffffffff_fig-1__" in result, "编造盐伪造串应保留"

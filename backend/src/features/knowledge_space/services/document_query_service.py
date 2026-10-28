@@ -280,9 +280,11 @@ class DocumentQueryService:
                 # 清理管道快照目录（{base_object}_artifacts/ 前缀）：切分/向量快照
                 # JSON 若不清理将成为 MinIO 孤儿（含大体积向量文件）。
                 try:
+                    from novamind.engines.document.contracts import artifacts_dir_name
+
                     await self.minio_client.delete_objects_by_prefix(
                         storage_info["minio_bucket"],
-                        f"{storage_info['minio_object_name']}_artifacts/",
+                        f"{artifacts_dir_name(storage_info['minio_object_name'])}/",
                     )
                 except Exception as artifacts_err:
                     self.logger.warning(
