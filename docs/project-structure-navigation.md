@@ -4,7 +4,7 @@
 
 本仓库主要由以下部分组成：
 
-- `backend/`：FastAPI 后端与领域业务代码
+- `backend/`：FastAPI 后端与领域业务代码（`engines/` 通用能力层 + `features/` 业务编排层——模块边界：engines 零 features/ORM/setting import，客户端/存储由业务注入）
 - `frontend/`：Vue 3 + TypeScript 前端
 - `docs/`：设计文档、架构说明和历史记录
 - `docker/`：Dockerfile、Nginx、Supervisord 和运行时配置模板

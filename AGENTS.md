@@ -119,6 +119,9 @@ feature 模块按以下结构组织：
 - `backend/src/engines/document/converters/`：文档格式转换器
 - `backend/src/engines/document/media/`：音频、视频、OCR、VLM 与多模态处理。注意：`media/image/` 目前是占位（只有 `__init__.py`）；实际图像理解在 `media/vlm/` 与 DeepDoc 的 `integrations/deepdoc/vision/`，图像 embedding 走 VLM 描述 + 文本 embedding（见 multimodal-embedding 记忆）。不要假设 `image/` 里有图像处理逻辑。
 - `backend/src/engines/document/integrations/deepdoc/`：仅 DeepDoc 集成（vendored，自包含）
+- `backend/src/engines/question_generation/`：假设问题生成引擎（直收 LLM 客户端，凭证解析归业务）
+- `backend/src/engines/wiki/`：Wiki 纯函数件（互链/去重/句柄/slug/分类法）；wiki 持久化与编排留 knowledge_space
+- `backend/src/engines/rag|agent|eval|deep_research|search|resume/`：检索、Agent、评估、深度研究、Web 搜索、简历引擎——通用能力层，零 features/setting import
 - `backend/src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 app/qa/knowledge_space 复用
 - `backend/src/shared/document/validation/`：跨 feature 文件校验——被 qa/knowledge_space 复用
 
@@ -246,7 +249,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - **路由注册：** 新路由在所属 feature 的 `manifest.py` 里以 `RouterSpec` 声明（含前缀与 `route_order`）；`manifest_loader` 自动扫描 `features/*/manifest.py`，`router_manager.py` 按声明聚合挂载——不存在也不需要 router_manager 手动登记。
 - **模块 init：** 新模块建 `manifest.py` 提供 `manifest()`（`FeatureManifest`：routers/`depends_on`/`init_hook`/`models_loader`）；ORM 建表经 `models_loader` 导入模型，启动钩子经 `init_hook`，由 `startup_manager` 按 `get_sorted_manifests()` 顺序驱动。
 - **配置文件：** 所有 `*.yaml` 都被 gitignore；只提交 `*.example` 模板。
-- **import 依赖规则（ragflow 务实单体风格）：** 分层间允许任意方向 import（含 engines→features、core→features），硬约束是整个 `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/AGENTS.md`。
+- **import 依赖规则（ragflow 务实单体风格，2026-10-29 模块化治理后）：** `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。**engines→features/setting 禁止**（全域清零含 TYPE_CHECKING，约定不回退；引擎接口签名不携带业务服务形状——凭证解析/用户身份/数据库实现由业务层注入，接口归引擎侧定义如 IMemoryStore）；core→features 维持允许。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/AGENTS.md`。
 
 ### 前端编码规则
 

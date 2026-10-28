@@ -106,4 +106,5 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 | 解析异常族 | `engines/document/exceptions.py`（ParsePayloadError 族） |
 | compat 工具（编码/XML/zip 守卫） | `engines/document/integrations/deepdoc/compat/compat.py` |
 | 读取端 presign | `features/knowledge_space/services/document_query_service.py` |
+| 假设问题生成引擎（管线尾段问题+向量） | `engines/question_generation/`（业务编排 `pipeline_steps.generate_questions_for_chunks`） |
 | 前端解析结果视图 | `frontend/src/views/space/DocumentDetailView.vue` |

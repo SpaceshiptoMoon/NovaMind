@@ -7,7 +7,7 @@
 核心代码位于 `src/engines/agent/`（引擎纯逻辑层），分为 `memory/`、`tool/`、`llm/`、`mcp/`、`flow/`（PlanningFlow）、`safety/`（危险操作检测 + 审批）、`subagent/`（子 agent 委派）七个子目录，顶层另有 `agent_engine.py`（引擎入口）、`prompt_builder.py`、`retry.py`、`loop_detection.py` 与 `context_types.py`（跨边界纯 dataclass，原 ports.py 改名）；宿主装配层在 `src/features/agent/`。
 
 依赖边界（R1 无环门禁）：engines 可按 R1/R4 引 feature 公共面或直收具体类实例
-（如 `subagent/runner.py` 运行时 import `ModelConfigService`），不持有 ORM session。
+（客户端经构造注入：SubAgentRunner 收 `client_factory(model)` 客户端工厂，凭证解析与 LLM→VLM 兜底策略由宿主闭包；memory 存储消费引擎侧 IMemoryStore/IMemorySearch 接口，业务实现继承注入），不持有 ORM session。
 
 ---
 

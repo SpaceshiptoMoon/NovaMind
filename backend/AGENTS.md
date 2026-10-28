@@ -84,8 +84,15 @@
 - `src/engines/document/converters/`：文档格式转换器
 - `src/engines/document/media/`：音频/视频/图像多模态处理（VLM/OCR/audio/video）
 - `src/engines/document/integrations/deepdoc/`：DeepDoc 专有实现（vendored，自包含）
+- `src/engines/question_generation/`：假设问题生成引擎（纯「文本进、问题出」；LLM 客户端由业务层解析后直收）
+- `src/engines/wiki/`：Wiki 纯函数件（互链注入/候选去重/句柄表/slug 规范化/分类法）——wiki 持久化与编排仍留 knowledge_space
+- `src/engines/rag/`：检索引擎（RetrievalEngine/QueryRewriter/GradeRetrier/SearchMode）
+- `src/engines/agent/`：Agent 引擎（ReAct 循环/记忆/工具/MCP/subagent）
+- `src/engines/eval/`、`src/engines/deep_research/`、`src/engines/search/`、`src/engines/resume/`：评估/深度研究/Web 搜索/简历引擎
 - `src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 app/qa/knowledge_space 复用
 - `src/shared/document/validation/`：跨 feature 文件校验（FileInfo/FileValidator）——被 qa/knowledge_space 复用
+
+**模块边界（2026-10-29 模块化治理后）**：engines/ 是通用能力层——零 features/ORM/setting import（含 TYPE_CHECKING，当前全域 grep 为零）；引擎接口签名只出现引擎自己消费的概念（LLM 客户端/客户端工厂/引擎自定义存储接口/纯 dataclass 配置），凭证解析、用户身份、数据库实现一律由业务层注入。接口归消费者：引擎依赖宿主能力时在引擎侧定义抽象接口（如 `engines/agent/memory/interfaces.py` 的 IMemoryStore/IMemorySearch），业务实现类显式继承（HostMemoryStorePort(IMemoryStore)）。反例（禁止回退）：构造器收 `ModelConfigService`、签名带 `user_id`、引擎 import features 具体类。
 
 不要在 `shared/document/` 与 `engines/document/` 两处重复实现解析逻辑。文档处理引擎（pipeline/splitters/converters/media/deepdoc）位于 `engines/document/`，是任何 feature 都可 import 的可复用组件（允许 `features → engines`）；`features/knowledge_space/` 只保留业务逻辑并通过端口编排引擎。只有真正跨 feature 的读取器与校验留在 `shared/document/`。
 
@@ -109,10 +116,10 @@
 
 R1–R6（详版见 `docs/plans/historical/REFACTOR-ragflow-style-migration.md` §1）：
 
-- **R1 import 无环**：`features`/`engines`/`shared`/`setting`/`core` 之间允许任意方向 import（含 engines→features、core→features），但整个 `src/` 模块级 import 图（含函数内懒 import）必须无环。机器门禁：`tests/architecture/test_import_acyclic_gate.py`（AST 全图收集 + Tarjan SCC）。
+- **R1 import 无环 + engines 单向**：`features`/`engines`/`shared`/`setting`/`core` 之间 import 图（含函数内懒 import）必须无环（机器门禁：`tests/architecture/test_import_acyclic_gate.py`，AST 全图 + Tarjan SCC）。**engines→features/setting 禁止**（2026-10-29 起全域清零并约定不回退；历史上 3 处运行时 + 2 处 TYPE_CHECKING 已清除）；core→features 维持允许。
 - **R2 跨 feature 走公共面**：允许 import 对方 `services/` 公共类、`schemas/`、`models/` 中显式导出的枚举与行级只读访问；不 import 对方 `repository/` 内部、不下划线私有成员（机器门禁：`tests/architecture/test_no_cross_module_private_imports.py`）。**防环细则**：需要对方数据但对方 service 已依赖自己时，import 对方 `models/` 直查，不 import 对方 `services/`（典型：user ↔ knowledge_space）。
 - **R3 全局中心清单**（只进不改，热点文件串行编辑）：`setting/` 的 `get_config()`、`shared/prompts/prompt_manager.py` 的 PromptManager、`shared/ai_models/` 模型客户端工厂、`shared/storage/client_factory.py`（ES/MinIO/Redis 单例）、`shared/search/external_search_service.py`（web 搜索唯一工厂）、`shared/mq/`。
-- **R4 引擎不定义 Protocol 端口**：引擎需要宿主能力时直接收具体类实例（PromptManager/ModelConfigService 等）或普通参数传值；引擎 import features 具体类在 R1 下合法。
+- **R4 引擎接口不带业务形状（2026-10-29 反转，取代旧「引擎直收具体类」条款）**：engines 层零 features/setting import（含 TYPE_CHECKING，当前为零，约定禁止回退）；引擎需要宿主能力时收**已解析好的客户端/客户端工厂/引擎自定义抽象接口**（如 IMemoryStore），业务实现并注入；`user_id` 等业务身份不进引擎签名（凭证解析是业务的事）。抽象接口定义在引擎侧（消费者所有），业务实现继承——不引入仪式性 Protocol（仅为过关而建的接口层仍禁止）。
 - **R5 工厂自注册**：模型客户端（llm/embedding/rerank/asr）与 web 搜索源用 `_FACTORY_NAME` 属性 + 模块扫描注册，消灭 if-else 供应商分支链。
 - **R6 安全硬规则全部保留**：BaseAPIError 体系、`begin_nested()` SAVEPOINT、密钥加密、异步密码哈希、JWT 黑名单、FileValidator 魔数校验、参数化查询、manifest 声明式注册（RouterSpec / `init_hook` / `models_loader`）。
 

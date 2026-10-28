@@ -1,5 +1,11 @@
 # Agent 记忆系统重新设计方案
 
+> 2026-10-29 更新：存储端口契约已归引擎侧——`interfaces.py` 新增 `IMemoryStore`
+> （记忆条目与压缩摘要增删改查）与 `IMemorySearch`（ES 向量检索）抽象接口，
+> 业务实现 `HostMemoryStorePort(IMemoryStore)` / `HostMemorySearchPort(IMemorySearch)`
+> 继承注入。引擎零 features 引用（含 TYPE_CHECKING）；下文涉及「宿主端口」的
+> 描述以本注记为准（实现仍在 features/agent/services/host_memory_store.py）。
+
 ## 一、背景与目标
 
 当前 Agent 记忆系统存在的问题：

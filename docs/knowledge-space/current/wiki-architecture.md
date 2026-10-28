@@ -1,6 +1,6 @@
 # Wiki 生成与浏览架构
 
-> 最后更新：2026-09-23。Wiki 机制移植自腾讯 WeKnora，归属 `features/knowledge_space/` 内部（不建独立 feature）。
+> 最后更新：2026-10-29。Wiki 机制移植自腾讯 WeKnora；纯函数件（linkify/dedup/handles/slug/taxonomy）已下沉 `engines/wiki/`（通用引擎域），持久化（四表 ORM/仓储）、ES 同步、任务编排、API 留 `features/knowledge_space/`（不建独立 feature）。
 > 端到端实测通过：16 页 / 72 互链 / 0 孤儿，编辑-版本-回滚-Agent 工具全链路可用。
 > 2026-09-22 对齐 WeKnora 补齐 reparse/retract 语义四批（retract worker / reparse scrub / refs 替换 / 清理收敛），见「重解析与删除语义」。
 
