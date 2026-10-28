@@ -24,8 +24,11 @@ def _turn(role="user", content="内容"):
     return MemoryMessage(role=role, content=content)
 
 
-def _compressor(summary_text):
-    """惯例桩：注入 stub LLM 工厂与摘要存储的 ContextCompressor（真实逻辑）。"""
+def _compressor(summary_text, *, compaction_async=False):
+    """惯例桩：注入 stub LLM 工厂与摘要存储的 ContextCompressor（真实逻辑）。
+
+    开关经构造参数注入（生产为宿主从 agent.memory 配置节读值传入）。
+    """
     from novamind.engines.agent.memory.context_compressor import ContextCompressor
 
     llm = SimpleNamespace(
@@ -43,6 +46,7 @@ def _compressor(summary_text):
         agent_id=7,
         user_id=1,
         model="gpt-4o-mini",
+        compaction_async=compaction_async,
     )
     return c, llm, store
 
@@ -59,24 +63,6 @@ def _oversized_messages(n=30):
         _turn("user" if i % 2 == 0 else "assistant", f"消息 {i} " + "x" * 400)
         for i in range(n)
     ]
-
-
-def _cfg(compaction_async):
-    return SimpleNamespace(
-        agent=SimpleNamespace(
-            memory=SimpleNamespace(
-                on_turn_done=False, backend="builtin", compaction_async=compaction_async,
-            )
-        )
-    )
-
-
-def _cfg_patch(compaction_async):
-    """patch get_config（生产代码内调用期懒 import，从包属性重新解析）。"""
-    return patch(
-        "novamind.setting.yaml_config.get_config",
-        return_value=_cfg(compaction_async),
-    )
 
 
 def _pool(enqueue_return):
@@ -97,7 +83,7 @@ async def test_switch_off_uses_sync_summary():
     c, llm, _ = _compressor("同步摘要正文")
     msgs = _oversized_messages()
 
-    with _cfg_patch(False), patch("novamind.shared.mq.get_arq_pool") as mock_pool:
+    with patch("novamind.shared.mq.get_arq_pool") as mock_pool:
         compressed, triggered, _ = await c.compress(
             msgs, available_tokens=100, token_budget=_budget(),
         )
@@ -111,10 +97,10 @@ async def test_switch_off_uses_sync_summary():
 @pytest.mark.asyncio
 async def test_switch_on_enqueues_and_skips_sync_summary():
     """开关开 + 入队成功：同步摘要 LLM 不执行，主循环走静态占位降级。"""
-    c, llm, _ = _compressor("同步摘要正文")
+    c, llm, _ = _compressor("同步摘要正文", compaction_async=True)
     msgs = _oversized_messages()
 
-    with _cfg_patch(True), _pool(MagicMock()):
+    with _pool(MagicMock()):
         compressed, triggered, _ = await c.compress(
             msgs, available_tokens=100, token_budget=_budget(),
         )
@@ -130,12 +116,12 @@ async def test_switch_on_enqueues_and_skips_sync_summary():
 @pytest.mark.asyncio
 async def test_switch_on_enqueue_payload():
     """入队参数契约：turns 序列化为 asdict、previous_summary/身份字段逐项核对。"""
-    c, _, _ = _compressor("s")
+    c, _, _ = _compressor("s", compaction_async=True)
     c._previous_summary = "上一代摘要"
     msgs = _oversized_messages()
 
     pool = SimpleNamespace(enqueue_job=AsyncMock(return_value=MagicMock()))
-    with _cfg_patch(True), patch(
+    with patch(
         "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=pool)
     ):
         await c.compress(msgs, available_tokens=100, token_budget=_budget())
@@ -160,7 +146,7 @@ async def test_enqueue_rejected_falls_back_to_sync():
     c, llm, _ = _compressor("同步摘要正文")
     msgs = _oversized_messages()
 
-    with _cfg_patch(True), _pool(None):
+    with _pool(None):
         compressed, _, _ = await c.compress(
             msgs, available_tokens=100, token_budget=_budget(),
         )
@@ -178,7 +164,7 @@ async def test_enqueue_error_falls_back_to_sync():
     )
     msgs = _oversized_messages()
 
-    with _cfg_patch(True), patch(
+    with patch(
         "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=pool)
     ):
         compressed, _, _ = await c.compress(
@@ -204,7 +190,7 @@ async def test_enqueue_skipped_without_conversation_id():
     )
     msgs = _oversized_messages()
 
-    with _cfg_patch(True), _pool(MagicMock()) as pool_mock:
+    with _pool(MagicMock()) as pool_mock:
         await c.compress(msgs, available_tokens=100, token_budget=_budget())
 
     pool_mock.assert_not_called()

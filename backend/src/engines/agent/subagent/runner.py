@@ -5,7 +5,6 @@ from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.tool.executor import ToolExecutor
-from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
 
@@ -28,14 +27,19 @@ class SubAgentRunner:
         self,
         agent_engine: AgentEngine,
         tool_executor: ToolExecutor,
-        model_config_service: ModelConfigService,
+        model_config_service: Any,  # duck: get_llm_client_by_model/get_vlm_client_by_model(user_id, model)
         user_id: int,
         model: str,
         enabled_tools: list[str],
         enabled_mcp_ids: list[int],
         parent_context: dict[str, Any],
     ) -> None:
-        """注入父引擎、工具端口与模型配置服务；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。"""
+        """注入父引擎、工具端口与模型配置服务；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。
+
+        model_config_service 为 duck 注入（引擎不 import 业务类型）：需提供
+        ``async get_llm_client_by_model(user_id, model)`` 与
+        ``async get_vlm_client_by_model(user_id, model)`` 两方法。
+        """
         self._agent_engine = agent_engine
         self._tool_executor = tool_executor
         self._mcs = model_config_service

@@ -68,6 +68,8 @@ class MemoryManager:
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
         reconciler: Any | None = None,
+        memory_compaction_async: bool = False,
+        memory_on_turn_done: bool = False,
     ) -> MemoryManager:
         """工厂方法：创建完整配置的 MemoryManager。
 
@@ -88,6 +90,9 @@ class MemoryManager:
             user_id: 用户 ID，可空。
             auxiliary_llm_factory: 压缩用辅助 LLM 工厂，可空。
             reconciler: Mem0 调和器，可空；None 时 consolidate 走内置提取。
+            memory_compaction_async: 压缩摘要异步投递开关（宿主从 agent.memory
+                配置节读值注入，引擎不 import setting）。
+            memory_on_turn_done: 会话轮末记忆固化开关（同上）。
 
         Returns:
             组装完成的 MemoryManager 实例。
@@ -112,6 +117,8 @@ class MemoryManager:
             agent_id=agent_id,
             user_id=user_id,
             auxiliary_llm_factory=auxiliary_llm_factory,
+            compaction_async=memory_compaction_async,
+            on_turn_done=memory_on_turn_done,
             model=model,
         )
 

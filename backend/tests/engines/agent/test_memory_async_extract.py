@@ -25,8 +25,11 @@ def _turn(role="user", content="内容"):
     return MemoryMessage(role=role, content=content)
 
 
-def _compressor(long_term):
-    """惯例桩：构造注入 stub 依赖的 ContextCompressor。"""
+def _compressor(long_term, *, on_turn_done=False):
+    """惯例桩：构造注入 stub 依赖的 ContextCompressor。
+
+    开关经实例属性注入（生产为构造参数，宿主从 agent.memory 配置节读值）。
+    """
     from novamind.engines.agent.memory.context_compressor import ContextCompressor
 
     c = ContextCompressor.__new__(ContextCompressor)
@@ -34,6 +37,8 @@ def _compressor(long_term):
     c._agent_id = 7
     c._user_id = 1
     c._model = "gpt-4o-mini"
+    c._on_turn_done = on_turn_done
+    c._compaction_async = False
     return c
 
 
@@ -44,24 +49,6 @@ def _long_term():
     return lt
 
 
-def _cfg(on_turn_done):
-    """惯例桩：get_config 返回值（agent.memory 全部被读取的字段）。"""
-    return SimpleNamespace(
-        agent=SimpleNamespace(
-            memory=SimpleNamespace(on_turn_done=on_turn_done, backend="builtin")
-        )
-    )
-
-
-def _cfg_patch(on_turn_done):
-    """patch get_config 的目标路径（生产代码内 `from novamind.setting.yaml_config
-    import get_config` 为调用期懒 import，每次调用从包属性重新解析）。"""
-    return patch(
-        "novamind.setting.yaml_config.get_config",
-        return_value=_cfg(on_turn_done),
-    )
-
-
 @pytest.mark.asyncio
 async def test_switch_off_uses_sync_path():
     """开关关（默认）：直接同步 consolidate，不触 get_arq_pool。"""
@@ -69,7 +56,7 @@ async def test_switch_off_uses_sync_path():
     c = _compressor(lt)
     turns = [_turn(), _turn("assistant")]
 
-    with _cfg_patch(False), patch("novamind.shared.mq.get_arq_pool") as mock_pool:
+    with patch("novamind.shared.mq.get_arq_pool") as mock_pool:
         await c._extract_memories(turns, 55)
 
     lt.consolidate.assert_awaited_once()
@@ -86,12 +73,12 @@ async def test_switch_off_uses_sync_path():
 async def test_switch_on_enqueues_and_skips_sync():
     """开关开 + 入队成功：enqueue_job 收到 asdict turns 与 model，同步不执行。"""
     lt = _long_term()
-    c = _compressor(lt)
+    c = _compressor(lt, on_turn_done=True)
     turns = [_turn(), _turn("assistant", "答复")]
 
     job = MagicMock()
     pool = SimpleNamespace(enqueue_job=AsyncMock(return_value=job))
-    with _cfg_patch(True), patch(
+    with patch(
         "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=pool)
     ):
         await c._extract_memories(turns, 55)
@@ -110,9 +97,9 @@ async def test_switch_on_enqueues_and_skips_sync():
 async def test_enqueue_rejected_falls_back_to_sync():
     """开关开 + enqueue_job 返回 None（任务被拒）：退回同步提取。"""
     lt = _long_term()
-    c = _compressor(lt)
+    c = _compressor(lt, on_turn_done=True)
     pool = SimpleNamespace(enqueue_job=AsyncMock(return_value=None))
-    with _cfg_patch(True), patch(
+    with patch(
         "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=pool)
     ):
         await c._extract_memories([_turn(), _turn()], 55)
@@ -124,9 +111,9 @@ async def test_enqueue_rejected_falls_back_to_sync():
 async def test_enqueue_error_falls_back_to_sync():
     """开关开 + 入队抛异常（Redis 不可达）：退回同步提取。"""
     lt = _long_term()
-    c = _compressor(lt)
+    c = _compressor(lt, on_turn_done=True)
     pool = SimpleNamespace(enqueue_job=AsyncMock(side_effect=RuntimeError("redis down")))
-    with _cfg_patch(True), patch(
+    with patch(
         "novamind.shared.mq.get_arq_pool", AsyncMock(return_value=pool)
     ):
         await c._extract_memories([_turn(), _turn()], 55)
@@ -137,20 +124,37 @@ async def test_enqueue_error_falls_back_to_sync():
 @pytest.mark.asyncio
 async def test_missing_scope_returns_early():
     """缺 long_term/agent_id 任一：直接返回，零调用。"""
-    c = _compressor(None)
-    with _cfg_patch(True), patch("novamind.shared.mq.get_arq_pool") as mock_pool:
+    c = _compressor(None, on_turn_done=True)
+    with patch("novamind.shared.mq.get_arq_pool") as mock_pool:
         await c._extract_memories([_turn()], 55)
     mock_pool.assert_not_called()
 
     lt = _long_term()
-    c2 = _compressor(lt)
+    c2 = _compressor(lt, on_turn_done=True)
     c2._agent_id = None
-    with _cfg_patch(True):
-        await c2._extract_memories([_turn()], 55)
+    await c2._extract_memories([_turn()], 55)
     lt.consolidate.assert_not_awaited()
 
 
 # ==================== consolidate_memory_task 任务函数 ====================
+
+
+def _cfg(on_turn_done):
+    """惯例桩：get_config 返回值（任务函数读 agent.memory.backend 选后端）。"""
+    return SimpleNamespace(
+        agent=SimpleNamespace(
+            memory=SimpleNamespace(on_turn_done=on_turn_done, backend="builtin")
+        )
+    )
+
+
+def _cfg_patch(on_turn_done):
+    """patch get_config 的目标路径（任务函数内 `from novamind.setting.yaml_config
+    import get_config` 为调用期懒 import，每次调用从包属性重新解析）。"""
+    return patch(
+        "novamind.setting.yaml_config.get_config",
+        return_value=_cfg(on_turn_done),
+    )
 
 
 class _TaskEnv:

@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
-from novamind.features.knowledge_space.schemas.search_schema import SearchMode
+from novamind.engines.rag.modes import SearchMode
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)

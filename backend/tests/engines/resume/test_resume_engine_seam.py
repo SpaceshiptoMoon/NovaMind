@@ -162,15 +162,19 @@ def test_agent_core_ports_reexports_web_search_port():
     assert WebSearchResult.__name__ == "WebSearchResult"
 
 
-def test_fallback_llm_provider_replaced_by_direct_mcs():
-    """批次 3.3：FallbackLLMProvider 适配器已删，AutoProbingEngine 直收 ModelConfigService。"""
+def test_fallback_llm_provider_duck_injection():
+    """seam 演进：批次 3.3 删适配器直收 ModelConfigService；模块化批次起
+    引擎不再 import 业务类型，注解 duck 化（Any），契约由 docstring 声明
+    （repo.list_by_user + get_llm_client_by_model）。锁定两条：无 features
+    import + 参数仍存在（duck 注入点不消失）。"""
     import inspect
 
-    from novamind.engines.resume.resume_probing import AutoProbingEngine
+    import novamind.engines.resume.resume_probing as probing_mod
 
-    sig = inspect.signature(AutoProbingEngine.__init__)
-    ann = sig.parameters["fallback_llm_provider"].annotation
-    assert "ModelConfigService" in str(ann), f"应直收 ModelConfigService，实际 {ann}"
+    source = inspect.getsource(probing_mod)
+    assert "from novamind.features" not in source, "引擎不得 import features（模块化边界）"
+    sig = inspect.signature(probing_mod.AutoProbingEngine.__init__)
+    assert "fallback_llm_provider" in sig.parameters, "duck 注入点应保留"
 
 
 def test_resume_pipeline_service_assembles_ports():

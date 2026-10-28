@@ -54,6 +54,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
+
+def _agent_memory_flag(key: str) -> bool:
+    """读 agent.memory 配置节的布尔开关（缺节/缺键一律 False）。
+
+    MemoryManager 记忆开关的宿主侧读取点——引擎（engines/agent）不 import
+    setting，开关值在此读出后经构造链注入。
+    """
+    try:
+        return bool(getattr(get_config().agent.memory, key, False))
+    except Exception:
+        return False
+
 # Plan-and-Execute 步骤状态值（与 novamind.engines.agent.flow.planning_flow 常量对齐；
 # 本地定义避免 features → engines 仅为此拉 import）
 NOT_STARTED_VALUE = "not_started"
@@ -642,6 +654,8 @@ class AgentChatService:
             user_id=user_id,
             auxiliary_llm_factory=auxiliary_llm_factory,
             reconciler=reconciler,
+            memory_compaction_async=_agent_memory_flag("compaction_async"),
+            memory_on_turn_done=_agent_memory_flag("on_turn_done"),
         )
 
     @staticmethod

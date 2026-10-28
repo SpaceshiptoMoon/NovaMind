@@ -4,36 +4,15 @@
 定义检索的请求和响应模型
 """
 
-from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# SearchMode 权威定义在检索引擎（engines/rag/modes.py，供引擎侧工具共用）；
+# 此处 re-export 保持既有业务引用兼容
+from novamind.engines.rag.modes import SearchMode
 
-class SearchMode(str, Enum):
-    """
-    统一检索模式（文本空间）
-
-    格式: {target}_{algorithm}
-    - content_bm25: 内容全文检索
-    - content_vector: 内容向量检索
-    - content_hybrid: 内容混合检索
-    - question_bm25: 问题全文检索
-    - question_vector: 问题向量检索
-    - question_hybrid: 问题混合检索
-    - all_bm25: 全字段全文检索
-    - all_vector: 全字段向量检索
-    - all_hybrid: 全字段全算法融合
-    """
-    CONTENT_BM25 = "content_bm25"
-    CONTENT_VECTOR = "content_vector"
-    CONTENT_HYBRID = "content_hybrid"
-    QUESTION_BM25 = "question_bm25"
-    QUESTION_VECTOR = "question_vector"
-    QUESTION_HYBRID = "question_hybrid"
-    ALL_BM25 = "all_bm25"
-    ALL_VECTOR = "all_vector"
-    ALL_HYBRID = "all_hybrid"
+__all__ = ["SearchMode"]
 
 
 class QueryRewriteConfig(BaseModel):

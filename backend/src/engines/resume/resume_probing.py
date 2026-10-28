@@ -5,6 +5,7 @@ prompt/log/降级LLM 经注入端口获取。
 """
 import asyncio
 import json
+from typing import Any
 
 from novamind.engines.resume.schemas import (
     JDAnalysis,
@@ -13,7 +14,6 @@ from novamind.engines.resume.schemas import (
     StructuredResume,
     WorkProjectUnit,
 )
-from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager
@@ -45,7 +45,7 @@ class AutoProbingEngine:
         prompt_provider: PromptManager,
         logger: Logger,
         user_id: int = 0,
-        fallback_llm_provider: ModelConfigService | None = None,
+        fallback_llm_provider: Any | None = None,  # duck: repo.list_by_user + get_llm_client_by_model
         max_concurrent: int = 3,
     ):
         """注入 LLM、prompt/日志依赖与可选降级模型工厂；并发受信号量限制，追问轮内策略按调用执行。"""

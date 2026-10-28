@@ -68,11 +68,16 @@ class ContextCompressor(ICompressionStrategy):
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
         model: str = "gpt-4",
+        compaction_async: bool = False,
+        on_turn_done: bool = False,
     ):
         """注入 LLM 工厂、摘要/任务存储等依赖，并初始化迭代摘要与反抖动、冷却状态。
 
         Args:
             model: 对话主模型名（记忆异步提取入队参数，决定任务侧 token 计数口径）。
+            compaction_async: 压缩摘要异步投递开关（宿主从 agent.memory 配置节
+                读值注入——引擎不 import setting）。
+            on_turn_done: 会话轮末记忆固化开关（同上，宿主注入）。
         """
         self._llm_factory = llm_client_factory
         self._aux_llm_factory = auxiliary_llm_factory
@@ -84,6 +89,8 @@ class ContextCompressor(ICompressionStrategy):
         self._agent_id = agent_id
         self._user_id = user_id
         self._model = model
+        self._compaction_async = compaction_async
+        self._on_turn_done = on_turn_done
 
         # 迭代摘要状态
         self._previous_summary: str | None = None
@@ -1043,15 +1050,9 @@ class ContextCompressor(ICompressionStrategy):
 
     # ==================== 静态降级 ====================
 
-    @staticmethod
-    def _compaction_async_enabled() -> bool:
-        """压缩摘要异步投递开关（agent.memory.compaction_async，默认关）。"""
-        try:
-            from novamind.setting.yaml_config import get_config
-
-            return bool(get_config().agent.memory.compaction_async)
-        except Exception:
-            return False
+    def _compaction_async_enabled(self) -> bool:
+        """压缩摘要异步投递开关（构造时由宿主注入 agent.memory.compaction_async）。"""
+        return bool(self._compaction_async)
 
     async def _enqueue_summary(
         self,
@@ -1128,9 +1129,7 @@ class ContextCompressor(ICompressionStrategy):
         """
         if not self._long_term or not self._agent_id or not self._user_id:
             return
-        from novamind.setting.yaml_config import get_config
-
-        if get_config().agent.memory.on_turn_done:
+        if self._on_turn_done:
             try:
                 from novamind.shared.mq import get_arq_pool
 
