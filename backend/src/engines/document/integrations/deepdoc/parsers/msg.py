@@ -13,8 +13,8 @@ _OLE_HEADER_MAGIC = b"\xd0\xcf\x11\xe0"
 class RAGFlowMsgParser:
     """Outlook MSG 解析器：头部元信息 + 正文（纯文本优先，HTML 复用 html 解析器）。
 
-    附件只列文件名清单不提取内容（同 EML 边界）；嵌套附件（附加的 .msg）
-    文件名照列，不递归解析。
+    独立解析场景附件只列文件名清单；容器递归场景（msg 作为邮件容器上传）
+    经 :meth:`body_and_attachments` 取附件字节流交宿主逐成员解析。
     """
 
     def __init__(self) -> None:
@@ -29,6 +29,20 @@ class RAGFlowMsgParser:
 
         Returns:
             文本块列表：首块为邮件头，后续为正文块。
+
+        Raises:
+            MismatchedPayloadError: 非 OLE 载荷或 compound 文档损坏。
+        """
+        sections, _attachments = self.body_and_attachments(binary)
+        return sections
+
+    def body_and_attachments(
+        self, binary: bytes
+    ) -> tuple[list[str], list[tuple[str, bytes]]]:
+        """解析 MSG 为（正文文本块列表, 附件 (文件名, 字节流) 列表）二元组。
+
+        容器递归路径的统一入口：正文含头部元信息块，附件带原始字节流交
+        调用方逐成员解析（嵌套 .msg 附件同样作为成员交给 msg 解析器递归）。
 
         Raises:
             MismatchedPayloadError: 非 OLE 载荷或 compound 文档损坏。
@@ -58,18 +72,26 @@ class RAGFlowMsgParser:
             ):
                 if value:
                     lines.append(f"{label}：{value}")
-            attachments = [
-                att.longFilename or att.shortFilename
-                for att in (getattr(msg, "attachments", None) or [])
-            ]
-            if attachments:
-                lines.append("附件：" + "、".join(str(a) for a in attachments if a))
+            attachments: list[tuple[str, bytes]] = []
+            attachment_names: list[str] = []
+            for att in (getattr(msg, "attachments", None) or []):
+                name = str(att.longFilename or att.shortFilename or "")
+                if not name:
+                    continue
+                try:
+                    data = att.data
+                except Exception:
+                    data = b""
+                attachment_names.append(name)
+                attachments.append((name, data or b""))
+            if attachment_names:
+                lines.append("附件：" + "、".join(attachment_names))
             sections: list[str] = ["\n".join(lines)] if lines else []
 
             body = (getattr(msg, "body", None) or "").strip()
             if body:
                 sections.append(body)
-                return sections
+                return sections, attachments
             html_body = (getattr(msg, "htmlBody", None) or b"").decode(
                 "utf-8", errors="ignore"
             ).strip()
@@ -78,6 +100,6 @@ class RAGFlowMsgParser:
                     "", binary=html_body.encode("utf-8")
                 )
                 sections.extend(s for s in body_sections if s.strip())
-            return sections
+            return sections, attachments
         finally:
             msg.close()
