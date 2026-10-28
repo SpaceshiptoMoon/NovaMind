@@ -51,6 +51,13 @@ _FILE_FORMAT_SPECS: tuple[FileFormatSpec, ...] = (
     FileFormatSpec("json", "text"),
     FileFormatSpec("xlsx", "text"),
     FileFormatSpec("pptx", "text"),
+    # 容器/邮件族：zip 成员递归解析（成员数/解压总量上限防炸弹），eml/msg
+    # 附件递归同链；ofd 为国内版式文档（zip 结构守卫覆盖）。解析器单测与
+    # 容器正反用例覆盖。
+    FileFormatSpec("zip", "text"),
+    FileFormatSpec("eml", "text"),
+    FileFormatSpec("msg", "text"),
+    FileFormatSpec("ofd", "text"),
     FileFormatSpec("jpg", "image"),
     FileFormatSpec("jpeg", "image"),
     FileFormatSpec("png", "image"),
