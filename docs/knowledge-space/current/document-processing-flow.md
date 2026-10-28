@@ -36,6 +36,19 @@ flowchart TD
 | `external_ocr` | `media/ocr` connector（外部 OCR 服务） | 扫描件/图片型 PDF；入口有 PDF 前置快检（魔数 + needs_pass） |
 | `mineru` | `engines/document/integrations/mineru/client.py`（CLI 子进程） | 外部 MinerU 引擎；入口同款 PDF 前置快检；产物图片契约与 deepdoc figure_regions 同构 |
 
+## 容器递归解析（zip / eml / msg）
+
+企业常见「zip 里一堆文档」「邮件带附件」——容器格式在解析层展开成员逐个递归（成员复用同一同步路由，天然过各自入口守卫），产物按成员标题头拼接、容器级统一切分：
+
+- 展开器：`engines/document/pipeline/nested_archive.py`——guard_office_zip 前置、成员数/解压总量上限（超限拒收整包）、嵌套 zip 深度限制、打包元数据过滤
+- figure 合并：成员 region 重编号（`m{序}_` 前缀防跨成员撞名）并以容器盐重签占位符，成员正文旧占位符精确替换——容器文档占位符全部绑定容器内容盐
+- 邮件附件提取在 eml/msg 解析器的 `body_and_attachments`（正文与附件一次产出），附件成员走同一限额
+- 成员解析失败降级为占位说明，其余成员不受牵连
+
+## figure 契约单一权威
+
+region 基座键集、构造、规范化、占位符兜底读取唯一定义在 `engines/document/contracts.py`（`make_figure_region` / `normalize_figure_regions` / `region_placeholder_of`）；六处组装点与业务层三处消费点全部引用权威——跨层加字段漏透传类断裂（xlsx placeholder 事故）在此收口。PDF 的 region.placeholder 与正文渲染同源传盐（`_build_figure_regions_metadata` 接收 `figure_salt`）。
+
 ## figure 盐化占位符链
 
 图片只服务「命中 chunk 后展示配图」，不做 VLM 语义描述。三层分工：
@@ -85,7 +98,9 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 | 三级快照 / figure 短路径兜底 | `features/knowledge_space/services/pipeline_snapshots.py` |
 | 步骤与 metadata 摘要 | `features/knowledge_space/services/pipeline_steps.py` |
 | default/deepdoc 双策略引擎入口 | `engines/document/pipeline/document_loader.py`（`DocumentProcessor.parse_document_result`） |
-| deepdoc 格式路由 + 出口规范化 | `engines/document/integrations/deepdoc/core/runtime_parser.py` |
+| deepdoc 格式路由 + 容器递归 + 出口规范化 | `engines/document/integrations/deepdoc/core/runtime_parser.py` |
+| figure 契约单一权威（region 构造/规范化/兜底读取） | `engines/document/contracts.py` |
+| 容器展开器（zip 递归/限额防御） | `engines/document/pipeline/nested_archive.py` |
 | 盐化协议 / UnifiedBlock / Markdown 序列化 | `engines/document/integrations/deepdoc/core/document_model.py` |
 | 质量报告收集器 | `engines/document/integrations/deepdoc/core/quality.py` |
 | 解析异常族 | `engines/document/exceptions.py`（ParsePayloadError 族） |
