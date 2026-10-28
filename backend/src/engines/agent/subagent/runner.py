@@ -1,6 +1,7 @@
 """子 agent 委派 runner：独立 messages 启动子 ReAct 循环，工具集裁剪（exclude task/todo）防递归；首版不持久化子 session。"""
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine
@@ -27,23 +28,21 @@ class SubAgentRunner:
         self,
         agent_engine: AgentEngine,
         tool_executor: ToolExecutor,
-        model_config_service: Any,  # duck: get_llm_client_by_model/get_vlm_client_by_model(user_id, model)
-        user_id: int,
+        client_factory: Callable[[str], Awaitable[Any]],
         model: str,
         enabled_tools: list[str],
         enabled_mcp_ids: list[int],
         parent_context: dict[str, Any],
     ) -> None:
-        """注入父引擎、工具端口与模型配置服务；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。
+        """注入父引擎、工具端口与客户端工厂；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。
 
-        model_config_service 为 duck 注入（引擎不 import 业务类型）：需提供
-        ``async get_llm_client_by_model(user_id, model)`` 与
-        ``async get_vlm_client_by_model(user_id, model)`` 两方法。
+        client_factory 为客户端工厂注入（引擎不接触凭证解析与用户身份）：
+        ``async client_factory(model) -> LLM/VLM 客户端``。"LLM 优先、VLM
+        兜底"的业务解析策略由宿主在工厂内实现。
         """
         self._agent_engine = agent_engine
         self._tool_executor = tool_executor
-        self._mcs = model_config_service
-        self._user_id = user_id
+        self._client_factory = client_factory
         self._model = model
         self._enabled_tools = [
             t for t in (enabled_tools or []) if t not in DELEGATE_BLOCKED_TOOLS
@@ -63,15 +62,8 @@ class SubAgentRunner:
         Returns:
             summary 为子 agent 最终回答（失败为错误文案），session_id 恒 None（不持久化）。
         """
-        # LLM 客户端（优先 LLM，fallback VLM）
-        try:
-            llm_client = await self._mcs.get_llm_client_by_model(
-                self._user_id, self._model
-            )
-        except Exception:
-            llm_client = await self._mcs.get_vlm_client_by_model(
-                self._user_id, self._model
-            )
+        # 客户端解析（LLM 优先 VLM 兜底的策略在宿主工厂内）
+        llm_client = await self._client_factory(self._model)
 
         # 裁剪工具集（exclude task/todo）
         tools = self._tool_executor.resolve_tools_openai_format(

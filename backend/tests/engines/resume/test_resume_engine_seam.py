@@ -92,10 +92,11 @@ def test_resume_engines_require_port_injection():
     analyzer_params = inspect.signature(ResumeAnalyzer.__init__).parameters
     assert "web_search_port" in analyzer_params
 
-    # AutoProbingEngine 额外接收可选 FallbackLLMProvider，不再接收 bg_db
+    # AutoProbingEngine 额外接收可选降级客户端提供者（接口净化后不再收 user_id）
     probing_params = inspect.signature(AutoProbingEngine.__init__).parameters
-    assert "fallback_llm_provider" in probing_params
+    assert "fallback_client_provider" in probing_params
     assert "bg_db" not in probing_params, "AutoProbingEngine 不应再接收 bg_db"
+    assert "user_id" not in probing_params, "用户身份不进引擎签名"
 
 
 def test_probe_all_no_bg_db_param():
@@ -174,7 +175,8 @@ def test_fallback_llm_provider_duck_injection():
     source = inspect.getsource(probing_mod)
     assert "from novamind.features" not in source, "引擎不得 import features（模块化边界）"
     sig = inspect.signature(probing_mod.AutoProbingEngine.__init__)
-    assert "fallback_llm_provider" in sig.parameters, "duck 注入点应保留"
+    assert "fallback_client_provider" in sig.parameters, "duck 注入点应保留"
+    assert "user_id" not in sig.parameters, "用户身份不进引擎签名"
 
 
 def test_resume_pipeline_service_assembles_ports():
@@ -191,7 +193,7 @@ def test_resume_pipeline_service_assembles_ports():
     assert "prompt_provider=prompt_provider" in src
     assert "logger=engine_logger" in src
     assert "web_search_port=web_search_port" in src
-    assert "fallback_llm_provider=fallback_llm_provider" in src
+    assert "fallback_client_provider=fallback_client_provider" in src
 
 
 def test_resume_engines_exported_from_engines_resume():

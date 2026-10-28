@@ -55,7 +55,18 @@ class ResumePipelineService:
             prompt_provider = PromptManager()
             engine_logger = get_logger("resume.engine").bind()
             web_search_port = build_web_search_port_from_yaml()
-            fallback_llm_provider = bg_model_config_service  # 直传 ModelConfigService（批次 3.3）
+            # 降级候选提供者（业务闭包用户身份与凭证解析；引擎只消费客户端列表）
+            async def fallback_client_provider() -> list:
+                configs = await bg_model_config_service.repo.list_by_user(user_id, "llm")
+                clients = []
+                for cfg in configs:
+                    try:
+                        clients.append(
+                            await bg_model_config_service.get_llm_client_by_model(user_id, cfg.model)
+                        )
+                    except Exception:
+                        continue
+                return clients
 
             # ── S1-S4: 解析简历 ──
             parser = ResumeParser(
@@ -116,8 +127,7 @@ class ResumePipelineService:
                 llm,
                 prompt_provider=prompt_provider,
                 logger=engine_logger,
-                user_id=user_id,
-                fallback_llm_provider=fallback_llm_provider,
+                fallback_client_provider=fallback_client_provider,
             )
             qa_records = await engine.probe_all(
                 session_id, structured, probing_plan, jd_analysis_obj,

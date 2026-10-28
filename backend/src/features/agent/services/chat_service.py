@@ -282,8 +282,7 @@ class AgentChatService:
                 context["subagent_runner"] = SubAgentRunner(
                     agent_engine=self.agent_engine,
                     tool_executor=self.agent_engine.tool_executor,
-                    model_config_service=self.model_config_service,
-                    user_id=user_id,
+                    client_factory=self._subagent_client_factory(user_id),
                     model=model,
                     enabled_tools=agent.enabled_tools or [],
                     enabled_mcp_ids=await self._filter_visible_mcp_ids(
@@ -659,6 +658,22 @@ class AgentChatService:
         )
 
     @staticmethod
+    def _subagent_client_factory(self, user_id: int):
+        """构造子 agent 客户端工厂（业务侧闭包用户身份与 LLM→VLM 兜底策略）。
+
+        引擎（SubAgentRunner）只收 ``async factory(model) -> 客户端``；
+        凭证解析与降级策略属业务，不进引擎接口。
+        """
+        mcs = self.model_config_service
+
+        async def factory(model: str):
+            try:
+                return await mcs.get_llm_client_by_model(user_id, model)
+            except Exception:
+                return await mcs.get_vlm_client_by_model(user_id, model)
+
+        return factory
+
     async def _build_memory_reconciler(
         model_config_service: ModelConfigService,
         user_id: int,

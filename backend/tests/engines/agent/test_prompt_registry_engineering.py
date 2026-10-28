@@ -191,15 +191,14 @@ def _runner(engine, enabled_tools=None):
 
     executor = MagicMock()
     executor.resolve_tools_openai_format.return_value = [{"fake": "tool"}]
-    mcs = SimpleNamespace(
-        get_llm_client_by_model=AsyncMock(return_value="llm"),
-        get_vlm_client_by_model=AsyncMock(return_value="vlm"),
-    )
+    # 工厂闭包 LLM→VLM 兜底（与业务侧 _subagent_client_factory 同形）
+    async def client_factory(model):
+        return "llm"
+
     return SubAgentRunner(
         agent_engine=engine,
         tool_executor=executor,
-        model_config_service=mcs,
-        user_id=1,
+        client_factory=client_factory,
         model="gpt-4o-mini",
         enabled_tools=enabled_tools if enabled_tools is not None else ["web_search"],
         enabled_mcp_ids=[],
@@ -267,9 +266,17 @@ class TestSubAgentRunner:
             get_llm_client_by_model=AsyncMock(side_effect=RuntimeError("no llm")),
             get_vlm_client_by_model=AsyncMock(return_value="vlm-client"),
         )
+
+        # LLM→VLM 兜底策略属业务工厂内部（与 _subagent_client_factory 同形）
+        async def fallback_factory(model):
+            try:
+                return await mcs.get_llm_client_by_model(1, model)
+            except Exception:
+                return await mcs.get_vlm_client_by_model(1, model)
+
         runner = SubAgentRunner(
-            agent_engine=engine, tool_executor=executor, model_config_service=mcs,
-            user_id=1, model="gpt-4o-mini", enabled_tools=["web_search"],
+            agent_engine=engine, tool_executor=executor, client_factory=fallback_factory,
+            model="gpt-4o-mini", enabled_tools=["web_search"],
             enabled_mcp_ids=[], parent_context={},
         )
         await runner.run_subagent("任务")

@@ -5,7 +5,7 @@ prompt/log/降级LLM 经注入端口获取。
 """
 import asyncio
 import json
-from typing import Any
+from collections.abc import Awaitable, Callable
 
 from novamind.engines.resume.schemas import (
     JDAnalysis,
@@ -44,40 +44,38 @@ class AutoProbingEngine:
         *,
         prompt_provider: PromptManager,
         logger: Logger,
-        user_id: int = 0,
-        fallback_llm_provider: Any | None = None,  # duck: repo.list_by_user + get_llm_client_by_model
+        fallback_client_provider: Callable[[], Awaitable[list[BaseLLM]]] | None = None,
         max_concurrent: int = 3,
     ):
-        """注入 LLM、prompt/日志依赖与可选降级模型工厂；并发受信号量限制，追问轮内策略按调用执行。"""
+        """注入 LLM、prompt/日志依赖与可选降级客户端提供者；并发受信号量限制，追问轮内策略按调用执行。
+
+        fallback_client_provider：返回候选降级客户端列表（主模型的排除由
+        引擎按 client.model 自行完成）；凭证解析与用户身份属业务，不进
+        引擎接口。
+        """
         self.llm = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger
-        self.user_id = user_id
-        self._fallback_llm_provider = fallback_llm_provider
+        self._fallback_client_provider = fallback_client_provider
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._fallback_clients: dict[str, BaseLLM] = {}
         self._fallback_models_loaded = False
 
     async def _load_fallback_models(self):
-        """经注入的 ModelConfigService 加载用户其他可用 LLM 客户端，排除当前主模型"""
-        if self._fallback_models_loaded or self._fallback_llm_provider is None:
+        """经注入的客户端提供者加载候选降级客户端，按 client.model 排除当前主模型"""
+        if self._fallback_models_loaded or self._fallback_client_provider is None:
             return
 
         self._fallback_models_loaded = True
         try:
             current_model = getattr(self.llm, 'model', '')
-            # 原 HostFallbackLLMProvider 逻辑随迁（批次 3.3 去适配器）：
-            # 列出用户 LLM 模型、排除主模型、逐个构造客户端、失败静默跳过
-            svc = self._fallback_llm_provider
-            configs = await svc.repo.list_by_user(self.user_id, "llm")
-            clients = []
-            for cfg in configs:
-                if cfg.model == current_model:
-                    continue
-                try:
-                    clients.append(await svc.get_llm_client_by_model(self.user_id, cfg.model))
-                except Exception:
-                    continue
+            # 业务提供候选列表（构造失败静默跳过）；主模型排除留引擎侧——
+            # "哪个是当前主模型"是引擎状态，业务无从知晓
+            clients = [
+                client
+                for client in await self._fallback_client_provider()
+                if getattr(client, 'model', '') != current_model
+            ]
             for client in clients:
                 model_name = getattr(client, 'model', '') or repr(client)
                 self._fallback_clients[model_name] = client

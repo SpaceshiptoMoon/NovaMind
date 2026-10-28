@@ -660,8 +660,7 @@ class GroupOrchestrator:
             context["subagent_runner"] = SubAgentRunner(
                 agent_engine=self.chat_service.agent_engine,
                 tool_executor=self.chat_service.agent_engine.tool_executor,
-                model_config_service=self.chat_service.model_config_service,
-                user_id=user_id,
+                client_factory=self.chat_service._subagent_client_factory(user_id),
                 model=model,
                 enabled_tools=agent.enabled_tools or [],
                 enabled_mcp_ids=await self.chat_service._filter_visible_mcp_ids(
