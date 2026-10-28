@@ -810,6 +810,12 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
         target_doc_type = "ppt"
     elif target_doc_type == "csv":
         target_doc_type = "txt"
+    elif target_doc_type in {"zip", "eml", "msg", "ofd"}:
+        # 容器/邮件族只有 deepdoc 认识（容器递归/邮件附件解析都在 deepdoc
+        # 路径），配置域不设独立策略项——策略固定，防止被归一成 pdf 后把
+        # zip 喂给 external_ocr/mineru/default 而必失败
+        result["strategy"] = "deepdoc"
+        return result
     elif target_doc_type not in TEXT_DOC_TYPES:
         target_doc_type = "pdf"
 

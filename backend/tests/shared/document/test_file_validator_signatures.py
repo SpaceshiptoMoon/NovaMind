@@ -142,3 +142,38 @@ def test_office_docx_detection_still_works():
         )
     is_office, doc_type = _validator.is_office_document(buf.getvalue())
     assert is_office and doc_type == "docx"
+
+
+# ========== 容器/邮件族登记（zip/eml/msg/ofd 白名单放开配套） ==========
+
+
+def _zip_bytes() -> bytes:
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("a.txt", "hi")
+    return buf.getvalue()
+
+
+def test_container_formats_accepted():
+    """zip/ofd（PK 容器）与 msg（OLE 头）按登记 MIME 放行。"""
+    ole_head = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    for fname, blob in (
+        ("archive.zip", _zip_bytes()),
+        ("doc.ofd", _zip_bytes()),
+        ("note.msg", ole_head + b"\x00" * 64),
+    ):
+        info = _validator.validate(blob, fname, allowed_extensions=["zip", "ofd", "msg"])
+        assert info.is_valid, f"{fname} 应放行: {info.validation_message}"
+
+
+def test_eml_textual_fallback_accepted():
+    """eml 是 RFC 822 纯文本：无 libmagic 部署探不出 MIME，按文本类放行。"""
+    eml = b"From: a@b.c\nSubject: t\n\nbody"
+    info = _validator.validate(eml, "mail.eml", allowed_extensions=["eml"])
+    assert info.is_valid, f"eml 应放行: {info.validation_message}"
+
+
+def test_zip_extension_with_garbage_rejected():
+    """.zip 扩展名但内容非 zip（登记后走 expected_mimes 匹配路径）→ 拒绝伪装。"""
+    info = _validator.validate(b"plain text not zip", "evil.zip", allowed_extensions=["zip"])
+    assert not info.is_valid

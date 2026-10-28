@@ -92,6 +92,18 @@ class FileValidator:
         "csv": ["text/csv", "text/plain"],
         "json": ["application/json", "text/plain"],
         "xml": ["application/xml", "text/xml", "text/plain"],
+        # 容器/邮件族：zip/ofd 是 PK 容器（application/zip）；msg 与旧 Office
+        # 共用 OLE 头（内置签名表判 msword；libmagic 部署可能给 ms-outlook 族）；
+        # eml 本质 RFC 822 文本，登记常见 MIME 并入文本类兜底
+        "zip": ["application/zip"],
+        "ofd": ["application/zip"],
+        "msg": [
+            "application/vnd.ms-outlook",
+            "application/msword",
+            "application/vnd.ms-office",
+            "application/x-ole-storage",
+        ],
+        "eml": ["message/rfc822", "text/plain"],
         "png": ["image/png"],
         "jpg": ["image/jpeg"],
         "jpeg": ["image/jpeg"],
@@ -399,8 +411,10 @@ class FileValidator:
 
         return info
 
-    # 无固定魔数的文本类扩展名：内容探测失败时按扩展名放行
-    _TEXTUAL_EXTENSIONS = frozenset({"txt", "md", "csv", "html", "htm", "json", "xml"})
+    # 无固定魔数的文本类扩展名：内容探测失败时按扩展名放行（eml 是 RFC 822
+    # 纯文本——无 libmagic 部署下首行 "From:" 探不出 MIME，按文本类放行，
+    # 解析层 email 库对坏结构显式报错兜底）
+    _TEXTUAL_EXTENSIONS = frozenset({"txt", "md", "csv", "html", "htm", "json", "xml", "eml"})
 
     @classmethod
     def _is_textual_extension(cls, extension: str) -> bool:

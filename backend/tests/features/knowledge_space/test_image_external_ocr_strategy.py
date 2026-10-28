@@ -163,7 +163,8 @@ class TestPdfExternalOcrBranch:
         _patch_recognize(monkeypatch, error=OcrRequestError("timeout"))
         with pytest.raises(DocumentProcessingError, match="可重试"):
             await document_pipeline._parse_pdf_with_external_ocr_static(
-                document=_document(), file_content=b"x", file_path=None,
+                # 前置守卫只查魔数（损坏细节交外部引擎报），假头即可过守卫
+                document=_document(), file_content=b"%PDF-1.4", file_path=None,
                 parse_config={"strategy": "external_ocr"},
                 splitting_config={},
                 processor=_FakeProcessor(),
@@ -177,7 +178,7 @@ class TestPdfExternalOcrBranch:
         _patch_recognize(monkeypatch, error=OcrCredentialsMissingError("未配置"))
         with pytest.raises(PermanentProcessingError, match="未配置"):
             await document_pipeline._parse_pdf_with_external_ocr_static(
-                document=_document(), file_content=b"x", file_path=None,
+                document=_document(), file_content=b"%PDF-1.4", file_path=None,
                 parse_config={"strategy": "external_ocr"},
                 splitting_config={},
                 processor=_FakeProcessor(),
