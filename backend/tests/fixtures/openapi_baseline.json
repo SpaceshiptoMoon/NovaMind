@@ -2830,6 +2830,20 @@
             "readOnly": true,
             "title": "Parse Duration Ms"
           },
+          "quality": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析质量报告（parser/warnings/duration_ms）；未挂报告的路径或旧快照为 None",
+            "readOnly": true,
+            "title": "Quality"
+          },
           "retry_count": {
             "description": "重试次数，从最近一次 DocumentTask 读取",
             "readOnly": true,
@@ -2939,6 +2953,7 @@
           "embedding_model",
           "embedding_dim",
           "parse_duration_ms",
+          "quality",
           "has_active_task"
         ],
         "title": "DocumentDetailResponse",
@@ -3233,6 +3248,20 @@
             "readOnly": true,
             "title": "Parse Duration Ms"
           },
+          "quality": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "解析质量报告（parser/warnings/duration_ms）；未挂报告的路径或旧快照为 None",
+            "readOnly": true,
+            "title": "Quality"
+          },
           "retry_count": {
             "description": "重试次数，从最近一次 DocumentTask 读取",
             "readOnly": true,
@@ -3342,6 +3371,7 @@
           "embedding_model",
           "embedding_dim",
           "parse_duration_ms",
+          "quality",
           "has_active_task"
         ],
         "title": "DocumentResponse",
@@ -7770,7 +7800,7 @@
         "type": "object"
       },
       "PdfParsingConfig": {
-        "description": "PDF parsing config.\n\nstrategy 除 default/deepdoc 外支持 external_ocr：整本 PDF 交外部 OCR\n（配置中心 ocr 段，如 qwen3.5-ocr）识别后按用户切分配置继续分块。\n适用于文字层为空的扫描件/图片型 PDF。",
+        "description": "PDF parsing config.\n\nstrategy 除 default/deepdoc 外支持：\n- external_ocr：整本 PDF 交外部 OCR（配置中心 ocr 段，如 qwen3.5-ocr）\n  识别后按用户切分配置继续分块。适用于文字层为空的扫描件/图片型 PDF。\n- mineru：交外部 MinerU 引擎（配置中心 mineru 段，独立环境 CLI 子进程）\n  解析。引擎未安装时任务显式终态失败（见 mineru.cli_path 配置）。",
         "properties": {
           "ocr_task": {
             "anyOf": [
@@ -7805,7 +7835,8 @@
             "enum": [
               "default",
               "deepdoc",
-              "external_ocr"
+              "external_ocr",
+              "mineru"
             ],
             "title": "Strategy",
             "type": "string"
