@@ -288,3 +288,25 @@ runner：`backend/test_data/_probe/probe_config_matrix.py`，结果 JSON 同目�
 - **真机实测脚本**：`backend/test_data/_probe/`（本地保留）：`probe_all_parsers.py`（27 项）、`probe_asr_real.py`、`probe_video.py`、`probe_time_align.py`、`probe_p0_verify.py`、`probe_last_phrase.py`。
 - **待补优先级**：⬜ 项按「文本族 ×8 切分组合矩阵 > 图片 combined > 视频需 VLM 项」排序；🔶 项在有 API key 的环境一次性补齐。
 - **组合新增守门**：新增解析策略/参数时必须同步本矩阵 + `runtime_settings`/`parsing-descriptors` 端点（若涉及）。
+
+
+## 容器递归解析批次（2026-10-29）
+
+zip 压缩包与 eml/msg 邮件附件的容器递归解析（`engines/document/pipeline/nested_archive.py`
+展开器 + runtime `_parse_container_sync` 容器路径），用例 `tests/engines/document/test_container_parsing.py`：
+
+| 编号 | 组合 | 验证要点 | 状态 |
+|---|---|---|---|
+| C-ZIP-BASIC | zip 内 txt+docx | 成员各自解析、标题头进正文、members 清单出账 | ✅ |
+| C-ZIP-FIGURE | 两个带图 docx | region 重编号 m0_/m1_ 前缀、正文占位符换容器盐版本 | ✅ |
+| C-ZIP-NOT-ZIP | HTML 伪 zip | PK 魔数拒收 | ✅ |
+| C-ZIP-DEGRADE | 坏 docx 成员 + 好成员 | 失败成员降级占位说明，其余不受牵连 | ✅ |
+| C-ZIP-NOISE | __MACOSX/.DS_Store/隐藏文件 | 不入成员流 | ✅ |
+| C-ZIP-NESTED | zip 套 zip | 深度上限内递归展开 | ✅ |
+| C-ZIP-MEMBER-LIMIT | 成员数超限 | 拒收整包不静默截断 | ✅ |
+| C-EML-ATTACH | eml 带 txt 附件 | 正文+附件内容都进产物 | ✅ |
+| C-EML-LIMIT | 附件数超限 | 同一限额拒收 | ✅ |
+
+配套（同批 69db9f53 断点修复）：`test_container_parsing_config.py` 锁定容器族策略
+恒为 deepdoc（不被用户 PDF 配置污染）；`test_file_validator_signatures.py` 容器段
+锁定四格式上传放行与 .zip 伪装拒收。

@@ -14,12 +14,14 @@ tests/
 ├── engines/           # 被测对象在 src/engines/，子目录镜像其结构
 │   ├── agent/
 │   ├── deep_research/
-│   ├── document/      # pipeline / splitters 层测试
+│   ├── document/      # pipeline / splitters / compat 守卫 / 容器递归解析 / 金样回归
 │   │   ├── deepdoc/   # vendored DeepDoc（含 page_filter）
 │   │   └── media/     # audio / video / vlm
 │   ├── eval/
+│   ├── question_generation/  # 假设问题生成引擎（retry/batch_parse）
 │   ├── rag/
-│   └── resume/
+│   ├── resume/
+│   └── wiki/                 # Wiki 纯函数件（linkify/handles/dedup_taxonomy）
 ├── features/          # 被测对象在 src/features/<domain>/，子目录镜像其结构
 │   ├── agent/
 │   ├── knowledge_space/

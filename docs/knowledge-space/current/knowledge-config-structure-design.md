@@ -536,7 +536,7 @@ Minimum rules to enforce:
 - `pdf.strategy` must be one of `default | deepdoc`
 - `pdf.strategy=default` forbids `parser`
 - `pdf.strategy=deepdoc` allows `parser` (only `full` is currently valid)
-- `excel` / `ppt` / `epub` are pinned to `strategy=deepdoc`
+- `excel` / `ppt` / `epub` / `zip` / `eml` / `msg` / `ofd` are pinned to `strategy=deepdoc`（容器/邮件族只有 deepdoc 认识：容器递归与附件解析都在 deepdoc 路径，配置域不设独立策略项）
 - `image.strategy` must be one of `vlm | deepdoc_ocr`
 - `video.frame_interval` must remain in `1.0 ~ 60.0`
 - `video.max_frames` must remain in `1 ~ 200`
