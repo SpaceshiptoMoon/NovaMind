@@ -761,6 +761,7 @@ def _build_completion_result(
         "section_count": parse_summary["section_count"],
         "table_count": parse_summary["table_count"],
         "image_count": parse_summary["image_count"],
+        "quality": parse_summary["quality"],
         "char_count": char_count,
         "embedding_model": ctx.embedding_model_name,
         "embedding_dim": ctx.embedding_dim,
@@ -1346,6 +1347,44 @@ async def _process_image_ocr_external_static(
     return text
 
 
+def _guard_pdf_payload(content: bytes, *, document: Document, strategy: str) -> None:
+    """外部 PDF 解析分支的前置载荷快检（魔数 + 打开密码），失败即终态。
+
+    external_ocr/mineru 把原始字节直交外部服务/子进程，坏文档会白耗外部
+    算力后才失败；deepdoc 分支的同款防线在 pdf.py 入口，此处对齐。只做
+    零成本快检，不替代外部引擎自身的文件校验。
+
+    Raises:
+        PermanentProcessingError: 非 PDF 魔数（伪格式/损坏包，重试无益）
+            或 needs_pass 加密（打开密码，页数据不可访问）。权限密码
+            （owner password）不拦，与 pdf.py 判据一致。
+    """
+    import fitz
+
+    if not content.lstrip().startswith(b"%PDF-"):
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"解析策略 {strategy} 仅支持 PDF，但文件内容不是 PDF"
+                "（魔数缺失，可能是其它格式改名或文件损坏）"
+            ),
+        )
+    try:
+        doc = fitz.open(stream=content, filetype="pdf")
+    except Exception:
+        # 打开类失败不在此定性——加密检测是前置快检，损坏细节交外部引擎
+        # 报出，避免双重报错口径
+        return
+    try:
+        if doc.needs_pass:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message="PDF 文档已加密（打开密码），请解密后上传",
+            )
+    finally:
+        doc.close()
+
+
 async def _parse_pdf_with_external_ocr_static(
     document: Document,
     file_content: bytes | None,
@@ -1384,6 +1423,7 @@ async def _parse_pdf_with_external_ocr_static(
         content = await asyncio.to_thread(Path(file_path).read_bytes)
     else:
         content = file_content or b""
+    _guard_pdf_payload(content, document=document, strategy="external_ocr")
 
     connector = OcrConnector(build_engine_ocr_config())
     try:
@@ -1470,6 +1510,7 @@ async def _parse_pdf_with_mineru_static(
         content = await asyncio.to_thread(Path(file_path).read_bytes)
     else:
         content = file_content or b""
+    _guard_pdf_payload(content, document=document, strategy="mineru")
 
     try:
         result = await parse_pdf(

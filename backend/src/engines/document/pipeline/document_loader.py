@@ -1,4 +1,5 @@
 """文档解析管道：DocumentLoader（按扩展名路由解析器） + DocumentProcessor（编排解析 / 切分 / 元数据） + DocumentRegistry（解析器注册表）。"""
+import time
 from pathlib import Path
 
 from novamind.engines.document.integrations.deepdoc import (
@@ -6,6 +7,10 @@ from novamind.engines.document.integrations.deepdoc import (
     DeepDocParser,
     DeepDocParseResult,
     strip_position_tags,
+)
+from novamind.engines.document.integrations.deepdoc.core.quality import (
+    build_quality_metadata,
+    collect_warnings,
 )
 from novamind.engines.document.pipeline.splitter_factory import (
     SplitterDeps,
@@ -583,14 +588,20 @@ class DocumentProcessor:
             splitting_chunk_size=splitting_config.get("chunk_size", 1000),
             splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
         )
-        full_text = await self.read_full_text(
-            file_path,
-        )
-        split_items = await self.split_text_items(
-            full_text,
-            strategy=str(splitting_config.get("strategy", "recursive")),
-            **extract_splitting_params(splitting_config),
-        )
+        # 质量报告收集窗口：default 路径与 deepdoc 的 metadata["quality"] 同构
+        # 出账。收集范围受限：reader 实际解析在共享线程池工作线程执行，线程限
+        # 定 filter 收不到其内部告警；本 async 体（事件循环线程）的告警——
+        # 如扫描件「文字层为空」提示——可收集。
+        default_started = time.perf_counter()
+        with collect_warnings() as default_warnings:
+            full_text = await self.read_full_text(
+                file_path,
+            )
+            split_items = await self.split_text_items(
+                full_text,
+                strategy=str(splitting_config.get("strategy", "recursive")),
+                **extract_splitting_params(splitting_config),
+            )
         chunks = [t for t, _meta in split_items]
         # 关系元数据（sentence_window/parent_child 的窗口参数/父子槽位）按位对齐
         # 透传；仅当存在非空 meta 时才写键——存量策略保持 metadata 形状不变。
@@ -600,6 +611,7 @@ class DocumentProcessor:
             "parser": "default",
             "file_type": file_type,
             "split_strategy": str(splitting_config.get("strategy", "recursive")),
+            "quality": build_quality_metadata("default", default_warnings, default_started),
         }
         if any(chunk_structure_meta):
             result_metadata["chunk_structure_meta"] = chunk_structure_meta

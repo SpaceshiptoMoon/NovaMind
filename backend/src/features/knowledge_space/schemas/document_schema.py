@@ -213,6 +213,13 @@ class DocumentResponse(BaseModel):
 
     @computed_field
     @property
+    def quality(self) -> dict[str, Any] | None:
+        """解析质量报告（parser/warnings/duration_ms）；未挂报告的路径或旧快照为 None"""
+        value = self._result_value("quality")
+        return value if isinstance(value, dict) else None
+
+    @computed_field
+    @property
     def has_active_task(self) -> bool:
         """是否存在活跃处理任务（PENDING/PROCESSING），与取消接口的活跃判定同源。
 

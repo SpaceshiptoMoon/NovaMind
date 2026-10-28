@@ -99,6 +99,17 @@
           <span class="meta-label">解析耗时</span>
           <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
         </div>
+        <div v-if="parseQualityWarnings.length > 0" class="meta-item">
+          <span class="meta-label">解析质量</span>
+          <span
+            class="meta-value quality-warnings"
+            :title="parseQualityWarnings.join('\n')"
+          >⚠ {{ parseQualityWarnings.length }} 条降级警告</span>
+        </div>
+        <div v-else-if="document.quality" class="meta-item">
+          <span class="meta-label">解析质量</span>
+          <span class="meta-value">无警告</span>
+        </div>
       </div>
 
       <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
@@ -326,6 +337,9 @@ const errorDisplayText = computed(() => {
   return msg.slice(0, 60) + '...'
 })
 
+/** 解析质量警告明细（engine 层 quality 元数据，截断 50 条由后端保证） */
+const parseQualityWarnings = computed(() => document.value?.quality?.warnings ?? [])
+
 // 状态辅助
 const docStatus = computed(() => document.value?.status ?? 0)
 const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
@@ -529,6 +543,12 @@ function maybeAutoExpandTimeline() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 解析质量警告：琥珀色警示，title 悬停展开明细 */
+.quality-warnings {
+  color: var(--color-warning, #b45309);
+  cursor: help;
 }
 
 /* ===== Pipeline Timeline Section ===== */

@@ -606,6 +606,13 @@ export interface Document {
   embedding_model?: string | null
   embedding_dim?: number | null
   parse_duration_ms?: number | null
+  // 解析质量报告（engine 层 quality 元数据透出：parser/warnings/duration_ms），旧任务为 null
+  quality?: {
+    parser?: string
+    warnings?: string[]
+    duration_ms?: number
+    [key: string]: unknown
+  } | null
   created_at: string
   updated_at: string | null
   // 以下字段由后端从 DocumentTask 派生（computed_field），可能为默认值
