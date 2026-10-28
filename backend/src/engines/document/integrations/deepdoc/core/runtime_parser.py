@@ -37,6 +37,43 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
+# figure region 契约的必需键与缺省值：不管什么文件格式，region 形状统一，
+# 下游消费方（上传链/呈现/前端）写一种逻辑即可，无需逐格式探测。
+# 可变缺省（list/dict）存构造器——模块级共享可变对象会被多个 region 引用
+_REGION_FIELD_DEFAULTS: dict[str, Any] = {
+    "artifact_id": "",
+    "placeholder": "",
+    "pages": list,
+    "page_start": 0,
+    "bbox": dict,
+    "caption": "",
+    "text": "",
+    "member_texts": list,
+    "member_bboxes": list,
+    "image_blobs": list,
+}
+
+
+def _normalize_parse_result(result: DeepDocParseResult) -> DeepDocParseResult:
+    """产物契约规范化：metadata 形状跨格式一致（就地修改并返回）。
+
+    - figure_regions / document_blocks 键恒存在（无图为空数组）——下游不用
+      探测「该格式的 metadata 里有没有这个键」；
+    - figure region 逐键补齐必需字段（缺失按缺省兜底；placeholder 缺失按
+      旧契约无盐形态兜底，与业务层上传 map 的兜底同构）。
+    """
+    metadata = result.metadata
+    regions = metadata.setdefault("figure_regions", [])
+    metadata.setdefault("document_blocks", [])
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        for key, default in _REGION_FIELD_DEFAULTS.items():
+            region.setdefault(key, default() if callable(default) else default)
+        if not region.get("placeholder"):
+            region["placeholder"] = f"__FIGURE_URL__{region.get('artifact_id', '')}__"
+    return result
+
 
 class DeepDocParser:
     """DeepDoc adapter using vendored RAGFlow pieces plus local compatibility shims."""
@@ -168,20 +205,24 @@ class DeepDocParser:
             source_type="file" if isinstance(source, Path) else "bytes",
         )
         if extension == "pdf":
-            return await asyncio.to_thread(self._parse_pdf_sync, source, parsing_config, splitting_config)
-        if extension == "docx":
-            return await asyncio.to_thread(self._parse_docx_sync, source, splitting_config)
-        if extension == "epub":
-            return await asyncio.to_thread(self._parse_epub_sync, source, splitting_config)
-        if extension in {"xls", "xlsx"}:
-            return await asyncio.to_thread(self._parse_excel_sync, source, extension, parsing_config, splitting_config)
-        if extension in {"ppt", "pptx"}:
-            return await asyncio.to_thread(self._parse_ppt_sync, source, extension, splitting_config)
-        if extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
-            return await asyncio.to_thread(self._parse_figure_sync, source, extension, splitting_config)
-        if extension in {"txt", "md", "markdown", "csv", "json", "html", "eml", "msg", "ofd"}:
-            return await asyncio.to_thread(self._parse_text_sync, source, extension, parsing_config, splitting_config)
-        raise ValueError(f"DeepDoc does not support file type: {extension}")
+            result = await asyncio.to_thread(self._parse_pdf_sync, source, parsing_config, splitting_config)
+        elif extension == "docx":
+            result = await asyncio.to_thread(self._parse_docx_sync, source, splitting_config)
+        elif extension == "epub":
+            result = await asyncio.to_thread(self._parse_epub_sync, source, splitting_config)
+        elif extension in {"xls", "xlsx"}:
+            result = await asyncio.to_thread(self._parse_excel_sync, source, extension, parsing_config, splitting_config)
+        elif extension in {"ppt", "pptx"}:
+            result = await asyncio.to_thread(self._parse_ppt_sync, source, extension, splitting_config)
+        elif extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
+            result = await asyncio.to_thread(self._parse_figure_sync, source, extension, splitting_config)
+        elif extension in {"txt", "md", "markdown", "csv", "json", "html", "eml", "msg", "ofd"}:
+            result = await asyncio.to_thread(self._parse_text_sync, source, extension, parsing_config, splitting_config)
+        else:
+            raise ValueError(f"DeepDoc does not support file type: {extension}")
+        # 公共出口：不管什么文件，产物契约形状一致（figure_regions/
+        # document_blocks 恒存在、region 字段统一）
+        return _normalize_parse_result(result)
 
     def _parse_pdf_sync(
         self,

@@ -290,6 +290,19 @@ class RAGFlowDocxParser:
                 text = (paragraph.text or "").strip()
             breaks = paragraph._element.xpath(".//w:lastRenderedPageBreak")
             parsed_page += len(breaks)
+            # 图片先于 text 判定提取：纯图片段（图片独占一段，Word 常见形态）
+            # text 为空，占位符会兜底非空——放在 text 判定之后整段就消失了
+            image = self.get_picture(self.doc, paragraph)
+            figure_id = ""
+            if image:
+                # 图片进 figure 契约：artifact_id 定版于此（与 pdf/xlsx 同
+                # 协议），markdown 图片链接占位符随段落文本入正文流——业务
+                # 层替换后恰为 ](figure_xxx.png)，读取端点 presign 正则按此
+                # 识别换签名。纯图片段也产出占位符（text 保证非空入 section）
+                figure_id = f"docx_fig_{self._figure_counter}"
+                self._figure_counter += 1
+                link = f"![图片]({figure_placeholder(self._figure_salt, figure_id)})"
+                text = f"{text}\n{link}" if text else link
             if from_page <= parsed_page < to_page and text:
                 # 脚注引用内联：正文词句与注释同 context 进 chunk
                 ref_ids = paragraph._element.xpath(".//w:footnoteReference/@w:id")
@@ -306,17 +319,6 @@ class RAGFlowDocxParser:
                 is_list_item = p_pr is not None and p_pr.numPr is not None
                 if is_list_item and not text.startswith("•"):
                     text = f"• {text}"
-                image = self.get_picture(self.doc, paragraph)
-                figure_id = ""
-                if image:
-                    # 图片进 figure 契约：artifact_id 定版于此（与 pdf/xlsx 同
-                    # 协议），markdown 图片链接占位符随段落文本入正文流——业务
-                    # 层替换后恰为 ](figure_xxx.png)，读取端点 presign 正则按此
-                    # 识别换签名。纯图片段也产出占位符（text 保证非空入 section）
-                    figure_id = f"docx_fig_{self._figure_counter}"
-                    self._figure_counter += 1
-                    link = f"![图片]({figure_placeholder(self._figure_salt, figure_id)})"
-                    text = f"{text}\n{link}" if text else link
                 sections.append(
                     {"text": text, "style": style_name, "image": image,
                      "figure_id": figure_id}

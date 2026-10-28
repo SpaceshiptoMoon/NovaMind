@@ -229,3 +229,73 @@ def test_xlsx_figure_region_carries_placeholder_and_e2e_replacement():
     assert re.findall(r"\]\((figure_[A-Za-z0-9_.-]+\.png)\)", replaced) == [
         "figure_x_0.png"
     ], "替换后应匹配读取端点 presign 正则"
+
+
+# ---------- docx 纯图片段 + 契约形状统一 ----------
+
+
+def test_docx_standalone_image_paragraph_extracted():
+    """纯图片段（图片独占一段，Word 常见形态）：此前 text 判定先行整段消失。"""
+    import asyncio
+    from docx import Document as DocxDocument
+
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    doc = DocxDocument()
+    doc.add_paragraph("带图文档")
+    doc.add_paragraph().add_run().add_picture(BytesIO(_PNG_1PX))
+    path = Path(tempfile.mkdtemp()) / "solo.docx"
+    doc.save(path)
+
+    result = asyncio.run(
+        DeepDocParser().parse(path, parsing_config={}, splitting_config={"chunk_size": 500})
+    )
+    regions = result.metadata.get("figure_regions") or []
+    assert len(regions) == 1, "纯图片段应产出 figure region"
+    assert result.metadata["images"] == 1
+    assert _salt_re().search(result.full_text)
+
+
+def test_contract_shape_uniform_across_formats(tmp_path):
+    """不管什么文件，metadata 形状一致：figure_regions/document_blocks 恒存在，
+    region 必需键齐全（下游写一种逻辑，无需逐格式探测）。"""
+    import asyncio
+    from docx import Document as DocxDocument
+
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+
+    (tmp_path / "a.txt").write_text("纯文本内容，无图。", encoding="utf-8")
+    doc = DocxDocument()
+    doc.add_paragraph("带图文档")
+    doc.add_paragraph().add_run().add_picture(BytesIO(_PNG_1PX))
+    doc.save(tmp_path / "b.docx")
+
+    parser = DeepDocParser()
+    results = {
+        "txt": asyncio.run(
+            parser.parse(tmp_path / "a.txt", parsing_config={}, splitting_config={"chunk_size": 500})
+        ),
+        "docx": asyncio.run(
+            parser.parse(tmp_path / "b.docx", parsing_config={}, splitting_config={"chunk_size": 500})
+        ),
+    }
+    required = (
+        "artifact_id", "placeholder", "pages", "page_start", "bbox",
+        "caption", "text", "member_texts", "member_bboxes", "image_blobs",
+    )
+    for fmt, result in results.items():
+        metadata = result.metadata
+        assert "figure_regions" in metadata and "document_blocks" in metadata, (
+            f"{fmt} 缺契约键"
+        )
+        for region in metadata["figure_regions"]:
+            missing = [key for key in required if key not in region]
+            assert not missing, f"{fmt} region 缺键: {missing}"
+            assert region["placeholder"], f"{fmt} placeholder 为空"
+    # docx 有图、txt 无图（空数组兜底）
+    assert len(results["docx"].metadata["figure_regions"]) == 1
+    assert results["txt"].metadata["figure_regions"] == []
