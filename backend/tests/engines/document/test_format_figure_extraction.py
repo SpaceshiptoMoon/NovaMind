@@ -176,3 +176,56 @@ def test_mineru_markdown_image_link_rebound_to_placeholder():
     replaced = full_text.replace("](images/a.jpg)", f"]({placeholder})")
     assert placeholder in replaced
     assert "images/a.jpg" not in replaced
+
+
+# ---------- xlsx（端到端：此前 placeholder 未透传导致替换永不命中） ----------
+
+
+def test_xlsx_figure_region_carries_placeholder_and_e2e_replacement():
+    """xlsx region 必须携带带盐 placeholder，业务替换/presign 正则全链命中。
+
+    回归：盐化批次只改了解析器侧（正文占位符带盐、image_info.placeholder），
+    runtime 组装 region 时未透传 placeholder——业务 map key 兜底无盐形态与
+    正文带盐占位符永不命中，图片上传成功却进不了 MD/chunk（用户实测发现）。
+    """
+    import asyncio
+    import re
+
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XImage
+
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        _restore_figure_links,
+    )
+
+    png_path = Path(tempfile.mkdtemp()) / "a.png"
+    png_path.write_bytes(_PNG_1PX)
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "数据表"
+    img = XImage(png_path)
+    img.anchor = "B5"
+    ws.add_image(img)
+    xlsx = Path(tempfile.mkdtemp()) / "e.xlsx"
+    wb.save(xlsx)
+
+    result = asyncio.run(
+        DeepDocParser().parse(xlsx, parsing_config={}, splitting_config={"chunk_size": 1000})
+    )
+    regions = result.metadata.get("figure_regions") or []
+    assert regions and regions[0].get("placeholder"), "region 必须带 placeholder"
+    assert regions[0]["placeholder"] in result.full_text, "正文应含带盐占位符"
+
+    url_map = {regions[0]["placeholder"]: "figure_x_0.png"}
+    valid = {r["placeholder"] for r in regions}
+    replaced, _ = _restore_figure_links(
+        result.full_text, list(result.chunks), url_map, valid
+    )
+    assert "figure_x_0.png" in replaced, "业务替换应命中带盐占位符"
+    assert not re.search(r"__FIGURE_URL__[0-9a-f]{12}_", replaced), "占位符应剥净"
+    assert re.findall(r"\]\((figure_[A-Za-z0-9_.-]+\.png)\)", replaced) == [
+        "figure_x_0.png"
+    ], "替换后应匹配读取端点 presign 正则"

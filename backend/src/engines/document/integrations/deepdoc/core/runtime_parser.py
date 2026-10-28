@@ -474,8 +474,8 @@ class DeepDocParser:
     def _build_excel_figure_regions(embedded_images: list[dict]) -> list[dict[str, Any]]:
         """把 Excel 嵌入图片组装为 figure_regions 契约（复用 PDF figure 管线）。
 
-        artifact_id 由解析器（parse_blocks）定版——正文占位符与 region 必须
-        同一 id，此处复用不重生成。
+        artifact_id 与 placeholder 由解析器（parse_blocks）定版——正文占位符
+        与 region 必须同串，此处透传不重生成。
         """
         figure_regions: list[dict[str, Any]] = []
         for image in embedded_images:
@@ -492,6 +492,12 @@ class DeepDocParser:
             )
             figure_regions.append({
                 "artifact_id": artifact_id,
+                # placeholder 完整串（含内容绑定盐）必须透传——业务层替换 map
+                # 的 key 就是它；缺失会兜底成无盐形态，与正文里的带盐占位符
+                # 永远不命中（图片白传，链接进不了 MD/chunk）
+                "placeholder": str(
+                    image.get("placeholder") or f"__FIGURE_URL__{artifact_id}__"
+                ),
                 "pages": [],
                 "page_start": 0,
                 "bbox": {},
