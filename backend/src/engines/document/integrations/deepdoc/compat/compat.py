@@ -222,7 +222,9 @@ _ZIP_BOMB_MIN_UNCOMPRESSED = 1024 * 1024
 
 
 def guard_office_zip(binary: bytes, format_name: str) -> None:
-    """OOXML zip 包结构守卫：拒收损坏包/重复条目/解压炸弹。
+    """zip 容器格式守卫：拒收损坏包/重复条目/解压炸弹。
+
+    OOXML（docx/xlsx/pptx）与 OCF（epub）共用；调用方自行做魔数前置检查。
 
     Args:
         binary: 文件字节流（调用方已确认以 PK 魔数开头）。
@@ -243,7 +245,7 @@ def guard_office_zip(binary: bytes, format_name: str) -> None:
         zf = zipfile.ZipFile(BytesIO(binary))
     except zipfile.BadZipFile as exc:
         raise MismatchedPayloadError(
-            f"{format_name} 内容不是有效的 OOXML zip 包（文件损坏或扩展名与实际格式不符）",
+            f"{format_name} 内容不是有效的 zip 包（文件损坏或扩展名与实际格式不符）",
             format_name=format_name,
         ) from exc
     with zf:

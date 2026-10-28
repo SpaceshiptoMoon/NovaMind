@@ -9,8 +9,15 @@ import warnings
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from xml.etree import ElementTree
 
+from novamind.engines.document.exceptions import (
+    EncryptedDocumentError,
+    MismatchedPayloadError,
+)
+from novamind.engines.document.integrations.deepdoc.compat import (
+    guard_office_zip,
+    safe_fromstring,
+)
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     document_salt,
     figure_placeholder,
@@ -47,13 +54,22 @@ class RAGFlowEpubParser:
             if not binary:
                 logger.warning("RAGFlowEpubParser received an empty EPUB binary payload for %r", fnm)
                 raise ValueError("Empty EPUB binary payload")
-            zf = zipfile.ZipFile(BytesIO(binary))
-            figure_salt = document_salt(binary)
+            payload = binary
         else:
-            zf = zipfile.ZipFile(fnm)
-            figure_salt = document_salt(Path(fnm).read_bytes())
-
+            payload = Path(fnm).read_bytes()
+        figure_salt = document_salt(payload)
+        # 载荷守卫：epub 是 zip 容器，非 PK 头只有伪格式/损坏包两种来源；
+        # 包结构（重复条目/解压炸弹）与 DRM 加密在进解析前拒收，与
+        # docx/xlsx/pptx 入口守卫同构
+        if not payload.startswith(b"PK\x03\x04"):
+            raise MismatchedPayloadError(
+                "epub 内容不是 zip 包（可能是其它格式改名或文件损坏）",
+                format_name="epub",
+            )
+        guard_office_zip(payload, "epub")
+        zf = zipfile.ZipFile(BytesIO(payload))
         try:
+            self._raise_if_drm_encrypted(zf)
             content_items, image_hrefs, manifest = self._get_spine_items(zf)
             all_sections = []
             figures = []
@@ -109,6 +125,50 @@ class RAGFlowEpubParser:
         finally:
             zf.close()
 
+    # 加密声明条目与 xmlenc 命名空间（EPUB OCF 规范：加密/混淆统一在
+    # META-INF/encryption.xml 声明）
+    _ENCRYPTION_ENTRY = "META-INF/encryption.xml"
+    _XMLENC_NS = "http://www.w3.org/2001/04/xmlenc#"
+    _FONT_SUFFIXES = (".otf", ".ttf", ".ttc", ".woff", ".woff2")
+
+    @classmethod
+    def _raise_if_drm_encrypted(cls, zf) -> None:
+        """DRM/内容加密守卫：encryption.xml 声明加密非字体资源时拒收。
+
+        判据从加密对象范围出发：EPUB 的字体混淆（IDPF/Adobe font
+        obfuscation）与真 DRM 同用 ``<enc:encryptedData>`` 声明，区别仅在
+        加密对象——混淆只指向字体文件（文本层完好，不阻碍解析），DRM 加密
+        正文/图片资源。加密对象全为字体时放行；混入任何非字体资源即拒。
+        声明文件损坏/无法判定加密范围时按「可能加密正文」拒收——失败方向
+        安全：能力缺失优于错误结果。
+
+        Raises:
+            EncryptedDocumentError: 检出 DRM 加密的非字体资源。
+        """
+        try:
+            blob = zf.read(cls._ENCRYPTION_ENTRY)
+        except KeyError:
+            return
+        try:
+            root = safe_fromstring(blob)
+        except Exception:
+            logger.warning("EPUB %s 解析失败，按加密文档拒收", cls._ENCRYPTION_ENTRY)
+            raise EncryptedDocumentError(
+                "epub 加密声明文件无法解析（疑似 DRM 文档），请去除 DRM 后上传",
+                format_name="epub",
+            )
+        for data_el in root.findall(f".//{{{cls._XMLENC_NS}}}EncryptedData"):
+            uris = [
+                (ref.get("URI") or "")
+                for ref in data_el.findall(f".//{{{cls._XMLENC_NS}}}CipherReference")
+            ]
+            if not uris or any(not uri.lower().endswith(cls._FONT_SUFFIXES) for uri in uris):
+                raise EncryptedDocumentError(
+                    "epub 文档含 DRM/内容加密（META-INF/encryption.xml 声明加密正文资源），"
+                    "请去除 DRM 后上传",
+                    format_name="epub",
+                )
+
     @staticmethod
     def _get_spine_items(zf):
         """按 spine 阅读顺序取（章节条目, image href 集合, manifest）三元组。
@@ -119,11 +179,11 @@ class RAGFlowEpubParser:
         try:
             container_xml = zf.read("META-INF/container.xml")
         except KeyError:
-            return RAGFlowEpubParser._fallback_xhtml_order(zf), set(), {}, set(), {}
+            return RAGFlowEpubParser._fallback_xhtml_order(zf), set(), {}
 
         try:
-            container_root = ElementTree.fromstring(container_xml)
-        except ElementTree.ParseError:
+            container_root = safe_fromstring(container_xml)
+        except Exception:
             logger.warning("Failed to parse META-INF/container.xml; falling back to XHTML order.")
             return RAGFlowEpubParser._fallback_xhtml_order(zf), set(), {}
 
@@ -142,8 +202,8 @@ class RAGFlowEpubParser:
             return RAGFlowEpubParser._fallback_xhtml_order(zf), set(), {}
 
         try:
-            opf_root = ElementTree.fromstring(opf_xml)
-        except ElementTree.ParseError:
+            opf_root = safe_fromstring(opf_xml)
+        except Exception:
             logger.warning("Failed to parse OPF file '%s'; falling back to XHTML order.", opf_path)
             return RAGFlowEpubParser._fallback_xhtml_order(zf), set(), {}
 

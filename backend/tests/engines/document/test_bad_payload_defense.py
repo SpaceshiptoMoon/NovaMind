@@ -35,6 +35,9 @@ from novamind.engines.document.integrations.deepdoc.compat import (
 from novamind.engines.document.integrations.deepdoc.parsers.docx import (
     RAGFlowDocxParser,
 )
+from novamind.engines.document.integrations.deepdoc.parsers.epub import (
+    RAGFlowEpubParser,
+)
 from novamind.engines.document.integrations.deepdoc.parsers.excel import (
     RAGFlowExcelParser,
 )
@@ -119,6 +122,96 @@ def test_legitimate_xlsx_passes_guard():
     path = Path(tempfile.mkdtemp()) / "ok.xlsx"
     wb.save(path)
     guard_office_zip(path.read_bytes(), "xlsx")  # 不抛即通过
+
+
+# ---------- epub 容器守卫（上传门禁放开 epub 后补齐的最后一块防御） ----------
+
+def _build_min_epub(extra_entries: dict[str, str] | None = None, *, with_container: bool = True) -> bytes:
+    """构造最小合法 epub 字节流（正文/OPF 恒在，container/加密声明可变形）。"""
+    buf = BytesIO()
+    # DEFLATED：zip 炸弹判据依赖压缩比，STORED（默认）恒为 1 不触发
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("mimetype", "application/epub+zip")
+        if with_container:
+            zf.writestr(
+                "META-INF/container.xml",
+                '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+                '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+                "</rootfiles></container>",
+            )
+        zf.writestr(
+            "OEBPS/content.opf",
+            '''<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+<manifest><item id="c1" href="ch1.xhtml" media-type="application/xhtml+xml"/></manifest>
+<spine><itemref idref="c1"/></spine></package>''',
+        )
+        zf.writestr("OEBPS/ch1.xhtml", "<html><body><p>章节正文段落。</p></body></html>")
+        for name, content in (extra_entries or {}).items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+def test_epub_not_zip_rejected():
+    """HTML 伪 epub → MismatchedPayloadError（PK 魔数守卫）。"""
+    with pytest.raises(MismatchedPayloadError):
+        RAGFlowEpubParser()("memory.epub", binary=b"<html>fake epub</html>")
+
+
+def test_epub_zip_bomb_rejected():
+    """解压炸弹 epub → MismatchedPayloadError（guard_office_zip 对 OCF 容器同样生效）。"""
+    payload = _build_min_epub({"OEBPS/bomb.bin": "\x00" * (8 * 1024 * 1024)})
+    with pytest.raises(MismatchedPayloadError, match="解压炸弹"):
+        RAGFlowEpubParser()("memory.epub", binary=payload)
+
+
+def test_epub_duplicate_entries_rejected():
+    """同名条目重复 epub → MismatchedPayloadError。"""
+    payload = _build_min_epub({"OEBPS/ch1.xhtml": "duplicated-content"})
+    with pytest.raises(MismatchedPayloadError, match="重复条目"):
+        RAGFlowEpubParser()("memory.epub", binary=payload)
+
+
+def test_epub_drm_encrypted_rejected():
+    """encryption.xml 声明加密正文资源 → EncryptedDocumentError。"""
+    drm_xml = (
+        '<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#">'
+        '<enc:EncryptedData><enc:CipherReference URI="OEBPS/ch1.xhtml"/></enc:EncryptedData>'
+        "</encryption>"
+    )
+    payload = _build_min_epub({"META-INF/encryption.xml": drm_xml})
+    with pytest.raises(EncryptedDocumentError):
+        RAGFlowEpubParser()("memory.epub", binary=payload)
+
+
+def test_epub_font_obfuscation_allowed():
+    """仅字体混淆（加密对象全为字体文件）不误伤——文本层完好可解析。"""
+    obf_xml = (
+        '<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#">'
+        '<enc:EncryptedData><enc:CipherReference URI="OEBPS/fonts/main.ttf"/></enc:EncryptedData>'
+        "</encryption>"
+    )
+    payload = _build_min_epub({
+        "META-INF/encryption.xml": obf_xml,
+        "OEBPS/fonts/main.ttf": b"\x00\x01truetype-ish-bytes",
+    })
+    sections, figures = RAGFlowEpubParser()("memory.epub", binary=payload)
+    assert any("章节正文段落" in s for s in sections)
+
+
+def test_epub_corrupt_encryption_xml_rejected():
+    """encryption.xml 存在但无法解析 → 按加密文档拒收（失败方向安全）。"""
+    payload = _build_min_epub({"META-INF/encryption.xml": "not-xml-at-all"})
+    with pytest.raises(EncryptedDocumentError):
+        RAGFlowEpubParser()("memory.epub", binary=payload)
+
+
+def test_epub_missing_container_xml_falls_back():
+    """缺 container.xml：兜底文件名排序继续解析，不再解包崩溃（三元组回归）。"""
+    payload = _build_min_epub(with_container=False)
+    sections, figures = RAGFlowEpubParser()("memory.epub", binary=payload)
+    assert any("章节正文段落" in s for s in sections)
 
 
 # ---------- XML 实体炸弹 ----------
