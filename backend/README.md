@@ -37,7 +37,7 @@ backend/
 |- pyproject.toml
 |- src/
 |  |- core/                      # 应用工厂、中间件、数据库、安全
-|  |- engines/                   # 引擎层：纯逻辑组件，零 feature/setting/core 依赖
+|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/agent/question_generation/wiki/eval/…），零 feature/setting/core 依赖
 |  |  |- agent/                  # Agent 引擎（ReAct 循环、工具、记忆、MCP）
 |  |  |- deep_research/          # 深度研究引擎
 |  |  |- document/               # 文档处理引擎（pipeline/splitters/converters/media/deepdoc）

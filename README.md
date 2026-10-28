@@ -415,7 +415,7 @@ src/features/{module}/           业务模块（领域层）
 |- models/                       ORM 模型
 `- schemas/                      Pydantic 请求/响应模型
 
-src/engines/{engine}/            可复用引擎（document/rag/agent/eval/search/…）
+src/engines/{engine}/            可复用引擎（document/rag/agent/question_generation/wiki/…）——零 features/setting 依赖，客户端与存储由业务层注入
 src/shared/                      模型客户端工厂 / 存储 / MQ / Prompt 注册表
 src/core/                        应用工厂 / 中间件 / 认证 / 生命周期
 ```
@@ -430,7 +430,7 @@ NovaMind/
 |  |- scripts/                      # 模型下载脚本（DeepDoc / faster-whisper）
 |  |- src/
 |  |  |- core/                     # 应用工厂、中间件、生命周期、安全
-|  |  |- engines/                  # 引擎层：document / rag / agent / eval / search / deep_research / resume
+|  |  |- engines/                  # 引擎层：document / rag / agent / question_generation / wiki / eval / search / deep_research / resume
 |  |  |- features/                 # 领域模块（user / knowledge_space / qa / agent / …）
 |  |  |- setting/                  # YAML 配置加载
 |  |  `- shared/                   # 共享基础设施（storage/ai_models/mq/document/…）

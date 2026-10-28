@@ -415,7 +415,7 @@ src/features/{module}/           business modules (domain layer)
 |- models/                       ORM models
 `- schemas/                      Pydantic request/response models
 
-src/engines/{engine}/            reusable engines (document/rag/agent/eval/search/…)
+src/engines/{engine}/            reusable engines (document/rag/agent/question_generation/wiki/…) — zero features/setting imports, clients & storage injected by the business layer
 src/shared/                      model client factories / storage / MQ / prompt registry
 src/core/                        app factory / middleware / auth / lifecycle
 ```
@@ -430,7 +430,7 @@ NovaMind/
 |  |- scripts/                      # model download scripts (DeepDoc / faster-whisper)
 |  |- src/
 |  |  |- core/                     # app factory, middleware, lifecycle, security
-|  |  |- engines/                  # engine layer: document / rag / agent / eval / search / deep_research / resume
+|  |  |- engines/                  # engine layer: document / rag / agent / question_generation / wiki / eval / search / deep_research / resume
 |  |  |- features/                 # domain modules (user / knowledge_space / qa / agent / …)
 |  |  |- setting/                  # YAML config loading
 |  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/document/…)
