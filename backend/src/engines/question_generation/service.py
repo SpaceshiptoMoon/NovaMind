@@ -112,72 +112,25 @@ class QuestionGenerationService:
 
     def __init__(
         self,
-        model_config_service: Any | None = None,
+        llm_client: BaseLLM,
         config: QuestionGenConfig | None = None,
     ):
         """
         初始化问题生成服务
 
         Args:
-            model_config_service: LLM 客户端解析器（duck 注入，引擎不 import
-                业务类型）：需提供 ``async get_user_default_model_name(
-                user_id, "llm")`` 与 ``async get_llm_client_by_model(
-                user_id, model)`` 两方法。
+            llm_client: LLM 客户端实例（业务层负责按用户/模型解析凭证并
+                构造——凭证解析属业务，引擎只消费客户端）。
             config: 引擎侧生成配置（可选，默认值见 QuestionGenConfig）。
         """
         self.config = config or QuestionGenConfig()
         self.logger = logger
-
-        self.model_config_service = model_config_service
-
-        # LLM 客户端缓存
-        self._llm_client: BaseLLM | None = None
-
-    async def _get_llm_client(self, user_id: int | None = None) -> BaseLLM:
-        """
-        获取 LLM 客户端
-
-        通过 ModelConfigService 从数据库解析凭证，无配置时抛异常
-
-        Args:
-            user_id: 用户 ID（可选，用于获取用户私有模型配置）
-
-        Returns:
-            LLM 客户端
-
-        Raises:
-            QuestionGenerationError: 未找到模型配置
-        """
-        if self._llm_client:
-            return self._llm_client
-
-        model_name = self.config.model
-
-        if self.model_config_service:
-            # 如果没有指定模型，获取用户默认
-            if not model_name:
-                model_name = await self.model_config_service.get_user_default_model_name(user_id or 0, "llm")
-
-            if model_name:
-                effective_user_id = user_id or 0
-                self._llm_client = await self.model_config_service.get_llm_client_by_model(
-                    user_id=effective_user_id,
-                    model=model_name,
-                )
-                self.logger.debug(
-                    "使用 ModelConfigService 获取的 LLM 客户端",
-                    model=model_name,
-                    user_id=effective_user_id,
-                )
-                return self._llm_client
-
-        raise QuestionGenerationError("未配置 LLM 模型，请在模型配置中添加")
+        self.llm_client = llm_client
 
     async def generate_questions(
         self,
         chunk_content: str,
         document_title: str | None = None,
-        user_id: int | None = None,
         raise_on_error: bool = False,
     ) -> list[GeneratedQuestion]:
         """
@@ -186,7 +139,6 @@ class QuestionGenerationService:
         Args:
             chunk_content: 分块内容
             document_title: 文档标题（可选，用于提供上下文）
-            user_id: 用户 ID（可选，用于获取用户模型配置）
             raise_on_error: 是否在错误时抛出异常
 
         Returns:
@@ -202,7 +154,7 @@ class QuestionGenerationService:
 
         try:
             # 获取 LLM 客户端
-            llm_client = await self._get_llm_client(user_id)
+            llm_client = self.llm_client
 
             # 构建提示词
             prompt = self._build_prompt(chunk_content, document_title)
@@ -266,7 +218,6 @@ class QuestionGenerationService:
     async def generate_questions_batch(
         self,
         chunks: list[tuple[str, str | None]],
-        user_id: int | None = None,
         raise_on_error: bool = False,
         batch_size: int = 3,
     ) -> tuple[list[list[GeneratedQuestion]], BatchGenerationStats]:
@@ -284,7 +235,6 @@ class QuestionGenerationService:
 
         Args:
             chunks: 分块列表，每个元素是 (content, title) 元组
-            user_id: 用户 ID（可选）
             raise_on_error: 是否在错误时抛出异常
             batch_size: 每次 LLM 调用包含的 chunk 数量
 
@@ -294,7 +244,7 @@ class QuestionGenerationService:
         if not chunks:
             return [], BatchGenerationStats()
 
-        llm_client = await self._get_llm_client(user_id)
+        llm_client = self.llm_client
         llm_config = self.config
         temperature = min(llm_config.temperature, 0.5)
         top_p = min(llm_config.top_p, 0.9)
@@ -746,7 +696,6 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
     async def generate_questions_simple(
         self,
         chunk_content: str,
-        user_id: int | None = None,
         raise_on_error: bool = False,
     ) -> list[str]:
         """
@@ -754,7 +703,6 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
 
         Args:
             chunk_content: 分块内容
-            user_id: 用户 ID（可选）
             raise_on_error: 是否在错误时抛出异常
 
         Returns:
@@ -762,7 +710,6 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
         """
         questions = await self.generate_questions(
             chunk_content,
-            user_id=user_id,
             raise_on_error=raise_on_error,
         )
         return [q.question for q in questions]
@@ -770,20 +717,20 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
 
 # 便捷函数
 async def generate_hypothetical_questions(
+    llm_client: BaseLLM,
     chunk_content: str,
     document_title: str | None = None,
     max_questions: int = 5,
-    user_id: int | None = None,
     config: QuestionGenConfig | None = None,
 ) -> list[str]:
     """
     为分块生成假设问题（便捷函数）
 
     Args:
+        llm_client: LLM 客户端实例（业务层解析凭证后传入）。
         chunk_content: 分块内容
         document_title: 文档标题
         max_questions: 最大问题数量
-        user_id: 用户 ID（可选）
         config: 问题生成配置（可选）
 
     Returns:
@@ -792,8 +739,5 @@ async def generate_hypothetical_questions(
     if config is None:
         config = QuestionGenConfig(max_questions_per_chunk=max_questions)
 
-    service = QuestionGenerationService(config=config)
-    return await service.generate_questions_simple(
-        chunk_content,
-        user_id=user_id,
-    )
+    service = QuestionGenerationService(llm_client=llm_client, config=config)
+    return await service.generate_questions_simple(chunk_content)

@@ -26,7 +26,10 @@ pytestmark = pytest.mark.unit
 
 def _make_service() -> QuestionGenerationService:
     """构造只测解析的服务实例（不触 LLM / DB）。"""
+    from unittest.mock import MagicMock
+
     return QuestionGenerationService(
+        llm_client=MagicMock(),
         config=QuestionGenConfig(),
     )
 

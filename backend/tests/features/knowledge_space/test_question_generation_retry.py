@@ -82,8 +82,12 @@ class FakeLLM:
 
 
 def _service() -> QuestionGenerationService:
+    from unittest.mock import AsyncMock
+
+    llm = SimpleNamespace(generate_text=AsyncMock(return_value='{"chunks": []}'))
     return QuestionGenerationService(
-        config=QuestionGenConfig(max_questions_per_chunk=5)
+        llm_client=llm,
+        config=QuestionGenConfig(max_questions_per_chunk=5),
     )
 
 
@@ -92,7 +96,7 @@ async def test_empty_response_retries_with_shrunk_max_tokens(monkeypatch):
     """空响应触发批内重试，且重试轮次携带缩短后的 max_tokens。"""
     svc = _service()
     llm = FakeLLM({"batch": ["", '{"chunks":[{"questions":[{"question":"q1"}]}]}']})
-    monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
+    monkeypatch.setattr(svc, "llm_client", llm)
 
     results, stats = await svc.generate_questions_batch(
         chunks=[("内容A", None), ("内容B", None), ("内容C", None)]
@@ -119,7 +123,7 @@ async def test_batch_timeout_does_not_abort_batch_triggers_degrade(monkeypatch):
         "块1": ['[{"question": "s2"}]'],
         "块2": ['[{"question": "s3"}]'],
     })
-    monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
+    monkeypatch.setattr(svc, "llm_client", llm)
     # 把单次调用超时调小，避免测试真的挂 90s
     monkeypatch.setattr(
         "novamind.engines.question_generation.service."
@@ -149,7 +153,7 @@ async def test_degrade_partial_recovery_leaves_failed_chunks_empty(monkeypatch):
         "块1": ["", "", ""],  # 单块 3 次尝试全空 → 留空
         "块2": [Exception("llm down"), "", ""],  # 异常后重试仍空
     })
-    monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
+    monkeypatch.setattr(svc, "llm_client", llm)
 
     results, stats = await svc.generate_questions_batch(
         chunks=[("块0", None), ("块1", None), ("块2", None)]
@@ -173,7 +177,7 @@ async def test_llm_client_exception_degrades_to_single_chunks(monkeypatch):
         "块1": ['[{"question": "recovered"}]'],
         "块2": ['[{"question": "recovered"}]'],
     })
-    monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
+    monkeypatch.setattr(svc, "llm_client", llm)
 
     results, stats = await svc.generate_questions_batch(
         chunks=[("块0", None), ("块1", None), ("块2", None)]
@@ -190,7 +194,7 @@ async def test_single_chunk_timeout_uses_per_call_budget(monkeypatch):
     svc = _service()
     # None 表示挂起超时；3 个元素覆盖单块路径 MAX_PARSE_RETRY+1 次尝试
     llm = FakeLLM({"块X": [None, None, None]})
-    monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
+    monkeypatch.setattr(svc, "llm_client", llm)
     monkeypatch.setattr(
         "novamind.engines.question_generation.service."
         "PER_CALL_TIMEOUT_SECONDS",
@@ -224,10 +228,10 @@ async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
     )
 
     class FakeQGService:
-        def __init__(self, session=None, config=None, model_config_service=None):
+        def __init__(self, llm_client=None, config=None):
             pass
 
-        async def generate_questions_batch(self, chunks, user_id=None):
+        async def generate_questions_batch(self, chunks):
             from novamind.engines.question_generation.service import (
                 GeneratedQuestion,
             )
@@ -239,6 +243,13 @@ async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
 
     async def fake_generate_embeddings(texts, embedding_config, session=None, user_id=None, model_config_port=None):
         return [[0.1] for _ in texts]
+
+    class FakeMCS:
+        async def get_user_default_model_name(self, user_id, model_type):
+            return "default-llm"
+
+        async def get_llm_client_by_model(self, user_id, model):
+            return SimpleNamespace(model=model)
 
     monkeypatch.setattr(
         "novamind.engines.question_generation.service."
@@ -256,6 +267,7 @@ async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
         embedding_config={"model": "emb"},
         user_id=7,
         session=SimpleNamespace(),
+        model_config_port=FakeMCS(),
     )
 
     assert questions_list == [["q1"], []]

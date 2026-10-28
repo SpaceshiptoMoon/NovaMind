@@ -857,13 +857,20 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         def __init__(self, question):
             self.question = question
 
-    class FakeQGService:
-        def __init__(self, session=None, config=None, model_config_service=None):
-            captured["qg_config"] = config
+    class FakeMCS:
+        async def get_user_default_model_name(self, user_id, model_type):
+            return "test-llm-model"
 
-        async def generate_questions_batch(self, chunks, user_id=None):
+        async def get_llm_client_by_model(self, user_id, model):
+            return SimpleNamespace(model=model)
+
+    class FakeQGService:
+        def __init__(self, llm_client=None, config=None):
+            captured["qg_config"] = config
+            captured["llm_client"] = llm_client
+
+        async def generate_questions_batch(self, chunks):
             captured["chunk_tuples"] = chunks
-            captured["qg_user_id"] = user_id
             from novamind.engines.question_generation.service import (
                 BatchGenerationStats,
             )
@@ -906,9 +913,11 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         embedding_config={"model": "embed-model"},
         user_id=7,
         session=SimpleNamespace(),
+        model_config_port=FakeMCS(),
     )
 
-    # 引擎收的是转换后的扁平 QuestionGenConfig（enabled 业务开关不出业务层）
+    # 引擎收的是业务层解析好的客户端 + 转换后的扁平配置
+    assert captured["llm_client"] is not None
     assert captured["qg_config"].model == "test-llm-model"
     assert captured["qg_config"].temperature == 0.4
     assert captured["qg_config"].top_p == 0.8

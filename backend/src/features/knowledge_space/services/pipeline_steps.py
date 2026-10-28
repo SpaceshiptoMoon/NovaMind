@@ -29,6 +29,7 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     EmbeddingError,
     PermanentProcessingError,
+    QuestionGenerationError,
 )
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
@@ -792,15 +793,23 @@ async def generate_questions_for_chunks(
         max_questions_per_chunk=qg_config.max_questions_per_chunk,
         prompt_template=qg_config.prompt_template,
     )
-    qg_service = QuestionGenerationService(
-        config=engine_config, model_config_service=model_config_port
+    # 凭证解析属业务：未指定模型取用户默认，引擎只收现成客户端
+    if not model_config_port:
+        raise QuestionGenerationError("未配置模型配置服务，无法解析问题生成 LLM 客户端")
+    model_name = engine_config.model or await model_config_port.get_user_default_model_name(
+        user_id or 0, "llm"
     )
+    if not model_name:
+        raise QuestionGenerationError("未配置 LLM 模型，请在模型配置中添加")
+    llm_client = await model_config_port.get_llm_client_by_model(
+        user_id=user_id or 0, model=model_name
+    )
+    qg_service = QuestionGenerationService(llm_client=llm_client, config=engine_config)
 
     # generate_questions_batch 接受 List[Tuple[str, Optional[str]]] 格式
     chunk_tuples = [(chunk, document_title) for chunk in chunks]
     batch_results, qg_stats = await qg_service.generate_questions_batch(
         chunks=chunk_tuples,
-        user_id=user_id,
     )
 
     # 提取问题文本
