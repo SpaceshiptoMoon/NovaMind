@@ -5,6 +5,7 @@ HostMemoryStorePort / HostMemoryStorePort / HostMemorySearchPort 宿主适配器
 from datetime import datetime
 from typing import Any
 
+from novamind.engines.agent.memory.interfaces import IMemorySearch, IMemoryStore
 from novamind.engines.agent.context_types import (
     ContextSummaryEntry,
 )
@@ -42,7 +43,7 @@ def _to_summary(summary: Any) -> ContextSummaryEntry:
     )
 
 
-class HostMemoryStorePort:
+class HostMemoryStorePort(IMemoryStore):
     """HostMemoryStorePort + HostMemoryStorePort 宿主实现：委托
     MemoryRepository + ContextSummaryRepository（单类双实现，db 会话唯一、flush 语义
     不割裂）。"""
@@ -291,7 +292,7 @@ class HostMemoryStorePort:
         return _to_summary(summary) if summary else None
 
 
-class HostMemorySearchPort:
+class HostMemorySearchPort(IMemorySearch):
     """HostMemorySearchPort 宿主实现：委托 MemorySearchRepository。
 
     可注入已有 MemorySearchRepository（复用宿主装配的实例）或经 es_client 构造。

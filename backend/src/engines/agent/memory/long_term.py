@@ -4,18 +4,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    # 宿主类仅注解用（TYPE_CHECKING 防 import 环）
-    from novamind.features.agent.services.host_memory_store import (
-        HostMemorySearchPort,
-        HostMemoryStorePort,
-    )
 from collections.abc import Callable
 from typing import Any
 
 from novamind.engines.agent.memory.interfaces import (
+    IMemorySearch,
+    IMemoryStore,
     ILongTermMemory,
     LongTermMemoryEntry,
     MemoryMessage,
@@ -44,10 +38,10 @@ class LongTermMemory(ILongTermMemory):
 
     def __init__(
         self,
-        memory_store: HostMemoryStorePort,
+        memory_store: IMemoryStore,
         llm_client_factory: Callable,
         prompt_provider: PromptManager,
-        memory_search: HostMemorySearchPort | None = None,
+        memory_search: IMemorySearch | None = None,
         embedding_factory: Callable | None = None,
         reconciler: Any | None = None,
     ):

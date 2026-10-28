@@ -4,19 +4,14 @@ MemoryManager — 记忆系统统一门面，编排长期记忆和短期记忆�
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
     # 宿主类仅注解用（TYPE_CHECKING 防 import 环）
-    from novamind.features.agent.services.host_memory_store import (
-        HostMemorySearchPort,
-        HostMemoryStorePort,
-    )
 from collections.abc import Callable
 from typing import Any
 
 from novamind.engines.agent.memory.context_compressor import ContextCompressor
 from novamind.engines.agent.memory.interfaces import (
+    IMemorySearch,
+    IMemoryStore,
     LongTermMemoryEntry,
     MemorySnapshot,
 )
@@ -36,8 +31,8 @@ class MemoryManager:
         self,
         short_term: ShortTermMemory,
         long_term: LongTermMemory,
-        long_term_store: HostMemoryStorePort,
-        summary_store: HostMemoryStorePort,
+        long_term_store: IMemoryStore,
+        summary_store: IMemoryStore,
         message_repository: Any,
     ):
         """组装短期/长期记忆与消息仓储；冻结快照缓存避免同会话重复构建快照。"""
@@ -55,12 +50,12 @@ class MemoryManager:
         message_repository: Any,
         tool_call_repository: Any,
         session_repository: Any,
-        long_term_store: HostMemoryStorePort,
-        summary_store: HostMemoryStorePort,
+        long_term_store: IMemoryStore,
+        summary_store: IMemoryStore,
         prompt_provider: PromptManager,
         model: str,
         llm_client_factory: Callable,
-        memory_search: HostMemorySearchPort | None = None,
+        memory_search: IMemorySearch | None = None,
         embedding_factory: Callable | None = None,
         todo_store: Any | None = None,
         conversation_id: int | None = None,
