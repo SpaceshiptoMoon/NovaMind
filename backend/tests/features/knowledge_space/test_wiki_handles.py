@@ -4,7 +4,7 @@
 （ref-1/ref-2）的双向映射、复用、未知名柄处理、正文 decode。
 """
 import pytest
-from novamind.features.knowledge_space.services.wiki_handles import HandleTable
+from novamind.engines.wiki.handles import HandleTable
 
 pytestmark = pytest.mark.unit
 

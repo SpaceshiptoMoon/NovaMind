@@ -18,7 +18,7 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiIngestRecordRepository,
     WikiPageRepository,
 )
-from novamind.features.knowledge_space.services.wiki_dedup import (
+from novamind.engines.wiki.dedup import (
     DEDUP_CANDIDATE_SCORE_FLOOR,
     DEDUP_CORPUS_HARD_LIMIT,
     DedupCandidate,
@@ -30,9 +30,9 @@ from novamind.features.knowledge_space.services.wiki_dedup import (
     slug_base_tokens,
     stabilize_extracted_items,
 )
-from novamind.features.knowledge_space.services.wiki_handles import HandleTable
+from novamind.engines.wiki.handles import HandleTable
 from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
-from novamind.features.knowledge_space.services.wiki_slug import (
+from novamind.engines.wiki.slug import (
     extract_wiki_link_slugs,
     normalize_slug,
 )
@@ -550,7 +550,7 @@ class WikiIngestService:
 
     async def _plan_taxonomy(self, cited: list[ExtractedItem]) -> dict[str, list[str]]:
         """批级目录规划（对齐 WeKnora planBatchTaxonomy）。失败不阻断页面生成。"""
-        from novamind.features.knowledge_space.services.wiki_taxonomy import (
+        from novamind.engines.wiki.taxonomy import (
             TAXONOMY_FOLDER_POOL_MAX,
             plan_batch_taxonomy,
         )
@@ -804,7 +804,7 @@ class WikiIngestService:
         out_links 解析出的 title。只改本批受影响页的正文（不碰用户手写页），
         走 update_auto_linked_content 机器写（不快照不递增 version）。
         """
-        from novamind.features.knowledge_space.services.wiki_linkify import linkify_content
+        from novamind.engines.wiki.linkify import linkify_content
 
         if not batch_slugs:
             return

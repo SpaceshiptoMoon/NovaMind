@@ -1,6 +1,6 @@
 """Wiki linkify 自动互链测试——用例移植自 WeKnora wiki_linkify_test.go"""
 import pytest
-from novamind.features.knowledge_space.services.wiki_linkify import (
+from novamind.engines.wiki.linkify import (
     compute_forbidden_spans,
     linkify_content,
 )

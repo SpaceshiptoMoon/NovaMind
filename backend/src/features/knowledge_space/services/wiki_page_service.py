@@ -24,7 +24,7 @@ from novamind.features.knowledge_space.repository.document_repository import (
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
-from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
+from novamind.engines.wiki.slug import normalize_slug
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
