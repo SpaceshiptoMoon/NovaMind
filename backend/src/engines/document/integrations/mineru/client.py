@@ -16,6 +16,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from novamind.engines.document.contracts import make_figure_region
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     document_salt,
     figure_placeholder,
@@ -180,17 +181,12 @@ def parse_pdf_sync(
             artifact_id = f"mineru_fig_{len(figures)}"
             placeholder = figure_placeholder(salt, artifact_id)
             full_text = full_text.replace(link, f"]({placeholder})")
-            figures.append({
-                "artifact_id": artifact_id,
-                "placeholder": placeholder,
-                "pages": [],
-                "page_start": 0,
-                "bbox": {},
-                "caption": f"MinerU 提取图（{relative}）",
-                "text": "",
-                "member_texts": [],
-                "image_blobs": [blob],
-            })
+            figures.append(make_figure_region(
+                artifact_id=artifact_id,
+                placeholder=placeholder,
+                caption=f"MinerU 提取图（{relative}）",
+                image_blobs=[blob],
+            ))
 
         return MineruParseResult(
             full_text=full_text, page_count=page_count, figures=tuple(figures)

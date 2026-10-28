@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 import pdfplumber
 from novamind.engines.document.exceptions import EncryptedDocumentError
+from novamind.engines.document.contracts import make_figure_region
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     document_salt,
     figure_placeholder,
@@ -782,6 +783,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         figure_regions = self._build_figure_regions_metadata(
             artifacts,
             raster_images_by_page=fusion_meta.get("raster_images_by_page") or {},
+            figure_salt=self._figure_salt,
         )
         # 被保留 table/figure artifact 的成员框已随 [TABLE]/HTML entry 或图片
         # 占位符进入 reading_order，从正文按成员逐框剔除（对齐上游 tag-pop 语义
@@ -2104,6 +2106,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         artifacts: dict[str, list[dict[str, Any]]],
         *,
         raster_images_by_page: dict[int, list[dict[str, Any]]] | None = None,
+        figure_salt: str = "",
     ) -> list[dict[str, Any]]:
         """构建 figure regions。
 
@@ -2113,6 +2116,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         （不进 reading_order、不生成 ![Figure N:] 占位符），避免正文公式推导
         被占位符切碎（实测一份论文里 Figure 2 占位符在公式区重复出现 7 次）。
         未提供时（调用方拿不到栅格信息，如旧测试）退回旧行为按 has_image 判。
+
+        ``figure_salt`` 与正文渲染（_build_reading_order_metadata）同源传入：
+        region.placeholder 与正文占位符同一表达式生成，保证替换 map key 与
+        正文恒同构——此前 region 无 placeholder 键、出口兜底成无盐形态而正文
+        带盐，full 模式图片替换静默不命中（盐化批次 e4abc769 的漏网点）。
         """
         figure_regions: list[dict[str, Any]] = []
         ordered_figures = sorted(
@@ -2161,21 +2169,24 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 for member in figure.get("members", [])
             ]
             figure_regions.append(
-                {
-                    "artifact_id": figure.get("artifact_id"),
-                    "pages": pages,
-                    "page_start": first_page,
-                    "region_index_on_page": region_index_on_page,
-                    "bbox": dict(figure.get("bbox") or {}),
-                    "caption": figure.get("caption", ""),
-                    "text": figure.get("text", ""),
-                    "member_texts": member_texts,
-                    "member_text_count": len(member_texts),
-                    "member_bboxes": member_bboxes,
-                    "has_image": True,
-                    "image_blobs": image_blobs,
-                    "caption_boxes": list(figure.get("caption_boxes") or []),
-                }
+                make_figure_region(
+                    artifact_id=str(figure.get("artifact_id") or ""),
+                    placeholder=figure_placeholder(
+                        figure_salt, str(figure.get("artifact_id") or "")
+                    ),
+                    pages=pages,
+                    page_start=first_page,
+                    bbox=dict(figure.get("bbox") or {}),
+                    caption=figure.get("caption", ""),
+                    text=figure.get("text", ""),
+                    member_texts=member_texts,
+                    member_bboxes=member_bboxes,
+                    image_blobs=image_blobs,
+                    region_index_on_page=region_index_on_page,
+                    member_text_count=len(member_texts),
+                    has_image=True,
+                    caption_boxes=list(figure.get("caption_boxes") or []),
+                )
             )
         if dropped_no_image:
             logger.info(

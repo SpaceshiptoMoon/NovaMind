@@ -8,6 +8,7 @@ import json
 import re
 from typing import Any
 
+from novamind.engines.document.contracts import region_placeholder_of
 from novamind.features.knowledge_space.models.document import Document
 from novamind.shared.logging import get_logger
 from novamind.shared.utils.time_utils import now_china
@@ -693,10 +694,10 @@ def resolve_figure_short_paths(
         short_path = match.group(0)
         if region.get("image_url") != short_path:
             region["image_url"] = short_path
-        # map key 与替换函数对齐：完整占位符串优先（新快照 region 带内容绑定
-        # 盐），旧存量快照 region 无 placeholder 键时退回无盐形态（其正文占位
-        # 符同为旧形态，两种 key 各自命中各自的正文）
-        key = str(region.get("placeholder") or f"__FIGURE_URL__{artifact_id}__")
+        # map key 与替换函数对齐（契约权威读取）：完整占位符串优先（新快照
+        # region 带内容绑定盐），旧存量快照 region 无 placeholder 键时兜底
+        # 无盐形态（其正文占位符同为旧形态，两种 key 各自命中各自的正文）
+        key = region_placeholder_of(region)
         url_map[key] = short_path
     return url_map
 

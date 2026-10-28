@@ -5,6 +5,7 @@ import logging
 from io import BytesIO
 from pathlib import Path
 
+from novamind.engines.document.contracts import make_figure_region
 from novamind.engines.document.exceptions import (
     EncryptedDocumentError,
     MismatchedPayloadError,
@@ -118,11 +119,11 @@ class RAGFlowPptParser:
                 if blob:
                     artifact_id = f"ppt_fig_{len(figures)}"
                     placeholder = figure_placeholder(salt, artifact_id)
-                    figures.append({
-                        "artifact_id": artifact_id,
-                        "placeholder": placeholder,
-                        "image_blobs": [blob],
-                    })
+                    figures.append(make_figure_region(
+                        artifact_id=artifact_id,
+                        placeholder=placeholder,
+                        image_blobs=[blob],
+                    ))
                     return f"![图片]({placeholder})"
 
             if shape_type == 6:

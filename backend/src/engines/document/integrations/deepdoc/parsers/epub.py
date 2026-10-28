@@ -10,6 +10,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
+from novamind.engines.document.contracts import make_figure_region
 from novamind.engines.document.exceptions import (
     EncryptedDocumentError,
     MismatchedPayloadError,
@@ -107,17 +108,12 @@ class RAGFlowEpubParser:
                         continue
                     artifact_id = f"epub_fig_{len(figures)}"
                     placeholder = figure_placeholder(figure_salt, artifact_id)
-                    figures.append({
-                        "artifact_id": artifact_id,
-                        "placeholder": placeholder,
-                        "pages": [],
-                        "page_start": 0,
-                        "bbox": {},
-                        "caption": f"EPUB 插图（{posixpath.basename(resolved)}）",
-                        "text": "",
-                        "member_texts": [],
-                        "image_blobs": [blob],
-                    })
+                    figures.append(make_figure_region(
+                        artifact_id=artifact_id,
+                        placeholder=placeholder,
+                        caption=f"EPUB 插图（{posixpath.basename(resolved)}）",
+                        image_blobs=[blob],
+                    ))
                     chapter_figures.append(f"![{posixpath.basename(resolved)}]({placeholder})")
                 if chapter_figures and all_sections:
                     all_sections.append("\n".join(chapter_figures))

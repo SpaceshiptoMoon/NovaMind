@@ -8,6 +8,11 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from novamind.engines.document.contracts import (
+    make_figure_region,
+    normalize_figure_regions,
+    unsalted_placeholder,
+)
 from novamind.engines.document.integrations.deepdoc.core.capabilities import (
     get_deepdoc_capabilities,
 )
@@ -37,41 +42,18 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-# figure region 契约的必需键与缺省值：不管什么文件格式，region 形状统一，
-# 下游消费方（上传链/呈现/前端）写一种逻辑即可，无需逐格式探测。
-# 可变缺省（list/dict）存构造器——模块级共享可变对象会被多个 region 引用
-_REGION_FIELD_DEFAULTS: dict[str, Any] = {
-    "artifact_id": "",
-    "placeholder": "",
-    "pages": list,
-    "page_start": 0,
-    "bbox": dict,
-    "caption": "",
-    "text": "",
-    "member_texts": list,
-    "member_bboxes": list,
-    "image_blobs": list,
-}
-
 
 def _normalize_parse_result(result: DeepDocParseResult) -> DeepDocParseResult:
     """产物契约规范化：metadata 形状跨格式一致（就地修改并返回）。
 
     - figure_regions / document_blocks 键恒存在（无图为空数组）——下游不用
       探测「该格式的 metadata 里有没有这个键」；
-    - figure region 逐键补齐必需字段（缺失按缺省兜底；placeholder 缺失按
-      旧契约无盐形态兜底，与业务层上传 map 的兜底同构）。
+    - figure region 基座键逐键补齐（契约权威在 engines/document/contracts）。
     """
     metadata = result.metadata
-    regions = metadata.setdefault("figure_regions", [])
+    metadata.setdefault("figure_regions", [])
+    normalize_figure_regions(metadata["figure_regions"])
     metadata.setdefault("document_blocks", [])
-    for region in regions:
-        if not isinstance(region, dict):
-            continue
-        for key, default in _REGION_FIELD_DEFAULTS.items():
-            region.setdefault(key, default() if callable(default) else default)
-        if not region.get("placeholder"):
-            region["placeholder"] = f"__FIGURE_URL__{region.get('artifact_id', '')}__"
     return result
 
 
@@ -129,10 +111,24 @@ class DeepDocParser:
 
         return RAGFlowTextParser()
 
+    @cached_property
+    def _eml_parser(self):
+        """EML 解析器（容器递归路径取正文与附件，懒加载）。"""
+        from novamind.engines.document.integrations.deepdoc.parsers.eml import RAGFlowEmlParser
+
+        return RAGFlowEmlParser()
+
+    @cached_property
+    def _msg_parser(self):
+        """MSG 解析器（容器递归路径取正文与附件，懒加载）。"""
+        from novamind.engines.document.integrations.deepdoc.parsers.msg import RAGFlowMsgParser
+
+        return RAGFlowMsgParser()
+
     @staticmethod
     def supported_extensions() -> set[str]:
         """支持的文件后缀全集（含图片与文本族）。"""
-        return {"pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"}
+        return {"pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp", "zip", "eml", "msg", "ofd"}
 
     @staticmethod
     def supported_pdf_modes() -> dict[str, dict[str, Any]]:
@@ -196,7 +192,7 @@ class DeepDocParser:
         parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
-        """按后缀路由到对应同步解析方法（各包 to_thread 防事件循环阻塞）。"""
+        """按后缀路由到同步解析（整体 to_thread 防事件循环阻塞）。"""
         logger.info(
             "DeepDoc 解析路由",
             extension=extension,
@@ -204,25 +200,38 @@ class DeepDocParser:
             deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
             source_type="file" if isinstance(source, Path) else "bytes",
         )
-        if extension == "pdf":
-            result = await asyncio.to_thread(self._parse_pdf_sync, source, parsing_config, splitting_config)
-        elif extension == "docx":
-            result = await asyncio.to_thread(self._parse_docx_sync, source, splitting_config)
-        elif extension == "epub":
-            result = await asyncio.to_thread(self._parse_epub_sync, source, splitting_config)
-        elif extension in {"xls", "xlsx"}:
-            result = await asyncio.to_thread(self._parse_excel_sync, source, extension, parsing_config, splitting_config)
-        elif extension in {"ppt", "pptx"}:
-            result = await asyncio.to_thread(self._parse_ppt_sync, source, extension, splitting_config)
-        elif extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
-            result = await asyncio.to_thread(self._parse_figure_sync, source, extension, splitting_config)
-        elif extension in {"txt", "md", "markdown", "csv", "json", "html", "eml", "msg", "ofd"}:
-            result = await asyncio.to_thread(self._parse_text_sync, source, extension, parsing_config, splitting_config)
-        else:
-            raise ValueError(f"DeepDoc does not support file type: {extension}")
+        result = await asyncio.to_thread(
+            self._route_parse_sync, source, extension, parsing_config, splitting_config
+        )
         # 公共出口：不管什么文件，产物契约形状一致（figure_regions/
         # document_blocks 恒存在、region 字段统一）
         return _normalize_parse_result(result)
+
+    def _route_parse_sync(
+        self,
+        source: Path | bytes,
+        extension: str,
+        parsing_config: dict[str, Any],
+        splitting_config: dict[str, Any],
+    ) -> DeepDocParseResult:
+        """同步路由体（容器成员递归复用同一分发，不嵌套线程）。"""
+        if extension == "pdf":
+            return self._parse_pdf_sync(source, parsing_config, splitting_config)
+        if extension == "docx":
+            return self._parse_docx_sync(source, splitting_config)
+        if extension == "epub":
+            return self._parse_epub_sync(source, splitting_config)
+        if extension in {"xls", "xlsx"}:
+            return self._parse_excel_sync(source, extension, parsing_config, splitting_config)
+        if extension in {"ppt", "pptx"}:
+            return self._parse_ppt_sync(source, extension, splitting_config)
+        if extension in {"jpg", "jpeg", "png", "gif", "webp", "bmp"}:
+            return self._parse_figure_sync(source, extension, splitting_config)
+        if extension in {"zip", "eml", "msg"}:
+            return self._parse_container_sync(source, extension, parsing_config, splitting_config)
+        if extension in {"txt", "md", "markdown", "csv", "json", "html", "ofd"}:
+            return self._parse_text_sync(source, extension, parsing_config, splitting_config)
+        raise ValueError(f"DeepDoc does not support file type: {extension}")
 
     def _parse_pdf_sync(
         self,
@@ -305,6 +314,149 @@ class DeepDocParser:
         )
         return result
 
+    # 容器成员正文标题头（成员名进 chunk 语境，检索命中可溯源到附件文件）
+    _MEMBER_HEADING_FMT = "## 【附件】{name}"
+
+    def _parse_container_sync(
+        self,
+        source: Path | bytes,
+        extension: str,
+        parsing_config: dict[str, Any],
+        splitting_config: dict[str, Any],
+    ) -> DeepDocParseResult:
+        """容器（zip 压缩包 / eml / msg 邮件）同步解析：展开成员逐个递归。
+
+        成员复用同一同步路由（各自入口守卫天然生效：魔数/加密/zip 检查）；
+        成员产物按「标题头 + 全文」拼接，figure region 重编号（m{序}_ 前缀
+        防跨成员撞名）并把正文占位符同步替换为容器盐版本——最终文档占位符
+        全部绑定容器内容盐，防伪语义与单文档一致。成员解析失败降级为占位
+        说明（能力缺失优于错误结果，其余成员不受牵连）。
+        """
+        payload = source if isinstance(source, bytes) else Path(source).read_bytes()
+        container_salt = document_salt(payload)
+        started = time.perf_counter()
+        with collect_warnings() as warnings:
+            body_blocks, members = self._expand_container(payload, extension)
+            member_blocks: list[str] = []
+            container_figures: list[dict[str, Any]] = []
+            for index, member in enumerate(members):
+                member_ext = member.name.rsplit(".", 1)[-1].lower() if "." in member.name else ""
+                try:
+                    sub = self._route_parse_sync(
+                        member.blob, member_ext, parsing_config, splitting_config
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "容器成员解析失败，降级为占位说明",
+                        container=extension,
+                        member=member.name,
+                        error_type=type(exc).__name__,
+                        error=str(exc)[:200],
+                    )
+                    member_blocks.append(
+                        f"{self._MEMBER_HEADING_FMT.format(name=member.name)}\n\n"
+                        f"> 该文件未能解析（{type(exc).__name__}），已跳过。"
+                    )
+                    continue
+                member_text, merged_figures = self._merge_member_artifacts(
+                    sub, index, container_salt
+                )
+                member_blocks.append(
+                    f"{self._MEMBER_HEADING_FMT.format(name=member.name)}\n\n{member_text}".strip()
+                )
+                container_figures.extend(merged_figures)
+        blocks = body_blocks + member_blocks
+        full_text = "\n\n".join(blocks).strip()
+        chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info(
+            "DeepDoc 容器解析完成",
+            container=extension,
+            members=len(members),
+            figure_count=len(container_figures),
+            char_count=len(full_text),
+            chunk_count=len(chunks),
+        )
+        return DeepDocParseResult(
+            full_text=full_text,
+            chunks=chunks,
+            markdown=chunks_to_markdown(chunks),
+            metadata={
+                "parser": "deepdoc",
+                "file_type": extension,
+                "source": "ragflow-adapted",
+                "sections": len(blocks),
+                "members": [member.name for member in members],
+                "figure_regions": container_figures,
+                "quality": build_quality_metadata(
+                    "deepdoc", warnings, started, container_members=len(members)
+                ),
+            },
+        )
+
+    def _expand_container(
+        self, payload: bytes, extension: str
+    ) -> tuple[list[str], list[ArchiveMember]]:
+        """展开容器为（正文块列表, 成员流）：zip 无正文，邮件正文走各自解析器。
+
+        nested_archive 懒加载——其所属 pipeline 包的 __init__ 会拉起
+        document_loader → deepdoc 包 → factory → 本模块，顶层 import 成环。
+        """
+        from novamind.engines.document.pipeline.nested_archive import (
+            ArchiveMember,
+            check_member_limits,
+            expand_zip_members,
+        )
+
+        if extension == "zip":
+            return [], expand_zip_members(payload)
+        if extension == "eml":
+            sections, attachments = self._eml_parser.body_and_attachments(payload)
+            members = check_member_limits(
+                [ArchiveMember(name=name, blob=blob) for name, blob in attachments],
+                "eml",
+            )
+            return [block for block in sections if block.strip()], members
+        if extension == "msg":
+            sections, attachments = self._msg_parser.body_and_attachments(payload)
+            members = check_member_limits(
+                [ArchiveMember(name=name, blob=blob) for name, blob in attachments],
+                "msg",
+            )
+            return [block for block in sections if block.strip()], members
+        raise ValueError(f"Unsupported container type: {extension}")
+
+    def _merge_member_artifacts(
+        self,
+        sub: DeepDocParseResult,
+        member_index: int,
+        container_salt: str,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """成员产物并入容器：region 重编号 + 正文占位符同步替换为容器盐版本。
+
+        成员解析时占位符绑定的是成员自身盐，artifact_id 跨成员会撞名（每个
+        docx 都从 docx_fig_0 起号）；统一加 m{序}_ 前缀并以容器盐重签，正文
+        里的旧占位符按精确串替换（含盐唯一，不误伤）。
+        """
+        from novamind.engines.document.contracts import normalize_figure_regions
+
+        text = sub.full_text
+        merged: list[dict[str, Any]] = []
+        for region in normalize_figure_regions(
+            list((sub.metadata or {}).get("figure_regions") or [])
+        ):
+            old_id = str(region.get("artifact_id") or "")
+            if not old_id:
+                continue
+            old_placeholder = str(region.get("placeholder") or "")
+            new_id = f"m{member_index}_{old_id}"
+            new_placeholder = figure_placeholder(container_salt, new_id)
+            if old_placeholder:
+                text = text.replace(old_placeholder, new_placeholder)
+            region["artifact_id"] = new_id
+            region["placeholder"] = new_placeholder
+            merged.append(region)
+        return text, merged
+
     def _parse_text_sync(
         self,
         source: Path | bytes,
@@ -358,19 +510,13 @@ class DeepDocParser:
                 image_count += 1
                 # 图片进 figure_regions 契约（与 pdf/xlsx 同构）：blob 随 region
                 # 交宿主上传管线，正文占位符已由解析器插在段落文本（docx_fig_N）。
-                # placeholder 完整串随 region 出账，业务层替换不再自行拼接形态
                 figure_id = str(section.get("figure_id") or f"docx_fig_{image_count}")
-                docx_figure_regions.append({
-                    "artifact_id": figure_id,
-                    "placeholder": figure_placeholder(docx_salt, figure_id),
-                    "pages": [],
-                    "page_start": 0,
-                    "bbox": {},
-                    "caption": f"图片{image_count}",
-                    "text": "",
-                    "member_texts": [],
-                    "image_blobs": list(image.blobs),
-                })
+                docx_figure_regions.append(make_figure_region(
+                    artifact_id=figure_id,
+                    placeholder=figure_placeholder(docx_salt, figure_id),
+                    caption=f"图片{image_count}",
+                    image_blobs=list(image.blobs),
+                ))
                 doc_blocks.append(
                     UnifiedBlock(kind=KIND_FIGURE, text=figure_id, caption=f"图片{image_count}")
                 )
@@ -531,24 +677,16 @@ class DeepDocParser:
                 if row is not None
                 else "未知位置"
             )
-            figure_regions.append({
-                "artifact_id": artifact_id,
+            figure_regions.append(make_figure_region(
+                artifact_id=artifact_id,
                 # placeholder 完整串（含内容绑定盐）必须透传——业务层替换 map
-                # 的 key 就是它；缺失会兜底成无盐形态，与正文里的带盐占位符
+                # 的 key 就是它；缺失兜底成无盐形态时与正文里的带盐占位符
                 # 永远不命中（图片白传，链接进不了 MD/chunk）
-                "placeholder": str(
-                    image.get("placeholder") or f"__FIGURE_URL__{artifact_id}__"
-                ),
-                "pages": [],
-                "page_start": 0,
-                "bbox": {},
-                "caption": f"{sheet} 工作表嵌入图片（{location}）",
-                "text": "",
-                "member_texts": [],
-                "member_bboxes": [],
-                "has_image": True,
-                "image_blobs": [blob],
-            })
+                placeholder=str(image.get("placeholder") or unsalted_placeholder(artifact_id)),
+                caption=f"{sheet} 工作表嵌入图片（{location}）",
+                image_blobs=[blob],
+                has_image=True,
+            ))
         return figure_regions
 
     def _parse_epub_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
@@ -598,12 +736,12 @@ class DeepDocParser:
             for block in blocks
         ]
         # 图片进 figure_regions 契约（blob 交宿主上传管线；占位符已由解析器
-        # 插在页文本流），business 门禁含 pptx 后即走统一上传呈现链
+        # 插在页文本流），business 门禁含 pptx 后即走统一上传呈现链。
+        # 解析器侧经 make_figure_region 构造，基座键恒齐；缺 caption 的旧
+        # 图（页码回填后）在此补题注。
         for figure in ppt_figures:
-            figure.setdefault("caption", f"幻灯片 {figure.get('page_start') or '?'} 图片")
-            figure.setdefault("bbox", {})
-            figure.setdefault("text", "")
-            figure.setdefault("member_texts", [])
+            if not figure.get("caption"):
+                figure["caption"] = f"幻灯片 {figure.get('page_start') or '?'} 图片"
         ppt_figure_regions = ppt_figures
         logger.info("DeepDoc PPT 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), slides=len(slides))
         return DeepDocParseResult(

@@ -16,12 +16,20 @@ from novamind.shared.utils.time_utils import now_china
 # 匹配（目标只来自解析器占位符全集），不做模式匹配——同形正文不可伪造。
 # 旧的无盐形态仅存在于盐化之前解析的存量产物，重解析即消亡。
 
+# figure 图片上传门禁：解析路径会产出 figure_regions 的格式全集（含容器
+# 格式——zip/eml/msg 的成员图片经重编号合并后走同一上传链）。新增产出
+# figure 的格式在此登记，与解析器支持面同步演化。
+_FIGURE_UPLOAD_FILE_TYPES = frozenset({
+    "pdf", "xlsx", "xls", "docx", "ppt", "pptx", "epub", "zip", "eml", "msg",
+})
+
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
     from novamind.features.knowledge_space.models.document_task import DocumentTask
     from novamind.features.knowledge_space.services.pipeline_steps import PipelineContext
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.document.contracts import region_placeholder_of
 from novamind.engines.document.media.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
@@ -364,10 +372,7 @@ async def execute_document_pipeline(
             or []
         )
         valid_placeholders = {
-            str(
-                r.get("placeholder")
-                or f"__FIGURE_URL__{r.get('artifact_id')}__"
-            )
+            region_placeholder_of(r)
             for r in snapshot_regions
             if isinstance(r, dict) and r.get("artifact_id")
         }
@@ -547,7 +552,7 @@ async def execute_document_pipeline(
     # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
     figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
     image_url_map: dict[str, str] = {}
-    if figure_regions and document.file_type.lower() in ("pdf", "xlsx", "xls", "docx", "ppt", "pptx", "epub"):
+    if figure_regions and document.file_type.lower() in _FIGURE_UPLOAD_FILE_TYPES:
         from novamind.shared.storage.client_factory import ClientFactory
 
         minio_client = await ClientFactory.get_minio_client()
@@ -558,7 +563,7 @@ async def execute_document_pipeline(
         # 剥除全集 = 解析器插入的全部占位符（region 无 placeholder 键的旧契约
         # region 兜底旧形态串——与上传 map 的兜底 key 同构，两种 region 各自命中）
         valid_placeholders = {
-            str(r.get("placeholder") or f"__FIGURE_URL__{r.get('artifact_id')}__")
+            region_placeholder_of(r)
             for r in figure_regions
             if r.get("artifact_id")
         }
@@ -893,11 +898,10 @@ async def _upload_figure_images_to_minio(
         page = int(region.get("page_start") or 0)
         figure_file = f"figure_{safe_id}_{page}.png"
         object_name = f"{figures_dir}/{figure_file}"
-        # map key = 完整占位符串（region.placeholder，含内容绑定盐）；无 placeholder
-        # 键的 region（旧契约兜底）退回无盐形态——替换函数按 key 原文替换
-        placeholder = str(
-            region.get("placeholder") or f"__FIGURE_URL__{artifact_id}__"
-        )
+        # map key = 完整占位符串（契约权威读取：region.placeholder 优先，含
+        # 内容绑定盐；无 placeholder 键的旧 region 兜底无盐形态——替换函数
+        # 按 key 原文替换，正文形态与 key 形态由 contracts 保证同构）
+        placeholder = region_placeholder_of(region)
         try:
             await minio_client.upload_file(object_name, image_bytes, "image/png")
             # image_url 存短文件名（相对文档 figure 目录），不再存预签名 URL：
