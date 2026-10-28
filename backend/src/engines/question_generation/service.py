@@ -1,7 +1,8 @@
-"""
-假设问题生成服务
+"""假设问题生成引擎：LLM 为文本分块生成假设性问题，提升检索召回率。
 
-使用 LLM 为文档分块生成假设性问题，提升检索召回率
+通用模块（engines 层）：纯"文本进、问题出"能力——LLM 客户端 duck 注入，
+配置为纯 dataclass，零 features/ORM/setting 依赖。业务编排（KB 配置解析、
+问题向量生成、ES 写入、enabled 开关）在 features/knowledge_space。
 """
 
 import asyncio
@@ -9,23 +10,35 @@ import json
 import re
 import time as _time
 from dataclasses import dataclass
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.exceptions import (
-    InvalidParameterError,
-    QuestionGenerationError,
-)
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    QuestionGenerationConfig,
-    QuestionLLMConfig,
-)
-from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
+
+
+class QuestionGenerationError(Exception):
+    """问题生成失败（LLM 调用/配置缺失）。引擎自持异常，与业务 HTTP 异常族无关。"""
+
+
+@dataclass
+class QuestionGenConfig:
+    """问题生成的引擎侧纯数据配置。
+
+    业务 KB 配置（QuestionGenerationConfig Pydantic 模型）由业务层转换为本
+    结构传入；enabled 业务开关不进引擎（调用方决定是否调用）。
+    """
+
+    model: str | None = None
+    temperature: float = 0.3
+    top_p: float = 0.9
+    max_tokens: int = 2048
+    max_questions_per_chunk: int = 5
+    prompt_template: str | None = None
+
 
 # 解析结果为空时的最大重试次数
 MAX_PARSE_RETRY = 2
@@ -99,23 +112,22 @@ class QuestionGenerationService:
 
     def __init__(
         self,
-        session: AsyncSession | None = None,
-        model_config_service: ModelConfigService | None = None,
-        config: QuestionGenerationConfig | None = None,
+        model_config_service: Any | None = None,
+        config: QuestionGenConfig | None = None,
     ):
         """
         初始化问题生成服务
 
         Args:
-            session: 数据库会话（用于获取用户模型配置）
-            model_config_service: 模型配置服务（可选）
-            config: 问题生成配置（可选，默认使用全局配置）
+            model_config_service: LLM 客户端解析器（duck 注入，引擎不 import
+                业务类型）：需提供 ``async get_user_default_model_name(
+                user_id, "llm")`` 与 ``async get_llm_client_by_model(
+                user_id, model)`` 两方法。
+            config: 引擎侧生成配置（可选，默认值见 QuestionGenConfig）。
         """
-        self.session = session
-        self.config = config or QuestionGenerationConfig()
+        self.config = config or QuestionGenConfig()
         self.logger = logger
 
-        # 模型配置服务（批次 5b：仅存注入端口，不再内部自建 ModelConfigService）
         self.model_config_service = model_config_service
 
         # LLM 客户端缓存
@@ -139,8 +151,7 @@ class QuestionGenerationService:
         if self._llm_client:
             return self._llm_client
 
-        llm_config = self.config.llm
-        model_name = llm_config.model if llm_config else None
+        model_name = self.config.model
 
         if self.model_config_service:
             # 如果没有指定模型，获取用户默认
@@ -182,17 +193,12 @@ class QuestionGenerationService:
             生成的问题列表
 
         Raises:
-            InvalidParameterError: 分块内容为空
+            ValueError: 分块内容为空
             QuestionGenerationError: LLM 调用失败
         """
         # 参数校验
         if not chunk_content or not chunk_content.strip():
-            raise InvalidParameterError("分块内容不能为空", field="chunk_content")
-
-        # 检查是否启用
-        if not self.config.enabled:
-            self.logger.debug("假设问题生成未启用，跳过")
-            return []
+            raise ValueError("分块内容不能为空")
 
         try:
             # 获取 LLM 客户端
@@ -206,7 +212,7 @@ class QuestionGenerationService:
             # 思考 token 计入输出预算，2048 会被 reasoning 吃满导致 content 为空
             #（2026-10-05 实测 119/119 空响应全部 completion_tokens=2048）。
             # 服务端 thinking_budget 注入后思考有界，此处提高预算兜底存量配置。
-            llm_config = self.config.llm or QuestionLLMConfig()
+            llm_config = self.config
             temperature = min(llm_config.temperature, 0.5)
             top_p = min(llm_config.top_p, 0.9)
             max_tokens = min(llm_config.max_tokens, 8192)
@@ -243,7 +249,7 @@ class QuestionGenerationService:
 
             return questions
 
-        except (InvalidParameterError, QuestionGenerationError):
+        except (ValueError, QuestionGenerationError):
             raise
         except Exception as e:
             self.logger.error(
@@ -289,7 +295,7 @@ class QuestionGenerationService:
             return [], BatchGenerationStats()
 
         llm_client = await self._get_llm_client(user_id)
-        llm_config = self.config.llm or QuestionLLMConfig()
+        llm_config = self.config
         temperature = min(llm_config.temperature, 0.5)
         top_p = min(llm_config.top_p, 0.9)
         # 上限 8192 同 generate_questions：thinking 模型 reasoning 计入预算，
@@ -768,7 +774,7 @@ async def generate_hypothetical_questions(
     document_title: str | None = None,
     max_questions: int = 5,
     user_id: int | None = None,
-    config: QuestionGenerationConfig | None = None,
+    config: QuestionGenConfig | None = None,
 ) -> list[str]:
     """
     为分块生成假设问题（便捷函数）
@@ -784,10 +790,7 @@ async def generate_hypothetical_questions(
         问题文本列表
     """
     if config is None:
-        config = QuestionGenerationConfig(
-            enabled=True,
-            max_questions_per_chunk=max_questions,
-        )
+        config = QuestionGenConfig(max_questions_per_chunk=max_questions)
 
     service = QuestionGenerationService(config=config)
     return await service.generate_questions_simple(

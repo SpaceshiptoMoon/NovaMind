@@ -24,7 +24,8 @@ if str(BACKEND_ROOT) not in sys.path:
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
 )
-from novamind.features.knowledge_space.services.question_generation_service import (
+from novamind.engines.question_generation.service import (
+    QuestionGenConfig,
     MAX_BATCH_ATTEMPTS,
     PER_CALL_TIMEOUT_SECONDS,
     QuestionGenerationService,
@@ -82,7 +83,7 @@ class FakeLLM:
 
 def _service() -> QuestionGenerationService:
     return QuestionGenerationService(
-        config=QuestionGenerationConfig(enabled=True, max_questions_per_chunk=5)
+        config=QuestionGenConfig(max_questions_per_chunk=5)
     )
 
 
@@ -121,7 +122,7 @@ async def test_batch_timeout_does_not_abort_batch_triggers_degrade(monkeypatch):
     monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
     # 把单次调用超时调小，避免测试真的挂 90s
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.question_generation_service."
+        "novamind.engines.question_generation.service."
         "PER_CALL_TIMEOUT_SECONDS",
         0.2,
     )
@@ -191,7 +192,7 @@ async def test_single_chunk_timeout_uses_per_call_budget(monkeypatch):
     llm = FakeLLM({"块X": [None, None, None]})
     monkeypatch.setattr(svc, "_get_llm_client", AsyncMock(return_value=llm))
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.question_generation_service."
+        "novamind.engines.question_generation.service."
         "PER_CALL_TIMEOUT_SECONDS",
         0.2,
     )
@@ -214,7 +215,7 @@ async def test_metrics_constants_contract():
 async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
     """generate_questions_for_chunks 返回三元组，stats 原样透传供节点 metrics。"""
     from novamind.features.knowledge_space.services import pipeline_steps
-    from novamind.features.knowledge_space.services.question_generation_service import (
+    from novamind.engines.question_generation.service import (
         BatchGenerationStats,
     )
 
@@ -227,7 +228,7 @@ async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
             pass
 
         async def generate_questions_batch(self, chunks, user_id=None):
-            from novamind.features.knowledge_space.services.question_generation_service import (
+            from novamind.engines.question_generation.service import (
                 GeneratedQuestion,
             )
 
@@ -240,7 +241,7 @@ async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
         return [[0.1] for _ in texts]
 
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.question_generation_service."
+        "novamind.engines.question_generation.service."
         "QuestionGenerationService",
         FakeQGService,
     )

@@ -761,11 +761,15 @@ async def generate_questions_for_chunks(
         question_embeddings_list: List[List[List[float]]] — 每个分块对应的问题向量列表
         qg_stats: BatchGenerationStats — 批次级统计（含失败/降级批次数），供节点 metrics 透出
     """
+    # 直接从子模块 import（测试经 monkeypatch service 模块属性替换服务类，
+    # 包 __init__ 的名字绑定在 import 时定格，patch 不生效）
+    from novamind.engines.question_generation.service import (
+        BatchGenerationStats,
+        QuestionGenConfig,
+        QuestionGenerationService,
+    )
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         QuestionGenerationConfig,
-    )
-    from novamind.features.knowledge_space.services.question_generation_service import (
-        QuestionGenerationService,
     )
 
     _logger = get_logger(__name__)
@@ -777,14 +781,19 @@ async def generate_questions_for_chunks(
 
     if not qg_config.enabled:
         _logger.info("假设问题生成未启用，跳过")
-        from novamind.features.knowledge_space.services.question_generation_service import (
-            BatchGenerationStats,
-        )
-
         return [], [], BatchGenerationStats()
 
+    # KB 配置（Pydantic）→ 引擎侧纯数据配置；enabled 业务开关不出业务层
+    engine_config = QuestionGenConfig(
+        model=qg_config.llm.model if qg_config.llm else None,
+        temperature=qg_config.llm.temperature if qg_config.llm else 0.3,
+        top_p=qg_config.llm.top_p if qg_config.llm else 0.9,
+        max_tokens=qg_config.llm.max_tokens if qg_config.llm else 2048,
+        max_questions_per_chunk=qg_config.max_questions_per_chunk,
+        prompt_template=qg_config.prompt_template,
+    )
     qg_service = QuestionGenerationService(
-        session=session, config=qg_config, model_config_service=model_config_port
+        config=engine_config, model_config_service=model_config_port
     )
 
     # generate_questions_batch 接受 List[Tuple[str, Optional[str]]] 格式

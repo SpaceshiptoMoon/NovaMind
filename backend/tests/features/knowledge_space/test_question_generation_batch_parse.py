@@ -16,10 +16,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    QuestionGenerationConfig,
-)
-from novamind.features.knowledge_space.services.question_generation_service import (
+from novamind.engines.question_generation import (
+    QuestionGenConfig,
     QuestionGenerationService,
 )
 
@@ -29,8 +27,7 @@ pytestmark = pytest.mark.unit
 def _make_service() -> QuestionGenerationService:
     """构造只测解析的服务实例（不触 LLM / DB）。"""
     return QuestionGenerationService(
-        session=None,  # 解析路径不触 DB
-        config=QuestionGenerationConfig(),
+        config=QuestionGenConfig(),
     )
 
 

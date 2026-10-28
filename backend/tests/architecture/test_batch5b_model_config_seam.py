@@ -106,7 +106,6 @@ _DI_SERVICE_CLASSES = [
     ("novamind.features.deep_research.services.deep_research_service", "DeepResearchService"),
     ("novamind.features.knowledge_space.services.space_service", "SpaceService"),
     ("novamind.features.knowledge_space.services.search_service", "SearchService"),
-    ("novamind.features.knowledge_space.services.question_generation_service", "QuestionGenerationService"),
     ("novamind.features.knowledge_space.services.knowledge_base_service", "KnowledgeBaseService"),
     ("novamind.features.evaluation.services.evaluation_service", "EvaluationService"),
     ("novamind.features.skill.services.skill_marketplace_service", "SkillMarketplaceService"),

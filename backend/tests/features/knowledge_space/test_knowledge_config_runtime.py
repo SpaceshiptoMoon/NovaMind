@@ -864,7 +864,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         async def generate_questions_batch(self, chunks, user_id=None):
             captured["chunk_tuples"] = chunks
             captured["qg_user_id"] = user_id
-            from novamind.features.knowledge_space.services.question_generation_service import (
+            from novamind.engines.question_generation.service import (
                 BatchGenerationStats,
             )
 
@@ -879,7 +879,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         return [[0.1], [0.2]]
 
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.question_generation_service.QuestionGenerationService",
+        "novamind.engines.question_generation.service.QuestionGenerationService",
         FakeQGService,
     )
     monkeypatch.setattr(
@@ -908,13 +908,14 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         session=SimpleNamespace(),
     )
 
-    assert captured["qg_config"].enabled is True
-    assert captured["qg_config"].llm.model == "test-llm-model"
-    assert captured["qg_config"].llm.temperature == 0.4
-    assert captured["qg_config"].llm.top_p == 0.8
-    assert captured["qg_config"].llm.max_tokens == 1024
+    # 引擎收的是转换后的扁平 QuestionGenConfig（enabled 业务开关不出业务层）
+    assert captured["qg_config"].model == "test-llm-model"
+    assert captured["qg_config"].temperature == 0.4
+    assert captured["qg_config"].top_p == 0.8
+    assert captured["qg_config"].max_tokens == 1024
     assert captured["qg_config"].max_questions_per_chunk == 4
     assert captured["qg_config"].prompt_template == "Prompt {{content}} / {{count}}"
+    assert not hasattr(captured["qg_config"], "enabled")
     assert captured["chunk_tuples"] == [("chunk body", "Demo")]
     assert captured["question_texts"] == ["q1", "q2"]
     assert questions_list == [["q1", "q2"]]
