@@ -13,11 +13,7 @@ chunk 内对应内容的摘录改写——检索命中验证型用例的 ground 
 """
 from __future__ import annotations
 
-import random
-from typing import Any
-
 from novamind.core.middleware.structured_logging import get_logger
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)

@@ -14,11 +14,6 @@ from novamind.core.auth import get_current_user
 from novamind.core.database.database import get_db
 from novamind.features.evaluation.api.dependencies import get_evaluation_service
 from novamind.features.evaluation.services.evaluation_service import EvaluationService
-from novamind.features.knowledge_space.api.dependencies import (
-    validate_space_admin,
-    validate_space_member,
-)
-from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_ops.repository.kb_event_repository import KbEventRepository
 from novamind.features.knowledge_ops.repository.suggestion_repository import (
     SuggestionRepository,
@@ -27,11 +22,15 @@ from novamind.features.knowledge_ops.schemas import (
     GapReportResponse,
     KbEventListResponse,
     KbReviewSuggestionListResponse,
-    KbReviewSuggestionResponse,
     SuggestionResolveRequest,
     SuggestionResolveResponse,
 )
 from novamind.features.knowledge_ops.services.gap_report_service import GapReportService
+from novamind.features.knowledge_space.api.dependencies import (
+    validate_space_admin,
+    validate_space_member,
+)
+from novamind.features.knowledge_space.models.space_member import SpaceMember
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["知识运营"])

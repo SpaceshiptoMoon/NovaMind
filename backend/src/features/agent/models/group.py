@@ -4,9 +4,8 @@ AgentGroup（群定义）/ AgentGroupMember（成员）/ AgentGroupRun（一响�
 成员私有会话与投递均复用 AgentSession/AgentMessage（extra_config/extra 标记），
 本文件只承载纯配置与编排状态，无消息内容。
 """
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, JSON, String
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, Index, Integer, String
 
 
 class AgentGroup(BaseModel):

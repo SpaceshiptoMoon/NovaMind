@@ -1,7 +1,6 @@
 """空间统计看板 Pydantic 模式（批次 2b 知识缺口看板）。"""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field

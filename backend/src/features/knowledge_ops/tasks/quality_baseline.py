@@ -85,9 +85,6 @@ async def run_quality_baseline(ctx: dict | None = None) -> dict[str, Any]:
         logger.debug("质量基线跑批未启用（quality_baseline_enabled=false），跳过")
         return {}
 
-    import asyncio
-
-    from sqlalchemy import select
 
     from novamind.core.database.database import get_db_session
     from novamind.features.evaluation.models.evaluation_task import (
@@ -101,6 +98,7 @@ async def run_quality_baseline(ctx: dict | None = None) -> dict[str, Any]:
     from novamind.features.evaluation.services.standalone_factory import (
         build_standalone_evaluation_service,
     )
+    from sqlalchemy import select
 
     service = await build_standalone_evaluation_service()
     results: dict[str, Any] = {}

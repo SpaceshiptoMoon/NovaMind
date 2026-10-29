@@ -8,16 +8,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.models.wiki import (
-    WikiEditSource,
-    WikiIngestStatus,
-    WikiPageStatus,
-    WikiPageType,
-)
-from novamind.features.knowledge_space.repository.wiki_repository import (
-    WikiIngestRecordRepository,
-    WikiPageRepository,
-)
 from novamind.engines.wiki.dedup import (
     DEDUP_CANDIDATE_SCORE_FLOOR,
     DEDUP_CORPUS_HARD_LIMIT,
@@ -31,11 +21,21 @@ from novamind.engines.wiki.dedup import (
     stabilize_extracted_items,
 )
 from novamind.engines.wiki.handles import HandleTable
-from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
 from novamind.engines.wiki.slug import (
     extract_wiki_link_slugs,
     normalize_slug,
 )
+from novamind.features.knowledge_space.models.wiki import (
+    WikiEditSource,
+    WikiIngestStatus,
+    WikiPageStatus,
+    WikiPageType,
+)
+from novamind.features.knowledge_space.repository.wiki_repository import (
+    WikiIngestRecordRepository,
+    WikiPageRepository,
+)
+from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 from sqlalchemy.ext.asyncio import AsyncSession

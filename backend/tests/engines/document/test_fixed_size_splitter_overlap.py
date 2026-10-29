@@ -12,7 +12,6 @@
   都不挂死。
 """
 import pytest
-
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 
 pytestmark = pytest.mark.unit

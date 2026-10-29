@@ -21,7 +21,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.services.pipeline_steps import (
-    _CUSTOM_META_MAX_JSON,
     _CUSTOM_META_MAX_KEYS,
     _CUSTOM_META_MAX_STR,
     _RESERVED_CHUNK_META_KEYS,

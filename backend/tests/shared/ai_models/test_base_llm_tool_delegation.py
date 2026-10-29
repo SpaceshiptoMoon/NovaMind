@@ -6,8 +6,7 @@ agent_engine 无工具路径也统一调 generate_with_tools(tools=None)。
 from collections.abc import AsyncGenerator
 
 import pytest
-
-from novamind.shared.ai_models.base_model import BaseLLM, LLMResponseWithTools, ToolStreamEvent
+from novamind.shared.ai_models.base_model import BaseLLM, LLMResponseWithTools
 
 
 class _TextOnlyLLM(BaseLLM):

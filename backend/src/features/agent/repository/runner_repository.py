@@ -1,8 +1,7 @@
 """伴生 runner 设备 repository：设备 CRUD 与状态更新（flush 不 commit）。"""
+from novamind.features.agent.models.runner import RunnerDevice
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.models.runner import RunnerDevice
 
 
 class RunnerDeviceRepository:

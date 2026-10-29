@@ -13,16 +13,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+import novamind.features.knowledge_space.api.document_routes as routes_module
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-
-import novamind.features.knowledge_space.api.document_routes as routes_module
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     get_document_query_service,
-    validate_kb_access,
     validate_space_member,
 )
 from novamind.features.knowledge_space.api.document_routes import router

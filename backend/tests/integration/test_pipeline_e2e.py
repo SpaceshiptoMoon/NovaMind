@@ -34,9 +34,8 @@ async def _services_available() -> tuple[bool, str]:
     不能再用 asyncio.run() 起嵌套循环。
     """
     try:
-        from sqlalchemy import text
-
         from novamind.core.database.database import get_db_session
+        from sqlalchemy import text
 
         async with get_db_session() as session:
             await session.execute(text("SELECT 1"))
@@ -69,8 +68,8 @@ async def e2e_env():
 
     任一依赖服务不可达时 skip（CI 无基础设施环境不阻塞单测流）。"""
     # 测试进程无 lifespan：手动装配 ClientFactory（与 startup_manager 同款）
-    from novamind.shared.storage.client_factory import ClientFactory
     from novamind.setting.yaml_config import get_config
+    from novamind.shared.storage.client_factory import ClientFactory
 
     ClientFactory.configure(get_config())
 
@@ -177,10 +176,10 @@ async def test_upload_parse_index_search_end_to_end(e2e_env):
     from unittest.mock import AsyncMock
 
     from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.services import pipeline_steps
     from novamind.features.knowledge_space.services.document_pipeline import (
         execute_document_pipeline,
     )
-    from novamind.features.knowledge_space.services import pipeline_steps
 
     env = e2e_env
     marker = f"E2EMARKER{env['token']}"
@@ -231,9 +230,8 @@ async def test_upload_parse_index_search_end_to_end(e2e_env):
             )
 
     # ---- 断言 1：任务终态 COMPLETED（终态写在 DocumentTask，Document 无 status 列）----
-    from sqlalchemy import select
-
     from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+    from sqlalchemy import select
 
     async with get_db_session() as session:
         task_row = (

@@ -17,8 +17,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Mapping
+from typing import Any
 
 
 def _env_int(env: Mapping[str, str], key: str, default: int) -> int:

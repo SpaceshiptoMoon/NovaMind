@@ -11,7 +11,6 @@
 from typing import Any
 
 import pytest
-
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolParameter, ToolSource
 from novamind.engines.agent.tool.executor import ToolExecutor

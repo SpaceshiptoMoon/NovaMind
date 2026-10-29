@@ -15,17 +15,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.pool import StaticPool
-
 from novamind.engines.agent.context_types import KnowledgeSearchItem
 from novamind.engines.agent.tool.builtins.knowledge_search import KnowledgeSearchTool
 from novamind.features.agent.schemas.agent_schema import (
     SessionKnowledgeBindingsUpdate,
 )
 from novamind.features.agent.services.agent_service import AgentService
+from sqlalchemy import BigInteger, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.pool import StaticPool
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:

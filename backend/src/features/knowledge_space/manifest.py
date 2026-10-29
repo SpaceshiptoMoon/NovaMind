@@ -40,7 +40,9 @@ def manifest() -> FeatureManifest:
     from novamind.features.knowledge_space.api.member_routes import router as member_router
     from novamind.features.knowledge_space.api.search_routes import router as search_router
     from novamind.features.knowledge_space.api.space_router import router as space_router
-    from novamind.features.knowledge_space.api.space_stats_routes import router as space_stats_router
+    from novamind.features.knowledge_space.api.space_stats_routes import (
+        router as space_stats_router,
+    )
     from novamind.features.knowledge_space.api.wiki_routes import router as wiki_router
 
     return FeatureManifest(

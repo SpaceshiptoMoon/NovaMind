@@ -1,7 +1,6 @@
 """PDF 版面产物：页面级解析中间产物（文本块 / 表格 / 图像区域）的数据结构。"""
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -11,14 +10,13 @@ from typing import Any
 
 import numpy as np
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
     TableStructureRecognizer,
 )
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
 from novamind.shared.logging import get_logger
 from PIL import Image
-
-from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 
 logger = get_logger(__name__)
 

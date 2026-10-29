@@ -130,7 +130,7 @@ async def await_transcription_async(
             asyncio.to_thread(await_transcription, task_id),
             timeout=timeout_seconds,
         )
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise DashScopeTranscriptionError(
             f"DashScope 转写轮询超时（>{timeout_seconds}s），task_id={task_id}"
         ) from exc

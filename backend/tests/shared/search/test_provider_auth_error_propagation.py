@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """搜索 provider 凭证错误传播测试。
 
 背景（2026-09-23 接口全量测试发现）：三个 provider 的 search() 曾把
@@ -25,14 +24,14 @@ pytestmark = pytest.mark.unit
 
 def _service_with_response(provider_module: str, status_code: int):
     """构造指定 provider 的 service，其 HTTP client 返回给定状态码响应。"""
-    from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
-    from novamind.shared.search.serpapi_service import SerpAPISearchService
-    from novamind.shared.search.tavily_service import TavilySearchService
     from novamind.shared.config import (
         DuckDuckGoSearchConfig,
         SerpApiSearchConfig,
         TavilySearchConfig,
     )
+    from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
+    from novamind.shared.search.serpapi_service import SerpAPISearchService
+    from novamind.shared.search.tavily_service import TavilySearchService
 
     spec = {
         "tavily_service": (TavilySearchService, TavilySearchConfig),
@@ -88,11 +87,11 @@ async def test_test_connection_reports_invalid_key_as_failure():
     """搜索配置「测试连接」对无效凭证应报失败（不再 success=true）。"""
     from unittest.mock import patch
 
+    from novamind.engines.search.errors import WebSearchProviderAuthError
+    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
     from novamind.features.user.services.search_config_service import (
         SearchConfigService,
     )
-    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
-    from novamind.engines.search.errors import WebSearchProviderAuthError
     from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     svc = SearchConfigService(db=None)

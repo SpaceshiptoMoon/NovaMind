@@ -6,8 +6,6 @@ PDF 书签 /Title 直出本是低概率注入面（书签串不经字体 CMap）
 """
 from __future__ import annotations
 
-import types
-
 import pytest
 
 pytestmark = pytest.mark.unit

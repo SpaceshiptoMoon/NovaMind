@@ -7,6 +7,7 @@ from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.mcp.config import McpConnectionConfig
 from novamind.features.agent.exceptions import (
     McpConnectionError,
+    McpServerError,
     McpServerNotFoundError,
 )
 from novamind.features.agent.models.mcp_server import AgentMcpServer

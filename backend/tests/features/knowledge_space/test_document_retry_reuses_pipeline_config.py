@@ -66,7 +66,6 @@ def test_retry_does_not_replay_old_snapshot(monkeypatch):
 
     旧模型配置项已删除时，重放旧快照会让重试报「模型不存在」——
     配置修复永远无法通过重试生效。"""
-    from novamind.setting.yaml_config import get_config
 
     # KB 当前配置已是新模型；失败任务快照是旧模型
     monkeypatch.setattr(

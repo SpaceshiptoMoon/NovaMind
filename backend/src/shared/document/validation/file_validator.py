@@ -350,11 +350,8 @@ class FileValidator:
                 return info
 
         detected_mime = self.detect_mime_by_magic(content)
-        detected_by = "magic" if detected_mime else None
         if not detected_mime:
             detected_mime = self.detect_mime_by_header(content)
-            if detected_mime:
-                detected_by = "header"
         info.detected_mime = detected_mime
 
         if detected_mime == "application/zip" and extension in ("docx", "xlsx", "pptx", "epub"):

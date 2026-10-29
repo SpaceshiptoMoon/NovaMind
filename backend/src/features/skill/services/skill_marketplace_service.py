@@ -5,7 +5,6 @@
 """
 import asyncio
 import io
-import json
 import zipfile
 from typing import Any
 

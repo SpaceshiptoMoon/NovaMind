@@ -62,12 +62,11 @@ async def get_hidden_doc_ids_for_member(
     短会话调用（请求级 session 传入）；公开空间匿名访问（无成员行）不限制
     ——文档级权限只作用于显式成员。
     """
-    from sqlalchemy import and_, select
-
     from novamind.features.knowledge_space.models.space_member import (
         MemberStatus,
         SpaceMember,
     )
+    from sqlalchemy import and_, select
 
     row = (await session.execute(
         select(SpaceMember.custom_permissions).where(and_(

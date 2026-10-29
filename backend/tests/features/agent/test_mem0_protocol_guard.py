@@ -46,7 +46,6 @@ async def test_get_model_connection_params_includes_protocol():
     )
     svc.get_credentials_by_model = AsyncMock(return_value=cred)
 
-    from novamind.shared.utils.crypto import decrypt_api_key_async
 
     params = await svc.get_model_connection_params(1, "llm")
 

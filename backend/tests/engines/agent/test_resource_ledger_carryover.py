@@ -14,10 +14,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.memory.context_compressor import (
-    ContextCompressor,
     SUMMARY_PREFIX,
+    ContextCompressor,
 )
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget

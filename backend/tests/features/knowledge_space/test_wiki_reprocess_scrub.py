@@ -17,8 +17,8 @@ from novamind.features.knowledge_space.models.wiki import (
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiIngestRecordRepository,
 )
-from novamind.features.knowledge_space.tasks.wiki_tasks import scrub_pending_wiki_ingest
 from novamind.features.knowledge_space.services.wiki_query_service import status_name
+from novamind.features.knowledge_space.tasks.wiki_tasks import scrub_pending_wiki_ingest
 from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles

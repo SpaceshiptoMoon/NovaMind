@@ -222,9 +222,8 @@ async def test_group_tables_create_and_query(group_db):
 
 def test_consult_group_requires_host_in_members():
     """consult：缺主持人或主持人不在成员内都被 schema 拒绝。"""
-    from pydantic import ValidationError
-
     from novamind.features.agent.schemas.group_schema import AgentGroupCreate
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         AgentGroupCreate(name="g", mode="consult", member_ids=[1, 2])
@@ -597,7 +596,7 @@ async def test_consult_host_consults_member(group_db):
         if m.role == "assistant" and (m.extra or {}).get("member_agent_id") == ids[0]
     ]
     assert host_speech, "主持人答复应落群时间线"
-    assert host_speech[0].content == f"agent-0 的答复"
+    assert host_speech[0].content == "agent-0 的答复"
 
 
 @pytest.mark.asyncio
@@ -839,12 +838,14 @@ async def test_messaging_tool_rejects_non_member():
 async def test_delivery_content_sanitized(group_db):
     """投递内容消毒：成员发言含 <script> 时，< 被转义，标签结构失活。"""
     factory, _ = group_db
-    from novamind.features.agent.services.group_orchestrator import GroupOrchestrator
-    from novamind.features.agent.services.chat_service import AgentChatService
-    from novamind.features.agent.services.agent_service import AgentService
     from novamind.features.agent.repository.agent_repository import (
-        AgentRepository, MessageRepository, SessionRepository, ToolCallRepository,
+        AgentRepository,
+        MessageRepository,
+        SessionRepository,
     )
+    from novamind.features.agent.services.agent_service import AgentService
+    from novamind.features.agent.services.chat_service import AgentChatService
+    from novamind.features.agent.services.group_orchestrator import GroupOrchestrator
 
     session = factory()
     chat = AgentChatService.__new__(AgentChatService)
@@ -893,7 +894,7 @@ async def test_run_round_aclose_marks_cancelled(group_db):
     """
     factory, _ = group_db
     ids = await _seed_agents(factory, 1, 1)
-    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
+    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember
 
     async with factory() as session:
         group = AgentGroup(user_id=1, name="g", mode="brainstorm")

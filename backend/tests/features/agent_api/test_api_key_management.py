@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger, select
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
@@ -241,7 +241,6 @@ async def test_last_used_failure_does_not_block_auth(key_db):
 async def test_get_api_key_user_dependency(key_db):
     """get_api_key_user 依赖：缺 header 401；成功返回兼容 dict + request.state.user_id。"""
     from fastapi import Request
-
     from novamind.features.agent_api.api.dependencies import get_api_key_user
     from novamind.features.agent_api.services.api_key_service import ApiKeyService
 

@@ -1,11 +1,10 @@
 """群聊仓储：群/成员/运行三表的数据库访问。"""
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class GroupRepository:

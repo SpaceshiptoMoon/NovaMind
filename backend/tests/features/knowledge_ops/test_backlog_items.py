@@ -110,13 +110,13 @@ async def test_attribution_permission_boundary_branch():
     _replay_search 全桩（记录 bypass 参数），判定逻辑真跑（SQLite 造消息对）。
     """
 
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         ATTR_PERMISSION_BOUNDARY,
         attribute_single_event,
     )
     from novamind.features.knowledge_space.models.document import Document
-    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
-    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
     from novamind.core.database.base import Base

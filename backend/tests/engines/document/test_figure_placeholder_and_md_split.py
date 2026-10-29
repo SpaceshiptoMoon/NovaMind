@@ -9,10 +9,8 @@ URL 清单/base64）返回空列表 → 整段静默丢弃。修复：剩余部�
 自成一个分句，绝不丢内容。
 """
 import pytest
-
 from novamind.engines.document.contracts import replace_figure_placeholders
 from novamind.engines.document.splitters import MarkdownSplitter
-
 
 # ========== P1#7 figure 占位符剥除（盐化后契约：map key/剥除目标=完整占位符串） ==========
 
@@ -61,8 +59,8 @@ def test_strip_never_touches_forged_lookalikes():
     assert "__FIGURE_URL__fig_12_0__" in out
     assert "__FIGURE_URL__ffffffffffff_fig_12_0__" in out
     assert out == (
-        f"正文 __FIGURE_URL__fig_12_0__ 与 __FIGURE_URL__ffffffffffff_fig_12_0__ "
-        f"真  尾"
+        "正文 __FIGURE_URL__fig_12_0__ 与 __FIGURE_URL__ffffffffffff_fig_12_0__ "
+        "真  尾"
     )
 
 

@@ -7,7 +7,6 @@ arq worker——job 入队后 worker 找不到函数，其中唯一的 ES 页向
 import inspect
 
 import pytest
-
 from novamind.core.middleware import startup_manager
 from novamind.features.knowledge_space.tasks.wiki_tasks import (
     enqueue_wiki_retract,
@@ -77,10 +76,9 @@ async def test_retract_task_cleans_es_for_deleted_pages(monkeypatch):
         async def commit(self):
             return None
 
-    import novamind.features.knowledge_space.tasks.wiki_tasks as wiki_tasks
-
     # wiki_tasks 内是函数内懒 import，patch 真实来源模块
     import novamind.core.database.database as db_mod
+    import novamind.features.knowledge_space.tasks.wiki_tasks as wiki_tasks
 
     monkeypatch.setattr(db_mod, "get_db_session", FakeSessionFactory)
     import novamind.features.knowledge_space.services.wiki_retract_service as retract_mod

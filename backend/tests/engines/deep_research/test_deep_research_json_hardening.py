@@ -21,7 +21,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.engines.deep_research.engine import (
     _extract_json_block,
-    parse_plan,
     parse_query_decision,
 )
 

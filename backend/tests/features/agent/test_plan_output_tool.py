@@ -10,7 +10,6 @@ import pytest
 import pytest_asyncio
 from novamind.core.database.base import Base
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 pytestmark = pytest.mark.unit

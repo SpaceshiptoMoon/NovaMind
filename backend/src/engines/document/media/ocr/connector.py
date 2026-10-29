@@ -16,16 +16,14 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
+from novamind.engines.document.media.ocr.blocks import OcrResult
 from novamind.engines.document.media.ocr.qwen import (
-    MIME_BY_EXT,
     DEFAULT_RENDER_DPI,
+    MIME_BY_EXT,
     OcrEngineConfig,
     OcrFileInvalidError,
     OcrRequestError,
-    recognize_image_with_qwen_ocr,
-    render_pdf_page_images,
 )
-from novamind.engines.document.media.ocr.blocks import OcrResult
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +148,9 @@ class OcrConnector:
         self, route: OcrRoute, file_content: bytes, file_type: str
     ) -> OcrResult:
         """multi_lan 分发：图片单次识别；PDF 渲页逐页识别（单页失败不整单失败）。"""
-        from novamind.engines.document.media.ocr.qwen import recognize_image_with_qwen_ocr as _recognize
+        from novamind.engines.document.media.ocr.qwen import (
+            recognize_image_with_qwen_ocr as _recognize,
+        )
 
         config = self._require_config()
         ext = (file_type or "").lower().lstrip(".")

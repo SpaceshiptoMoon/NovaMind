@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-
 from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
 
 

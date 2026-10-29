@@ -205,7 +205,6 @@ class HierarchicalSplitter(BaseSplitter):
             fence = _FENCE_RE.match(line)
             if fence:
                 _flush_text()
-                marker = fence.group(1)
                 j = i + 1
                 while j < len(lines) and not _FENCE_RE.match(lines[j]):
                     j += 1

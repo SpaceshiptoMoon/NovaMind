@@ -10,7 +10,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.evaluation.exceptions import InvalidTestSetError
 from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
 from novamind.features.evaluation.services.evaluation_service import (
@@ -18,7 +17,6 @@ from novamind.features.evaluation.services.evaluation_service import (
     _apply_expected_sources_benchmark,
 )
 from novamind.features.evaluation.services.test_set_parser import parse_test_set
-
 
 # ========== 解析器：JSON ==========
 
@@ -33,7 +31,7 @@ def test_parse_json_with_contexts_and_sources():
           "expected_sources": ["576", "chunk_abc"]
         }
       ]
-    }""".encode("utf-8")
+    }""".encode()
     test_set = parse_test_set(content, "cases.json")
     case = test_set.test_cases[0]
     assert case.contexts == ["RAG 是检索增强生成技术。"]
@@ -42,11 +40,11 @@ def test_parse_json_with_contexts_and_sources():
 
 def test_parse_json_missing_optional_fields_defaults_empty():
     """存量格式（无新字段）向后兼容，两字段缺省为空表。"""
-    content = """{
+    content = b"""{
       "test_cases": [
         {"question": "Q", "expected_answer": "A"}
       ]
-    }""".encode("utf-8")
+    }"""
     case = parse_test_set(content, "cases.json").test_cases[0]
     assert case.contexts == []
     assert case.expected_sources == []
@@ -58,18 +56,18 @@ def test_parse_json_contexts_type_error_rejected():
       "test_cases": [
         {"question": "Q", "expected_answer": "A", "contexts": "不是数组"}
       ]
-    }""".encode("utf-8")
+    }""".encode()
     with pytest.raises(InvalidTestSetError, match="contexts 必须是字符串数组"):
         parse_test_set(content, "cases.json")
 
 
 def test_parse_json_expected_sources_ints_coerced():
     """expected_sources 元素为整数时转字符串（测试集写法容错）。"""
-    content = """{
+    content = b"""{
       "test_cases": [
         {"question": "Q", "expected_answer": "A", "expected_sources": [576, 589]}
       ]
-    }""".encode("utf-8")
+    }"""
     case = parse_test_set(content, "cases.json").test_cases[0]
     assert case.expected_sources == ["576", "589"]
 
@@ -82,7 +80,7 @@ def test_parse_csv_with_separated_lists():
         "question,expected_answer,contexts,expected_sources\n"
         "Q1,A1,上下文一||上下文二,576||chunk_abc\n"
         "Q2,A2,,\n"
-    ).encode("utf-8")
+    ).encode()
     cases = parse_test_set(content, "cases.csv").test_cases
     assert cases[0].contexts == ["上下文一", "上下文二"]
     assert cases[0].expected_sources == ["576", "chunk_abc"]

@@ -14,8 +14,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-
-import novamind.features.knowledge_space.services.media_processing as mp
 from novamind.features.knowledge_space.services.media_processing import (
     _parse_steps_json,
     _steps_coverage_gap,

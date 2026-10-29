@@ -3,18 +3,26 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, model_validator
-
 from novamind.engines.document.pipeline.config_defaults import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_STRATEGY,
-    DEFAULT_EMBED_BATCH_SIZE as DEFAULT_BATCH_SIZE,
     DEFAULT_MAX_CHUNK_SIZE,
     DEFAULT_MIN_CHUNK_SIZE,
     DEFAULT_PARENT_CHUNK_SIZE,
     DEFAULT_SIMILARITY_THRESHOLD,
     DEFAULT_WINDOW_SIZE,
+)
+from novamind.engines.document.pipeline.config_defaults import (
+    DEFAULT_EMBED_BATCH_SIZE as DEFAULT_BATCH_SIZE,
+)
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_serializer,
+    model_validator,
 )
 
 # ========== Shared default constants ==========

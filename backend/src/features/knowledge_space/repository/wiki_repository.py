@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.wiki.slug import normalize_slug
 from novamind.features.knowledge_space.models.wiki import (
     WIKI_MAX_REVISIONS_HARD_CAP,
     WIKI_MAX_REVISIONS_PER_PAGE,
@@ -14,7 +15,6 @@ from novamind.features.knowledge_space.models.wiki import (
     WikiPageIssue,
     WikiPageRevision,
 )
-from novamind.engines.wiki.slug import normalize_slug
 from sqlalchemy import String, func, or_, select, update
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,12 +1,10 @@
 """LLM 连接测试的 stream-only 回退：仅支持流式的模型不再被非流式探针误判为连接失败。"""
 import pytest
-
-from novamind.features.user.services.model_config_service import (
-    is_stream_only_error,
-    _probe_llm_stream,
-)
 from novamind.features.user.schemas.model_config_schema import ModelTestRequest
-
+from novamind.features.user.services.model_config_service import (
+    _probe_llm_stream,
+    is_stream_only_error,
+)
 
 # ========== is_stream_only_error 判据（正反两用） ==========
 

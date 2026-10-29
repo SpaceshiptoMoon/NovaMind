@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
 
 from novamind.shared.logging import get_logger
 
@@ -56,13 +55,12 @@ async def send_review_reminders(ctx: dict | None = None) -> dict[str, int]:
     """
     from datetime import datetime as dt
 
-    from sqlalchemy import and_, select
-
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.document import (
         Document,
         DocumentLifecycleStatus,
     )
+    from sqlalchemy import and_, select
 
     cfg = load_review_config()
     now = dt.now()

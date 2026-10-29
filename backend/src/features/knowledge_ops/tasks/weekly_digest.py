@@ -35,14 +35,13 @@ async def send_weekly_kb_ops_digest(ctx: dict | None = None) -> dict[str, Any]:
 
     返回 {space_id: 推送成员数} 供日志；无 gap 活动的空间跳过（宁缺勿扰）。
     """
-    from sqlalchemy import select
-
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_ops.services.gap_report_service import (
         GapReportService,
     )
     from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
     from novamind.features.knowledge_space.models.space_member import SpaceMember
+    from sqlalchemy import select
 
     now = datetime.now()
     window_start, window_end = _last_week_window(now)

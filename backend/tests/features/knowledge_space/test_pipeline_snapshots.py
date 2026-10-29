@@ -67,9 +67,6 @@ def _fp(cfg, doc):
 
 def test_parse_fingerprint_stable_for_same_inputs():
     """同文档同解析配置 → 指纹稳定。"""
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_parse_fingerprint,
-    )
 
     doc = _make_document()
     cfg = {"strategy": "deepdoc", "deepdoc_pdf_mode": "full"}
@@ -81,9 +78,6 @@ def test_parse_fingerprint_stable_for_same_inputs():
 
 def test_parse_fingerprint_changes_on_config_change():
     """解析配置任一变化 → 指纹失效。"""
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_parse_fingerprint,
-    )
 
     doc = _make_document()
     fp1 = _fp({"strategy": "deepdoc", "deepdoc_pdf_mode": "full"}, doc)
@@ -93,9 +87,6 @@ def test_parse_fingerprint_changes_on_config_change():
 
 def test_parse_fingerprint_changes_on_file_change():
     """文件内容哈希变化 → 指纹失效。"""
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_parse_fingerprint,
-    )
 
     cfg = {"strategy": "default"}
     fp1 = _fp(cfg, _make_document(file_hash="h1"))
@@ -105,9 +96,6 @@ def test_parse_fingerprint_changes_on_file_change():
 
 def test_parse_fingerprint_file_type_case_insensitive():
     """file_type 大小写不敏感（PDF 与 pdf 同指纹，复用不受大小写影响）。"""
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_parse_fingerprint,
-    )
 
     cfg = {"strategy": "default"}
     fp1 = _fp(cfg, _make_document(file_type="PDF"))

@@ -7,13 +7,13 @@ from novamind.features.agent.exceptions import (
     GroupNotFoundError,
     GroupRunConflictError,
 )
-from novamind.features.agent.models.group import AgentGroup
+from novamind.features.agent.models.group import AgentGroup, AgentGroupRun
 from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.repository.agent_repository import SessionRepository
 from novamind.features.agent.repository.group_repository import (
     GroupRepository,
     GroupRunRepository,
 )
-from novamind.features.agent.repository.agent_repository import SessionRepository
 from novamind.features.agent.schemas.group_schema import (
     AgentGroupCreate,
     AgentGroupDetailResponse,
@@ -133,9 +133,8 @@ class GroupService:
                 "rounds_per_turn": update["rounds_per_turn"],
             }
         if patch:
-            from sqlalchemy import update as sa_update
-
             from novamind.features.agent.models.group import AgentGroup
+            from sqlalchemy import update as sa_update
 
             await self.db.execute(sa_update(AgentGroup).where(AgentGroup.id == group.id).values(**patch))
             await self.db.flush()
@@ -153,9 +152,8 @@ class GroupService:
     async def delete_group(self, user_id: int, group_id: int) -> None:
         """解散群（成员级联删、运行审计连带清；群会话保留——普通会话，用户可自行清理）。"""
         group = await self._get_owned_group(user_id, group_id)
-        from sqlalchemy import delete as sa_delete
-
         from novamind.features.agent.models.group import AgentGroupRun
+        from sqlalchemy import delete as sa_delete
 
         # runs 外键同时引用群与会话，留着即 1451；群是审计的根，随群消亡
         await self.db.execute(sa_delete(AgentGroupRun).where(AgentGroupRun.group_id == group.id))
@@ -262,7 +260,6 @@ class GroupService:
             )
         )
         from novamind.shared.utils.time_utils import now_china
-
         from sqlalchemy import update as sa_update
 
         now = now_china()
@@ -321,6 +318,7 @@ class GroupService:
     async def start_run(
         self, user_id: int, group: AgentGroup, session_id: str
     ) -> "AgentGroupRun":
+        from novamind.features.agent.models.group import AgentGroupRun  # noqa: F401
         """创建一响 run（running 状态，flush 由调用方 commit）。"""
         return await self.run_repo.create_run(
             group_id=group.id, user_id=user_id,
@@ -336,9 +334,8 @@ class GroupService:
 
 async def _first_member_agent_id(db: AsyncSession, group_id: int) -> int:
     """取群首个成员的 agent_id（群会话 agent_id 外键兜底值）。"""
-    from sqlalchemy import select
-
     from novamind.features.agent.models.group import AgentGroupMember
+    from sqlalchemy import select
 
     result = await db.execute(
         select(AgentGroupMember.agent_id)

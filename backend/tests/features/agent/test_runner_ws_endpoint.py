@@ -6,13 +6,12 @@ TestClient（portal 线程私有循环与注册表 Future 跨线程冲突），�
 RunnerConnection 假 websocket 做纯异步验证。
 """
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
-
 from novamind.features.agent.api.runner_ws_routes import router as runner_ws_router
 from novamind.features.agent.services.local_workspace.runner_registry import (
     RunnerConnection,

@@ -6,8 +6,8 @@
 from types import SimpleNamespace
 
 import pytest
-from novamind.features.agent.exceptions import AttachmentNotFoundError
 from novamind.features.agent.attachments.service import AttachmentService
+from novamind.features.agent.exceptions import AttachmentNotFoundError
 
 pytestmark = pytest.mark.unit
 

@@ -11,7 +11,7 @@ from typing import Any
 from novamind.features.knowledge_ops.services.new_version_detector import (
     normalize_filename,
 )
-from sqlalchemy import BigInteger, func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -33,7 +33,6 @@ class GovernanceRepository:
         """
         from novamind.features.knowledge_space.models.document import (
             Document,
-            DocumentLifecycleStatus,
         )
 
         conditions = [

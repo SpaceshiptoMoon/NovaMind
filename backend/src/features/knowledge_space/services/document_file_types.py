@@ -18,8 +18,6 @@ runtime_parser 路由存在（xls 走 pandas+calamine 兜底），但缺真实�
 
 from dataclasses import dataclass
 
-from novamind.shared.document.file_types import IMAGE_FILE_TYPES
-
 # 文件大小限制（默认 100MB）
 MAX_FILE_SIZE = 100 * 1024 * 1024
 
@@ -83,7 +81,10 @@ _MODALITY_ORDER = ("text", "image", "video", "audio")
 # 支持的文件类型（上传白名单；document_routes ALLOWED_FILE_EXTENSIONS 自此派生）
 SUPPORTED_FILE_TYPES: list[str] = [spec.ext for spec in _FILE_FORMAT_SPECS]
 
-# 图片文件类型（唯一定义 shared/document/file_types.py）
+# 图片文件类型（与 VIDEO/AUDIO 同源派生）
+IMAGE_FILE_TYPES: frozenset[str] = frozenset(
+    spec.ext for spec in _FILE_FORMAT_SPECS if spec.modality == "image"
+)
 
 # 视频文件类型
 VIDEO_FILE_TYPES: frozenset[str] = frozenset(

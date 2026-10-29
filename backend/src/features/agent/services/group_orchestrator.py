@@ -17,9 +17,6 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from sqlalchemy import inspect
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
 from novamind.engines.agent.agent_engine import AgentEngine  # noqa: F401 类型引用
@@ -42,6 +39,8 @@ from novamind.features.agent.tool.builtins.consult_member import (
     CONSULT_FN_KEY,
     CONSULT_MEMBERS_KEY,
     ConsultMemberTool,
+)
+from novamind.features.agent.tool.builtins.consult_member import (
     TOOL_NAME as CONSULT_TOOL_NAME,
 )
 from novamind.features.agent.tool.builtins.group_messaging import (
@@ -50,6 +49,8 @@ from novamind.features.agent.tool.builtins.group_messaging import (
     MESSAGING_MEMBERS_KEY,
 )
 from novamind.shared.prompts.prompt_manager import PromptManager
+from sqlalchemy import inspect
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = get_logger(__name__)
 
@@ -395,6 +396,9 @@ class GroupOrchestrator:
         的协作方直接共享。
         """
         src = self.chat_service
+        from novamind.features.agent.attachments.repository import (
+            ChatAttachmentRepository,
+        )
         from novamind.features.agent.attachments.text_reader import AttachmentTextReader
         from novamind.features.agent.repository.agent_repository import (
             AgentRepository,
@@ -402,9 +406,6 @@ class GroupOrchestrator:
             MessageRepository,
             SessionRepository,
             ToolCallRepository,
-        )
-        from novamind.features.agent.attachments.repository import (
-            ChatAttachmentRepository,
         )
         from novamind.features.agent.repository.context_summary_repository import (
             ContextSummaryRepository,

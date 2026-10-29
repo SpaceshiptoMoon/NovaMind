@@ -5,9 +5,8 @@ AgentService 反向复用群侧清理逻辑时若经 group_service 即成 import
 """
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.agent.models.session import AgentSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 与 group_service.GROUP_SESSION_FLAG 同源；独立常量避免 import 回环
 GROUP_SESSION_FLAG = "group"
@@ -20,13 +19,14 @@ async def cleanup_agent_group_refs(db: AsyncSession, agent_id: int) -> None:
         db: 调用方事务会话。
         agent_id: 被删 Agent 的 ID。
     """
-    from sqlalchemy import delete as sa_delete, select, update as sa_update
-
     from novamind.features.agent.models.group import (
         AgentGroup,
         AgentGroupMember,
         AgentGroupRun,
     )
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy import select
+    from sqlalchemy import update as sa_update
 
     member_rows = (
         await db.execute(

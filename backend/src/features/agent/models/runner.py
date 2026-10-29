@@ -2,9 +2,8 @@
 
 WorkspaceBinding（会话↔工作区绑定）属 P1，随写入能力一起落地。
 """
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String
 
 
 class RunnerDevice(BaseModel):

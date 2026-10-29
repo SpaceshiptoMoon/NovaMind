@@ -6,9 +6,8 @@ P0 本地形态：无 RunnerDevice 绑定时直接经会话 extra_config.workspa
 """
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

@@ -110,7 +110,7 @@ async def test_rebuild_default_skips_done_documents(db):
 @pytest.mark.asyncio
 async def test_rebuild_default_reenqueues_latest_pending_or_failed(db):
     """增量缺省：latest 为 pending/running/failed 都算「值得再入队」，只跳过 done"""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     p_doc = await _make_document(db, 801)
     f_doc = await _make_document(db, 802)

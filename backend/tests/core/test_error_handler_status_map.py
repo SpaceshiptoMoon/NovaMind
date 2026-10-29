@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """回归门禁：create_error_handler 的状态码解析不得沿 MRO 继承 BaseAPIError 的 500。
 
 根因回顾（2026-09-23 接口全量测试发现）：create_error_handler 曾用
@@ -10,7 +9,6 @@ UserAlreadyExistsError:409 等）失效，全部返回 500。6a0bd00 与 fa794b8
 """
 import sys
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -98,7 +96,6 @@ def test_unmapped_module_exception_falls_back_to_default():
     """未列入 status_map 的异常走 default_status_code（这里 418 自定义便于断言）。"""
     from novamind.core.middleware.base_exception_handler import (
         create_error_handler,
-        register_module_exceptions,
     )
 
     class _Other(BaseAPIError):

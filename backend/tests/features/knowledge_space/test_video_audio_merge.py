@@ -14,9 +14,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-import pytest
-
 import novamind.features.knowledge_space.services.media_processing as mp
+import pytest
 from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
     merge_audio_into_frame_lines,

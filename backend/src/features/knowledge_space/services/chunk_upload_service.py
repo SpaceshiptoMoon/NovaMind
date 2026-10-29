@@ -24,7 +24,6 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentSizeExceededError,
 )
 from novamind.setting.yaml_config import get_config
-from novamind.shared.storage.client_factory import get_redis_client
 
 logger = get_logger(__name__)
 
@@ -125,7 +124,6 @@ class ChunkUploadSessionService:
         limits = ChunkUploadLimits.from_config()
         if total_chunks < 1 or total_size <= 0:
             raise ChunkUploadSessionError("分片数与文件大小必须为正")
-        hard_cap = min(total_size, max_total_bytes)
         if total_size > max_total_bytes:
             raise DocumentSizeExceededError(size=total_size, limit=max_total_bytes)
 
@@ -231,7 +229,7 @@ class ChunkUploadSessionService:
             }
 
         # 累计硬顶：原子增量后判超（超则回滚增量并废弃会话，防长期贴顶攻击）
-        new_bytes = await client.hincrby(skey, "received_bytes", len(data))
+        await client.hincrby(skey, "received_bytes", len(data))
         if int(sess["received_bytes"]) + len(data) > int(sess["total_size"]):
             await client.hincrby(skey, "received_bytes", -len(data))
             await client.hset(skey, key="state", value=_STATE_CORRUPT)
@@ -273,7 +271,6 @@ class ChunkUploadSessionService:
         同一会话同一时刻只有一个属主客户端在写（upload_id 服务端生成、归属
         每次校验），seek+write 足够；不用 os.pwrite 是为平台通用（Windows 无此调用）。
         """
-        import os
 
         if not path.exists():
             fd = os.open(str(path), os.O_WRONLY | os.O_CREAT, 0o600)

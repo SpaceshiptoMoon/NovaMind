@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,7 +21,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.llm.json_mode import (
-    DEFAULT_JSON_RESPONSE_FORMAT,
     request_json,
 )
 from novamind.shared.prompts.json_contract import JSON_ONLY_RULE

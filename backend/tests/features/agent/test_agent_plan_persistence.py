@@ -8,7 +8,6 @@
 5. usage 打通（_record_usage 走通）
 """
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from novamind.engines.agent.agent_engine import AgentEvent

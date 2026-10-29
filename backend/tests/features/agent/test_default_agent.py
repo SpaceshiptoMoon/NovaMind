@@ -13,12 +13,11 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from novamind.features.agent.schemas.agent_schema import AgentUpdate
 from sqlalchemy import BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
-
-from novamind.features.agent.schemas.agent_schema import AgentUpdate
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
@@ -120,7 +119,6 @@ async def test_ensure_backfills_missing_builtin_tools(agent_db):
         svc = _make_service(factory)
         svc.db = session
         # 模拟批3 之前的存量行：无 research，但用户自行加了 wiki
-        from novamind.features.agent.models.agent import AgentDefinition
 
         legacy = await svc.agent_repo.create(
             user_id=9, name="个人助手", system_prompt="旧",

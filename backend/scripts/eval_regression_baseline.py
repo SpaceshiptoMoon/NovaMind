@@ -16,7 +16,6 @@ import argparse
 import asyncio
 import json
 import sys
-import urllib.parse
 from pathlib import Path
 
 BASE = "http://127.0.0.1:8100/api/v1"
@@ -104,7 +103,7 @@ def main() -> None:
         return
 
     if not BASELINE_PATH.exists():
-        print(f"FAIL: 基线文件不存在（先跑 --baseline）", file=sys.stderr)
+        print("FAIL: 基线文件不存在（先跑 --baseline）", file=sys.stderr)
         sys.exit(2)
     base = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
     failures = []

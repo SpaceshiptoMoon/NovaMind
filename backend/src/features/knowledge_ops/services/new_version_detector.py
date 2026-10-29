@@ -60,11 +60,8 @@ async def detect_new_version_suggestions(
     （id 小 = 先上传 = 旧版；同 id 自身排除）。多候选全建（管理员自行裁决）。
     """
     try:
-        from sqlalchemy import and_, select
-
         from novamind.core.database.database import get_db_session
         from novamind.features.knowledge_ops.repository.suggestion_repository import (
-            STATUS_OPEN,
             SUGGESTION_NEW_VERSION,
             SuggestionRepository,
         )
@@ -72,6 +69,7 @@ async def detect_new_version_suggestions(
             Document,
             DocumentLifecycleStatus,
         )
+        from sqlalchemy import and_, select
 
         async with get_db_session() as session:
             new_doc = (await session.execute(

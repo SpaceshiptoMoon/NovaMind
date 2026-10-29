@@ -21,16 +21,16 @@ from novamind.core.auth import (
     get_current_user,
     get_current_user_optional,
 )
+from novamind.features.agent.api.dependencies import (
+    get_attachment_service,
+    get_model_config_service,
+)
 from novamind.features.agent.attachments.schemas import (
     ChatAvailableModelsResponse,
     HealthCheckResponse,
     UploadChatAttachmentResponse,
 )
 from novamind.features.agent.attachments.service import AttachmentService
-from novamind.features.agent.api.dependencies import (
-    get_attachment_service,
-    get_model_config_service,
-)
 from novamind.features.user.services.model_config_service import ModelConfigService
 
 # LLM 生成参数默认值（models 端点回显用；与 user 侧模型配置默认一致）

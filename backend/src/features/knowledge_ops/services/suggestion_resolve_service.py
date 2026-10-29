@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_ops.exceptions import KbOpsNotFoundError
 from novamind.features.knowledge_ops.repository.suggestion_repository import (
@@ -17,6 +15,7 @@ from novamind.features.knowledge_ops.repository.suggestion_repository import (
     SUGGESTION_NEW_VERSION,
     SuggestionRepository,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -76,12 +75,11 @@ class SuggestionResolveService:
 
     async def _notify_contradiction_owners(self, suggestion) -> None:
         """矛盾建议 accept：通知双方文档 owner 人工对齐内容（通知失败仅告警）。"""
-        from sqlalchemy import select
-
         from novamind.features.knowledge_space.models.document import Document
         from novamind.features.notification.services.notification_service import (
             NotificationService,
         )
+        from sqlalchemy import select
 
         doc_ids = [d for d in (suggestion.old_doc_id, suggestion.new_doc_id) if d]
         owners = (await self.session.execute(

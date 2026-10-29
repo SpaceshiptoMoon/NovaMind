@@ -5,7 +5,7 @@
 本文档的 PENDING 行很快被挤出窗口，复用失败每轮新建——KB11 曾刷出
 1 万+ 冗余 PENDING 行（99 文档均摊 110 行/文档）。
 """
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio

@@ -12,7 +12,6 @@ L3 索引存在 → embedding_gap / 索引缺失 → index_missing；
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
 from novamind.features.evaluation.services.evaluation_service import (
     EvaluationService,

@@ -9,7 +9,6 @@ P1#6：worker 侧取消补偿 _handle_cancellation 必须写 CANCELLED（经
 _ensure_mark_terminal），不得再走 _ensure_mark_failed 写 FAILED——
 双 writer last-write-wins 曾让终态在 CANCELLED/FAILED 间随机。
 """
-import ast
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parents[3] / "src"

@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import sys
-import tempfile
 import threading
 from pathlib import Path
 

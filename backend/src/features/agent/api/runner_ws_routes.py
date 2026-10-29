@@ -5,11 +5,9 @@
 用户身份（连接即身份）。协议报文见设计文档 §3.1。
 """
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws.stream import dumps_event
-from novamind.features.agent.api.dependencies import get_agent_service
 from novamind.features.agent.services.local_workspace.runner_registry import (
     RunnerConnection,
     RunnerRegistry,

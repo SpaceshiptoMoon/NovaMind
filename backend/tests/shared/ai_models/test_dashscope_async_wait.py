@@ -14,7 +14,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-
 from novamind.shared.ai_models.asr.dashscope_client import (
     DashScopeTranscriptionError,
     await_transcription,

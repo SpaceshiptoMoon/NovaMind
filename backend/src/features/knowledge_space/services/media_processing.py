@@ -3,7 +3,11 @@
 import asyncio
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from novamind.engines.document.integrations.mineru import MineruEngineConfig
+    from novamind.engines.document.media.ocr import OcrEngineConfig
 
 from novamind.engines.document.media.audio import (
     AsrConnector,
@@ -42,7 +46,6 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     build_runtime_parsing_config,
 )
 from novamind.features.knowledge_space.services.pipeline_snapshots import (
-    snapshots_enabled,
     build_parse_snapshot_payload,
     compute_parse_fingerprint,
     load_parse_snapshot,
@@ -51,6 +54,7 @@ from novamind.features.knowledge_space.services.pipeline_snapshots import (
     restore_time_alignment,
     save_parse_snapshot,
     snapshot_fingerprint,
+    snapshots_enabled,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import (
     TailInputs,
@@ -220,6 +224,7 @@ def _build_engine_audio_config() -> AudioConfig:
         local_whisper_min_speech_dbfs=parsing.local_whisper_min_speech_dbfs,
         local_whisper_empty_result_retry_language=parsing.local_whisper_empty_result_retry_language,
     )
+
 
 
 def build_engine_ocr_config() -> "OcrEngineConfig":

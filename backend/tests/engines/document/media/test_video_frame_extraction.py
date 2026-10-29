@@ -202,8 +202,8 @@ def _patch_props_and_av(monkeypatch, fake_props, fake_av_open):
 
     fake_iio = types.SimpleNamespace(improps=lambda *a, **k: fake_props)
     fake_av = types.SimpleNamespace(open=fake_av_open)
-    import imageio.v3 as real_iio  # noqa: F401 — 确保 monkeypatch 目标模块已加载
     import av as real_av  # noqa: F401
+    import imageio.v3 as real_iio  # noqa: F401 — 确保 monkeypatch 目标模块已加载
 
     monkeypatch.setattr("imageio.v3.improps", lambda *a, **k: fake_props, raising=False)
     # video_utils 内是懒 import（import av），patch 模块级符号即可命中

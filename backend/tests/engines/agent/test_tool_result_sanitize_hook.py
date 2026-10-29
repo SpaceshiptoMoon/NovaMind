@@ -9,7 +9,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.engines.agent.tool.definition import ToolDefinition
 from novamind.engines.agent.tool.hooks import ToolResultSanitizeHook
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus

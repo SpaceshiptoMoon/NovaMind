@@ -45,11 +45,11 @@ def test_export_via_safety_package():
 
 def _run_engine_with_steering(steering_queue, max_iterations=2):
     """跑引擎两轮：首轮强制工具调用触发第二轮，捕获迭代事件与 messages 演化。"""
+    from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
     from novamind.engines.agent.agent_engine import AgentEngine
     from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
-    from types import SimpleNamespace
 
     engine = AgentEngine.__new__(AgentEngine)
     engine.tool_executor = AsyncMock()

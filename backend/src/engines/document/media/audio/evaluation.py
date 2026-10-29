@@ -91,8 +91,6 @@ def cer(reference: str, hypothesis: str) -> dict:
 
 def wer(reference: str, hypothesis: str) -> dict:
     """词错误率（英文/混排场景可选指标；中文按字成词——单字一个「词」）。"""
-    ref = _strip_for_eval(reference)
-    hyp = _strip_for_eval(hypothesis)
     # 中文无空格分词，字符级即词级；英文按空白切（归一后空白已删，此处
     # 对英文参考用原文分词）
     ref_words = _words(reference)

@@ -7,7 +7,6 @@
 - 客户端配置了 key → extra_body 注入；未配置 → extra_body 原样。
 """
 import pytest
-
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 

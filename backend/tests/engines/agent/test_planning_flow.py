@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 from novamind.engines.agent.agent_engine import AgentEvent
 from novamind.engines.agent.flow.planning_flow import (
+    _STEP_OUTPUT_HEAD_CHARS,
+    _STEP_OUTPUT_TAIL_CHARS,
     BLOCKED,
     COMPLETED,
     IN_PROGRESS,
     NOT_STARTED,
     PlanningFlow,
-    _STEP_OUTPUT_HEAD_CHARS,
-    _STEP_OUTPUT_TAIL_CHARS,
 )
 from novamind.shared.ai_models.base_model import BaseLLM
 

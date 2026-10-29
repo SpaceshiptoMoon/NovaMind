@@ -7,7 +7,6 @@ import asyncio
 from dataclasses import dataclass, field
 
 from fastapi import WebSocket
-
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +86,6 @@ class RunnerRegistry:
             return {"ok": False, "error": f"派发失败: {e}", "error_code": "DEVICE_SEND_FAILED"}
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             conn.pending.pop(call_id, None)
             return {"ok": False, "error": f"工具执行超时（{timeout}s）", "error_code": "TOOL_TIMEOUT"}

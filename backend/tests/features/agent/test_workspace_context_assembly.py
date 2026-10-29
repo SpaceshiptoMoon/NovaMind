@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.features.agent.services.chat_service import AgentChatService
 
 pytestmark = pytest.mark.unit

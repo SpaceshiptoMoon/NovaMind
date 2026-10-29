@@ -15,8 +15,9 @@ dict，builder 只读自己消费的键、缺省取 config_defaults 常量——
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from novamind.engines.document.pipeline.config_defaults import (
     DEFAULT_CHUNK_OVERLAP,

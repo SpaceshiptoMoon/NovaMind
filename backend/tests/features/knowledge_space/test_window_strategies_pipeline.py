@@ -21,7 +21,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import pipeline_steps
-from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks, TailInputs
+from novamind.features.knowledge_space.services.pipeline_steps import TailInputs, build_es_chunks
 
 pytestmark = pytest.mark.unit
 

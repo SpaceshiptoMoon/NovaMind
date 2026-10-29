@@ -462,7 +462,6 @@ class RAGFlowDocxParser:
         复杂域（fldChar begin..separate..end）区间内与简单域（fldSimple
         子树）内的 w:t 都是上次渲染缓存（如页码 "7"），对 RAG 无意义。
         """
-        from docx.oxml.ns import nsmap
 
         parts: list[str] = []
         field_depth = 0

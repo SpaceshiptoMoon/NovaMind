@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 
 from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 
+
 def _model_repo_id() -> str:
     """模型仓库 ID（运行时配置注入，见 runtime_settings）。"""
     return get_settings().model_repo_id

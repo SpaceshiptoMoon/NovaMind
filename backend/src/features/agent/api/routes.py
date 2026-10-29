@@ -417,7 +417,10 @@ async def browse_workspace_dirs(
         import string
 
         # Windows 列盘符；POSIX 根即唯一起点
-        drives = [f"{l}:\\" for l in string.ascii_uppercase if Path(f"{l}:\\").exists()]
+        drives = [
+            f"{drive_letter}:\\" for drive_letter in string.ascii_uppercase
+            if Path(f"{drive_letter}:\\").exists()
+        ]
         result["dirs"] = [{"name": d, "path": d} for d in drives]
         result["is_root"] = True
         return result

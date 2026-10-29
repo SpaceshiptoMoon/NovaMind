@@ -121,7 +121,7 @@ def _make_request(headers: dict[str, str] | None = None):
 @pytest.mark.asyncio
 async def test_gateway_user_bearer_priority(seeded_key):
     """Bearer 与 X-API-Key 同时在时 Bearer 优先；成功写 request.state.user_id。"""
-    from novamind.features.agent_api.api.dependencies import get_gateway_user, get_api_key_service
+    from novamind.features.agent_api.api.dependencies import get_api_key_service, get_gateway_user
 
     plain, factory = seeded_key
     async with factory() as db:
@@ -142,7 +142,7 @@ async def test_gateway_user_bearer_priority(seeded_key):
 @pytest.mark.asyncio
 async def test_gateway_user_falls_back_to_x_api_key(seeded_key):
     """无 Authorization 时回落 X-API-Key（MCP/自研客户端兼容通道）。"""
-    from novamind.features.agent_api.api.dependencies import get_gateway_user, get_api_key_service
+    from novamind.features.agent_api.api.dependencies import get_api_key_service, get_gateway_user
 
     plain, factory = seeded_key
     async with factory() as db:
@@ -158,7 +158,7 @@ async def test_gateway_user_falls_back_to_x_api_key(seeded_key):
 @pytest.mark.asyncio
 async def test_gateway_user_missing_credentials_401(key_db):
     """Bearer/X-API-Key 双缺 → GatewayAuthError（401，OpenAI 格式源异常）。"""
-    from novamind.features.agent_api.api.dependencies import get_gateway_user, get_api_key_service
+    from novamind.features.agent_api.api.dependencies import get_api_key_service, get_gateway_user
     from novamind.features.agent_api.exceptions import GatewayAuthError
 
     factory, _ = key_db
@@ -173,7 +173,7 @@ async def test_gateway_user_missing_credentials_401(key_db):
 @pytest.mark.asyncio
 async def test_gateway_user_invalid_key_401(seeded_key):
     """无效 key → GatewayAuthError（管理端点的 InvalidApiKeyError 转译）。"""
-    from novamind.features.agent_api.api.dependencies import get_gateway_user, get_api_key_service
+    from novamind.features.agent_api.api.dependencies import get_api_key_service, get_gateway_user
     from novamind.features.agent_api.exceptions import GatewayAuthError
 
     _, factory = seeded_key
@@ -815,7 +815,7 @@ async def test_chat_completion_stream_tools_unsupported_streaming(gateway_app, s
     class _NoStreamToolsStub(AsyncMock):
         """generate_with_tools_stream 保持基类默认（不覆写）的桩。"""
 
-    from novamind.shared.ai_models.base_model import BaseLLM, LLMCapabilities
+    from novamind.shared.ai_models.base_model import LLMCapabilities
 
     async def _fake(self, user_id, model):
         stub = _NoStreamToolsStub()
@@ -850,9 +850,6 @@ async def test_chat_completion_stream_tools_unsupported_streaming(gateway_app, s
 async def test_chat_completion_stream_prepcheck_with_real_base_llm_semantics(gateway_app, seeded_key):
     """预检单测：type 级判断对基类未覆写客户端返回 True（400 短路）。"""
     from novamind.shared.ai_models.base_model import BaseLLM, LLMCapabilities
-    from novamind.features.agent_api.services.openai_gateway_service import (
-        OpenAiGatewayService,
-    )
 
     class _OllamaLike(BaseLLM):
         capabilities = LLMCapabilities(tools=True, thinking=False)

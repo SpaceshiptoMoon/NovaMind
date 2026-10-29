@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.wiki.slug import normalize_slug
 from novamind.features.knowledge_space.exceptions import (
     InvalidParameterError,
     KnowledgeSpaceError,
@@ -24,7 +25,6 @@ from novamind.features.knowledge_space.repository.document_repository import (
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
-from novamind.engines.wiki.slug import normalize_slug
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)

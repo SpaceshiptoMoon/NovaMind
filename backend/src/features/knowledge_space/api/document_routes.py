@@ -26,6 +26,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_member,
 )
 from novamind.features.knowledge_space.exceptions import (
+    ChunkUploadChecksumMismatchError,
     ChunkUploadConflictError,
     ChunkUploadSessionError,
     DocumentInvalidTypeError,
@@ -37,14 +38,17 @@ from novamind.features.knowledge_space.exceptions import (
     SpaceAccessDeniedError,
 )
 from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
 from novamind.features.knowledge_space.schemas.document_schema import (
+    ChunkListResponse,
+    ChunkResponse,
     ChunkUploadAbortResponse,
     ChunkUploadCompleteRequest,
     ChunkUploadInitRequest,
     ChunkUploadInitResponse,
     ChunkUploadStatusResponse,
-    ChunkListResponse,
-    ChunkResponse,
     DocumentBatchProcessRequest,
     DocumentBatchProcessResponse,
     DocumentBatchUploadResponse,
@@ -52,8 +56,8 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentDetailResponse,
     DocumentListResponse,
     DocumentProcessResponse,
-    DocumentReviewSettingsUpdate,
     DocumentResponse,
+    DocumentReviewSettingsUpdate,
     DocumentUploadResponse,
     FailedFileItem,
 )
@@ -73,10 +77,8 @@ from novamind.features.knowledge_space.services.document_file_types import SUPPO
 from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
-from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-    KnowledgeBaseRepository,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
+
 
 # 文件大小限制：读取层上限取全部模态的最大值。逐模态权威校验在
 # DocumentUploadService._get_max_file_size——读取层硬编码值先于模态闸生效会让
@@ -943,7 +945,6 @@ async def get_audio_clip(
     object_name = storage_info.get("minio_object_name", "")
     if not object_name:
         raise DocumentNotFoundError(document_id)
-    import asyncio
     import tempfile
 
     with tempfile.NamedTemporaryFile(

@@ -10,7 +10,6 @@ import json
 import re
 import time as _time
 from dataclasses import dataclass
-from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM
@@ -396,7 +395,7 @@ class QuestionGenerationService:
                     return questions
                 # 空响应：缩短预算重试（thinking 预算耗尽场景可能恢复）
                 max_tokens = max(int(max_tokens * EMPTY_RESPONSE_MAX_TOKENS_SCALE), 512)
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 self.logger.warning(
                     "单块问题生成超时",
                     attempt=attempt,
@@ -439,7 +438,7 @@ class QuestionGenerationService:
 
         # 单轮 = 1 次 LLM 调用；批内最多 MAX_BATCH_ATTEMPTS 轮。
         # 超时预算 = 单次超时 × 轮数上限，覆盖"每轮都接近超时"的最坏串行路径。
-        batch_timeout = PER_CALL_TIMEOUT_SECONDS * MAX_BATCH_ATTEMPTS
+        _batch_timeout = PER_CALL_TIMEOUT_SECONDS * MAX_BATCH_ATTEMPTS  # noqa: F841
         batch_stats = {"timed_out": False}
 
         for attempt in range(MAX_BATCH_ATTEMPTS):
@@ -463,7 +462,7 @@ class QuestionGenerationService:
                     elapsed_s=round(call_elapsed, 1),
                     response_preview=response[:200],
                 )
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 call_elapsed = _time.monotonic() - call_start
                 batch_stats["timed_out"] = True
                 self.logger.warning(

@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from novamind.shared.ai_models.base_model import (
     BaseLLM,
+    LLMCapabilities,
     LLMResponse,
     LLMResponseWithTools,
     StreamChunk,
@@ -21,7 +22,6 @@ from novamind.shared.ai_models.base_model import (
 )
 from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
 from novamind.shared.ai_models.errors import translate_provider_error
-from novamind.shared.ai_models.base_model import LLMCapabilities
 from novamind.shared.ai_models.llm.quirks import LLMQuirks, is_stream_only_error, resolve_quirks
 from novamind.shared.logging import get_logger
 from openai import AsyncOpenAI

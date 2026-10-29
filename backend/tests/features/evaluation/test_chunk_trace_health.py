@@ -8,16 +8,15 @@ chunk 溯源与切分健康统计（批次 3）回归测试
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
 from novamind.features.evaluation.services.evaluation_service import (
     EvaluationService,
     _compute_chunk_health,
 )
+
 from tests.features.evaluation.test_testset_context_sources import (
     _FakeRetrievalEvaluator as _DiagFakeEvaluator,
 )
-
 
 # ========== 切分健康统计 ==========
 

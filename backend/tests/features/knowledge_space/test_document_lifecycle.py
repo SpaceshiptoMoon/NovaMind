@@ -164,8 +164,9 @@ async def test_illegal_transition_raises(lc_db):
 @pytest.mark.asyncio
 async def test_missing_or_deleted_doc_raises(lc_db):
     """不存在 / 软删除文档 → ValueError。"""
-    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
     from datetime import datetime
+
+    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
 
     factory, _ = lc_db
     await _seed_doc(factory, doc_id=1, status="active", deleted_at=datetime.now())

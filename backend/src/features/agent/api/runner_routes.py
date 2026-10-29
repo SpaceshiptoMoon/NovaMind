@@ -2,15 +2,14 @@
 
 WS 端点在 runner_ws_routes.py（长连接不走 REST）。
 """
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
 from novamind.features.agent.api.dependencies import get_current_user
 from novamind.features.agent.services.runner_device_service import RunnerDeviceService
 from novamind.shared.storage.client_factory import get_redis_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 

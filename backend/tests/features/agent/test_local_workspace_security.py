@@ -4,8 +4,8 @@
 敏感条目逐一验证，相邻正常场景不误伤。
 """
 import os
-import pytest
 
+import pytest
 from novamind.features.agent.services.local_workspace.security import (
     WorkspaceSecurityError,
     validate_relative_path,

@@ -1,6 +1,5 @@
 """额度类错误分类测试：欠费/免费额度耗尽归 ModelQuotaError，普通参数错不误判。"""
 import pytest
-
 from novamind.shared.ai_models.errors import (
     ModelProviderError,
     ModelQuotaError,

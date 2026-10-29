@@ -5,14 +5,13 @@ extra_config 初值；Agent 未配置时会话保持 NULL 不造空容器。
 """
 import pytest
 import pytest_asyncio
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.services.agent_service import AgentService
 from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
-
-from novamind.features.agent.models.agent import AgentDefinition
-from novamind.features.agent.models.session import AgentSession
-from novamind.features.agent.services.agent_service import AgentService
 
 
 @compiles(BigInteger, "sqlite")

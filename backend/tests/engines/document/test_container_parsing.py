@@ -66,7 +66,7 @@ def _make_zip(entries: dict[str, bytes]) -> bytes:
 def test_zip_members_parsed_and_joined():
     """zip 内 txt+docx：成员各自解析，标题头进正文，members 清单出账。"""
     payload = _make_zip({
-        "说明.txt": "压缩包说明文字".encode("utf-8"),
+        "说明.txt": "压缩包说明文字".encode(),
         "文档.docx": _make_docx("内嵌文档正文"),
     })
     result = _parse_bytes(payload, "zip")
@@ -113,7 +113,7 @@ def test_zip_member_failure_degrades():
     """坏 docx 成员解析失败：降级占位说明，其余成员不受牵连。"""
     payload = _make_zip({
         "broken.docx": b"<html>not a real docx</html>",
-        "ok.txt": "正常成员内容".encode("utf-8"),
+        "ok.txt": "正常成员内容".encode(),
     })
     result = _parse_bytes(payload, "zip")
     assert "正常成员内容" in result.full_text
@@ -127,7 +127,7 @@ def test_zip_noise_entries_filtered():
         "__MACOSX/._a.txt": b"junk",
         ".DS_Store": b"junk",
         ".hidden.txt": b"junk",
-        "real.txt": "真实内容".encode("utf-8"),
+        "real.txt": "真实内容".encode(),
     })
     result = _parse_bytes(payload, "zip")
     assert result.metadata["members"] == ["real.txt"]
@@ -135,8 +135,8 @@ def test_zip_noise_entries_filtered():
 
 def test_zip_nested_one_level_expanded():
     """zip 套 zip：深度上限内递归展开，内层成员直出。"""
-    inner = _make_zip({"inner.txt": "内层成员".encode("utf-8")})
-    payload = _make_zip({"outer.zip": inner, "outer.txt": "外层成员".encode("utf-8")})
+    inner = _make_zip({"inner.txt": "内层成员".encode()})
+    payload = _make_zip({"outer.zip": inner, "outer.txt": "外层成员".encode()})
     result = _parse_bytes(payload, "zip")
     assert "inner.txt" in result.metadata["members"]
     assert "内层成员" in result.full_text
@@ -148,7 +148,7 @@ def test_zip_member_count_limit_rejected(monkeypatch):
     from novamind.engines.document.pipeline import nested_archive
 
     monkeypatch.setattr(nested_archive, "ARCHIVE_MAX_MEMBERS", 2)
-    payload = _make_zip({f"f{i}.txt": f"内容{i}".encode("utf-8") for i in range(3)})
+    payload = _make_zip({f"f{i}.txt": f"内容{i}".encode() for i in range(3)})
     with pytest.raises(MismatchedPayloadError, match="成员数超过上限"):
         _parse_bytes(payload, "zip")
 
@@ -168,7 +168,7 @@ def _make_eml(attachments: dict[str, bytes], body: str = "邮件正文内容") -
 
 def test_eml_attachment_recursively_parsed():
     """eml 带 txt 附件：正文与附件内容都进产物，附件成员清单出账。"""
-    payload = _make_eml({"报告.txt": "附件里的报告内容".encode("utf-8")})
+    payload = _make_eml({"报告.txt": "附件里的报告内容".encode()})
     result = _parse_bytes(payload, "eml")
     assert "邮件正文内容" in result.full_text
     assert "【附件】报告.txt" in result.full_text
@@ -182,6 +182,6 @@ def test_eml_attachment_limit_rejected(monkeypatch):
     from novamind.engines.document.pipeline import nested_archive
 
     monkeypatch.setattr(nested_archive, "ARCHIVE_MAX_MEMBERS", 1)
-    payload = _make_eml({f"a{i}.txt": f"内容{i}".encode("utf-8") for i in range(2)})
+    payload = _make_eml({f"a{i}.txt": f"内容{i}".encode() for i in range(2)})
     with pytest.raises(MismatchedPayloadError, match="成员数超过上限"):
         _parse_bytes(payload, "eml")

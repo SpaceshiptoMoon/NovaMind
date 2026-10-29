@@ -362,7 +362,6 @@ class AgentService:
         from novamind.features.agent.models.message import AgentMessage
         from novamind.features.agent.models.session import AgentSession
         from novamind.features.agent.models.tool_call import AgentToolCall
-
         from novamind.features.agent.services.group_cleanup import cleanup_agent_group_refs
 
         agent = await self.agent_repo.get_by_id(agent_id)

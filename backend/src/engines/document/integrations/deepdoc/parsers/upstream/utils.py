@@ -17,6 +17,7 @@
 from io import BytesIO
 
 from novamind.engines.document.integrations.deepdoc.compat import find_codec
+
 # PUA 出口归一化（书签标题可能携带未映射码点，与解析文本出口共用同一规则）。
 from novamind.shared.utils.text_utils import normalize_pua_text
 

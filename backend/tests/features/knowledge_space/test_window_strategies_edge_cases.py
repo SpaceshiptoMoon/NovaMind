@@ -28,11 +28,9 @@ from novamind.engines.document.pipeline.document_loader import DocumentLoader
 from novamind.engines.document.splitters import (
     ParentChildSplitter,
     SentenceWindowSplitter,
-    split_sentences,
 )
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import SplittingConfig
-from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
     expand_search_results,
 )
@@ -325,10 +323,9 @@ class TestSplitTextItemsEngine:
     def test_load_with_strategy_constructs_new_splitters(self):
         """load_with_strategy（qa 兼容入口）对新策略走显式分支构造，
         不落入 **kwargs 通用兜底（SentenceWindowSplitter 不认 chunk_size 会炸）。"""
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from novamind.engines.document.pipeline.document_loader import (
-            DocumentLoader,
             DocumentProcessor,
         )
         from novamind.engines.document.splitters import (

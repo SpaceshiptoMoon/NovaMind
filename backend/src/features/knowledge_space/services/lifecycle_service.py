@@ -12,11 +12,10 @@
 from __future__ import annotations
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-)
 from novamind.features.knowledge_space.models.document import (
     Document,
+)
+from novamind.features.knowledge_space.models.document import (
     DocumentLifecycleStatus as Lifecycle,
 )
 from sqlalchemy import select

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from novamind.features.agent.services.agent_service import AgentService
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
 
 # SQLite 方言下 BigInteger 主键不能自增，编译为 INTEGER（tests 建表陷阱惯例）
 @compiles(BigInteger, "sqlite")
@@ -23,13 +23,12 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 @pytest_asyncio.fixture
 async def agent_db():
     """SQLite 内存库：agent 全表。"""
-    from sqlalchemy.pool import StaticPool
-
     from novamind.core.database.base import Base
     from novamind.features.agent.models.agent import AgentDefinition
     from novamind.features.agent.models.message import AgentMessage
     from novamind.features.agent.models.session import AgentSession
     from novamind.features.agent.models.tool_call import AgentToolCall
+    from sqlalchemy.pool import StaticPool
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool

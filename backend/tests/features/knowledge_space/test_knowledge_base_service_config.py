@@ -383,9 +383,8 @@ def test_splitting_config_schema_accepts_new_strategies():
 
 def test_splitting_config_schema_rejects_parent_smaller_than_chunk():
     """全量配置路径交叉校验：parent_chunk_size < chunk_size 被 after 校验器拒绝。"""
-    from pydantic import ValidationError
-
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import SplittingConfig
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="parent_chunk_size"):
         SplittingConfig.model_validate({

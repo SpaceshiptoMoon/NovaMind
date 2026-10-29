@@ -13,11 +13,12 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.agent.exceptions import (
     AttachmentNotFoundError,
     AttachmentUploadError,
+    InvalidMessageContentError,
 )
-from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES

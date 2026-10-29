@@ -138,8 +138,8 @@ async def test_gap_items_excludes_other_attributions(gap_db):
 @pytest.mark.asyncio
 async def test_space_isolation_and_feedback_channel(gap_db):
     """空间隔离（他空间数据不可见）+ 反馈表通道（消息行 space 为空靠点踩命中）。"""
-    from novamind.features.knowledge_ops.repository.gap_repository import GapRepository
     from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback
+    from novamind.features.knowledge_ops.repository.gap_repository import GapRepository
 
     factory, _ = gap_db
     # 空间 10 的 content_gap

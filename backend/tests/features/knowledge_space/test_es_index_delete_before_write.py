@@ -11,7 +11,6 @@ len(es_chunks) 必须抛 RuntimeError 让任务进失败/重试路径。
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.services.pipeline_steps import TailInputs

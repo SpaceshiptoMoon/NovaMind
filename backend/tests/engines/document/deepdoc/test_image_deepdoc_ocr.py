@@ -36,7 +36,6 @@ class TestImageDeepdocOcr:
         import asyncio
 
         import fitz
-
         from novamind.engines.document.pipeline.document_loader import DocumentProcessor
 
         # 构造含文字的 png（fitz 渲染文字页为图）
@@ -60,7 +59,6 @@ class TestImageDeepdocOcr:
         import asyncio
 
         import fitz
-
         from novamind.engines.document.pipeline.document_loader import DocumentProcessor
 
         pdf = fitz.open()

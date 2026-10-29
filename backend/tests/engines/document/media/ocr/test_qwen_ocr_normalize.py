@@ -12,7 +12,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-
 from novamind.engines.document.media.ocr.qwen import (
     OcrEngineConfig,
     OcrFileInvalidError,
@@ -126,7 +125,6 @@ class TestExtractMultiLanText:
         """P2-3 新语义：畸形响应显式抛 OcrRequestError，不再降级 str(output)
         把整个响应 dump 流进 chunk 污染正文与向量。"""
         import pytest as _pytest
-
         from novamind.engines.document.media.ocr.qwen import OcrRequestError
 
         with _pytest.raises(OcrRequestError, match="响应结构异常"):

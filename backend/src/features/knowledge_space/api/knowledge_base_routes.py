@@ -28,11 +28,10 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseCreate,
     KnowledgeBaseListResponse,
-    NumericLimit,
-    ParsingDescriptorsResponse,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
-    PdfParsingConfig,
+    NumericLimit,
+    ParsingDescriptorsResponse,
     SplittingConfig,
     TextParsingConfig,
 )

@@ -25,7 +25,6 @@ from novamind.core.middleware.base_exception_handler import (
     setup_global_exception_handlers,
 )
 
-
 pytestmark = pytest.mark.unit
 
 

@@ -21,13 +21,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    QuestionGenerationConfig,
-)
 from novamind.engines.question_generation.service import (
-    QuestionGenConfig,
     MAX_BATCH_ATTEMPTS,
     PER_CALL_TIMEOUT_SECONDS,
+    QuestionGenConfig,
     QuestionGenerationService,
 )
 
@@ -82,7 +79,6 @@ class FakeLLM:
 
 
 def _service() -> QuestionGenerationService:
-    from unittest.mock import AsyncMock
 
     llm = SimpleNamespace(generate_text=AsyncMock(return_value='{"chunks": []}'))
     return QuestionGenerationService(
@@ -218,10 +214,10 @@ async def test_metrics_constants_contract():
 @pytest.mark.anyio("asyncio")
 async def test_generate_questions_for_chunks_metrics_passthrough(monkeypatch):
     """generate_questions_for_chunks 返回三元组，stats 原样透传供节点 metrics。"""
-    from novamind.features.knowledge_space.services import pipeline_steps
     from novamind.engines.question_generation.service import (
         BatchGenerationStats,
     )
+    from novamind.features.knowledge_space.services import pipeline_steps
 
     fake_stats = BatchGenerationStats(
         batches_total=2, batches_failed=1, degraded_batches=1, timeout_batches=1

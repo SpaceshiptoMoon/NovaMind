@@ -1,9 +1,8 @@
 """Agent 消息反馈数据访问层：点赞/点踩 upsert 与撤销，写操作走 SAVEPOINT。"""
 
+from novamind.features.agent.models.message_feedback import AgentMessageFeedback
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.models.message_feedback import AgentMessageFeedback
 
 
 class MessageFeedbackRepository:

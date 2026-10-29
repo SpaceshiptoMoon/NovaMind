@@ -111,9 +111,10 @@ def test_duplicate_zip_entry_rejected():
 
 def test_legitimate_xlsx_passes_guard():
     """正常 xlsx（含高压缩文本 entry）不误伤。"""
-    from openpyxl import Workbook
     import tempfile
     from pathlib import Path
+
+    from openpyxl import Workbook
 
     wb = Workbook()
     ws = wb.active
@@ -277,7 +278,7 @@ def test_find_codec_utf16_scenarios_preserved():
 
 def test_find_codec_utf8_and_multibyte_others():
     """utf-8 正常命中；Shift-JIS 等 CJK 变体不再被 utf-16 劫持。"""
-    assert find_codec("中文 UTF-8 文本".encode("utf-8")) == "utf-8"
+    assert find_codec("中文 UTF-8 文本".encode()) == "utf-8"
     # Shift-JIS 与 gb18030 码位重叠属统计歧义（可能静默乱码），但 utf-16
     # 劫持（更糟的确定性乱码）必须消除
     assert find_codec("日本語のテキスト".encode("shift-jis")) != "utf-16"
@@ -287,9 +288,10 @@ def test_find_codec_utf8_and_multibyte_others():
 
 def test_excel_read_only_degradation_keeps_data():
     """超阈值 xlsx 切 read_only 流式解析：富特性降级但数据完整。"""
-    from openpyxl import Workbook
     import tempfile
     from pathlib import Path
+
+    from openpyxl import Workbook
 
     wb = Workbook(write_only=True)
     ws = wb.create_sheet()

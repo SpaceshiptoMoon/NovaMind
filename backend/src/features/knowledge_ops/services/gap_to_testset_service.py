@@ -8,11 +8,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.evaluation.services.evaluation_service import EvaluationService
 from novamind.features.knowledge_ops.exceptions import KbOpsError
 from novamind.features.knowledge_ops.repository.gap_repository import GapRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 DEFAULT_LOOKBACK_DAYS = 7
 DEFAULT_GAP_LIMIT = 50

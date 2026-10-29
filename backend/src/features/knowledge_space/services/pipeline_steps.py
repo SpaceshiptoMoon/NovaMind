@@ -12,6 +12,7 @@ from novamind.engines.document.pipeline.config_defaults import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_DIRECT_CHUNK_SIZE,
+    DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_FIXED_SIZE_OVERLAP,
     DEFAULT_HIERARCHICAL_MIN_CHUNK_SIZE,
     DEFAULT_MARKDOWN_MAX_CHUNK_SIZE,
@@ -22,7 +23,6 @@ from novamind.engines.document.pipeline.config_defaults import (
     DEFAULT_PARENT_CHUNK_SIZE,
     DEFAULT_SEMANTIC_MAX_CHUNK_SIZE,
     DEFAULT_SIMILARITY_THRESHOLD,
-    DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_WINDOW_SIZE,
 )
 from novamind.features.knowledge_space.exceptions import (
@@ -978,7 +978,6 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
     parse_fingerprint = inputs.parse_fingerprint
 
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        snapshots_enabled,
         compute_embed_fingerprint,
         compute_split_fingerprint,
         load_embeddings_snapshot,
@@ -986,6 +985,7 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
         save_embeddings_snapshot,
         save_split_snapshot,
         snapshot_fingerprint,
+        snapshots_enabled,
     )
     from novamind.shared.storage.client_factory import ClientFactory
 

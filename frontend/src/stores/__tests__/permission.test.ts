@@ -39,8 +39,9 @@ describe('permission store — hasApp（应用级权限 deny-list）', () => {
     await store.fetchPermissions()
     expect(store.hasApp('agent')).toBe(false)
     expect(store.hasApp('skill')).toBe(false)
-    expect(store.hasApp('skill')).toBe(true)
     expect(store.hasApp('app')).toBe(true)
+    // 重复断言同一代码：deny-list 状态在多次查询间保持稳定
+    expect(store.hasApp('agent')).toBe(false)
   })
 
   it('admin 短路：即使响应带禁用列表也全部可用', async () => {

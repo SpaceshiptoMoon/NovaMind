@@ -13,11 +13,9 @@
 
 门禁：命中检查与保存侧共用同一次指纹计算；消费侧与指纹侧同读嵌套 image.vlm_model。
 """
-import ast
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
@@ -234,7 +232,7 @@ async def test_image_parse_snapshot_hit_end_to_end(monkeypatch):
     monkeypatch.setattr(cf_mod.ClientFactory, "get_minio_client", staticmethod(_fake_get_minio))
 
     # document_pipeline 内部是函数内 import pipeline_snapshots，patch 模块属性即可生效
-    async def _fake_load_snap(d, m, l):
+    async def _fake_load_snap(d, m, lang):
         return snap_payload
 
     monkeypatch.setattr(snap_mod, "load_parse_snapshot", _fake_load_snap)

@@ -1,7 +1,6 @@
 """统一文档块模型回归：HTML 表格转 Markdown / 块序列化 / runtime 出口。"""
 import asyncio
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest

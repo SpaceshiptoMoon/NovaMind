@@ -6,7 +6,6 @@ OpenAI 错误格式（GatewayError 专属 handler + 按路径分流）。
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from novamind.core.middleware.base_exception_handler import (
-    BaseAPIError,
     register_module_exceptions,
 )
 from novamind.core.middleware.structured_logging import get_logger

@@ -204,7 +204,6 @@ def test_external_source_provider_str_enum_unpolluted():
     'ExternalSearchProvider.DUCKDUCKGO'，注册表查名 miss 误报「未配置 API Key」。
     """
     import novamind.features.deep_research.services.web_search_source as wsa
-
     from novamind.features.deep_research.models.research_session import (
         ExternalSearchProvider,
     )

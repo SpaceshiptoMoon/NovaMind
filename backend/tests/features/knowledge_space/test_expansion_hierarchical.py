@@ -19,10 +19,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.features.knowledge_space.schemas.search_schema import ExpansionConfig
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
     expand_search_results,
 )
-from novamind.features.knowledge_space.schemas.search_schema import ExpansionConfig
 
 pytestmark = pytest.mark.unit
 

@@ -230,10 +230,10 @@ async def test_space_anchored_to_message_row_not_session_config(attr_db):
     ValueError，即便会话有 RAG 绑定也不从那里取空间（多配置源互相猜测已删）。
     重放检索参数（kb_ids 等）仍从会话配置读，与此无关。
     """
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = attr_db
     # 消息 space_id=None（收口前存量），但会话绑定了 space 10
@@ -257,11 +257,11 @@ async def test_space_anchored_to_message_row_not_session_config(attr_db):
 @pytest.mark.asyncio
 async def test_space_from_message_row_with_session_config_for_replay_params(attr_db):
     """正例：消息行有空间锚点，kb_ids 等重放参数照常从会话配置读。"""
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         ATTR_RETRIEVAL_FAILURE,
         attribute_single_event,
     )
-    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2, session_id="s-row", space_id=10)
@@ -352,10 +352,10 @@ async def test_idempotent_existing_attribution_skips_replay(attr_db):
 @pytest.mark.asyncio
 async def test_write_back_extra_fields(attr_db):
     """写回：extra.attribution + attribution_meta 落库且保留原有 extra 键。"""
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2, extra={"sources": []})
@@ -383,10 +383,10 @@ async def test_write_back_extra_fields(attr_db):
 @pytest.mark.asyncio
 async def test_replay_total_failure_raises_not_content_gap(attr_db):
     """失败方向安全：重放检索全部 KB 失败（基建故障）→ 抛错留空，绝不归因 content_gap。"""
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
     from novamind.features.knowledge_ops.tasks.attribution_worker import (
         attribute_single_event,
     )
-    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = attr_db
     await _insert_pair(factory, answer_id=2)

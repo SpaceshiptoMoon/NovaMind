@@ -1,12 +1,10 @@
 """统一异常族测试：状态码提取、中文翻译、非模型异常透传。"""
 import httpx
-
 from novamind.shared.ai_models.errors import (
     ModelProviderError,
     ModelRateLimitError,
     translate_provider_error,
 )
-
 
 # ========== 状态码提取 ==========
 

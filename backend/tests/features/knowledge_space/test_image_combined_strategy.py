@@ -59,7 +59,7 @@ def test_combined_vlm_description_enabled_flat_key():
 def test_text_subsumed_when_caption_covers_ocr():
     """caption 已逐字转录 OCR 内容 → 判定覆盖，不并【OCR 补充】。"""
     ocr = "NovaMind X100 智能知识库平台 用户手册 v2.1"
-    caption_portion = f"标题「NovaMind X100 智能知识库平台」，副标题「用户手册 v2.1」"
+    caption_portion = "标题「NovaMind X100 智能知识库平台」，副标题「用户手册 v2.1」"
     assert document_pipeline._text_subsumed(caption_portion, ocr) is True
 
 

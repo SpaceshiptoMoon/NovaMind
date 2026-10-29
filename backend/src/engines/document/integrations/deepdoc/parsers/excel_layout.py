@@ -89,7 +89,7 @@ class Island:
     def width(self) -> int:
         return self.right - self.left + 1
 
-    def col_overlap(self, other: "Island") -> float:
+    def col_overlap(self, other: Island) -> float:
         """列区间重叠率（相对较窄一方），缝合判定用。"""
         inter_left = max(self.left, other.left)
         inter_right = min(self.right, other.right)
@@ -97,7 +97,7 @@ class Island:
         narrower = min(self.width, other.width)
         return inter / narrower if narrower else 0.0
 
-    def absorb(self, other: "Island") -> None:
+    def absorb(self, other: Island) -> None:
         """缝合下方延续岛：行区间并、列区间并，数据行范围扩展。"""
         self.bottom = max(self.bottom, other.bottom)
         self.left = min(self.left, other.left)

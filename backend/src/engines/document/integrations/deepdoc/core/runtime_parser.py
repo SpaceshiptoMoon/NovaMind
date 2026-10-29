@@ -18,9 +18,9 @@ from novamind.engines.document.integrations.deepdoc.core.capabilities import (
 )
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     KIND_FIGURE,
-    KIND_HEADING,
-    KIND_HEADER,
     KIND_FOOTER,
+    KIND_HEADER,
+    KIND_HEADING,
     KIND_TABLE,
     KIND_TEXT,
     KIND_TEXTBOX,

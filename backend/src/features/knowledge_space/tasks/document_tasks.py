@@ -1,12 +1,12 @@
 """文档处理 arq 任务函数与宿主编排：入队/重试观测/终态通知/自愈对账。"""
-import structlog
 import traceback
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from novamind.shared.logging import get_logger
+import structlog
 from novamind.core.middleware import metrics as pipeline_metrics
+from novamind.shared.logging import get_logger
 from novamind.shared.mq.exceptions import TransientBusyError
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -908,7 +908,6 @@ async def _job_still_alive(job_id: str | None) -> bool:
         return False
     try:
         import arq.constants as arq_constants
-
         from novamind.shared.mq import get_arq_pool
 
         pool = await get_arq_pool()

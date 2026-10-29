@@ -21,7 +21,6 @@ if str(BACKEND_ROOT) not in sys.path:
 from novamind.engines.eval.claim_decomposer import ClaimDecomposer
 from novamind.engines.eval.generation_evaluator import GenerationEvaluator
 from novamind.engines.eval.retrieval_evaluator import RetrievalEvaluator
-from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.logging import get_logger
 
 pytestmark = pytest.mark.unit

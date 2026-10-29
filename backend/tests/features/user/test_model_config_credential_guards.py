@@ -13,13 +13,12 @@
 5. 三个请求 schema（Create/Update/Test）守卫一致生效。
 """
 import pytest
-from pydantic import ValidationError
-
 from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
     ModelTestRequest,
 )
+from pydantic import ValidationError
 
 pytestmark = pytest.mark.unit
 

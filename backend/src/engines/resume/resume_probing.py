@@ -4,7 +4,6 @@ S10-S11: 自动追问引擎。
 prompt/log/降级LLM 经注入端口获取。
 """
 import asyncio
-import json
 from collections.abc import Awaitable, Callable
 
 from novamind.engines.resume.schemas import (

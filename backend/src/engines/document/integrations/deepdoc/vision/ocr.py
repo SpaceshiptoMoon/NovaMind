@@ -17,12 +17,11 @@
 import copy
 import gc
 import logging
-
-from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
-import threading
 import os
+import threading
 import time
 
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_model_group,

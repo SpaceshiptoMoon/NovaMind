@@ -5,13 +5,13 @@ WS 协议与单聊一致（bearer.<jwt> subprotocol 认证，action=chat 触发�
 content/reasoning/tool_* 事件 data 内带 member_agent_id 字段（向后兼容）。
 """
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
 from novamind.core.auth import get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
-from novamind.core.ws import run_stream_to_ws, send_event
+from novamind.core.ws import send_event
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import SteeringQueue

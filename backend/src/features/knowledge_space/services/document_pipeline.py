@@ -9,25 +9,6 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from novamind.shared.utils.time_utils import now_china
-
-# figure 占位符协议：__FIGURE_URL__{salt}_{artifact_id}__（salt 为文档内容
-# 绑定盐，解析器生成，见 document_model 协议注释）。替换/剥除均为精确串
-# 匹配（目标只来自解析器占位符全集），不做模式匹配——同形正文不可伪造。
-# 旧的无盐形态仅存在于盐化之前解析的存量产物，重解析即消亡。
-
-# figure 图片上传门禁：解析路径会产出 figure_regions 的格式全集（含容器
-# 格式——zip/eml/msg 的成员图片经重编号合并后走同一上传链）。新增产出
-# figure 的格式在此登记，与解析器支持面同步演化。
-_FIGURE_UPLOAD_FILE_TYPES = frozenset({
-    "pdf", "xlsx", "xls", "docx", "ppt", "pptx", "epub", "zip", "eml", "msg",
-})
-
-if TYPE_CHECKING:
-    # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
-    from novamind.features.knowledge_space.models.document_task import DocumentTask
-    from novamind.features.knowledge_space.services.pipeline_steps import PipelineContext
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.contracts import (
     region_placeholder_of,
@@ -47,9 +28,6 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     PermanentProcessingError,
 )
-from novamind.features.knowledge_space.services.media_processing import (
-    is_vlm_quota_or_auth_error,
-)
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
@@ -64,6 +42,9 @@ from novamind.features.knowledge_space.services.document_file_types import (
     IMAGE_FILE_TYPES,
     VIDEO_FILE_TYPES,
 )
+from novamind.features.knowledge_space.services.media_processing import (
+    is_vlm_quota_or_auth_error,
+)
 from novamind.features.knowledge_space.services.pipeline_steps import (
     TailInputs,
     begin_step,
@@ -75,7 +56,24 @@ from novamind.features.knowledge_space.services.pipeline_steps import (
     run_post_parse_tail,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# figure 占位符协议：__FIGURE_URL__{salt}_{artifact_id}__（salt 为文档内容
+# 绑定盐，解析器生成，见 document_model 协议注释）。替换/剥除均为精确串
+# 匹配（目标只来自解析器占位符全集），不做模式匹配——同形正文不可伪造。
+# 旧的无盐形态仅存在于盐化之前解析的存量产物，重解析即消亡。
+
+# figure 图片上传门禁：解析路径会产出 figure_regions 的格式全集（含容器
+# 格式——zip/eml/msg 的成员图片经重编号合并后走同一上传链）。新增产出
+# figure 的格式在此登记，与解析器支持面同步演化。
+_FIGURE_UPLOAD_FILE_TYPES = frozenset({
+    "pdf", "xlsx", "xls", "docx", "ppt", "pptx", "epub", "zip", "eml", "msg",
+})
+if TYPE_CHECKING:
+    # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
+    from novamind.features.knowledge_space.models.document_task import DocumentTask
+    from novamind.features.knowledge_space.services.pipeline_steps import PipelineContext
 
 # 文本文档解析策略合法值域（与 schema PdfParsingConfig/TextParsingConfig 的
 # Literal 对齐；schema 校验正常拦截脏值，此处防御绕过 schema 的存量脏数据，
@@ -161,8 +159,8 @@ async def execute_document_pipeline(
     task: Optional["DocumentTask"] = None,
     model_config_port: ModelConfigService | None = None,
     *,
-    file_content: Optional[bytes] = None,
-    file_path: Optional[str] = None,
+    file_content: bytes | None = None,
+    file_path: str | None = None,
 ) -> None:
     """执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）。
 
@@ -294,7 +292,6 @@ async def execute_document_pipeline(
     # 断点续跑：解析指纹匹配即复用快照，跳过昂贵解析（VLM/OCR 可能已付费成功）。
     # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        snapshots_enabled,
         build_parse_snapshot_payload,
         canonical_json,
         compute_parse_fingerprint,
@@ -305,6 +302,7 @@ async def execute_document_pipeline(
         restore_time_alignment,
         save_parse_snapshot,
         snapshot_fingerprint,
+        snapshots_enabled,
     )
     from novamind.shared.storage.client_factory import ClientFactory
 
@@ -816,9 +814,8 @@ async def _upload_figure_images_to_minio(
 
     from io import BytesIO
 
-    from PIL import Image as PILImage
-
     from novamind.engines.document.contracts import figures_dir_name
+    from PIL import Image as PILImage
 
     figures_dir = figures_dir_name(base)
 
@@ -972,9 +969,6 @@ async def _process_image_document_static(
     # 同型的 P1#2 缺口。命中判定（重算指纹 → DB 指针 → payload 内嵌指纹三重校验）
     # 与 execute_document_pipeline 文本分支完全同构。
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        snapshots_enabled as _snap_enabled,
-    )
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
         build_parse_snapshot_payload as _build_snap_payload,
     )
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
@@ -991,6 +985,9 @@ async def _process_image_document_static(
     )
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         snapshot_fingerprint as _snapshot_fp,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        snapshots_enabled as _snap_enabled,
     )
     from novamind.shared.storage.client_factory import ClientFactory as _SnapCF
 

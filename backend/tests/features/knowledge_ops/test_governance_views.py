@@ -36,9 +36,9 @@ async def gov_db():
     """SQLite 内存库：documents + question_answers + kb_events + qa_session_configs。"""
     from novamind.core.database.base import Base
     from novamind.features.knowledge_ops.models.kb_event import KbEvent
-    from novamind.features.knowledge_space.models.document import Document
     from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
     from novamind.features.knowledge_ops.models.session_config import SessionConfig
+    from novamind.features.knowledge_space.models.document import Document
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", echo=False, poolclass=StaticPool
@@ -145,10 +145,10 @@ async def test_no_duplicates_returns_empty(gov_db):
 @pytest.mark.asyncio
 async def test_support_stats_aggregation(gov_db):
     """sources 聚合：kb 来源计数、同消息去重、web 来源排除。"""
+    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer
 
     factory, _ = gov_db
     async with factory() as session:
@@ -188,10 +188,10 @@ async def test_support_stats_aggregation(gov_db):
 async def test_citation_stats_with_session_fallback(gov_db):
     """点击统计双通道：space_id 直配命中 + NULL 存量经会话 RAG 绑定兜底找回。"""
     from novamind.features.knowledge_ops.models.kb_event import KbEvent
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = gov_db
     async with factory() as session:
@@ -232,10 +232,10 @@ async def test_citation_stats_with_session_fallback(gov_db):
 async def test_citation_stats_excludes_unresolvable_and_other_space(gov_db):
     """反例：兜底后仍无法判定归属（无会话配置/配置绑别空间）的事件不计入。"""
     from novamind.features.knowledge_ops.models.kb_event import KbEvent
+    from novamind.features.knowledge_ops.models.session_config import SessionConfig
     from novamind.features.knowledge_ops.repository.governance_repository import (
         GovernanceRepository,
     )
-    from novamind.features.knowledge_ops.models.session_config import SessionConfig
 
     factory, _ = gov_db
     async with factory() as session:

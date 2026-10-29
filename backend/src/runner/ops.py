@@ -127,7 +127,7 @@ def _edit_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
 
 def _read_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
     path = _resolve(root, os_type, args)
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
     offset = max(int(args.get("offset") or 1), 1)
@@ -195,7 +195,7 @@ def _grep(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
                 continue
             fp = Path(dirpath) / fn
             try:
-                with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                with open(fp, encoding="utf-8", errors="replace") as f:
                     for lineno, line in enumerate(f, 1):
                         if rx.search(line):
                             rel = str(fp.relative_to(root_path)).replace(os.sep, "/")
@@ -239,7 +239,7 @@ async def _bash(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]
         )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_BASH_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             return {
                 "ok": False,

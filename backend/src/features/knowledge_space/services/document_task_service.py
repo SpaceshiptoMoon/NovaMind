@@ -3,9 +3,9 @@
 构造器精简为 (session)——任务编排不触碰 MinIO/ES/模型配置，管道执行由 document_pipeline 在 worker 侧经端口注入完成。
 """
 
-import structlog
-
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
@@ -33,7 +33,6 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 )
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
-
 
 
 def _current_trace_id() -> str | None:

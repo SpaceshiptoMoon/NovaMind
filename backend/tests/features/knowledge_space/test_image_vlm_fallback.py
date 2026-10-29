@@ -11,7 +11,6 @@
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,13 +18,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from pydantic import ValidationError
-
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import ImageParsingConfig
 from novamind.features.knowledge_space.services import document_pipeline
 from novamind.features.knowledge_space.services.media_processing import (
     _is_vlm_quota_or_auth_error,
 )
+from pydantic import ValidationError
 
 pytestmark = pytest.mark.unit
 

@@ -508,7 +508,7 @@ async def describe_frame_sequence(
         idx_list = [idx for _, _, idx in chunk]
         start_ts = chunk[0][1]
         end_ts = chunk[-1][1]
-        chunk_ctx = {**base_ctx, "chunk_index": ci, "frame_indices": idx_list}
+        _chunk_ctx = {**base_ctx, "chunk_index": ci, "frame_indices": idx_list}  # noqa: F841
         result: dict[str, Any] = {
             "ci": ci, "ok": False, "desc": None,
             "start_ts": start_ts, "end_ts": end_ts, "idx_list": idx_list,

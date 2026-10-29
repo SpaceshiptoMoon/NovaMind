@@ -6,11 +6,10 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-
 # SearchMode 权威定义在检索引擎（engines/rag/modes.py，供引擎侧工具共用）；
 # 此处 re-export 保持既有业务引用兼容
 from novamind.engines.rag.modes import SearchMode
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = ["SearchMode"]
 

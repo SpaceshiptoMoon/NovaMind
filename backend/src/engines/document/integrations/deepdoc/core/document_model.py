@@ -134,7 +134,8 @@ def html_table_to_markdown(html: str) -> str:
         return "\n".join(lines) if lines else html
     width = max(len(row) for row in rows)
     normalized = [row + [""] * (width - len(row)) for row in rows]
-    escape = lambda cell: unescape(cell).replace("|", "\\|").replace("\n", " ")
+    def escape(cell: str) -> str:
+        return unescape(cell).replace("|", "\\|").replace("\n", " ")
     header = normalized[0]
     lines.append("| " + " | ".join(escape(cell) or " " for cell in header) + " |")
     lines.append("|" + "|".join([" --- "] * width) + "|")

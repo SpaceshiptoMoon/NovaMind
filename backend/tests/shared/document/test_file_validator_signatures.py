@@ -80,7 +80,7 @@ def test_fake_mp4_rejected_when_magic_missing(monkeypatch):
 def test_text_file_still_passes_without_magic(monkeypatch):
     """文本类（无固定魔数）探测失败仍按扩展名放行——不误伤 txt/md/csv。"""
     monkeypatch.setattr(FileValidator, "detect_mime_by_magic", lambda self, content: None)
-    info = _validator.validate("你好，世界。".encode("utf-8"), "note.md", allowed_extensions=["md"])
+    info = _validator.validate("你好，世界。".encode(), "note.md", allowed_extensions=["md"])
     assert info.is_valid, f"文本类不应被误拒: {info.validation_message}"
 
 
@@ -96,7 +96,6 @@ def test_magic_mismatch_still_rejected():
 
 def test_office_zip_bomb_entry_size_guard(monkeypatch):
     """[Content_Types].xml 声明解压体积超限时拒绝读取（防解压放大 DoS）。"""
-    from novamind.shared.logging import get_logger
 
     class FakeZipInfo:
         file_size = 2 * 1024 * 1024 * 1024  # 声称解压 2GB

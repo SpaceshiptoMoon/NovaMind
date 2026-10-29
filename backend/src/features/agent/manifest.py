@@ -9,7 +9,11 @@ def _import_models() -> None:
     from novamind.features.agent.attachments.models import ChatAttachment  # noqa: F401
     from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
     from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
-    from novamind.features.agent.models.group import AgentGroup, AgentGroupMember, AgentGroupRun  # noqa: F401
+    from novamind.features.agent.models.group import (  # noqa: F401
+        AgentGroup,
+        AgentGroupMember,
+        AgentGroupRun,
+    )
     from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
     from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
     from novamind.features.agent.models.message import AgentMessage  # noqa: F401
@@ -30,9 +34,9 @@ def manifest() -> FeatureManifest:
     """声明 agent feature 的路由、依赖与加载顺序（依赖 knowledge_space 与 user）。"""
     from novamind.features.agent.api.attachment_routes import router as attachment_router
     from novamind.features.agent.api.group_routes import router as group_router
+    from novamind.features.agent.api.routes import router as agent_router
     from novamind.features.agent.api.runner_routes import router as runner_router
     from novamind.features.agent.api.runner_ws_routes import router as runner_ws_router
-    from novamind.features.agent.api.routes import router as agent_router
 
     return FeatureManifest(
         name="agent",

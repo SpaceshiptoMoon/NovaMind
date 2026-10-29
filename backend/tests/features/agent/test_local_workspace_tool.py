@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from novamind.features.agent.services.local_workspace.port import InProcessExecutor
 from novamind.features.agent.tool.builtins.local_workspace import LocalWorkspaceTool
 

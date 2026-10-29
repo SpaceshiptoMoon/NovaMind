@@ -10,7 +10,6 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.knowledge_space.exceptions import PermanentProcessingError
 from novamind.features.knowledge_space.schemas.document_schema import DocumentResponse
 from novamind.features.knowledge_space.services.document_pipeline import (

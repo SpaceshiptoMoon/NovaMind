@@ -14,8 +14,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from novamind.engines.document.contracts import replace_figure_placeholders
+from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from novamind.features.knowledge_space.services.document_pipeline import (
     _upload_figure_images_to_minio,
 )

@@ -21,7 +21,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from docx import Document as DocxDocument
 from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls, qn
+from docx.oxml.ns import nsdecls
 from openpyxl import Workbook, load_workbook
 
 pytestmark = pytest.mark.unit
@@ -199,21 +199,38 @@ def test_excel_three_level_and_uneven_header(tmp_path):
     """三级表头折成「年 > 半年 > 科目」；部分列缺级的复合表头正确降级。"""
     from io import BytesIO
 
-    from openpyxl import Workbook
     from novamind.engines.document.integrations.deepdoc.parsers.excel import (
         RAGFlowExcelParser,
     )
+    from openpyxl import Workbook
 
     wb = Workbook()
     ws = wb.active
     ws.title = "三级表头"
-    ws["A1"] = "产品"; ws["B1"] = "2024年"; ws.merge_cells("B1:E1"); ws["F1"] = "备注"
-    ws["A2"] = "产品"; ws["B2"] = "上半年"; ws.merge_cells("B2:C2")
-    ws["D2"] = "下半年"; ws.merge_cells("D2:E2")
-    ws["B3"] = "收入"; ws["C3"] = "成本"; ws["D3"] = "收入"; ws["E3"] = "成本"
-    ws["A4"] = "A产品"; ws["B4"] = 100; ws["C4"] = 60
-    ws["D4"] = 120; ws["E4"] = 70; ws["F4"] = "已审核"
-    ws["A5"] = "B产品"; ws["B5"] = 80; ws["C5"] = 45; ws["D5"] = 90; ws["E5"] = 50
+    ws["A1"] = "产品"
+    ws["B1"] = "2024年"
+    ws.merge_cells("B1:E1")
+    ws["F1"] = "备注"
+    ws["A2"] = "产品"
+    ws["B2"] = "上半年"
+    ws.merge_cells("B2:C2")
+    ws["D2"] = "下半年"
+    ws.merge_cells("D2:E2")
+    ws["B3"] = "收入"
+    ws["C3"] = "成本"
+    ws["D3"] = "收入"
+    ws["E3"] = "成本"
+    ws["A4"] = "A产品"
+    ws["B4"] = 100
+    ws["C4"] = 60
+    ws["D4"] = 120
+    ws["E4"] = 70
+    ws["F4"] = "已审核"
+    ws["A5"] = "B产品"
+    ws["B5"] = 80
+    ws["C5"] = 45
+    ws["D5"] = 90
+    ws["E5"] = 50
     buf = BytesIO()
     wb.save(buf)
     blocks, _images = RAGFlowExcelParser().parse_blocks(buf.getvalue())
@@ -519,11 +536,11 @@ def test_txt_json_decode_and_edge_cases(tmp_path):
 
     txt = RAGFlowTxtParser()
     # BOM 剥除：首块不再出现 \ufeff（此前 UTF-8 BOM 会进首块污染检索）
-    out = txt("", "\ufeff第一行标题\n正文。".encode("utf-8"))
+    out = txt("", "\ufeff第一行标题\n正文。".encode())
     assert out and "\ufeff" not in out[0][0]
     assert "第一行标题" in out[0][0]
     # 行尾归一：CRLF 与孤立 CR（老 Mac）都归一为 \n
-    out = txt("", "第一行\r\n第二行\r第三行\r\n".encode("utf-8"))
+    out = txt("", "第一行\r\n第二行\r第三行\r\n".encode())
     assert "\r" not in out[0][0]
     # UTF-16（Excel 导出常见）：正确解码且无 NUL 污染（此前 gb18030 兜底
     # 成功产出 NUL 乱码）

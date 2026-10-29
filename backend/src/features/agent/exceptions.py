@@ -203,11 +203,17 @@ class AttachmentNotFoundError(AgentError):
         self.attachment_id = attachment_id
 
 
-class AttachmentUploadError(AgentError):
-    """附件上传/读取失败（服务未初始化、类型不支持、超限、内容不匹配）"""
+class AttachmentUploadError(AgentError):
+    """附件上传/读取失败（服务未初始化、类型不支持、超限、内容不匹配）"""
+
+    def __init__(self, message: str):
+        super().__init__(f"附件处理失败: {message}", "ATTACHMENT_ERROR")
+
+class InvalidMessageContentError(AgentError):
+    """聊天附件内容非法（类型不支持/超限/魔术字节不匹配），HTTP 语义 400"""
 
     def __init__(self, message: str):
-        super().__init__(f"附件处理失败: {message}", "ATTACHMENT_ERROR")
+        super().__init__(message, "INVALID_MESSAGE_CONTENT")
 
 
 class RunnerDeviceError(AgentError):

@@ -2,7 +2,6 @@
 技能安全检查器——规则 + LLM 双重审查，防恶意 skill 提示词注入。
 """
 import asyncio
-import json
 import re
 from dataclasses import dataclass, field
 

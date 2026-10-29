@@ -53,8 +53,8 @@ def test_probe_video_duration_none_on_probe_failure(tmp_path, monkeypatch):
     def _boom(_path):
         raise RuntimeError("pyav 无法打开")
 
-    import novamind.features.knowledge_space.services.media_processing as mp
     import novamind.engines.document.media.video.video_utils as vu
+    import novamind.features.knowledge_space.services.media_processing as mp
 
     monkeypatch.setattr(vu, "read_video_metadata", _boom)
     assert mp._probe_video_duration(str(tmp_path / "broken.mp4")) is None

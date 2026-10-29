@@ -20,13 +20,8 @@ pytest.importorskip("aiosqlite")
 
 import asyncio
 
-from sqlalchemy import BigInteger, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-
 from novamind.core.database import database as database_module
 from novamind.core.database.base import Base
-from novamind.features.knowledge_space.exceptions import PermanentProcessingError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 from novamind.features.knowledge_space.models.document_task_batch import (
@@ -35,6 +30,9 @@ from novamind.features.knowledge_space.models.document_task_batch import (
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
 from novamind.features.user.models.user import User  # noqa: F401
+from sqlalchemy import BigInteger, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
 pytestmark = pytest.mark.unit
 
@@ -112,7 +110,6 @@ def test_process_document_missing_minio_info_fails_permanently(monkeypatch):
     此前该场景在 MinIO SDK 内部以 TypeError 崩溃并白烧 3 次自动重试；
     永久性错误分流应直接终判。
     """
-    from novamind.features.knowledge_space.tasks import document_tasks as tasks_module
     from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
 
     engine = asyncio.run(_setup_sqlite())
@@ -181,7 +178,6 @@ def test_legacy_bucket_document_reaches_minio_download(monkeypatch):
     下载桩捕获 bucket_name/object_name；返回 0 字节触发「内容为空」业务异常，
     证明执行已越过守卫与 SDK 调用边界。
     """
-    from novamind.features.knowledge_space.tasks import document_tasks as tasks_module
     from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
 
     engine = asyncio.run(_setup_sqlite())

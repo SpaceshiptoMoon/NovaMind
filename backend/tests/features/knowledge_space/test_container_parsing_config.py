@@ -8,7 +8,6 @@ zip 会被喂给外部 OCR（前置守卫拒）或 shared reader（不认识 zip
 """
 
 import pytest
-
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     build_runtime_parsing_config,
 )

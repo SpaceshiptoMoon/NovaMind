@@ -438,9 +438,9 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
+        from novamind.engines.wiki.slug import normalize_slug
         from novamind.features.knowledge_space.models.wiki import WikiEditSource
         from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
-        from novamind.engines.wiki.slug import normalize_slug
 
         slug = normalize_slug(raw_slug)
         if not slug:
@@ -595,8 +595,8 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
         from novamind.engines.wiki.slug import normalize_slug
+        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 
         new_slug = normalize_slug(new_slug_raw)
         if not new_slug:

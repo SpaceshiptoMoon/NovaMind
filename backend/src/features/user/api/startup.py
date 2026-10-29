@@ -2,9 +2,13 @@
 from fastapi import FastAPI
 from novamind.core.auth.exceptions import (
     AuthenticationError as CoreAuthAuthenticationError,
+)
+from novamind.core.auth.exceptions import (
     AuthenticationRevokedError,
-    AuthorizationError as CoreAuthAuthorizationError,
     PasswordChangeRequiredError,
+)
+from novamind.core.auth.exceptions import (
+    AuthorizationError as CoreAuthAuthorizationError,
 )
 from novamind.core.authorization.permission_codes import PRESET_ROLE_PERMISSIONS, SystemPermission
 from novamind.core.database.database import get_db_session

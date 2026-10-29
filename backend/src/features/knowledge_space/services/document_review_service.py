@@ -8,9 +8,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.knowledge_ops.tasks.review_reminder import (
     compute_next_review_at,
     load_review_config,
@@ -26,6 +23,8 @@ from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentReviewSettingsUpdate,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DocumentReviewService:

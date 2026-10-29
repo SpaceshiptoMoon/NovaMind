@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 
+
 def _formula_model_repo_id() -> str:
     return get_settings().formula_model_repo_id
 

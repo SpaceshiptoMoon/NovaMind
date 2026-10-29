@@ -1,25 +1,22 @@
 """OcrConnector 路由解析与协议分发的单元测试（不调外网）。"""
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-
+from novamind.engines.document.media.ocr.blocks import OcrBlock, OcrResult
 from novamind.engines.document.media.ocr.connector import (
     OcrConnector,
     OcrCredentialsMissingError,
-    OcrRoute,
 )
 from novamind.engines.document.media.ocr.qwen import (
     OcrEngineConfig,
     OcrFileInvalidError,
     OcrRequestError,
 )
-from novamind.engines.document.media.ocr.blocks import OcrBlock, OcrResult
 
 pytestmark = pytest.mark.unit
 
@@ -96,7 +93,6 @@ class TestRecognizeDispatch:
             captured["config"] = config
             return _result(protocol="openai")
 
-        import novamind.engines.document.media.ocr.connector as mod
 
         monkeypatch.setattr(
             "novamind.engines.document.media.ocr.qwen.parse_document_with_qwen_ocr", fake_parse

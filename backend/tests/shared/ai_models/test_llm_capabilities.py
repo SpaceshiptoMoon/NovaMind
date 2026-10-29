@@ -1,5 +1,4 @@
 """LLM 能力解析测试：类默认 ← quirks 用户声明覆盖 ← 兜底全 False。"""
-import pytest
 
 from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.shared.ai_models.llm.quirks import LLMQuirks, resolve_quirks

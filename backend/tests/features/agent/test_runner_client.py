@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from novamind.runner.ops import execute_local
 from novamind.runner.security import WorkspaceSecurityError, validate_relative_path
 

@@ -5,10 +5,8 @@
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from novamind.shared.ai_models.errors import ModelProviderError
-
 from novamind.features.agent_api.api.dependencies import (
     get_gateway_service,
     get_gateway_user,
@@ -20,6 +18,7 @@ from novamind.features.agent_api.services.openai_gateway_service import (
     OpenAiGatewayService,
     provider_error_to_openai,
 )
+from novamind.shared.ai_models.errors import ModelProviderError
 
 router = APIRouter(tags=["OpenAI 兼容网关"])
 

@@ -8,9 +8,9 @@ from collections.abc import Callable
 from typing import Any
 
 from novamind.engines.agent.memory.interfaces import (
+    ILongTermMemory,
     IMemorySearch,
     IMemoryStore,
-    ILongTermMemory,
     LongTermMemoryEntry,
     MemoryMessage,
 )

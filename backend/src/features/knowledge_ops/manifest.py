@@ -9,8 +9,11 @@ def _import_models() -> None:
     from novamind.features.knowledge_ops.models.kb_review_suggestion import (  # noqa: F401
         KbReviewSuggestion,
     )
+
     # QA 对话归档历史表（只读；qa_message_feedback 外键指向 question_answers）
-    from novamind.features.knowledge_ops.models.message_feedback import MessageFeedback  # noqa: F401
+    from novamind.features.knowledge_ops.models.message_feedback import (
+        MessageFeedback,  # noqa: F401
+    )
     from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.knowledge_ops.models.session_config import SessionConfig  # noqa: F401
 

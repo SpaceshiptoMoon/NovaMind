@@ -2,7 +2,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 from novamind.shared.ai_models.llm.quirks import LLMQuirks
 

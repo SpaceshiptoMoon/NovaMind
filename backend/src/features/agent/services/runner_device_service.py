@@ -7,13 +7,12 @@
 import hashlib
 import secrets
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.exceptions import RunnerDeviceNotFoundError, RunnerPairingError
 from novamind.features.agent.models.runner import RunnerDevice
 from novamind.features.agent.repository.runner_repository import RunnerDeviceRepository
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

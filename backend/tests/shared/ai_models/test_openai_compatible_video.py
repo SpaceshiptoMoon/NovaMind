@@ -8,7 +8,6 @@
 - VideoInputNotSupportedError：4xx+视频拒绝特征 → 转译；其余异常原样上抛。
 """
 import pytest
-
 from novamind.shared.ai_models.llm import (
     OpenAICompatibleVideoLLM,
     VideoInputNotSupportedError,

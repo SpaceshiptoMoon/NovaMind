@@ -18,8 +18,8 @@ from typing import Any
 
 import numpy as np
 import pdfplumber
-from novamind.engines.document.exceptions import EncryptedDocumentError
 from novamind.engines.document.contracts import make_figure_region
+from novamind.engines.document.exceptions import EncryptedDocumentError
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     document_salt,
     figure_placeholder,
@@ -45,6 +45,7 @@ from novamind.engines.document.integrations.deepdoc.parsers._pdfplumber_sync imp
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
+from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
 from novamind.engines.document.integrations.deepdoc.vendor.ragflow.pdf_parser import (
     RAGFlowPdfParser as _VendoredRAGFlowPdfParser,
@@ -52,11 +53,10 @@ from novamind.engines.document.integrations.deepdoc.vendor.ragflow.pdf_parser im
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
 from novamind.shared.logging import get_logger
+
 # PUA 出口归一化（与 deepdoc plain / 通用 reader 共用同一语境化规则）。
 from novamind.shared.utils.text_utils import normalize_pua_text
 from PIL import Image
-
-from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
 
 # Structured logger (structlog BoundLogger) — accepts key=value context kwargs
 # and renders JSON. Do NOT use stdlib ``logging.info(msg, key=val)`` here: stdlib

@@ -17,6 +17,16 @@ from novamind.engines.document.media.chunk_time_alignment import (
     build_segment_timeline_map,
     format_time_anchor,
 )
+from novamind.engines.document.media.ocr import (
+    OcrBlock,
+    OcrConnector,
+    OcrCredentialsMissingError,
+    OcrEngineConfig,
+    OcrFileInvalidError,
+    OcrRequestError,
+    OcrResult,
+    OcrRoute,
+)
 from novamind.engines.document.media.video import (
     AllFrameDescriptionsFailedError,
     dedup_embedding,
@@ -34,16 +44,6 @@ from novamind.engines.document.media.vlm import (
     build_vlm_image_messages,
     build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
-)
-from novamind.engines.document.media.ocr import (
-    OcrBlock,
-    OcrConnector,
-    OcrCredentialsMissingError,
-    OcrEngineConfig,
-    OcrFileInvalidError,
-    OcrRequestError,
-    OcrResult,
-    OcrRoute,
 )
 
 __all__ = [

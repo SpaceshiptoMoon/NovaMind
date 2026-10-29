@@ -41,12 +41,11 @@ def _salt_re():
 
 def test_pptx_picture_shape_extracted():
     """PICTURE 形状：blob 进 figures（带页码），占位符进页文本流。"""
-    from pptx import Presentation
-    from pptx.util import Inches
-
     from novamind.engines.document.integrations.deepdoc.parsers.ppt import (
         RAGFlowPptParser,
     )
+    from pptx import Presentation
+    from pptx.util import Inches
 
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -191,15 +190,14 @@ def test_xlsx_figure_region_carries_placeholder_and_e2e_replacement():
     import asyncio
     import re
 
-    from openpyxl import Workbook
-    from openpyxl.drawing.image import Image as XImage
-
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
         DeepDocParser,
     )
     from novamind.features.knowledge_space.services.document_pipeline import (
         _restore_figure_links,
     )
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XImage
 
     png_path = Path(tempfile.mkdtemp()) / "a.png"
     png_path.write_bytes(_PNG_1PX)
@@ -237,8 +235,8 @@ def test_xlsx_figure_region_carries_placeholder_and_e2e_replacement():
 def test_docx_standalone_image_paragraph_extracted():
     """纯图片段（图片独占一段，Word 常见形态）：此前 text 判定先行整段消失。"""
     import asyncio
-    from docx import Document as DocxDocument
 
+    from docx import Document as DocxDocument
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
         DeepDocParser,
     )
@@ -262,8 +260,8 @@ def test_contract_shape_uniform_across_formats(tmp_path):
     """不管什么文件，metadata 形状一致：figure_regions/document_blocks 恒存在，
     region 必需键齐全（下游写一种逻辑，无需逐格式探测）。"""
     import asyncio
-    from docx import Document as DocxDocument
 
+    from docx import Document as DocxDocument
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
         DeepDocParser,
     )

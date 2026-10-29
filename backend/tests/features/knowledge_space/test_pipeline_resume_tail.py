@@ -103,8 +103,10 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
         embed_calls.append(len(texts))
         return [[0.1, 0.2] for _ in texts]
 
+    from novamind.features.knowledge_space.services.pipeline_steps import TailInputs
+
     return dp.run_post_parse_tail(
-TailInputs(
+    TailInputs(
         document=document, session=session, task=task,
         model_config_port=MagicMock(), logger=_logger(),
         chunk_type=ChunkType.TEXT,

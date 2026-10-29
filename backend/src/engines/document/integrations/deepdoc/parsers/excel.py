@@ -8,7 +8,6 @@ from io import BytesIO, StringIO
 from pathlib import Path
 
 import pandas as pd
-
 from novamind.engines.document.exceptions import EncryptedDocumentError
 from novamind.engines.document.integrations.deepdoc.compat import (
     decode_text_binary,
@@ -538,7 +537,6 @@ class RAGFlowExcelParser:
                                 )
                                 table_html += f"<tr>{head}{tds}</tr>"
                             elif is_subtotal:
-                                texts = _row_texts(grid, r, island.left, island.right)
                                 cells = []
                                 for offset, c in enumerate(range(island.left, island.right + 1)):
                                     text = grid.text_at(r, c)
@@ -610,10 +608,8 @@ class RAGFlowExcelParser:
         零外部依赖）。重建失败/无数值返回空串（诚实跳过）。
         """
         from html import escape
-        from io import BytesIO
 
         from openpyxl.utils.cell import range_boundaries
-        from PIL import Image as PILImage
 
         ctype = type(chart).__name__.replace("Chart", "").lower() or "chart"
         title = RAGFlowExcelParser._chart_title_text(chart)

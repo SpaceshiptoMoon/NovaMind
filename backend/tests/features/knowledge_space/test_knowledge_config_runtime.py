@@ -11,7 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
-from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
+from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfig,
     ParsingConfig,

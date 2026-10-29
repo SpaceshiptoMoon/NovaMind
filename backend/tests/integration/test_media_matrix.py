@@ -111,7 +111,6 @@ class TestAudioLocal:
         """T-AUD-LOCAL-BROKEN：损坏音频 → AudioFileInvalidError 永久错误。"""
         from novamind.engines.document.media.audio import audio_utils
         from novamind.engines.document.media.audio.audio_utils import AudioFileInvalidError
-
         from novamind.shared.config import AudioConfig
 
         with pytest.raises(AudioFileInvalidError):
@@ -175,9 +174,9 @@ class TestVideoExtraction:
 
         用 TTS 语音做音轨（440Hz 正弦无语音内容），断言转写链路通。
         """
+        from novamind.engines.document.media.audio import audio_utils
         from novamind.engines.document.media.video import audio_track
         from novamind.shared.config import AudioConfig
-        from novamind.engines.document.media.audio import audio_utils
 
         mp4 = _make_video(tmp_path / "v.mp4", with_audio=False)
         # 挂 TTS 语音轨
@@ -202,7 +201,8 @@ class TestTimeAlignment:
     def test_anchor_strip_and_alignment(self):
         """T-VID-TIMEALIGN：锚点剥离 + 时间区间 + 无锚点标未知。"""
         from novamind.engines.document.media.chunk_time_alignment import (
-            align_chunk_times, build_segment_timeline_map,
+            align_chunk_times,
+            build_segment_timeline_map,
         )
 
         segments = [

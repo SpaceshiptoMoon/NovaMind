@@ -20,7 +20,6 @@ from novamind.features.knowledge_ops.services.query_reformulate_detector import 
     char_trigram_similarity,
     normalize_query,
 )
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)

@@ -3,8 +3,8 @@
 兼容命名：类名保留 DocumentTaskRepository。含 FOR UPDATE 活跃任务
 锁读（入队防重专用）与独立连接的紧急失败兜底。
 """
-from typing import Any
 from datetime import timedelta
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus

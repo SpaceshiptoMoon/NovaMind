@@ -14,7 +14,6 @@ from novamind.engines.document.media.video.video_normalizer import (
 )
 from novamind.engines.document.media.video.video_utils import (
     VideoMetadataError,
-    extract_frames_fixed_from_path,
     extract_video_frames,
     read_frame_at,
     read_video_metadata,

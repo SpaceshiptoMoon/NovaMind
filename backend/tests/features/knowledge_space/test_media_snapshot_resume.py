@@ -12,10 +12,7 @@ P1#3：文本切分发生在 parse 阶段内而 parse 指纹不含切分配置�
 
 附带：payload_fingerprint_matches 防双 worker 交错写同名对象后指针/内容错配。
 """
-import ast
 from pathlib import Path
-
-import pytest
 
 from novamind.features.knowledge_space.services.pipeline_snapshots import (
     build_parse_snapshot_payload,

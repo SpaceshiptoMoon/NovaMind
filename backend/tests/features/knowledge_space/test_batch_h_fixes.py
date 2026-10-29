@@ -8,10 +8,7 @@ finish_step_committed 与 begin_step 对偶，run_post_parse_tail 四个节点�
 dimension 变更（审计 P2#13）：_is_embedding_changed 原只比对 model——仅改
 dimension 时门禁放行，ES 索引维持旧维度 mapping，新向量 bulk 全部失败。
 """
-import ast
 from pathlib import Path
-
-import pytest
 
 from novamind.features.knowledge_space.services.space_service import SpaceService
 
@@ -24,11 +21,12 @@ STEPS_MODULE = SRC_ROOT / "features" / "knowledge_space" / "services" / "pipelin
 
 def test_finish_step_committed_exists_and_commits():
     """finish_step_committed 存在、是协程、内部 commit。"""
+    import asyncio as _asyncio
+    import inspect
+
     from novamind.features.knowledge_space.services.pipeline_steps import (
         finish_step_committed,
     )
-    import asyncio as _asyncio
-    import inspect
 
     assert _asyncio.iscoroutinefunction(finish_step_committed)
     src = inspect.getsource(finish_step_committed)

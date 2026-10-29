@@ -13,8 +13,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from contextlib import contextmanager
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 # 单文档警告上限：坏文档可能产生海量同类警告（逐形状/逐 sheet），封顶防
 # 质量报告自身膨胀；截断计数在尾部注明

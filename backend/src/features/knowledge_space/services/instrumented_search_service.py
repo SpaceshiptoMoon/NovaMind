@@ -11,7 +11,6 @@ from typing import Any
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
 from novamind.features.knowledge_space.services.search_service import SearchService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

@@ -31,11 +31,7 @@ from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.services.chunk_expansion_service import (
     expand_search_results,
 )
-from novamind.features.knowledge_space.services.pipeline_steps import build_es_chunks, TailInputs
-from novamind.features.knowledge_space.services.pipeline_snapshots import (
-    save_split_snapshot,
-    load_split_snapshot,
-)
+from novamind.features.knowledge_space.services.pipeline_steps import TailInputs, build_es_chunks
 
 pytestmark = pytest.mark.unit
 

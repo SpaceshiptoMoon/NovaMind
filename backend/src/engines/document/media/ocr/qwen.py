@@ -241,7 +241,6 @@ async def recognize_image_with_qwen_ocr(
     from novamind.shared.ai_models.asr.dashscope_client import configure_dashscope
 
     def _call() -> str:
-        import dashscope
         from dashscope import MultiModalConversation
 
         if not config.model or not config.api_key:

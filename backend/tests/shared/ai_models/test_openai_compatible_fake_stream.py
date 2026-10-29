@@ -1,6 +1,5 @@
 """OpenAICompatibleLLM fake-stream 行为：声明 stream_only 后 generate_text 内部走流式聚合。"""
 import pytest
-
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 from novamind.shared.ai_models.llm.quirks import LLMQuirks
 

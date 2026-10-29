@@ -4,13 +4,16 @@ get_api_key_user 返回与 core/auth.get_current_user 兼容的用户 dict——
 后续路由把 Depends(get_current_user) 换成 Depends(get_api_key_user)
 即可获得 key 通道（本期不改动现有路由，仅提供能力）。
 """
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Header, Request
 from novamind.core.database.database import get_db
 from novamind.features.agent_api.exceptions import GatewayAuthError, InvalidApiKeyError
 from novamind.features.agent_api.services.api_key_service import ApiKeyService
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from novamind.features.agent_api.services.openai_gateway_service import OpenAiGatewayService
 
 # get_current_user 用户 dict 中 key 通道不适用/恒定的字段：
 # jti=None（API key 无 JWT 会话概念，黑名单机制不适用——吊销即时失效由
@@ -22,6 +25,7 @@ _API_KEY_USER_DEFAULTS = {"jti": None, "must_change_password": False}
 async def get_api_key_service(db: AsyncSession = Depends(get_db)) -> ApiKeyService:
     """装配 key 服务（请求级会话）。"""
     return ApiKeyService(db)
+
 
 
 async def get_gateway_service(

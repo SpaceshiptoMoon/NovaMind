@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import websockets
-
 from novamind.runner.ops import execute_local
 
 RUNNER_VERSION = "0.1.0"

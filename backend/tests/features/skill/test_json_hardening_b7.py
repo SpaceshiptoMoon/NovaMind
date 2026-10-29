@@ -17,7 +17,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.skill.services.skill_checker import (
-    LLMCheckResult,
     SkillSecurityChecker,
 )
 from novamind.shared.logging import get_logger

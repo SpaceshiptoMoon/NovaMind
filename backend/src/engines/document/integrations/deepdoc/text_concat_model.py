@@ -11,6 +11,7 @@ from novamind.engines.document.integrations.deepdoc.vision.model_manager import 
     download_hf_files,
 )
 
+
 def _text_concat_model_repo_id() -> str:
     return get_settings().text_concat_model_repo_id
 
