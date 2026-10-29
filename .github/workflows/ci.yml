@@ -29,7 +29,9 @@ jobs:
 
       - name: Install backend dependencies (from uv.lock)
         working-directory: backend
-        run: uv sync --frozen --extra test
+        # lint 依赖 ruff（dev 组）——test extra 不含它，缺 dev 会让 lint 步骤
+        # 直接 program not found（run 109 起持续 failure 的真根因）
+        run: uv sync --frozen --extra test --extra dev
 
       - name: Run backend lint
         working-directory: backend
