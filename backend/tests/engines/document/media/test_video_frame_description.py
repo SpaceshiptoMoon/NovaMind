@@ -463,14 +463,27 @@ class FakeNativeVlmClient:
 
     ``responses`` 每项为 str（正常返回）或 Exception（抛出）。每次
     ``generate_text_from_video_url`` 调用记录 (url, prompt) 到 ``calls``。
+
+    注意：两片并发的用例（concurrency>=2）下「按调用顺序出队」会把描述
+    绑到先完成的片上（CI 上完成顺序与本地相反即错位）——此类用例请改用
+    ``responses_by_segment``（按片序绑定，经 URL 序号识别）。
     """
 
-    def __init__(self, responses):
+    def __init__(self, responses, responses_by_segment=None):
         self.responses = list(responses)
+        # 片序 → 描述：URL 序号（seg_%03d）识别片，调用顺序无关
+        self.responses_by_segment = dict(responses_by_segment or {})
         self.calls = []
 
     async def generate_text_from_video_url(self, video_url, text_prompt, **kwargs):
         self.calls.append((video_url, text_prompt))
+        if self.responses_by_segment:
+            for seg_idx, desc in self.responses_by_segment.items():
+                if f"seg_{seg_idx:03d}" in video_url:
+                    return desc
+            raise RuntimeError(
+                f"FakeNativeVlmClient: URL {video_url} 不匹配任何片序响应"
+            )
         if not self.responses:
             raise RuntimeError("FakeNativeVlmClient: no more responses")
         r = self.responses.pop(0)
@@ -518,7 +531,8 @@ async def test_video_native_two_segments_dispatch(fake_slice):
     scene_keyframe_ts 是全部场景帧 ts（含首帧 0）：帧 0（ts=0）属片 0，
     帧 1（ts=100，切换点帧开启新场景）属片 1。
     """
-    vlm = FakeNativeVlmClient(["片0描述", "片1描述"])
+    # 两片并发（concurrency=2）：描述按片序经 URL 绑定，调用完成顺序无关
+    vlm = FakeNativeVlmClient([], responses_by_segment={0: "片0描述", 1: "片1描述"})
     upload, cleanup, uploaded, cleaned = _fake_upload_store()
 
     out = await describe_video_native(

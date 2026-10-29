@@ -157,8 +157,10 @@ async def test_space_isolation_and_feedback_channel(gap_db):
                "retrieval": {"result_count": 5, "max_score": 0.9}},
     )
     async with factory() as session:
+        # 反馈表的 created_at 同样要显式对齐窗口（UTC CI 上默认中国墙钟错位 8h）
         session.add(MessageFeedback(
             message_id=6, user_id=1, session_id="s-fb", space_id=10, rating="down",
+            created_at=datetime.now(),
         ))
         await session.commit()
 
