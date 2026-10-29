@@ -39,7 +39,15 @@ jobs:
 
       - name: Run backend unit tests
         working-directory: backend
-        run: uv run pytest -m unit -q
+        # FAILED 行转 ::error annotation：无需日志权限即可从 check annotations
+        # 读到失败清单（跨平台差异失败定位依赖它）
+        run: |
+          uv run pytest -m unit -q -rf --tb=short 2>&1 | tee pytest_unit.log
+          code=${PIPESTATUS[0]}
+          grep -E "^FAILED" pytest_unit.log | while read -r line; do
+            echo "::error ::$line"
+          done
+          exit $code
 
   frontend-quality:
     name: Frontend Quality
