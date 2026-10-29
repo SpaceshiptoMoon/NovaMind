@@ -543,12 +543,14 @@ async def test_video_native_two_segments_dispatch(fake_slice):
     assert len(out) == 2
     assert out[0] == ("片0描述", 0.0, 100.0, [0])
     assert out[1] == ("片1描述", 100.0, 300.0, [1])
+    # 两片并发：calls 完成顺序不定，按 URL 键断言而非调用序
     assert len(vlm.calls) == 2
-    url0, prompt0 = vlm.calls[0]
-    assert url0 == "https://tmp.example/seg_000.mp4"
-    assert "0.0" in prompt0  # t0 注入
-    _, prompt1 = vlm.calls[1]
-    assert "100.0" in prompt1
+    calls_by_url = {url: prompt for url, prompt in vlm.calls}
+    assert set(calls_by_url) == {
+        "https://tmp.example/seg_000.mp4", "https://tmp.example/seg_001.mp4",
+    }
+    assert "0.0" in calls_by_url["https://tmp.example/seg_000.mp4"]  # t0 注入
+    assert "100.0" in calls_by_url["https://tmp.example/seg_001.mp4"]
     # 切片参数：两片边界对齐切换点
     assert fake_slice[0][1] == 0.0 and fake_slice[0][2] == 100.0
     assert fake_slice[1][1] == 100.0 and fake_slice[1][2] == 300.0
