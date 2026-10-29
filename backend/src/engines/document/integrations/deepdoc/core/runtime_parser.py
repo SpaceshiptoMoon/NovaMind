@@ -229,8 +229,16 @@ class DeepDocParser:
             return self._parse_figure_sync(source, extension, splitting_config)
         if extension in {"zip", "eml", "msg"}:
             return self._parse_container_sync(source, extension, parsing_config, splitting_config)
-        if extension in {"txt", "md", "markdown", "csv", "json", "html", "ofd"}:
+        if extension in {"txt", "md", "markdown", "csv", "json", "html"}:
             return self._parse_text_sync(source, extension, parsing_config, splitting_config)
+        if extension == "ofd":
+            # OFD 是中国版式文档（zip 容器包 xml），按纯文本读必然 0 字符——
+            # 显式拒绝并给直达用户的文案，而非误导性的"OCR 未识别到文字"提示。
+            # 专用版式解析器接入后在此分派。
+            raise ValueError(
+                "OFD 版式文档暂不支持自动解析：需专用版式解析器（当前支持 PDF/Office/"
+                "常见文本/图片/音视频格式）。"
+            )
         raise ValueError(f"DeepDoc does not support file type: {extension}")
 
     def _parse_pdf_sync(
