@@ -308,7 +308,11 @@ class WikiIngestService:
                         # （upsert 对非 None 才覆盖；规划缺失传 None 保用户已填）
                         category_path=category_plans.get(item.slug),
                         source_refs=[f"{self.document_id}|"],
-                        chunk_refs=[f"{self.document_id}_{cid}" for cid in item.cited_chunk_ids],
+                        # cited_chunk_ids 的元素已是完整 ES chunk_id（"945_0"，
+                        # 句柄表按 c["chunk_id"] 注册解析）——不再拼 document_id
+                        # 前缀，否则产出 "945_945_0" 双前缀，下游按 chunk_id
+                        # 查 ES 必 miss（端到端实测暴露）。
+                        chunk_refs=list(item.cited_chunk_ids),
                         edit_source=WikiEditSource.PIPELINE,
                         link_slugs=out_links,
                     )
