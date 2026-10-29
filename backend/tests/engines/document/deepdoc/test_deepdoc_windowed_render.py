@@ -106,6 +106,16 @@ def test_windowed_extraction_forwards_per_window(monkeypatch):
             ]
 
     parser._layout_recognizer = FakeLayout()
+    # CI 无模型文件：health 守卫会绕过注入的 FakeLayout 直接走启发式——
+    # 本测试验证分窗调度本身，mock health 强制走模型路径。
+    monkeypatch.setattr(
+        "novamind.engines.document.integrations.deepdoc.parsers.pdf.get_vision_health_status",
+        lambda: {
+            "runtime_available": True, "can_run_vendored_ocr": True,
+            "can_run_layout_inference": True, "can_run_tsr_inference": True,
+            "layout_models_available": True,
+        },
+    )
     monkeypatch.setenv("DEEPDOC_RENDER_WINDOW_SIZE", "2")
 
     image_list, fused_pages, layout_pages, meta = parser._extract_fused_pages(_make_pdf(3))
@@ -149,6 +159,15 @@ def test_windowed_parse_full_keeps_book_wide_position_tags(monkeypatch):
             ]
 
     parser._layout_recognizer = FakeLayout()
+    # 同上：mock health 强制走模型路径（CI 无模型文件时守卫会绕过 FakeLayout）
+    monkeypatch.setattr(
+        "novamind.engines.document.integrations.deepdoc.parsers.pdf.get_vision_health_status",
+        lambda: {
+            "runtime_available": True, "can_run_vendored_ocr": True,
+            "can_run_layout_inference": True, "can_run_tsr_inference": True,
+            "layout_models_available": True,
+        },
+    )
     _fake_fuse_page(parser)
     monkeypatch.setenv("DEEPDOC_RENDER_WINDOW_SIZE", "2")
 

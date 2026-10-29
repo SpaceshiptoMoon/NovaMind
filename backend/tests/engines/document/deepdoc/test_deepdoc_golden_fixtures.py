@@ -108,7 +108,15 @@ def golden_pdfs(tmp_path_factory):
 
 
 def _vision_available() -> bool:
-    return bool(get_vision_runtime_status()["available"])
+    # runtime 包已装不等于模型在盘：CI 无模型文件时 layout 退化为 heuristic，
+    # 金样基线（锁模型产物）必须跳过——以 health 的模型就绪位为准。
+    from novamind.engines.document.integrations.deepdoc.vision_runtime import (
+        get_vision_health_status,
+    )
+
+    if not get_vision_runtime_status()["available"]:
+        return False
+    return bool(get_vision_health_status().get("can_run_layout_inference"))
 
 
 def _parse(pdf_path: Path) -> tuple[str, dict]:

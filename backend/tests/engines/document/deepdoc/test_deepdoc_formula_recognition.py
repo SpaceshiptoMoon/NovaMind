@@ -130,7 +130,9 @@ def test_recognize_generation_loop_with_fake_sessions():
 def test_download_model_group_mirror_uses_direct_download(tmp_path, monkeypatch):
     """默认镜像源必须走直链下载（hub 1.x 元数据校验拒绝镜像，snapshot 必败）。"""
     calls = []
-    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    # 分支由 hf_model_endpoint() 决定而非环境变量（settings 单例已脱离 env）——
+    # 直接 patch 端点函数，测试不再依赖部署环境是否配置了镜像。
+    monkeypatch.setattr(model_manager, "hf_model_endpoint", lambda: "https://hf-mirror.com")
     monkeypatch.setattr(
         model_manager, "direct_download_files",
         lambda base_dir, repo_id, files: calls.append((repo_id, list(files))),
@@ -205,7 +207,8 @@ def test_download_text_concat_model_mirror_uses_direct_download(tmp_path, monkey
     from novamind.engines.document.integrations.deepdoc import text_concat_model
 
     calls = []
-    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    # 分支由 hf_model_endpoint() 决定（同 model_group 测试）：patch 端点函数
+    monkeypatch.setattr(model_manager, "hf_model_endpoint", lambda: "https://hf-mirror.com")
     monkeypatch.setattr(
         model_manager, "direct_download_files",
         lambda base_dir, repo_id, files: calls.append((repo_id, list(files))),

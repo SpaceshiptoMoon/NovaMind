@@ -13,6 +13,11 @@ from pathlib import Path
 
 import pytest
 
+# 假 CLI 是 Windows .bat（type/GBK 语义），POSIX 无法执行——整模块 Windows 专属
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32", reason="fake CLI 为 Windows .bat，POSIX 不适用"
+)
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))

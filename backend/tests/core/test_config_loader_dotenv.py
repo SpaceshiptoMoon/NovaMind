@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -74,6 +75,10 @@ def test_missing_dotenv_is_silent(env_yaml: Path, tmp_path: Path, monkeypatch: p
     assert "security" in data
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="防的是 Windows PS 5.1 GBK 重编码场景；POSIX UTF-8 locale 下 dotenv 不触发该路径",
+)
 def test_invalid_utf8_dotenv_raises_runtime_error(env_yaml: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """.env 编码损坏时显性报错而非静默回落默认值（防 PS 5.1 GBK 重编码难排查假配置）。"""
     # 构造非法 UTF-8 字节（GBK 编码的中文，UTF-8 解码必失败），模拟 PS 5.1 产出的损坏 .env
