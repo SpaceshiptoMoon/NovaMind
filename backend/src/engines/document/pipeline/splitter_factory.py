@@ -177,8 +177,15 @@ def _register_default_builders() -> None:
     register_splitter_builder(
         "markdown",
         lambda p, _deps: MarkdownSplitter(
-            max_chunk_size=_chunk_size_param(p, DEFAULT_MARKDOWN_MAX_CHUNK_SIZE),
-            min_chunk_size=p.get("min_chunk_size", DEFAULT_MARKDOWN_MIN_CHUNK_SIZE),
+            max_chunk_size=(markdown_max := _chunk_size_param(p, DEFAULT_MARKDOWN_MAX_CHUNK_SIZE)),
+            # 块下限收敛到不超过上限：SplittingConfig 的 min_chunk_size 默认 500，
+            # 用户下调 chunk_size（如 200）时 min>chunk，切出的全部小块会被
+            # _merge_small_chunks 并回单块，切分静默失效（实测矩阵复测暴露：
+            # 配 200 实出 1 块 809）。下限语义上不得高于上限，min(min, chunk)。
+            min_chunk_size=min(
+                p.get("min_chunk_size") or DEFAULT_MARKDOWN_MIN_CHUNK_SIZE,
+                markdown_max,
+            ),
         ),
     )
     register_splitter_builder(

@@ -130,8 +130,14 @@ class MarkdownSplitter(BaseSplitter):
             content = chunk["content"].strip()
             if len(content) >= self.min_chunk_size or not merged:
                 merged.append(chunk)
-            else:
+            elif len(merged[-1]["content"]) + len(content) <= self.max_chunk_size:
+                # 并入前一块且并入后不超上限。无上限守卫时，min 逼近 max 的
+                # 配置会把逐上限切出的块链式并回单块（实测矩阵：配 chunk_size
+                # 200、min 500 → 全部小块并回 745 一块，切分静默失效）；
+                # 超上限时独立保留，内容不丢（防丢语义与 P1#10 一致）。
                 merged[-1]["content"] = (merged[-1]["content"] + "\n\n" + content).strip()
+            else:
+                merged.append(chunk)
         return merged
 
     def _split_by_headers(self, text: str) -> list[dict[str, str]]:
