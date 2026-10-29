@@ -171,7 +171,7 @@ async def test_ingest_full_pipeline(wiki_db):
     assert page is not None
     assert page.summary == "甲公司的测试页面"
     assert page.source_refs == ["100|"]
-    assert page.chunk_refs == ["100_100_0"]
+    assert page.chunk_refs == ["100_0"]
     assert page.last_edit_source == WikiEditSource.PIPELINE
     assert page.version == 1
     # 指向 concept/rag 的链接保留（该 slug 存活）
@@ -478,7 +478,7 @@ async def test_ingest_citation_unknown_chunk_handle_dropped(wiki_db):
     repo = WikiPageRepository(wiki_db)
     page = await repo.get_by_slug(1, "entity/jia-gong-si")
     # 只有 c000（真实 100_0）被还原；c777 丢弃后只剩一个 chunk 引用
-    assert page.chunk_refs == ["100_100_0"]
+    assert page.chunk_refs == ["100_0"]
     # 乙产品/RAG 无引用 → 不写页（强制接地）
     assert outcome.pages_created == 1
     assert outcome.skipped_no_citation == 2
