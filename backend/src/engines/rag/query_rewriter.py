@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
 
 
@@ -52,6 +53,7 @@ class QueryRewriter:
     def __init__(self, llm_client: BaseLLM):
         """注入 LLM 客户端并构建策略到处理方法的分发表。"""
         self._llm = llm_client
+        self.logger = get_logger(__name__)
         # 策略 → 处理方法查表（_completion 需 history 参数，调用处单独传参）
         self._strategies = {
             RewriteStrategy.COMPLETION: self._completion,
@@ -145,10 +147,16 @@ class QueryRewriter:
     async def _call_llm(self, prompt: str) -> str | None:
         """调 LLM 生成文本，失败时返回 None（fallback 到原 query）"""
         try:
+            # max_tokens 上限 8192（schema 允许最大值）：thinking 模型（glm-5.3/
+            # qwen3.8 系列）的思考 token 计入输出预算，512 会被 reasoning 吃满
+            # 导致 text 块为空（端到端实测 hyde 策略 degraded；与
+            # question_generation/service.py 同根因同修法）。
             return await self._llm.generate_text(
-                prompt=prompt, max_tokens=512, temperature=0.3,
+                prompt=prompt, max_tokens=8192, temperature=0.3,
             )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("QueryRewriter LLM 调用失败", error=str(e))
+            # 必须用 novamind 结构化 logger：stdlib logger 不接受 kwargs，
+            # warning(..., error=...) 会 TypeError 崩掉本 except 块、掩盖真实异常
+            # （"stdlib logging kwargs 坑"复发，端到端实测 hyde 策略暴露）。
+            self.logger.warning("QueryRewriter LLM 调用失败", error=str(e))
             return None
