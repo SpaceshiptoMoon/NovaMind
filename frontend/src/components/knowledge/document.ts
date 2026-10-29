@@ -2,7 +2,7 @@
  * Knowledge-base document helpers shared by document-related views.
  */
 import { ref } from 'vue'
-import type { ParsingDescriptors, SpaceConfig } from '@/api/types'
+import type { SpaceConfig } from '@/api/types'
 import { MODALITY_ACCEPT_MAP, MODALITY_MAX_SIZE_MB } from '@/api/types'
 import { knowledgeBaseApi } from '@/api/knowledge/knowledgeBase'
 

@@ -24,13 +24,13 @@ from novamind.engines.document.media.video.frame_extraction import (
     extract_frames_scene,
     extract_frames_scene_from_path,
 )
-from novamind.engines.document.media.video.video_utils import (
-    extract_frames_fixed_from_path,
-)
 from novamind.engines.document.media.video.video_segmentation import (
     plan_scene_aligned_segments,
 )
-from novamind.engines.document.media.video.video_utils import extract_video_frames
+from novamind.engines.document.media.video.video_utils import (
+    extract_frames_fixed_from_path,
+    extract_video_frames,
+)
 
 __all__ = [
     "extract_video_frames",
