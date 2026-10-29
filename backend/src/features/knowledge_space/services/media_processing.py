@@ -861,7 +861,8 @@ async def process_video_document(
     pipeline_config = ctx.pipeline_config
     parsing_config = build_runtime_parsing_config(pipeline_config.get("parsing", {}), document.file_type)
     splitting_config = dict(pipeline_config.get("splitting", {}))
-    video_config = (pipeline_config.get("parsing", {}) or {}).get("video", {})
+    # 显式 null 视同未配置（同 _parsing_media_section 注释）
+    video_config = _parsing_media_section(pipeline_config, "video")
     # strategy：6 预设映射到抽帧/去重/描述三阶段（build_runtime_parsing_config 同时扁平化到 video_strategy）
     strategy = video_config.get("strategy") or parsing_config.get("video_strategy") or "simple"
     frame_interval = video_config.get("frame_interval", 5)
@@ -1574,6 +1575,19 @@ def _space_asr_cfg(space_config: dict | None) -> dict:
     return (space_config or {}).get("asr") or {}
 
 
+def _parsing_media_section(pipeline_config: dict | None, name: str) -> dict:
+    """取解析配置的媒体模态配置节（audio/video/image），显式 null 视同未配置。
+
+    kb 配置经 PATCH 局部更新后，序列化结果会保留 "audio": null 这类
+    显式 null 键；dict.get(key, {}) 的默认值只对键缺失生效、对显式 null
+    不生效，直接链式 .get 会让下游在 None 上 AttributeError（2026-10-29
+    端到端实测：未配 audio/video 的知识库上传音频/视频必崩）。统一在此
+    ``or {}`` 归一，读法与 :func:`_space_asr_cfg` 同款。
+    """
+    parsing = (pipeline_config or {}).get("parsing", {}) or {}
+    return parsing.get(name) or {}
+
+
 async def process_audio_document(
     document: Document,
     file_content: bytes,
@@ -1592,7 +1606,7 @@ async def process_audio_document(
     """
     ctx = await load_pipeline_context(session, document, task)
     pipeline_config = ctx.pipeline_config
-    audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
+    audio_config = _parsing_media_section(pipeline_config, "audio")
     space_asr_cfg = _space_asr_cfg(ctx.space.config if ctx.space else None)
     # 默认本地 ASR（用户裁定 2026-09-23）：未显式选 ASR 模型时默认走本地
     # faster-whisper（本地推理免费，部署期预装模型，见 deploy.sh
