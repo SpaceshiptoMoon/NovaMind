@@ -360,6 +360,8 @@ class HostKnowledgeSearchPort:
         # ===== 1. 查询改写（会话模型；失败降级原 query） =====
         rewritten = query
         rewrite_degraded = False
+        # decompose 拆出的多个子查询逐条检索合并（此前只取首个子查询，其余丢弃）
+        rewritten_queries: list[str] = [query]
         if rewrite_strategy != "none" and llm_client is not None:
             from novamind.engines.rag.query_rewriter import QueryRewriter, RewriteStrategy
 
@@ -372,6 +374,7 @@ class HostKnowledgeSearchPort:
                 )
                 if result.queries:
                     rewritten = result.queries[0]
+                    rewritten_queries = [q for q in result.queries if str(q).strip()]
                 rewrite_degraded = result.degraded
             except Exception:
                 rewrite_degraded = True
@@ -379,43 +382,41 @@ class HostKnowledgeSearchPort:
         search_service = await self._build_search_service()
 
         async def _do_search(mode: str, threshold: float | None) -> list[dict[str, Any]]:
-            """单轮检索：kb_ids 限库，否则跨空间活跃库前 3 合并；单库失败静默跳过。"""
-            request = SearchRequest(
-                query=rewritten,
-                search_mode=mode,
-                top_k=top_k,
-                score_threshold=threshold if threshold is not None else 0.0,
-            )
-            if kb_ids:
-                merged: list[dict[str, Any]] = []
-                for kbid in kb_ids:
+            """单轮检索：多子查询逐条检索按 chunk_id 去重保最高分合并；kb_ids 限库，
+            否则跨空间活跃库前 3 合并；单库失败静默跳过。"""
+            best: dict[str, dict[str, Any]] = {}
+            for sub_q in rewritten_queries:
+                request = SearchRequest(
+                    query=sub_q,
+                    search_mode=mode,
+                    top_k=top_k,
+                    score_threshold=threshold if threshold is not None else 0.0,
+                )
+                if kb_ids:
+                    kb_targets: list[int] = list(kb_ids)
+                else:
+                    from novamind.features.knowledge_space.models.knowledge_base import (
+                        KnowledgeBaseStatus,
+                    )
+
+                    kbs = await self._kb_service().get_space_knowledge_bases(
+                        space_id, status=KnowledgeBaseStatus.ACTIVE
+                    )
+                    kb_targets = [kb.id for kb in kbs[:3]]
+                for kbid in kb_targets:
                     try:
                         r = await search_service.search(
                             space_id=space_id, kb_id=kbid,
                             user_id=user_id, request=request,
                         )
-                        merged.extend(r.get("results", []))
                     except Exception:
                         continue
-            else:
-                from novamind.features.knowledge_space.models.knowledge_base import (
-                    KnowledgeBaseStatus,
-                )
-
-                kbs = await self._kb_service().get_space_knowledge_bases(
-                    space_id, status=KnowledgeBaseStatus.ACTIVE
-                )
-                merged = []
-                for kb in kbs[:3]:
-                    try:
-                        r = await search_service.search(
-                            space_id=space_id, kb_id=kb.id,
-                            user_id=user_id, request=request,
-                        )
-                        merged.extend(r.get("results", []))
-                    except Exception:
-                        continue
-            merged.sort(key=lambda x: x.get("score", 0), reverse=True)
+                    for hit in r.get("results", []):
+                        key = str(hit.get("chunk_id") or hit.get("content", ""))[:200]
+                        prev = best.get(key)
+                        if prev is None or (hit.get("score", 0) or 0) > (prev.get("score", 0) or 0):
+                            best[key] = hit
+            merged = sorted(best.values(), key=lambda x: x.get("score", 0), reverse=True)
             return merged[:top_k]
 
         # ===== 2. 检索（grade-retry 可选：不通过切模式+降阈值重试） =====
