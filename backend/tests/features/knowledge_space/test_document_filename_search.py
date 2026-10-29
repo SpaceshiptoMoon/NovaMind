@@ -225,11 +225,15 @@ def test_keyword_none_or_blank_behaves_as_unfiltered():
         try:
             repo = DocumentRepository(session)
             baseline = await repo.get_by_kb(kb_id=1)
-            assert [d.id for d in baseline] == [1, 2]
+            # 排序无关断言（created_at 同刻并列时返回顺序依实现），内容断言为准
+            assert sorted(d.id for d in baseline) == [1, 2]
 
             for kw in (None, ""):
                 docs = await repo.get_by_kb(kb_id=1, keyword=kw)
-                assert [d.id for d in docs] == [1, 2], f"keyword={kw!r} 应等同不过滤"
+                # keyword=None/"" 必须与基线完全同序（同一查询路径）
+                assert [d.id for d in docs] == [d.id for d in baseline], (
+                    f"keyword={kw!r} 应等同不过滤"
+                )
                 count = await repo.count_by_kb(kb_id=1, keyword=kw)
                 assert count == 2, f"keyword={kw!r} 计数应等同不过滤"
         # 说明：全空格归一化在 route 层（(keyword or "").strip() or None）完成，

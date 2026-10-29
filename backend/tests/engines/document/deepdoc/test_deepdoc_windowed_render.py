@@ -231,6 +231,15 @@ def test_window_forward_failure_falls_back_for_that_window(monkeypatch):
             return []
 
     parser._layout_recognizer = FlakyLayout()
+    # 同上：mock health 强制走模型路径（CI 无模型文件时守卫会绕过 FlakyLayout）
+    monkeypatch.setattr(
+        "novamind.engines.document.integrations.deepdoc.parsers.pdf.get_vision_health_status",
+        lambda: {
+            "runtime_available": True, "can_run_vendored_ocr": True,
+            "can_run_layout_inference": True, "can_run_tsr_inference": True,
+            "layout_models_available": True,
+        },
+    )
     monkeypatch.setenv("DEEPDOC_RENDER_WINDOW_SIZE", "2")
 
     image_list, fused_pages, layout_pages, meta = parser._extract_fused_pages(_make_pdf(3))

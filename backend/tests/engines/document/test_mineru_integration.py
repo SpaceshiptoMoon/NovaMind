@@ -37,7 +37,13 @@ from novamind.features.knowledge_space.services.document_pipeline import (
     resolve_text_parsing_strategy,
 )
 
-pytestmark = pytest.mark.unit
+# 注意：模块级 pytestmark 只能赋值一次（后赋值会覆盖 skipif）——多标记用列表
+pytestmark = [
+    pytest.mark.skipif(
+        sys.platform != "win32", reason="fake CLI 为 Windows .bat，POSIX 不适用"
+    ),
+    pytest.mark.unit,
+]
 
 
 # ---------- 适配器：fail-fast ----------

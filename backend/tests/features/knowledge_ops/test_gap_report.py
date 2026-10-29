@@ -68,14 +68,18 @@ async def _seed_failure(
     base_extra = {"retrieval": {"result_count": 0, "max_score": None}, "answer_status": "answered"}
     if extra:
         base_extra.update(extra)
+    # 显式对齐 created_at 与测试窗口：ORM 默认是中国墙钟（UTC+8），UTC 的 CI
+    # 上 now±窗口全落空（查询 0 条）。测试窗口基准同为本地 now，两边同源。
+    created_at = datetime.now()
     async with factory() as session:
         session.add(QuestionAnswer(
             id=answer_id - 1, session_id=session_id, user_id=user_id,
-            role="user", content=query,
+            role="user", content=query, created_at=created_at,
         ))
         session.add(QuestionAnswer(
             id=answer_id, session_id=session_id, user_id=user_id,
             role="assistant", content="回答", space_id=space_id, extra=base_extra,
+            created_at=created_at,
         ))
         await session.commit()
 

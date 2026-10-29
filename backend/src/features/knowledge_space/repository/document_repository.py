@@ -606,7 +606,9 @@ class DocumentRepository:
                 )
             else:
                 query = query.where(latest.c.task_status == status_value)
-        query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
+        # id 作次级键：同刻并列（批量导入/测试同刻插入）时排序仍确定，
+        # 分页无全序键会跨页重复/漏行
+        query = query.order_by(Document.created_at.desc(), Document.id.desc()).offset(skip).limit(limit)
         result = await self.session.execute(query)
         documents = list(result.scalars().all())
         await self._attach_latest_tasks(documents)
