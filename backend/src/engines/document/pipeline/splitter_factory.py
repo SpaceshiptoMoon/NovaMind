@@ -136,6 +136,18 @@ def extract_splitting_params(splitting_config: dict[str, Any] | None) -> dict[st
     }
 
 
+def _chunk_size_param(p: dict[str, Any], default: int) -> int:
+    """取块大小上限：优先用户标准键 ``chunk_size``，回落引擎内部键 ``max_chunk_size``。
+
+    SplittingConfig 对外只暴露 chunk_size；max_chunk_size 是引擎内部参数名。
+    历史上 markdown/semantic 两策略只读 max_chunk_size——而
+    extract_splitting_params 会为缺失的 max_chunk_size 补全局默认（1000），
+    用户配置的 chunk_size 对这两策略静默失效（切分策略实测矩阵暴露：
+    配 200 实跑 1000）。显式 null 视同未配置。
+    """
+    return p.get("chunk_size") or p.get("max_chunk_size") or default
+
+
 def _register_default_builders() -> None:
     """集中注册内置策略装配器（新策略在此追加一行）。"""
     register_splitter_builder(
@@ -150,7 +162,7 @@ def _register_default_builders() -> None:
         "semantic",
         lambda p, deps: SemanticSplitter(
             embedding_client=deps.embedding_client,
-            max_chunk_size=p.get("max_chunk_size", DEFAULT_SEMANTIC_MAX_CHUNK_SIZE),
+            max_chunk_size=_chunk_size_param(p, DEFAULT_SEMANTIC_MAX_CHUNK_SIZE),
             similarity_threshold=p.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD),
             batch_size=p.get("batch_size", DEFAULT_EMBED_BATCH_SIZE),
         ),
@@ -165,7 +177,7 @@ def _register_default_builders() -> None:
     register_splitter_builder(
         "markdown",
         lambda p, _deps: MarkdownSplitter(
-            max_chunk_size=p.get("max_chunk_size", DEFAULT_MARKDOWN_MAX_CHUNK_SIZE),
+            max_chunk_size=_chunk_size_param(p, DEFAULT_MARKDOWN_MAX_CHUNK_SIZE),
             min_chunk_size=p.get("min_chunk_size", DEFAULT_MARKDOWN_MIN_CHUNK_SIZE),
         ),
     )
