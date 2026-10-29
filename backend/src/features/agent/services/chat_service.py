@@ -657,7 +657,6 @@ class AgentChatService:
             memory_on_turn_done=_agent_memory_flag("on_turn_done"),
         )
 
-    @staticmethod
     def _subagent_client_factory(self, user_id: int):
         """构造子 agent 客户端工厂（业务侧闭包用户身份与 LLM→VLM 兜底策略）。
 
