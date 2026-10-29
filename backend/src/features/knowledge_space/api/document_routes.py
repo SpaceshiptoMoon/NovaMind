@@ -293,6 +293,7 @@ async def init_chunk_upload(
     payload: ChunkUploadInitRequest,
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
+    document_upload_service: DocumentUploadService = Depends(get_document_upload_service),
     db: AsyncSession = Depends(get_db),
 ):
     """初始化分片上传会话（会话绑定 user_id+kb_id，后续每次分片写入校验归属）。"""
@@ -308,7 +309,7 @@ async def init_chunk_upload(
     kb = await KnowledgeBaseRepository(db).get_by_id(kb_id)
     if not kb:
         raise KnowledgeBaseNotFoundError(kb_id)
-    modality_cap = DocumentUploadService._get_max_file_size(None, kb, ext.lstrip("."))
+    modality_cap = document_upload_service._get_max_file_size(kb, ext.lstrip("."))
     global_cap = _get_global_upload_read_limit()
     max_total_bytes = min(modality_cap, global_cap)
 
