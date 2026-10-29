@@ -124,6 +124,9 @@ async def test_worker_skips_job_cancelled_by_reprocess(monkeypatch, db):
         async def list_by_kb(self, kb_id, limit=20):
             return [record]
 
+        async def get_latest_for_document(self, document_id):
+            return None
+
         async def create(self, data):
             raise AssertionError("被清洗的 job 不得创建新履历行")
 
@@ -159,6 +162,15 @@ async def test_worker_skips_job_cancelled_by_reprocess(monkeypatch, db):
     monkeypatch.setattr(db_mod, "get_db_session", FakeSessionFactory)
     monkeypatch.setattr(kb_repo_mod, "KnowledgeBaseRepository", FakeKBRepo)
     monkeypatch.setattr(wiki_repo_mod, "WikiIngestRecordRepository", FakeRecordRepo)
+
+    async def _fake_lock(kb_id):
+        return "tok"
+
+    monkeypatch.setattr(wiki_tasks, "acquire_kb_lock", _fake_lock)
+    async def _fake_release(kb_id, token):
+        return None
+
+    monkeypatch.setattr(wiki_tasks, "release_kb_lock", _fake_release)
 
     result = await wiki_tasks.process_wiki_ingest_task(
         {"job_id": "job-live"}, kb_id=1, space_id=1, document_id=100,
@@ -196,6 +208,9 @@ async def test_worker_creates_new_record_when_no_cancelled_match(monkeypatch, db
         async def list_by_kb(self, kb_id, limit=20):
             return []
 
+        async def get_latest_for_document(self, document_id):
+            return None
+
         async def create(self, data):
             created_rows.append(data)
             return FakeRecord()
@@ -232,6 +247,15 @@ async def test_worker_creates_new_record_when_no_cancelled_match(monkeypatch, db
     monkeypatch.setattr(db_mod, "get_db_session", FakeSessionFactory)
     monkeypatch.setattr(kb_repo_mod, "KnowledgeBaseRepository", FakeKBRepo)
     monkeypatch.setattr(wiki_repo_mod, "WikiIngestRecordRepository", FakeRecordRepo)
+
+    async def _fake_lock(kb_id):
+        return "tok"
+
+    monkeypatch.setattr(wiki_tasks, "acquire_kb_lock", _fake_lock)
+    async def _fake_release(kb_id, token):
+        return None
+
+    monkeypatch.setattr(wiki_tasks, "release_kb_lock", _fake_release)
 
     # KB 校验通过后走文档读取；文档不存在 → skipped（足以证明走到了建新行之后）
     class FakeDocRepo:

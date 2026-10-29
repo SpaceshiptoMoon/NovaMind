@@ -324,6 +324,7 @@ class TestBuildToolRegistry:
             "knowledge_search", "web_search", "memory", "todo",
             "read_tool_result", "task", "plan_output", "wiki",
             "research", "read_attachment",
+            "consult_member", "group_messaging", "local_workspace",
         ])
         assert "code_execution" not in registry.list_tool_names()
 
