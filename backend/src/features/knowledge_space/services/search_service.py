@@ -454,13 +454,12 @@ class SearchService:
         if not video_doc_ids:
             return results
 
-        from sqlalchemy import select
-
         from novamind.core.database.database import get_db_session
         from novamind.features.knowledge_space.models.video_narrative import (
             VideoNarrative,
             VideoNarrativeStatus,
         )
+        from sqlalchemy import select
 
         async with get_db_session() as session:
             rows = (await session.execute(

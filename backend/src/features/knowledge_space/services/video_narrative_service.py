@@ -3,8 +3,6 @@
 触发入口两处：kb 配置开启时视频解析完成自动入队；按需 API 显式触发。
 引擎（engines/video_narrative）只管合成；块来源、落库、状态机归本服务。
 """
-import asyncio
-import json
 
 from novamind.core.database.base import Base  # noqa: F401  # 确保元数据已注册
 from novamind.features.knowledge_space.models.video_narrative import (
@@ -47,7 +45,7 @@ class VideoNarrativeService:
         )
         from novamind.shared.storage.client_factory import get_elasticsearch_client
 
-        record = await self._upsert_running(space_id, kb_id, document_id)
+        await self._upsert_running(space_id, kb_id, document_id)
         try:
             wrapper = await get_elasticsearch_client()
             es = wrapper.es_client

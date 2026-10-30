@@ -1,4 +1,5 @@
 """视频叙事文档 ORM 模型：长视频解析后合成的章节化连贯叙事文档（与碎片块并存）。"""
+from novamind.core.database.base import BaseModel
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -8,8 +9,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-
-from novamind.core.database.base import BaseModel
 
 
 class VideoNarrative(BaseModel):

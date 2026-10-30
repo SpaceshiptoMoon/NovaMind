@@ -1,6 +1,5 @@
 """视频叙事合成引擎回归测试：Map-Reduce 合成、降级、JSON 容错、markdown 渲染。"""
 import pytest
-
 from novamind.engines.video_narrative.service import (
     NarrativeBlock,
     NarrativeSynthesisError,

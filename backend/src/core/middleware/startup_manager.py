@@ -150,12 +150,12 @@ class AppLifespanManager:
                 process_document_task,
                 recover_orphan_documents,
             )
+            from novamind.features.knowledge_space.tasks.video_narrative_task import (
+                process_narrative_task,
+            )
             from novamind.features.knowledge_space.tasks.wiki_tasks import (
                 process_wiki_ingest_task,
                 process_wiki_retract_task,
-            )
-            from novamind.features.knowledge_space.tasks.video_narrative_task import (
-                process_narrative_task,
             )
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(

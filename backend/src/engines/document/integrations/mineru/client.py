@@ -120,7 +120,7 @@ def parse_pdf_sync(
             *config.extra_args,
         ]
         try:
-            proc = subprocess.run(  # noqa: S603——命令来自宿主配置而非用户输入
+            proc = subprocess.run(  # 安全说明：命令来自宿主配置而非用户输入
                 cmd,
                 capture_output=True,
                 text=True,

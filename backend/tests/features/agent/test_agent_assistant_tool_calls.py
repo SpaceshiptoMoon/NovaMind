@@ -63,7 +63,7 @@ class _StubLLM(BaseLLM):
 
     async def generate_text_stream(self, **kwargs):  # type: ignore[no-untyped-def]
         raise NotImplementedError
-        yield  # noqa: unreachable — 保持 async generator 语义
+        yield  # 不可达；仅为保持 async generator 语义
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,7 @@ class _StubLLMStreamNoId(BaseLLM):
 
     async def generate_text_stream(self, **kwargs):  # type: ignore[no-untyped-def]
         raise NotImplementedError
-        yield  # noqa: unreachable — 保持 async generator 语义
+        yield  # 不可达；仅为保持 async generator 语义
 
 
 @pytest.mark.asyncio
