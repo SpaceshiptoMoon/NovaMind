@@ -852,6 +852,81 @@ async def retry_document_processing(
     )
 
 
+# ========== 视频叙事文档（章节化连贯文档，与碎片块并存） ==========
+
+
+@router.post(
+    "/{kb_id}/documents/{document_id}/narrative",
+    summary="生成视频叙事文档",
+    description=(
+        "按需触发现频叙事合成（章节化连贯文档：全片梗概+章节时间轴+角色场景清单）。"
+        "异步入队，返回任务受理；重复调用覆盖旧文档。"
+    ),
+)
+async def generate_video_narrative(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    llm_model: str | None = Body(default=None, embed=True, description="合成用 LLM 模型（留空=上传者默认 LLM）"),
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    from novamind.features.knowledge_space.tasks.video_narrative_task import (
+        enqueue_narrative_synthesis,
+    )
+
+    await validate_kb_access(kb_id, space_id, db)
+    job_id = await enqueue_narrative_synthesis(
+        space_id=space_id, kb_id=kb_id, document_id=document_id,
+        llm_model=llm_model, user_id=user_id,
+    )
+    return {
+        "document_id": document_id,
+        "job_id": job_id,
+        "status": "queued",
+        "message": "叙事合成已入队",
+    }
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/narrative",
+    summary="获取视频叙事文档",
+    description="读取章节化连贯叙事文档（梗概+章节列表）；未生成返回 404 语义的空对象。",
+)
+async def get_video_narrative(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    from novamind.features.knowledge_space.models.video_narrative import VideoNarrativeStatus
+    from novamind.features.knowledge_space.services.video_narrative_service import (
+        VideoNarrativeService,
+    )
+
+    await validate_kb_access(kb_id, space_id, db)
+    record = await VideoNarrativeService(db).get_by_document(document_id)
+    if record is None:
+        return {"document_id": document_id, "status": "not_generated", "exists": False}
+    status_name = {
+        VideoNarrativeStatus.RUNNING: "running",
+        VideoNarrativeStatus.COMPLETED: "completed",
+        VideoNarrativeStatus.FAILED: "failed",
+    }.get(record.status, "unknown")
+    return {
+        "document_id": document_id,
+        "status": status_name,
+        "exists": True,
+        "overview": record.overview,
+        "chapters": record.chapters or [],
+        "content_md": record.content_md,
+        "error_message": record.error_message,
+        "updated_at": str(record.updated_at) if record.updated_at else None,
+    }
+
+
 # ========== 图片代理路由 ==========
 
 

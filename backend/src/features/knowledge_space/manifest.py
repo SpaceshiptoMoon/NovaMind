@@ -13,6 +13,7 @@ def _import_models() -> None:
     )
     from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
     from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
+    from novamind.features.knowledge_space.models.video_narrative import VideoNarrative  # noqa: F401
     from novamind.features.knowledge_space.models.wiki import (  # noqa: F401
         WikiIngestRecord,
         WikiPage,

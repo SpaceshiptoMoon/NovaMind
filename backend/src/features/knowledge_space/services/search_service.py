@@ -435,6 +435,69 @@ class SearchService:
             "sub_queries": None,
         }
 
+    async def _attach_narrative_chapters(self, results: list[dict]) -> list[dict]:
+        """命中的视频块附加所在章节的连贯摘要（narrative_synthesis 产物）。
+
+        轻量：只对 chunk_role/type 为视频族且有 narrative 命中的文档查一次
+        叙事表；无叙事文档的结果原样返回。附加字段 narrative_chapter =
+        {"title", "start_time", "end_time", "summary"}。
+        """
+        if not results:
+            return results
+        # 筛视频族命中（chunk_id 形如 {doc}_{idx}，靠 file_info.file_type 判定）
+        video_doc_ids: set[int] = set()
+        for r in results:
+            fi = r.get("file_info") or {}
+            ft = (fi.get("file_type") or "").lower()
+            if ft in ("mp4", "mov", "avi", "mkv", "webm") and r.get("document_id"):
+                video_doc_ids.add(int(r["document_id"]))
+        if not video_doc_ids:
+            return results
+
+        from sqlalchemy import select
+
+        from novamind.core.database.database import get_db_session
+        from novamind.features.knowledge_space.models.video_narrative import (
+            VideoNarrative,
+            VideoNarrativeStatus,
+        )
+
+        async with get_db_session() as session:
+            rows = (await session.execute(
+                select(VideoNarrative).where(
+                    VideoNarrative.document_id.in_(video_doc_ids),
+                    VideoNarrative.status == VideoNarrativeStatus.COMPLETED,
+                )
+            )).scalars().all()
+        narratives = {n.document_id: n for n in rows}
+        if not narratives:
+            return results
+
+        for r in results:
+            doc_id = r.get("document_id")
+            n = narratives.get(int(doc_id)) if doc_id else None
+            if n is None or not isinstance(n.chapters, list):
+                continue
+            ci = r.get("chunk_index")
+            if ci is None:
+                continue
+            idx_str = str(ci).rsplit("_", 1)[-1]
+            try:
+                block_idx = int(idx_str)
+            except ValueError:
+                continue
+            for ch in n.chapters:
+                if block_idx in (ch.get("chunk_indices") or []):
+                    r["narrative_chapter"] = {
+                        "title": ch.get("title"),
+                        "start_time": ch.get("start_time"),
+                        "end_time": ch.get("end_time"),
+                        "summary": ch.get("summary"),
+                        "overview": n.overview,
+                    }
+                    break
+        return results
+
     async def search(
         self,
         space_id: int,
@@ -692,6 +755,13 @@ class SearchService:
             self.es_client, space_id, result.results,
             expansion_config=request.expansion,
         )
+
+        # 7b. 视频叙事分层消费：命中的视频块附加所在章节连贯摘要
+        # （碎片块负责召回，章节摘要补充生成上下文——"这个视频讲了什么"类问题的答案质量层）
+        try:
+            result.results = await self._attach_narrative_chapters(result.results)
+        except Exception as e:
+            self.logger.warning("叙事章节附加失败（不影响检索结果）", error=str(e))
 
         # 8. LLM 回答生成 + elapsed_ms 保真
         # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）

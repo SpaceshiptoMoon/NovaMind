@@ -154,6 +154,9 @@ class AppLifespanManager:
                 process_wiki_ingest_task,
                 process_wiki_retract_task,
             )
+            from novamind.features.knowledge_space.tasks.video_narrative_task import (
+                process_narrative_task,
+            )
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
                 functions=[
@@ -161,6 +164,8 @@ class AppLifespanManager:
                     process_resume_task,
                     process_wiki_ingest_task,
                     process_wiki_retract_task,
+                    # 视频叙事文档合成（kb 开启 narrative_synthesis 或 API 按需触发）
+                    process_narrative_task,
                     # agent 压缩时记忆提取（agent.memory.on_turn_done 开关控制投递）
                     consolidate_memory_task,
                     # agent 压缩摘要生成（agent.memory.compaction_async 开关控制投递）

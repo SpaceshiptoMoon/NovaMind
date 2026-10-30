@@ -85,6 +85,47 @@ async def _notify_document_terminal(
         logger.warning("文档终态通知发送失败", document_id=document_id, error=str(e))
 
 
+async def _trigger_narrative_if_enabled(*, kb_id: int, space_id: int, document_id: int) -> None:
+    """视频文档解析成功后触发叙事合成（KB.config.parsing.video.narrative_synthesis 才入队）。
+
+    独立短会话读 KB 配置；仅 file_type 为视频族时触发。失败不影响文档任务终态。
+    """
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document import Document
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+    from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+        KnowledgeBaseRepository,
+    )
+
+    async with get_db_session() as session:
+        kb = await KnowledgeBaseRepository(session).get_by_id(kb_id)
+        if not kb or kb.status != KnowledgeBaseStatus.ACTIVE:
+            return
+        video_config = ((kb.get_config() or {}).get("parsing") or {}).get("video") or {}
+        if not video_config.get("narrative_synthesis"):
+            return
+        doc = await session.get(
+            Document,
+            document_id,
+        )
+        file_type = (getattr(doc, "file_type", "") or "").lower()
+        video_exts = {"mp4", "mov", "avi", "mkv", "webm"}
+        if file_type not in video_exts:
+            return
+        narrative_model = video_config.get("narrative_llm_model")
+
+    from novamind.features.knowledge_space.tasks.video_narrative_task import (
+        enqueue_narrative_synthesis,
+    )
+
+    job_id = await enqueue_narrative_synthesis(
+        space_id=space_id, kb_id=kb_id, document_id=document_id,
+        llm_model=narrative_model,
+    )
+    if job_id:
+        logger.info("视频叙事合成已入队", kb_id=kb_id, document_id=document_id, job_id=job_id)
+
+
 async def _trigger_wiki_ingest_if_enabled(*, kb_id: int, space_id: int, document_id: int) -> None:
     """文档解析成功后触发 wiki 生成（KB.config.wiki.enabled 才入队）。
 
@@ -445,6 +486,17 @@ async def process_document_task(
                 logger.warning(
                     "wiki 生成入队失败（不影响文档任务）",
                     document_id=document_id, kb_id=kb_id, error=str(wiki_err),
+                )
+
+            # 8b. 视频叙事合成触发（KB 开启 narrative_synthesis 且为视频族才入队）
+            try:
+                await _trigger_narrative_if_enabled(
+                    kb_id=kb_id, space_id=space_id, document_id=document_id,
+                )
+            except Exception as narrative_err:
+                logger.warning(
+                    "视频叙事合成入队失败（不影响文档任务）",
+                    document_id=document_id, kb_id=kb_id, error=str(narrative_err),
                 )
 
             # 9. kb-ops 新版识别（B2 旁路：判定失败不影响上传；只建议不自动）

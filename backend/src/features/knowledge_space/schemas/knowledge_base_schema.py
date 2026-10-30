@@ -341,6 +341,12 @@ class VideoParsingConfig(BaseModel):
     steps_llm_model: str | None = Field(default=None)
     # 步骤条目上限（防超长视频步骤爆炸），默认 30。
     steps_max_steps: int = Field(default=30, ge=1, le=200)
+    # ===== 叙事合成（章节化连贯文档，与碎片块并存）=====
+    # 视频解析完成后自动合成章节化叙事文档（Map-Reduce：分批章节摘要+全片
+    # 梗概），默认关（每个长视频约 9 次 LLM 调用，用户对重要视频显式开启）。
+    narrative_synthesis: bool = Field(default=False)
+    # 叙事合成所用 LLM 模型名（留空 = 用户默认 LLM）。
+    narrative_llm_model: str | None = Field(default=None)
 
 
 class AudioParsingConfig(BaseModel):

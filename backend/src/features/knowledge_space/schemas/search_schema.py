@@ -305,6 +305,13 @@ class SearchResult(BaseModel):
     # 问题信息（question_*/all_* 模式下有值）
     questions: list[str] | None = Field(None, description="该分块预生成的假设性问题列表")
 
+    # 视频叙事章节（narrative_synthesis 产物；命中的视频块附加其所在章节的
+    # 连贯摘要与时间范围，供生成上下文/前端定位视频时间点）
+    narrative_chapter: dict[str, Any] | None = Field(
+        None,
+        description="视频叙事章节摘要（title/start_time/end_time/summary/overview）",
+    )
+
     # 元数据
     metadata: dict[str, Any] | None = Field(None, description="分块元数据")
     file_info: dict[str, Any] | None = Field(None, description="文件信息")
