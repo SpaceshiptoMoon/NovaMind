@@ -1639,6 +1639,24 @@
         "title": "Body_create_test_set_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_post",
         "type": "object"
       },
+      "Body_generate_video_narrative_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__narrative_post": {
+        "properties": {
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "合成用 LLM 模型（留空=上传者默认 LLM）",
+            "title": "Llm Model"
+          }
+        },
+        "title": "Body_generate_video_narrative_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__narrative_post",
+        "type": "object"
+      },
       "Body_put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put": {
         "properties": {
           "chunk": {
@@ -9760,6 +9778,19 @@
             "description": "分块元数据",
             "title": "Metadata"
           },
+          "narrative_chapter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "视频叙事章节摘要（title/start_time/end_time/summary/overview）",
+            "title": "Narrative Chapter"
+          },
           "questions": {
             "anyOf": [
               {
@@ -13251,6 +13282,22 @@
             "minimum": 1.0,
             "title": "Max Frames",
             "type": "integer"
+          },
+          "narrative_llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Llm Model"
+          },
+          "narrative_synthesis": {
+            "default": false,
+            "title": "Narrative Synthesis",
+            "type": "boolean"
           },
           "scene_min_interval": {
             "anyOf": [
@@ -23194,6 +23241,163 @@
           }
         ],
         "summary": "文档生命周期转换",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/narrative": {
+      "get": {
+        "description": "读取章节化连贯叙事文档（梗概+章节列表）；未生成返回 404 语义的空对象。",
+        "operationId": "get_video_narrative_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__narrative_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Video Narrative Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Documents  Document Id  Narrative Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取视频叙事文档",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      },
+      "post": {
+        "description": "按需触发现频叙事合成（章节化连贯文档：全片梗概+章节时间轴+角色场景清单）。异步入队，返回任务受理；重复调用覆盖旧文档。",
+        "operationId": "generate_video_narrative_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__narrative_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_generate_video_narrative_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__narrative_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate Video Narrative Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Documents  Document Id  Narrative Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "生成视频叙事文档",
         "tags": [
           "文档管理",
           "文档管理"
