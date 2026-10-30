@@ -56,9 +56,52 @@
 回归测试：`tests/engines/document/test_splitter_factory_chunk_size.py`（7 项）；
 金样 60 项 + md 回归 14 项全绿。
 
+## 检索质量层 A/B（2026-10-30 补测）
+
+16 份策略文档共存一个索引，8 个查询（覆盖结构化术语/叙事机制/跨形态）经
+search API 检索（`content_bm25` 与 `content_vector` 各一轮，top_k=100），
+统计每个策略文档的**最好排名（best_rank，越小越好）**，按策略×形态平均：
+
+| 策略 | A 形态 bm25 | A 形态 vector | B 形态 bm25 | B 形态 vector |
+|------|----:|----:|----:|----:|
+| recursive | **12.1** | 13.5 | 8.4 | 13.1 |
+| fixed_size | 13.6 | 11.9 | 9.4 | 17.8 |
+| markdown | 15.2 | 12.6 | 10.4 | 13.6 |
+| semantic | 14.2 | 14.1 | 11.4 | 12.0 |
+| delimiter | 14.5 | 12.4 | **7.4** | 15.1 |
+| sentence_window | 16.1 | **5.1** | 9.2 | **7.2** |
+| parent_child | 12.9 | 12.2 | 9.4 | 14.1 |
+| hierarchical | 13.9 | 9.2 | 13.2 | 30.5 |
+
+结论：
+
+1. **sentence_window 在向量检索全面最优**（A 5.1 / B 7.2，断层领先）——句子级
+   小块语义聚焦，向量命中精度最高，实测证实其设计主张；代价是块数最多
+   （37/95 块），检索候选面也最大（见混淆因素）。
+2. **hierarchical 在向量模式对叙事文崩坏**（B 30.5，全表最差）——无层级感的
+   内容被聚成 642 字符大块，向量语义稀释严重。
+3. **BM25 上中小块策略占优**（recursive/delimiter/parent_child），大块策略
+  （markdown/semantic/hierarchical）受长度归一化惩罚整体靠后。
+4. **recursive 是均衡王**：BM25 A 形态最优、B 形态次优，vector 中游——默认
+   策略名副其实。
+5. delimiter 对叙事文 + BM25 是隐藏组合（7.4 最优）：句号分隔符切出的句组
+   与自然语言查询措辞匹配度高。
+
+混淆因素与局限：各策略块数不同（sentence_window 37 块 vs markdown 2 块），
+块数多的策略命中面天然更大，best_rank 口径偏向多块策略；语料仍为小样本；
+未做 rerank 后的终排对比（rerank 会压缩部分差距）。
+
+选型建议（行为层 + 质量层合并）：
+
+- **向量检索为主的生产链路**：`sentence_window`（精度）或 `parent_child`
+  （精度 + 大上下文生成）；**避开 hierarchical 处理叙事文**。
+- **BM25/关键词为主的场景**：`recursive` 或 `delimiter`。
+- **均衡默认**：`recursive`（两层都不差）。
+
 ## 局限
 
 - 语料为小样本（<800 字符/篇），大文档（多页/多章节）下的块数分布与合并行为未覆盖；
 - `semantic` 的相似度阈值用默认值，未做阈值敏感性实验；
 - 矩阵只覆盖 default 解析路径；deepdoc 路径（layout 感知重切分）下各策略的交互未单独实测；
-- 检索质量维度（哪种策略命中率更高）需接 evaluation 流程，本矩阵只覆盖切分行为本身。
+- 检索质量层样本为 8 查询 × 单 embedding 模型，rerank 后终排与更大语料的
+  对比待补。

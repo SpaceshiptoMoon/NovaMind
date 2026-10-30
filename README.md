@@ -363,6 +363,17 @@ uv run python main.py --reload
 > uv run python scripts/download_deepdoc_models.py
 > ```
 
+> [!TIP]
+> **检索质量回归门禁**：改动切分/检索/解析逻辑后，跑一次评测对比基线（overall
+> 降超 0.5 或 hit_rate 降超 0.1 即非零退出，需服务已启动且有已建测试集）：
+> ```bash
+> cd backend
+> uv run python scripts/eval_regression_baseline.py            # 回归对比
+> uv run python scripts/eval_regression_baseline.py --baseline # 首次/刷新基线
+> ```
+> 切分策略的行为与检索质量实测数据见
+> [docs/splitting-strategy-matrix.md](docs/splitting-strategy-matrix.md)。
+
 4. 启动前端
 
 ```bash
@@ -427,7 +438,7 @@ NovaMind/
 |- backend/                         # FastAPI 后端
 |  |- main.py
 |  |- pyproject.toml
-|  |- scripts/                      # 模型下载脚本（DeepDoc / faster-whisper）
+|  |- scripts/                      # 运维脚本（模型下载 / 检索质量回归基线）
 |  |- src/
 |  |  |- core/                     # 应用工厂、中间件、生命周期、安全
 |  |  |- engines/                  # 引擎层：document / rag / agent / question_generation / wiki / eval / search / deep_research / resume

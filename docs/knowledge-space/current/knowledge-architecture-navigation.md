@@ -110,3 +110,7 @@ Wiki 页面不入 ES 检索。
 - `novamind.shared.document.readers...` — 跨 feature 读取器
 - `novamind.shared.storage...` — 存储客户端
 - `novamind.shared.utils...` — 仅通用工具
+
+## 切分策略选型
+
+8 种切分策略的行为与检索质量实测矩阵见 [`docs/splitting-strategy-matrix.md`](../../splitting-strategy-matrix.md)（含按文档形态的选型建议与检索质量 A/B 数据）；检索质量回归门禁：`backend/scripts/eval_regression_baseline.py`。
