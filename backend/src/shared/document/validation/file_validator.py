@@ -52,9 +52,14 @@ class FileValidator:
         b"\xff\xfb": "audio/mpeg",
         b"\xff\xf3": "audio/mpeg",
         b"\xff\xe3": "audio/mpeg",
+        # AAC ADTS 同步字（MPEG-4/MPEG-2 无 CRC 形态）：layer 位为 00，与上方
+        # MP3（layer 01/11/10）字节不同不冲突；裸 ADTS 流是无容器 aac 的常见形态
+        b"\xff\xf1": "audio/aac",
+        b"\xff\xf9": "audio/aac",
         b"fLaC": "audio/flac",
         b"OggS": "audio/ogg",
-        b"\x1aE\xdf\xa3": "video/webm",
+        # Matroska/WebM 同源 EBML 头（DocType 区分，二次判定见 detect_mime_by_header）
+        b"\x1aE\xdf\xa3": "video/ebml",
         # RIFF 容器（WAV/AVI）：4 字节签名后跟 4 字节长度 + 4 字节子标识，
         # 子标识在 detect_mime_by_header 中二次判定（WAVE/x-msvideo）
         b"RIFF": "application/riff",
@@ -210,6 +215,14 @@ class FileValidator:
                 return "audio/x-wav"
             if riff_type == b"AVI ":
                 return "video/x-msvideo"
+            return None
+        # Matroska/WebM：同源 EBML 头，读前 96 字节内的 DocType 字符串区分
+        if content.startswith(b"\x1aE\xdf\xa3"):
+            head = content[:96]
+            if b"webm" in head:
+                return "video/webm"
+            if b"matroska" in head:
+                return "video/x-matroska"
             return None
         # MP4/MOV/M4A：ftyp box 的 brand 决定具体类型
         if content[4:8] == b"ftyp":
