@@ -40,13 +40,20 @@ jobs:
       - name: Run backend unit tests
         working-directory: backend
         # FAILED 行转 ::error annotation：无需日志权限即可从 check annotations
-        # 读到失败清单（跨平台差异失败定位依赖它）
+        # 读到失败清单（跨平台差异失败定位依赖它）；非 FAILED 退出（收集错误/
+        # 导入错误）时输出日志尾部 60 行辅助定位
         run: |
           uv run pytest -m unit -q -rf --tb=short 2>&1 | tee pytest_unit.log
           code=${PIPESTATUS[0]}
           grep -E "^FAILED" pytest_unit.log | while read -r line; do
             echo "::error ::$line"
           done
+          if [ $code -ne 0 ] && ! grep -qE "^FAILED" pytest_unit.log; then
+            echo "::error ::unit 非测试失败退出，日志尾部："
+            tail -60 pytest_unit.log | while IFS= read -r line; do
+              echo "::error ::$line"
+            done
+          fi
           exit $code
 
   frontend-quality:
