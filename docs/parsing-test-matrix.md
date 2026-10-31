@@ -331,3 +331,24 @@ zip 压缩包与 eml/msg 邮件附件的容器递归解析（`engines/document/p
 **视频叙事合成端到端**：Sintel 89 块 → Map-Reduce → 8 章节连贯文档（跨段推理"黑龙=当年幼龙"正确）；检索命中视频块自动附回章节摘要；Agent 检索工具输出章节上下文（3677563a）与前端生成入口（1f7a440b）落地后真机冒烟全绿。
 
 遗留观察项：whisper 中文繁体随机输出（待产品决策）；simple 策略短视频块缺时间锚（长视频链路有）；video_native 完整链路依赖公网 MinIO（部署项）；m4a 双清单（魔数/扩展名）不一致待收口。
+
+## 边界修复回归批次（2026-11-01）
+
+多媒体矩阵遗留的三个失败根因当日闭环（真机 + 单测双验证），另含一项统计口径修复：
+
+| 缺陷 | 根因 | 修复 | 回归 |
+|---|---|---|---|
+| doc 980 frame_seq `frame_interval=2.0` 整段被拒「3 < 4」 | DashScope 帧列表 4 张下限，几秒短片抽帧不足 | 段级请求构造重复末帧补齐（987bcf46） | 补帧纯函数 + 3→4 帧 prompt 无幻影帧 + 恰 4 帧不补 |
+| doc 980 video_native 400「URL does not appear to be valid」重试 2 次白耗后 FAILED | 未配 `minio.public_endpoint` 时预签名 URL 是内网地址；该 400 不含 video/not support 关键词、不命中 `VideoInputNotSupportedError` 降级判据 | 前提前置判定：public_endpoint 缺失时零请求直接降级/终判（57a554e3） | 三用例：未配+允许降级零 native 调用 / 未配+禁止降级永久错误 / 已配正常走 native |
+| doc 952 OFD「检查 OCR 模型」误导 + 显式拒绝 | 空文本守卫的 PDF 文案被套在非 PDF 上；据此误诊将 ofd 从文本族摘出显式拒绝（fdedd5a4），切断了 d860829a 已接线的 `RAGFlowOfdParser` | 撤销误诊恢复分派；空文本守卫按 file_type 分化文案（492e91e5） | runtime 层 ofd 抽出文字层 / 空 OFD 正常返回 0 字符 / 非 PDF 不提 OCR |
+| 知识库卡片「处理中」失真：待处理显示成处理中、失败不显示 | stats 把"无任务项"与"排队中"混为 pending，CANCELLED 不进任何桶；前端只渲染 processing+pending 一个桶 | 六桶互斥完备（之和 = document_count）+ 前端卡片/文档页三桶（失败/处理中/待处理）（5254ff2b） | test_kb_stats_buckets 六桶完备/最新任务为准/软删排除/键集一致 |
+
+**真机闭环**：980 以 video_native + `frame_interval=2.0`（复现配置）重试——日志出现
+「未配置 minio.public_endpoint，按配置直接降级 frame_seq（不发 video_native 请求）」，
+6 帧描述/切分/向量化/索引全步骤 done，文档转成功；验证后环境恢复（kb 配置 simple/3.0、
+VLM 协议 openai）。验证中发现 video_native 在 VLM 协议非 `openai_video` 时于协议校验
+即 fail-fast（行为正确），模型客户端缓存 TTL 1h——切协议后需重启或等缓存过期才生效。
+
+**口径修正**：2026-10-30 批次记录的「frame_seq 需帧数 ≥4」与「video_native 缺配置
+告警 + 降级链正确」两条结论分别被 987bcf46（补帧后短片不再被拒）与 57a554e3
+（URL 400 路径当时并不降级）修正，以本批次为准。

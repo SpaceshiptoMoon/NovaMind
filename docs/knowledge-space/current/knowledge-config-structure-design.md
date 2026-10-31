@@ -301,6 +301,10 @@ Recommended structure:
   `OpenAICompatibleVideoLLM`，模型管理里把所选 VLM 协议改为 `openai_video`）。
   客户端缺 `generate_text_from_frames` 时任务直接失败并提示改协议（fail fast）。
 - **只接固定间隔抽帧**：scene 帧时刻不均匀，`fps` 语义失效。
+- **短视频补帧（2026-11-01）**：几秒钟的短片按固定间隔只抽得 1-3 帧、不足
+  DashScope 4 张下限，请求构造时重复末帧补齐（语义中性填充，不引入新画面；
+  帧时刻表与时间锚仍只描述真实帧）——doc 980 `frame_interval=2.0` 实测 3 帧
+  整段被拒的回归已修（987bcf46）。
 - **长视频分段**：DashScope 帧列表单次请求硬限 4-512 张，超限按
   `frame_seq_chunk_frames`（默认 512）固定 size 分段，尾段 < 8 帧并入前段；
   段间并发默认 2（伪视频请求体大，不与逐帧并发同档）。
@@ -316,14 +320,18 @@ MinIO 对象，模型直接看视频（`{"type":"video_url","video_url":{"url":.
 文档标注不推荐）。
 
 - **协议/网络要求**：VLM 协议 `openai_video`；`minio.public_endpoint` 必须配置
-  （外部 VLM 服务下载切片用，缺失时告警但片描述会失败）。
+  （外部 VLM 服务下载切片用）。2026-11-01 起为前置判定：未配置时一次
+  video_native 请求都不发——`video_native_fallback_to_frame_seq=true`（默认）
+  直接降级 frame_seq 并告警，false 则永久错误直达配置项（57a554e3；此前只
+  告警不阻断，URL 400 不命中降级判据、白耗重试后 FAILED，doc 980 实测）。
 - **聚片**：场景切换点作片边界（片内单一场景段）；切换点间距超
   `video_native_chunk_sec`（默认 540s，DashScope 10min 硬限留 60s 裕量）的
   区间均分切小；尾片 < `video_native_min_tail_sec`（默认 30s）并入前片。
 - **临时对象生命周期**：`{base}_vtmp/` 前缀即用即删（无论成败 finally 清理）。
-- **降级链**：服务商明确拒绝视频输入（`VideoInputNotSupportedError`）且
-  `video_native_fallback_to_frame_seq=true`（默认）→ 告警并自动降级
-  frame_seq 全套；其它错误不降级（fail fast）。
+- **降级链**：两条路共用同一 frame_seq 降级实现——① 服务商明确拒绝视频输入
+  （`VideoInputNotSupportedError`）；② `minio.public_endpoint` 未配置（前置判定，
+  不发请求）。二者均在 `video_native_fallback_to_frame_seq=true`（默认）时告警
+  并自动降级 frame_seq 全套；其它错误不降级（fail fast）。
 - **时间权威在代码侧**：chunk 时间区间全部由代码绝对时间构建；prompt 注入
   `{t0}` 片起始绝对秒做双重校正，但模型输出的时间只给人看不参与对齐。
 
