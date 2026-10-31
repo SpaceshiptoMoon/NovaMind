@@ -1159,93 +1159,9 @@ async def process_video_document(
                         "请在模型管理中把所选 VLM 模型的协议改为 openai_video"
                     ),
                 )
-            native_prompt = PromptManager.get_template("video_native_description")
-            native_kwargs: dict[str, Any] = {}
-            if video_native_chunk_sec:
-                native_kwargs["max_segment_sec"] = float(video_native_chunk_sec)
-            if video_native_min_tail_sec is not None:
-                native_kwargs["min_tail_sec"] = float(video_native_min_tail_sec)
-            if video_native_concurrency:
-                native_kwargs["concurrency"] = int(video_native_concurrency)
 
-            # 切片源路径：优先 worker 落盘的 file_path；缺席（旧 bytes 路径/测试）落临时文件
-            native_video_path = file_path
-            tmp_source: Any = None
-            if native_video_path is None:
-                import tempfile as _tempfile
-                tmp_source = _tempfile.NamedTemporaryFile(
-                    suffix=f"_{document.id}_native_src", delete=False,
-                )
-                tmp_source.write(file_content or b"")
-                tmp_source.close()
-                native_video_path = tmp_source.name
-
-            # 聚片边界的依据：场景帧 ts（extract_frames_scene 产物，含首帧 0）；
-            # duration 用真实元数据（末帧 ts + 间隔只是近似，会让末片边界错）。
-            # 复用帧提取后的软探测结果；探测不可用（None）时补一次硬探测，
-            # 仍失败才报错——聚片边界质量决定描述质量，此处不可静默近似。
-            if video_duration_probed is not None:
-                video_duration = video_duration_probed
-            else:
-                from novamind.engines.document.media.video.video_utils import read_video_metadata
-                try:
-                    video_duration = float(read_video_metadata(native_video_path).get("duration") or 0)
-                except Exception as meta_exc:
-                    raise DocumentProcessingError(
-                        document_id=document.id,
-                        error_message=f"视频 {document.filename} 元数据探测失败，无法聚片: {meta_exc}",
-                    ) from meta_exc
-            if video_duration <= 0:
-                # 元数据缺失时长时退化用末帧近似（能力缺失方向安全，末片边界略保守）
-                video_duration = max(ts for _, ts, _ in frames) + frame_interval
-            scene_keyframe_ts = [ts for _, ts, _ in frames]
-
-            # 临时对象命名空间：{base}_vtmp/ 前缀，cleanup 走前缀删除（即用即删）
-            vtmp_prefix = f"{base_object}_vtmp/"
-            if not getattr(minio_client, "public_endpoint", None):
-                logger.warning(
-                    "video_native 需 minio.public_endpoint 配置，否则外部 VLM 服务"
-                    "无法下载切片 URL，片描述将失败",
-                    document_id=document.id,
-                )
-
-            # 桶名取 default_bucket（MinioClient 实际属性；upload_file/get_public_file_url
-            # 均按此桶工作，勿用不存在的 bucket_name 属性兜底出错误桶名）
-            native_bucket = getattr(minio_client, "default_bucket", None) or "novamind"
-
-            async def _upload_segment(seg_bytes: bytes, seg_idx: int) -> str:
-                seg_object = f"{vtmp_prefix}seg_{seg_idx:03d}.mp4"
-                await minio_client.upload_file(seg_object, seg_bytes, "video/mp4")
-                return await minio_client.get_public_file_url(native_bucket, seg_object)
-
-            async def _cleanup_segments() -> None:
-                await minio_client.delete_objects_by_prefix(native_bucket, vtmp_prefix)
-
-            try:
-                native_descs = await describe_video_native(
-                    native_video_path, video_duration, scene_keyframe_ts,
-                    vlm_client, native_prompt,
-                    upload_segment=_upload_segment,
-                    cleanup_segments=_cleanup_segments,
-                    logger=logger, vlm_model=vlm_model_name,
-                    log_context=base_log_ctx, cancelled_check=cancelled_check,
-                    stats=vlm_stats, **native_kwargs,
-                )
-            except AllFrameDescriptionsFailedError as native_exc:
-                if not video_native_fallback_to_frame_seq:
-                    raise
-                first = native_exc.first_error
-                from novamind.shared.ai_models.llm.openai_compatible_video import (
-                    VideoInputNotSupportedError,
-                )
-                if not isinstance(first, VideoInputNotSupportedError):
-                    raise
-                # 服务商明确拒绝视频输入 → 降级 frame_seq 全套（告警可观测）
-                logger.warning(
-                    "video_native 被服务商拒绝（VideoInputNotSupportedError），"
-                    "按配置降级 frame_seq 帧序列策略",
-                    document_id=document.id, first_error=str(first),
-                )
+            async def _native_fallback_to_frame_seq() -> list[tuple[str, float, float, list[int]]]:
+                """video_native 降级 frame_seq 全套——前置判定与服务商拒绝两条路共用。"""
                 if not hasattr(vlm_client, "generate_text_from_frames"):
                     raise PermanentProcessingError(
                         document_id=document.id,
@@ -1253,24 +1169,128 @@ async def process_video_document(
                             f"视频 {document.filename} video_native 降级 frame_seq 也需 "
                             "VLM 协议 openai_video（缺 generate_text_from_frames）"
                         ),
-                    ) from native_exc
-                seq_prompt_fb = PromptManager.get_template(
-                    "video_frame_sequence_description"
-                )
+                    )
+                seq_prompt_fb = PromptManager.get_template("video_frame_sequence_description")
                 seq_kwargs_fb: dict[str, Any] = {}
                 if frame_seq_chunk_frames:
                     seq_kwargs_fb["chunk_frames"] = int(frame_seq_chunk_frames)
-                native_descs = await describe_frame_sequence(
+                return await describe_frame_sequence(
                     frames, vlm_client, seq_prompt_fb,
                     fps=round(1.0 / max(frame_interval, 1e-6), 4),
                     logger=logger, vlm_model=vlm_model_name,
                     log_context=base_log_ctx, cancelled_check=cancelled_check,
                     stats=vlm_stats, **seq_kwargs_fb,
                 )
-            finally:
-                if tmp_source is not None:
-                    from pathlib import Path as _P
-                    _P(tmp_source.name).unlink(missing_ok=True)
+
+            if not getattr(minio_client, "public_endpoint", None):
+                # 能力前提前置判定：外部 VLM 要能下载切片 URL，依赖 minio.public_endpoint；
+                # 没配生成的就是内网地址（127.0.0.1/容器名），服务商必拒——实测返回
+                # 400 "URL does not appear to be valid"，不命中 VideoInputNotSupportedError
+                # 判据、走不到异常降级，只会白耗重试与配额后 FAILED。前提不满足就一次
+                # 外部请求都不发：有降级开关直接降，没有直接终判并给直达文案。
+                if not video_native_fallback_to_frame_seq:
+                    raise PermanentProcessingError(
+                        document_id=document.id,
+                        error_message=(
+                            f"视频 {document.filename} video_native 策略需配置 minio.public_endpoint"
+                            "（外部 VLM 服务可达的对象存储地址），或开启 "
+                            "video_native_fallback_to_frame_seq 让其自动降级为帧序列策略"
+                        ),
+                    )
+                logger.warning(
+                    "video_native 未配置 minio.public_endpoint，按配置直接降级 frame_seq"
+                    "（不发 video_native 请求）",
+                    document_id=document.id,
+                )
+                native_descs = await _native_fallback_to_frame_seq()
+            else:
+                native_prompt = PromptManager.get_template("video_native_description")
+                native_kwargs: dict[str, Any] = {}
+                if video_native_chunk_sec:
+                    native_kwargs["max_segment_sec"] = float(video_native_chunk_sec)
+                if video_native_min_tail_sec is not None:
+                    native_kwargs["min_tail_sec"] = float(video_native_min_tail_sec)
+                if video_native_concurrency:
+                    native_kwargs["concurrency"] = int(video_native_concurrency)
+
+                # 切片源路径：优先 worker 落盘的 file_path；缺席（旧 bytes 路径/测试）落临时文件
+                native_video_path = file_path
+                tmp_source: Any = None
+                if native_video_path is None:
+                    import tempfile as _tempfile
+                    tmp_source = _tempfile.NamedTemporaryFile(
+                        suffix=f"_{document.id}_native_src", delete=False,
+                    )
+                    tmp_source.write(file_content or b"")
+                    tmp_source.close()
+                    native_video_path = tmp_source.name
+
+                # 聚片边界的依据：场景帧 ts（extract_frames_scene 产物，含首帧 0）；
+                # duration 用真实元数据（末帧 ts + 间隔只是近似，会让末片边界错）。
+                # 复用帧提取后的软探测结果；探测不可用（None）时补一次硬探测，
+                # 仍失败才报错——聚片边界质量决定描述质量，此处不可静默近似。
+                if video_duration_probed is not None:
+                    video_duration = video_duration_probed
+                else:
+                    from novamind.engines.document.media.video.video_utils import (
+                        read_video_metadata,
+                    )
+                    try:
+                        video_duration = float(read_video_metadata(native_video_path).get("duration") or 0)
+                    except Exception as meta_exc:
+                        raise DocumentProcessingError(
+                            document_id=document.id,
+                            error_message=f"视频 {document.filename} 元数据探测失败，无法聚片: {meta_exc}",
+                        ) from meta_exc
+                if video_duration <= 0:
+                    # 元数据缺失时长时退化用末帧近似（能力缺失方向安全，末片边界略保守）
+                    video_duration = max(ts for _, ts, _ in frames) + frame_interval
+                scene_keyframe_ts = [ts for _, ts, _ in frames]
+
+                # 临时对象命名空间：{base}_vtmp/ 前缀，cleanup 走前缀删除（即用即删）
+                vtmp_prefix = f"{base_object}_vtmp/"
+                # 桶名取 default_bucket（MinioClient 实际属性；upload_file/get_public_file_url
+                # 均按此桶工作，勿用不存在的 bucket_name 属性兜底出错误桶名）
+                native_bucket = getattr(minio_client, "default_bucket", None) or "novamind"
+
+                async def _upload_segment(seg_bytes: bytes, seg_idx: int) -> str:
+                    seg_object = f"{vtmp_prefix}seg_{seg_idx:03d}.mp4"
+                    await minio_client.upload_file(seg_object, seg_bytes, "video/mp4")
+                    return await minio_client.get_public_file_url(native_bucket, seg_object)
+
+                async def _cleanup_segments() -> None:
+                    await minio_client.delete_objects_by_prefix(native_bucket, vtmp_prefix)
+
+                try:
+                    native_descs = await describe_video_native(
+                        native_video_path, video_duration, scene_keyframe_ts,
+                        vlm_client, native_prompt,
+                        upload_segment=_upload_segment,
+                        cleanup_segments=_cleanup_segments,
+                        logger=logger, vlm_model=vlm_model_name,
+                        log_context=base_log_ctx, cancelled_check=cancelled_check,
+                        stats=vlm_stats, **native_kwargs,
+                    )
+                except AllFrameDescriptionsFailedError as native_exc:
+                    if not video_native_fallback_to_frame_seq:
+                        raise
+                    first = native_exc.first_error
+                    from novamind.shared.ai_models.llm.openai_compatible_video import (
+                        VideoInputNotSupportedError,
+                    )
+                    if not isinstance(first, VideoInputNotSupportedError):
+                        raise
+                    # 服务商明确拒绝视频输入 → 降级 frame_seq 全套（告警可观测）
+                    logger.warning(
+                        "video_native 被服务商拒绝（VideoInputNotSupportedError），"
+                        "按配置降级 frame_seq 帧序列策略",
+                        document_id=document.id, first_error=str(first),
+                    )
+                    native_descs = await _native_fallback_to_frame_seq()
+                finally:
+                    if tmp_source is not None:
+                        from pathlib import Path as _P
+                        _P(tmp_source.name).unlink(missing_ok=True)
 
             native_lines: list[str] = []
             frame_groups = {}
