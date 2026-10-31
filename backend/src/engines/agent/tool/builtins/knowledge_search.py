@@ -10,6 +10,94 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
+# 叙事章节摘要进工具结果的截断上限（字符）：章节摘要是 Map-Reduce 产物、单章
+# 可达数百字，同章节多块命中去重后只保留一份，截断防止长视频多章节撑爆工具
+# 结果预算（工具结果预算是 per-message 常量口径，见提示词注入修复批次）。
+_CHAPTER_SUMMARY_MAX_CHARS = 800
+# 全片梗概截断上限（字符）：梗概面向"这个视频整体讲了什么"类问题，比章节摘要短。
+_VIDEO_OVERVIEW_MAX_CHARS = 600
+
+
+def _fmt_ts(seconds: Any) -> str:
+    """秒数格式化为 "M:SS" / "H:MM:SS" 时间锚；非法输入返回空串。"""
+    try:
+        s = int(float(seconds))
+    except (TypeError, ValueError):
+        return ""
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m:02d}:{sec:02d}"
+
+
+def _format_hits_with_chapters(
+    items: list,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """把检索命中格式化为结果行 + 去重章节上下文 + 全片梗概。
+
+    碎片命中与章节摘要是多对一：同一章节被多块命中时，summary 只在 chapters
+    出现一份，结果行用 chapter 序号引用，避免重复摘要白烧 token。
+
+    Args:
+        items: KnowledgeSearchItem 列表（narrative_chapter 可为 None）。
+
+    Returns:
+        (rows, chapters, overviews) 三元组：rows 为单块命中行（命中章节的带
+        chapter 序号引用）；chapters 为按 (document_id, title) 去重的章节列表；
+        overviews 为按文档去重的全片梗概列表。
+    """
+    rows: list[dict[str, Any]] = []
+    chapters: list[dict[str, Any]] = []
+    chapter_keys: dict[tuple[int | None, str], int] = {}
+    overviews: list[dict[str, Any]] = []
+    overview_doc_ids: set[int] = set()
+    for item in items:
+        row: dict[str, Any] = {
+            "content": item.content[:500],
+            "score": round(item.score, 4),
+            "document_id": item.document_id,
+            "chunk_id": item.chunk_id,
+        }
+        filename = (item.file_info or {}).get("filename", "")
+        if filename:
+            row["filename"] = filename
+        nc = item.narrative_chapter
+        if nc:
+            title = str(nc.get("title") or "")
+            key = (item.document_id, title)
+            if key not in chapter_keys:
+                chapter_keys[key] = len(chapters)
+                time_range = "-".join(
+                    t
+                    for t in (_fmt_ts(nc.get("start_time")), _fmt_ts(nc.get("end_time")))
+                    if t
+                )
+                chapters.append(
+                    {
+                        "chapter": len(chapters),
+                        "document_id": item.document_id,
+                        "filename": filename,
+                        "title": title,
+                        **({"time_range": time_range} if time_range else {}),
+                        "summary": str(nc.get("summary") or "")[
+                            :_CHAPTER_SUMMARY_MAX_CHARS
+                        ],
+                    }
+                )
+            row["chapter"] = chapter_keys[key]
+            if item.document_id is not None and item.document_id not in overview_doc_ids:
+                overview = str(nc.get("overview") or "")
+                if overview:
+                    overview_doc_ids.add(item.document_id)
+                    overviews.append(
+                        {
+                            "document_id": item.document_id,
+                            "filename": filename,
+                            "overview": overview[:_VIDEO_OVERVIEW_MAX_CHARS],
+                        }
+                    )
+        rows.append(row)
+    return rows, chapters, overviews
+
 
 class KnowledgeSearchTool(BaseTool):
     """知识库搜索工具"""
@@ -118,7 +206,13 @@ class KnowledgeSearchTool(BaseTool):
                         "- Wiki pages (use wiki_search)\n\n"
                         "Default search_mode 'content_hybrid' (vector + BM25) fits most "
                         "queries; retry with different keywords before concluding the "
-                        "info is absent."
+                        "info is absent.\n\n"
+                        "OUTPUT: results are fragment chunks; for video hits each row "
+                        "carries a 'chapter' index into the top-level 'chapters' array "
+                        "(deduplicated coherent chapter summaries with time ranges) and "
+                        "'video_overviews' holds the whole-video synopsis. When asked "
+                        "what a video is about or how it flows, answer from the "
+                        "chapter summary + overview instead of stitching raw fragments."
                     ),
                     "parameters": {
                         "type": "object",
@@ -375,23 +469,17 @@ class KnowledgeSearchTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            formatted = []
-            for item in items:
-                row = {
-                    "content": item.content[:500],
-                    "score": round(item.score, 4),
-                    "document_id": item.document_id,
-                    "chunk_id": item.chunk_id,
-                }
-                if item.file_info:
-                    row["filename"] = item.file_info.get("filename", "")
-                formatted.append(row)
-
-            return json.dumps(
-                {"query": query, "total": len(formatted), "results": formatted},
-                ensure_ascii=False,
-                indent=2,
-            )
+            rows, chapters, overviews = _format_hits_with_chapters(items)
+            payload: dict[str, Any] = {
+                "query": query,
+                "total": len(rows),
+                "results": rows,
+            }
+            if chapters:
+                payload["chapters"] = chapters
+            if overviews:
+                payload["video_overviews"] = overviews
+            return json.dumps(payload, ensure_ascii=False, indent=2)
 
         except Exception as e:
             logger.error("知识库搜索失败", error=str(e))
@@ -465,19 +553,12 @@ class KnowledgeSearchTool(BaseTool):
             )
             return json.dumps(payload, ensure_ascii=False, indent=2)
 
-        payload["results"] = [
-            {
-                "content": item.content[:500],
-                "score": round(item.score, 4),
-                "document_id": item.document_id,
-                "chunk_id": item.chunk_id,
-                **(
-                    {"filename": item.file_info.get("filename", "")}
-                    if item.file_info else {}
-                ),
-            }
-            for item in items
-        ]
+        rows, chapters, overviews = _format_hits_with_chapters(items)
+        payload["results"] = rows
+        if chapters:
+            payload["chapters"] = chapters
+        if overviews:
+            payload["video_overviews"] = overviews
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     async def _list_documents(

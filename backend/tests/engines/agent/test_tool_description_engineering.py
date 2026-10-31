@@ -184,13 +184,18 @@ def test_register_rejects_function_without_name():
 
 
 def test_all_builtin_tools_pass_registration_validation():
-    """真实 10 个 provider 全量注册通过新校验（防校验误伤存量工具）。"""
+    """真实内置 provider 全量注册通过新校验（防校验误伤存量工具）。
+
+    数量断言是变更检测信号：新增/移除 provider 或子工具时此处显式失败，
+    提示有意识地同步基线（wiki/research/read_attachment/consult_member/
+    local_workspace 等后续扩容已计入）。
+    """
     from novamind.engines.agent.memory.todo_store import TodoStore
     from novamind.features.agent.tool.registry_setup import build_tool_registry
 
     registry = build_tool_registry(todo_store=TodoStore(), sandbox=None)
-    assert len(registry.list_tool_names()) == 10
-    assert len(registry._tool_name_to_provider) == 21
+    assert len(registry.list_tool_names()) == 13
+    assert len(registry._tool_name_to_provider) == 30
 
 
 # ----------------------- 3. 执行层失败纠错 -----------------------

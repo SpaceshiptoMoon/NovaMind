@@ -259,6 +259,7 @@ class HostKnowledgeSearchPort:
                     document_id=r.get("document_id"),
                     chunk_id=r.get("chunk_id"),
                     file_info=r.get("file_info"),
+                    narrative_chapter=r.get("narrative_chapter"),
                 )
             )
         return items
@@ -455,6 +456,7 @@ class HostKnowledgeSearchPort:
                 document_id=r.get("document_id"),
                 chunk_id=r.get("chunk_id"),
                 file_info=r.get("file_info"),
+                narrative_chapter=r.get("narrative_chapter"),
             )
             for r in raw_results
         ]

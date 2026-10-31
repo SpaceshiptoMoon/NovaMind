@@ -38,6 +38,10 @@ class KnowledgeSearchItem:
     document_id: int | None = None
     chunk_id: str | None = None
     file_info: dict[str, Any] | None = None
+    # 命中视频块所在叙事章节（narrative_synthesis 产物）：
+    # {"title", "start_time", "end_time", "summary", "overview"}，非视频块或
+    # 无叙事文档时为 None。
+    narrative_chapter: dict[str, Any] | None = None
 
 
 @dataclass
