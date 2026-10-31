@@ -344,25 +344,29 @@ async def validate_space_access(
     return space, member
 
 
-async def validate_space_member(
+async def ensure_space_member(
     space_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    user_id: int,
+    db: AsyncSession,
 ) -> SpaceMember:
-    """
-    验证用户是空间成员
+    """校验 user_id 是空间成员并返回成员记录（路由体内复用的共享主体）。
+
+    与 :func:`validate_space_member` 同语义；拆出显式 user_id 入参，供
+    query-token 兼容端点（媒体流）在路由体内用 ``get_current_user_media``
+    解析出的用户做成员校验——那类端点不能挂 header-only 依赖，否则
+    ``<video>`` 等无 Authorization 头的子请求会在成员校验处被 401。
 
     Args:
-        space_id: 空间 ID
-        user_id: 用户 ID
-        db: 数据库会话
+        space_id: 空间 ID。
+        user_id: 已认证用户 ID。
+        db: 数据库会话。
 
     Returns:
-        成员记录
+        成员记录。
 
     Raises:
-        SpaceNotFoundError: 空间不存在
-        MemberNotFoundError: 不是成员
+        SpaceNotFoundError: 空间不存在/已删除/已归档。
+        MemberNotFoundError: 不是成员。
     """
     space_repo = SpaceRepository(db)
     member_repo = MemberRepository(db)
@@ -402,6 +406,15 @@ async def validate_space_member(
         raise MemberNotFoundError(space_id, user_id)
 
     return member
+
+
+async def validate_space_member(
+    space_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> SpaceMember:
+    """验证用户是空间成员（依赖注入入口，主体见 :func:`ensure_space_member`）。"""
+    return await ensure_space_member(space_id, user_id, db)
 
 
 async def validate_space_admin(

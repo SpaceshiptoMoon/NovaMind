@@ -4,6 +4,7 @@
 """
 
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from minio.error import S3Error
@@ -557,6 +558,28 @@ class DocumentQueryService:
             if exc.code in ("NoSuchKey", "NoSuchBucket"):
                 raise DocumentObjectMissingError(document_id, object_name) from exc
             raise
+
+    def open_document_range(self, document, start: int, length: int) -> Iterator[bytes]:
+        """按字节区间流式打开文档原件（HTTP Range 播放用，内容不整包进内存）。
+
+        只做对象定位与迭代器转发，不做文档存在性校验（调用方已查）；区间越界
+        或对象缺失在首次迭代时抛 S3Error。
+
+        Args:
+            document: 已取出的 Document ORM 对象（读 storage 定位 MinIO 对象）。
+            start: 起始字节偏移（>= 0，调用方保证 < 文件大小）。
+            length: 读取字节数（> 0）。
+
+        Returns:
+            字节块迭代器；首块产出前不发起网络请求。
+        """
+        storage_info = document.get_storage_info()
+        return self.minio_client.download_document_range(
+            bucket_name=storage_info.get("minio_bucket"),
+            object_name=storage_info.get("minio_object_name") or "",
+            start=start,
+            length=length,
+        )
 
     async def get_parsed_text(self, document_id: int) -> bytes | None:
         """获取文档解析后的 Markdown 全文。

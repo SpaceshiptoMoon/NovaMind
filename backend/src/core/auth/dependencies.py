@@ -5,9 +5,9 @@
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.exceptions import (
@@ -167,6 +167,30 @@ async def get_current_user_optional(
     return await _resolve_user_from_token(credentials.credentials, resolver)
 
 
+async def get_current_user_media(
+    request: Request,
+    token: Annotated[str | None, Query(description="媒体标签专用的 access token")] = None,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_security),
+    resolver=Depends(get_user_status_resolver),
+) -> dict:
+    """媒体流端点认证：Authorization 头优先，``?token=`` 查询串兜底。
+
+    ``<video>``/``<audio>``/``<img>`` 标签发起的子请求无法自定义请求头，query
+    传 token 是其通行鉴权方式（与 MinIO 预签名 URL 同机制）。头与查询串都在时
+    优先头；都不在按缺凭证 401。校验强度与 get_current_user 完全一致（解码 +
+    双黑名单 + DB 状态 + 强制改密门禁）——不是弱化的公开端点。
+    """
+    raw = credentials.credentials if credentials is not None else token
+    if not raw:
+        raise AuthenticationError("缺少认证凭证")
+    user = await _resolve_user_from_token(
+        raw, resolver, enforce_password_change=True, request=request,
+    )
+    # 供限流键使用（语义同 get_current_user）
+    request.state.user_id = user["id"]
+    return user
+
+
 def require_active_user(current_user: dict = Depends(get_current_user)) -> dict:
     """活跃用户检查（状态检查已在 get_current_user 中完成）。
 
@@ -178,6 +202,7 @@ def require_active_user(current_user: dict = Depends(get_current_user)) -> dict:
 __all__ = [
     "get_current_user",
     "get_current_user_optional",
+    "get_current_user_media",
     "require_active_user",
     "get_user_status_resolver",
 ]

@@ -1,4 +1,4 @@
-import { request, instance } from '../index'
+import { request, instance, tokenManager } from '../index'
 import type {
   DocumentListResponse,
   UploadDocumentResponse,
@@ -224,6 +224,20 @@ export const documentApi = {
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`,
     )
     return window.URL.createObjectURL(blob)
+  },
+
+  /**
+   * 构造视频流式播放 URL（HTTP Range 端点 + query token 鉴权）。
+   *
+   * `<video>` 标签发起的子请求无法携带 Authorization 头，query 传 token 是其
+   * 通行鉴权方式；且整文件 blob 对 GB 级视频不可行，流式端点支持 206 分段与
+   * 进度条拖动。token 过期后播放报错，调用方需提示刷新（刷新登录后重建 URL）。
+   */
+  getVideoStreamUrl(spaceId: number, kbId: number, docId: number): string {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken() || ''
+    const qs = `token=${encodeURIComponent(token)}`
+    return `${baseURL}/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/stream?${qs}`
   },
 
   /** 查询 chunk 在 PDF 原文中的位置（页码 + bbox 矩形，引用溯源高亮） */

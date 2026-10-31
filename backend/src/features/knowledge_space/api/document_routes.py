@@ -10,10 +10,12 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
+from novamind.core.auth import get_current_user_media
 from novamind.core.database.database import get_db
 from novamind.core.middleware.rate_limit import RateLimits, get_limiter
 from novamind.features.knowledge_space.api.dependencies import (
+    ensure_space_member,
     get_audit_service,
     get_current_user_id,
     get_document_query_service,
@@ -33,6 +35,7 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentNotFoundError,
     DocumentProcessingError,
     DocumentSizeExceededError,
+    InvalidParameterError,
     KnowledgeBaseNotFoundError,
     ParsedTextNotFoundError,
     SpaceAccessDeniedError,
@@ -706,6 +709,131 @@ async def download_document(
                 f"filename*=UTF-8''{encoded_filename}"
             ),
             **integrity_headers,
+        },
+    )
+
+
+# 视频 MIME 显式映射：mimetypes 对 mkv/mov 的推断随操作系统注册表漂移，
+# `<video>` 拿到错误 MIME 会拒绝播放，这里按扩展名权威指定。
+_VIDEO_MIME_TYPES = {
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "avi": "video/x-msvideo",
+    "mkv": "video/x-matroska",
+    "webm": "video/webm",
+}
+
+
+def _parse_single_range(range_header: str, size: int) -> tuple[int, int] | None:
+    """解析单区间 Range 头为半开区间 ``[start, end)``。
+
+    仅支持浏览器 ``<video>`` 实际使用的单区间形态（``bytes=start-end`` /
+    ``bytes=start-`` / ``bytes=-suffix``）；多区间、非 bytes 单位、语法非法
+    或 start 越界一律返回 None，调用方按全量 200 响应兜底——比 416 更宽容，
+    播放器对 200 全量流同样可播（只是失去拖动定位）。
+
+    Args:
+        range_header: Range 请求头原值（如 ``bytes=1048576-2097151``）。
+        size: 对象总字节数。
+
+    Returns:
+        (start, end) 半开区间；无法解析时 None。
+    """
+    if size <= 0:
+        return None
+    header = range_header.strip()
+    if "," in header or not header.lower().startswith("bytes="):
+        return None
+    spec = header[6:].strip()
+    start_str, _, end_str = spec.partition("-")
+    try:
+        if not start_str:
+            # bytes=-N：末尾 N 字节
+            suffix = int(end_str)
+            if suffix <= 0:
+                return None
+            return (max(0, size - suffix), size)
+        start = int(start_str)
+        if start >= size:
+            return None
+        end = int(end_str) + 1 if end_str else size
+        return (start, min(end, size))
+    except ValueError:
+        return None
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/stream",
+    summary="流式播放文档",
+    description=(
+        "视频文档的 HTTP Range 流式端点（区间请求返回 206 分段），供前端"
+        " <video> 内联播放；鉴权支持 Authorization 头或 ?token= 查询串"
+        "（媒体标签无法携带自定义请求头）。非视频类型返回 400。"
+    ),
+)
+async def stream_document(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    request: Request,
+    current_user: dict = Depends(get_current_user_media),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """视频流式播放：按 Range 分段从 MinIO 流式转发，内存峰值与文件大小解耦。
+
+    空间成员校验用 ``ensure_space_member``（路由体内显式传 query-token 解析出的
+    user_id）而非 ``validate_space_member`` 依赖——后者内嵌 header-only 的
+    get_current_user，``<video>`` 无 Authorization 头的子请求会在那里被 401。
+    """
+    current_user_id = int(current_user["id"])
+    await ensure_space_member(space_id, current_user_id, db)
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    content_type = _VIDEO_MIME_TYPES.get((document.file_type or "").lower())
+    if not content_type:
+        raise InvalidParameterError(
+            f"文档 {document_id} 不是可流式播放的视频类型（{document.file_type}）",
+            field="document_id",
+        )
+
+    total_size = int(document.file_size or 0)
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="{quote(document.filename)}"',
+        "Cache-Control": "private, max-age=3600",
+    }
+
+    range_header = request.headers.get("range") or ""
+    span = _parse_single_range(range_header, total_size) if range_header else None
+    if span is None:
+        # 无 Range / 头不可解析：200 全量流；浏览器看到 Accept-Ranges 后拖动
+        # 进度条时会自动改用 Range 重试
+        chunks = (
+            document_query_service.open_document_range(document, 0, total_size)
+            if total_size > 0
+            else iter(())
+        )
+        return StreamingResponse(
+            chunks,
+            media_type=content_type,
+            headers={**common_headers, "Content-Length": str(total_size)},
+        )
+
+    start, end = span
+    chunks = document_query_service.open_document_range(document, start, end - start)
+    return StreamingResponse(
+        chunks,
+        media_type=content_type,
+        status_code=206,
+        headers={
+            **common_headers,
+            "Content-Range": f"bytes {start}-{end - 1}/{total_size}",
+            "Content-Length": str(end - start),
         },
     )
 

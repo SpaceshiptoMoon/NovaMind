@@ -65,6 +65,25 @@
       </audio>
     </div>
 
+    <!-- 视频内联播放：Range 流式端点直连（整文件 blob 对 GB 级视频不可行，
+         206 分段支持进度条拖动，内存峰值与文件大小解耦） -->
+    <div v-if="category === 'video' && videoStreamUrl" class="preview-section video-inline">
+      <div class="preview-section-header">
+        <h4>原文播放</h4>
+      </div>
+      <video
+        :key="videoStreamUrl"
+        :src="videoStreamUrl"
+        controls
+        preload="metadata"
+        class="video-player"
+        @error="videoLoadFailed = true"
+      >
+        您的浏览器不支持视频播放
+      </video>
+      <p v-if="videoLoadFailed" class="video-error">视频加载失败——若登录已过期请刷新页面后重试</p>
+    </div>
+
     <!-- 查看原文：居中固定模态窗，半透明遮罩锁背景，固定尺寸，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
@@ -224,6 +243,14 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 // 带认证的预览 Blob URL（图片/音频通过 fetch + token 获取后创建）
 const previewUrl = ref('')
 
+// 视频流式播放 URL：不走 blob（GB 级视频整文件进内存不可行），直连 Range
+// 端点 + query token；token 过期时 <video> 触发 error，提示刷新页面
+const videoLoadFailed = ref(false)
+const videoStreamUrl = computed(() => {
+  if (!props.document || category.value !== 'video') return ''
+  return documentApi.getVideoStreamUrl(props.spaceId, props.kbId, props.document.id)
+})
+
 /** 拉取图片/音频的带认证 blob URL 供内联预览，切换文档时先释放旧 URL 防泄漏 */
 async function loadPreviewUrl() {
   if (!props.document) return
@@ -249,7 +276,9 @@ watch(
   () => props.document?.id,
   () => {
     loadPreviewUrl()
-    // 文档切换时重置原文数据
+    // 文档切换时重置原文数据与视频错误态（videoStreamUrl 随 props 自动重建，
+    // :key 变化让 <video> 元素整体重建、丢弃旧加载状态）
+    videoLoadFailed.value = false
     parsedText.value = ''
     textError.value = ''
     originalDialogVisible.value = false
@@ -621,6 +650,24 @@ function navigateToMatch(index: number) {
 .audio-player {
   width: 100%;
   max-width: 320px;
+}
+
+/* 视频内联播放 */
+.video-inline {
+  padding: var(--space-3);
+}
+
+.video-player {
+  width: 100%;
+  max-height: 480px;
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.video-error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-danger);
 }
 
 /* 标题栏 */

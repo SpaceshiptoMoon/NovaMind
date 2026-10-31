@@ -6,6 +6,7 @@
 import asyncio
 import io
 import re
+from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any, BinaryIO
 
@@ -418,6 +419,49 @@ class MinioClient:
                 error=str(e)
             )
             raise
+
+    def download_document_range(
+        self,
+        bucket_name: str,
+        object_name: str,
+        start: int,
+        length: int,
+        chunk_size: int = 512 * 1024,
+    ) -> Iterator[bytes]:
+        """按字节区间流式读取对象（生成器逐块产出，内容不整包进内存）。
+
+        HTTP Range 播放场景（``<video>`` 拖动进度条）：响应期间按块从 MinIO 拉取，
+        内存峰值与区间大小解耦——GB 级视频也只占一个 chunk 的内存。生成器耗尽
+        或被消费方提前丢弃时关闭响应并归还连接池。
+
+        Args:
+            bucket_name: 桶名。
+            object_name: 对象名。
+            start: 起始字节偏移（>= 0，调用方保证小于对象大小，越界由 MinIO 抛 S3Error）。
+            length: 读取字节数（> 0；超出对象尾部按 MinIO 语义截断到实际可得）。
+            chunk_size: 每块字节数。
+
+        Returns:
+            字节块迭代器；首块产出前不发起网络请求。
+
+        Raises:
+            S3Error: 对象不存在或区间越界（在首次迭代时抛出）。
+        """
+        def _iterate() -> Iterator[bytes]:
+            response = self.client.get_object(
+                bucket_name, object_name, offset=start, length=length,
+            )
+            try:
+                while True:
+                    chunk = response.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                response.close()
+                response.release_conn()
+
+        return _iterate()
 
     async def download_document_to_file(
         self,
