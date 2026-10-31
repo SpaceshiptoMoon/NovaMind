@@ -53,19 +53,20 @@ schemas/
 | 路径 | 内容 |
 | --- | --- |
 | `backend/src/features/user/` | 认证、用户、模型配置、RBAC、应用门禁 |
-| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、Wiki 生成与浏览 |
+| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、Wiki 生成与浏览、视频叙事文档 |
+| `backend/src/features/knowledge_ops/` | 知识运营（事件账本、四分归因、gap 闭环、建议队列、治理视图） |
 | `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
-| `backend/src/features/qa/` | QA 归档读取面 + 共享聊天基础设施（附件/模型清单；对话已统一进 agent） |
 | `backend/src/features/deep_research/` | 深度研究读取面与执行编排（唯一入口是 agent 的 research 工具） |
-| `backend/src/features/agent/` | Agent、MCP 集成、工具编排 |
+| `backend/src/features/agent/` | Agent、会话对话（知识检索/附件/技能）、MCP 集成、工具编排 |
+| `backend/src/features/agent_api/` | Agent API 密钥管理与 OpenAI 兼容网关 |
 | `backend/src/features/skill/` | 技能广场和审核 |
 | `backend/src/features/app/` | 应用中心（简历挖掘） |
 | `backend/src/features/notification/` | 通知和偏好设置 |
 
 ### 引擎层（engines/）
 
-R1/R4 下的可复用组件：可直接 import setting 配置与 feature 公共面，
-features 直接收具体类实例（不再经端口装配）：
+零 features/setting 依赖的可复用组件（import 无环门禁 + 跨模块走公共面）：
+客户端、凭证与存储由业务层注入，接口签名不携带业务服务形状：
 
 | 路径 | 内容 |
 | --- | --- |
@@ -73,9 +74,12 @@ features 直接收具体类实例（不再经端口装配）：
 | `backend/src/engines/document/` | 文档处理引擎（pipeline / splitters / converters / media / deepdoc） |
 | `backend/src/engines/deep_research/` | 深度研究引擎 |
 | `backend/src/engines/eval/` | 评测引擎（retrieval / generation / embedding / claim 评估器） |
-| `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry） |
+| `backend/src/engines/question_generation/` | 假设问题生成引擎 |
+| `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry、查询改写） |
 | `backend/src/engines/resume/` | 简历解析引擎 |
 | `backend/src/engines/search/` | Web 搜索引擎组件（中立端口 WebSearchPort + 中立异常；401/403 凭证错误抛 `WebSearchProviderAuthError` 传播，5xx 降级空结果） |
+| `backend/src/engines/video_narrative/` | 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档：全片梗概 + 章节时间轴） |
+| `backend/src/engines/wiki/` | Wiki 纯函数件（互链/去重/句柄/slug/分类法） |
 
 ### 知识处理运行时代码
 

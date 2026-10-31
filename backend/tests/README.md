@@ -16,16 +16,22 @@ tests/
 │   ├── deep_research/
 │   ├── document/      # pipeline / splitters / compat 守卫 / 容器递归解析 / 金样回归
 │   │   ├── deepdoc/   # vendored DeepDoc（含 page_filter）
-│   │   └── media/     # audio / video / vlm
+│   │   └── media/     # audio / video / vlm（解析矩阵 test_parsing_matrix / test_media_matrix）
 │   ├── eval/
 │   ├── question_generation/  # 假设问题生成引擎（retry/batch_parse）
 │   ├── rag/
 │   ├── resume/
+│   ├── video_narrative/      # 视频叙事合成引擎（分批/降级/markdown 渲染）
 │   └── wiki/                 # Wiki 纯函数件（linkify/handles/dedup_taxonomy）
 ├── features/          # 被测对象在 src/features/<domain>/，子目录镜像其结构
 │   ├── agent/
+│   ├── agent_api/
+│   ├── app/
+│   ├── deep_research/
+│   ├── evaluation/
+│   ├── knowledge_ops/
 │   ├── knowledge_space/
-│   ├── qa/
+│   ├── notification/
 │   ├── skill/
 │   └── user/
 └── integration/       # pytest.mark.integration：需 :8100 运行服务，默认跳过

@@ -94,7 +94,8 @@
 
 - **文本文档**：PDF（DeepDoc 逐框文字层 + OCR 融合的 full 模式 / 轻量 plain 模式）、DOCX、TXT、MD、CSV、HTML、JSON
 - **图片理解**：VLM 生成图片描述，或 DeepDoc OCR 提取图内文字
-- **视频解析**：按固定间隔 / 场景切换 / 去重抽帧，逐帧（或分组）VLM 描述，双锚点时间轴对齐
+- **视频解析**：7 种策略预设（固定间隔 / 场景切换 / 去重抽帧 × 逐帧 / 多帧分组 / 帧序列伪视频 / 视频切片直输），音轨 ASR 转写双轨融合、LLM 步骤综合，双锚点时间轴对齐
+- **视频叙事文档**：解析完成后可把碎片帧描述合成为章节化连贯叙事（全片梗概 + 章节时间轴），与碎片块并存；问答命中视频内容时自动附带所在章节摘要——「这个视频讲了什么」直接得到连贯回答而非碎片拼接
 - **音频转写**：默认本地 **faster-whisper**（免费、无需 API Key、部署期预装模型），也可切换已配置的云端 ASR（OpenAI Whisper / DashScope Paraformer）
 - **公式与表格**：PDF 公式识别（pix2text-mfr INT8）、表格结构还原与 HTML 内联
 - **断点续跑**：解析 → 切分 → 向量化三级内容指纹，重试时指纹匹配即复用已付费的解析产物，配置变更自动级联失效
@@ -105,7 +106,7 @@
 
 ### 🤖 智能应用
 
-- **RAG 问答**：基于知识库的多轮问答，支持会话配置与上下文压缩，答案带引用溯源——右侧引用面板可定位原文分块，PDF 引用点击「原文定位」直达原文页并高亮命中区域（页码 + bbox 坐标级溯源）
+- **RAG 问答**：基于知识库的多轮问答，支持会话配置与上下文压缩，答案带引用溯源——右侧引用面板可定位原文分块，PDF 引用点击「原文定位」直达原文页并高亮命中区域（页码 + bbox 坐标级溯源）；命中视频分块时自动附带所在章节的连贯叙事摘要作为生成上下文
 - **深度研究**：联合内部知识库与外部搜索（数据源可插拔：Tavily / SerpAPI / DuckDuckGo），分步骤生成研究报告
 - **Agent**：工具调用、MCP Server 接入、执行轨迹回放
 - **技能广场**：技能上传、审核、安装与市场化分发
@@ -132,6 +133,7 @@
        ├─ 文本分支   DeepDoc 解析 / 通用 Reader ─┐
        ├─ 图片分支   VLM 描述 / OCR ──────────────┤
        ├─ 视频分支   抽帧 → VLM 逐帧描述 ──────────┼─▶ 统一切分 → Embedding
+       │            └▶ 视频叙事合成（可选，章节化连贯文档）
        └─ 音频分支   本地 faster-whisper / 云端 ASR ┘   → 假设问题（可选）
                                                        → ES 向量+全文索引
                                                        → Wiki 生成（KB 开启时）
@@ -426,7 +428,7 @@ src/features/{module}/           业务模块（领域层）
 |- models/                       ORM 模型
 `- schemas/                      Pydantic 请求/响应模型
 
-src/engines/{engine}/            可复用引擎（document/rag/agent/question_generation/wiki/…）——零 features/setting 依赖，客户端与存储由业务层注入
+src/engines/{engine}/            可复用引擎（document/rag/agent/question_generation/wiki/video_narrative/…）——零 features/setting 依赖，客户端与存储由业务层注入
 src/shared/                      模型客户端工厂 / 存储 / MQ / Prompt 注册表
 src/core/                        应用工厂 / 中间件 / 认证 / 生命周期
 ```
@@ -441,8 +443,8 @@ NovaMind/
 |  |- scripts/                      # 运维脚本（模型下载 / 检索质量回归基线）
 |  |- src/
 |  |  |- core/                     # 应用工厂、中间件、生命周期、安全
-|  |  |- engines/                  # 引擎层：document / rag / agent / question_generation / wiki / eval / search / deep_research / resume
-|  |  |- features/                 # 领域模块（user / knowledge_space / qa / agent / …）
+|  |  |- engines/                  # 引擎层：document / rag / agent / question_generation / wiki / video_narrative / eval / search / deep_research / resume
+|  |  |- features/                 # 领域模块（user / knowledge_space / agent / agent_api / knowledge_ops / …）
 |  |  |- setting/                  # YAML 配置加载
 |  |  `- shared/                   # 共享基础设施（storage/ai_models/mq/document/…）
 |  `- tests/                       # 按被测对象分层（architecture/core/shared/engines/features）
@@ -470,12 +472,11 @@ NovaMind/
 | 知识库管理 | `/api/v1/spaces/{space_id}/knowledge-bases` | 知识库创建、配置、文档管理 |
 | 知识检索 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | 搜索模式、检索、Rerank |
 | 知识库 Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki 生成 / 浏览 / 图谱 / 质量巡检 |
-| 智能问答 | `/api/v1/qa` | 基于知识库的多轮问答、消息反馈（点赞/点踩） |
-| 空间洞察 | `/api/v1/spaces/{space_id}/stats` | 问答量/点踩率/零命中/低分聚合，知识缺口看板 |
-| AI 聊天 | `/api/v1/ai-chat` | 流式对话和附件交互 |
+| 空间洞察 | `/api/v1/spaces/{space_id}/stats` | 问答量/点踩率/零命中/低分聚合，知识缺口看板与治理视图 |
 | 深度研究 | `/api/v1/spaces/{space_id}/deep-research` | 多源搜索和研究报告 |
 | 知识库评测 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | 测试集、评测任务、导出 |
-| Agent | `/api/v1/agent` | Agent、MCP Server、工具调用 |
+| Agent | `/api/v1/agent` | Agent、会话对话（知识检索 / 附件 / 技能 / MCP 工具调用） |
+| Agent API 密钥 | `/api/v1/agent-api` | Agent API 密钥管理与 OpenAI 兼容网关 |
 | 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、浏览 |
 | 应用中心 | `/api/v1/apps` | 场景化 AI 应用 |
 | 通知中心 | `/api/v1/notifications` | 站内通知和偏好设置 |
@@ -634,6 +635,12 @@ Docker 一键部署后，用户名 `admin`，初始密码在根目录 `.env` 的
 <summary><b>文档处理卡在某个步骤怎么办？</b></summary>
 
 任务列表可展开查看节点级进度（parsed → split → embedded → indexed），失败会标记具体节点和错误信息。支持取消（正在执行的步骤完成后终止）和重试（已完成步骤经指纹匹配直接复用，不重复付费调用）。服务重启后卡住的任务会在启动期自动恢复或标记失败。
+</details>
+
+<details>
+<summary><b>长视频解析后只覆盖了前几分钟？</b></summary>
+
+视频抽帧受「最大帧数」（`max_frames`，默认 60）封顶，抽满即停而非均匀采样全片。1 小时视频按 5 秒间隔需要约 720 帧，请在知识库解析配置中把最大帧数调大（长视频建议 300+）。注意 VLM 描述耗时随帧数线性增长；解析完成后也可对重要视频按需生成「叙事文档」（章节化连贯叙事），把碎片描述浓缩为可直接问答的全片知识文档。
 </details>
 
 <details>

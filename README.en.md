@@ -94,7 +94,8 @@ If you want to build more than a chat window — a system that can organize know
 
 - **Text documents**: PDF (DeepDoc full mode with per-span text layer + OCR fusion, or lightweight plain mode), DOCX, TXT, MD, CSV, HTML, JSON
 - **Image understanding**: VLM-generated descriptions, or DeepDoc OCR for in-image text
-- **Video parsing**: fixed-interval / scene-change / deduplicated frame sampling, per-frame (or grouped) VLM description, dual-anchor timeline alignment
+- **Video parsing**: 7 strategy presets (fixed-interval / scene-change / deduplicated sampling × per-frame / grouped / frame-sequence pseudo-video / native video clips), audio-track ASR fusion, LLM step synthesis, dual-anchor timeline alignment
+- **Video narrative document**: after parsing, fragment frame descriptions can be synthesized into a chaptered coherent narrative (whole-video synopsis + chapter timeline), coexisting with the fragment chunks; QA auto-attaches the matched chapter summary — "what is this video about" gets a coherent answer instead of stitched fragments
 - **Audio transcription**: local **faster-whisper** by default (free, no API key, model pre-downloaded at deploy time); switchable to cloud ASR (OpenAI Whisper / DashScope Paraformer)
 - **Formulas & tables**: PDF formula recognition (pix2text-mfr INT8), table structure restoration with inline HTML
 - **Resumable pipeline**: three-level content fingerprints (parse / split / embed) — retries reuse already-paid artifacts on fingerprint match; config changes cascade-invalidate downstream
@@ -105,7 +106,7 @@ If you want to build more than a chat window — a system that can organize know
 
 ### 🤖 Intelligent apps
 
-- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing — click "locate source" on a PDF citation to jump to the exact page with bbox-level highlighting of the cited region
+- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing — click "locate source" on a PDF citation to jump to the exact page with bbox-level highlighting of the cited region; matched video chunks automatically carry the coherent chapter narrative summary as generation context
 - **Deep research**: combines internal KBs with external search (pluggable sources: Tavily / SerpAPI / DuckDuckGo), staged research-report generation
 - **Agents**: tool calling, MCP server integration, execution-trace replay
 - **Skill marketplace**: skill upload, review, install, and distribution
@@ -132,6 +133,7 @@ Upload (MinIO original + hash dedup)
        ├─ text     DeepDoc / generic readers ────────┐
        ├─ image    VLM description / OCR ────────────┤
        ├─ video    frame sampling → VLM per frame ───┼─▶ split → Embedding
+       │           └▶ narrative synthesis (optional, chaptered coherent doc)
        └─ audio    local faster-whisper / cloud ASR ─┘     → hypothetical questions (optional)
                                                              → ES vector + full-text index
                                                              → Wiki generation (when KB enabled)
@@ -415,7 +417,7 @@ src/features/{module}/           business modules (domain layer)
 |- models/                       ORM models
 `- schemas/                      Pydantic request/response models
 
-src/engines/{engine}/            reusable engines (document/rag/agent/question_generation/wiki/…) — zero features/setting imports, clients & storage injected by the business layer
+src/engines/{engine}/            reusable engines (document/rag/agent/question_generation/wiki/video_narrative/…) — zero features/setting imports, clients & storage injected by the business layer
 src/shared/                      model client factories / storage / MQ / prompt registry
 src/core/                        app factory / middleware / auth / lifecycle
 ```
@@ -430,8 +432,8 @@ NovaMind/
 |  |- scripts/                      # model download scripts (DeepDoc / faster-whisper)
 |  |- src/
 |  |  |- core/                     # app factory, middleware, lifecycle, security
-|  |  |- engines/                  # engine layer: document / rag / agent / question_generation / wiki / eval / search / deep_research / resume
-|  |  |- features/                 # domain modules (user / knowledge_space / qa / agent / …)
+|  |  |- engines/                  # engine layer: document / rag / agent / question_generation / wiki / video_narrative / eval / search / deep_research / resume
+|  |  |- features/                 # domain modules (user / knowledge_space / agent / agent_api / knowledge_ops / …)
 |  |  |- setting/                  # YAML config loading
 |  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/document/…)
 |  `- tests/                       # layered by test target (architecture/core/shared/engines/features)
@@ -459,12 +461,11 @@ NovaMind/
 | Knowledge bases | `/api/v1/spaces/{space_id}/knowledge-bases` | KB create, config, document management |
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
 | Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
-| QA | `/api/v1/qa` | multi-turn QA over KBs, per-message feedback (thumbs up/down) |
-| Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard |
-| AI chat | `/api/v1/ai-chat` | streaming chat and attachments |
+| Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard & governance views |
 | Deep research | `/api/v1/spaces/{space_id}/deep-research` | multi-source search and research reports |
 | KB evaluation | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | test sets, eval tasks, export |
-| Agent | `/api/v1/agent` | agent, MCP servers, tool calling |
+| Agent | `/api/v1/agent` | agents, conversations (knowledge retrieval / attachments / skills / MCP tool calling) |
+| Agent API keys | `/api/v1/agent-api` | Agent API key management & OpenAI-compatible gateway |
 | Skill marketplace | `/api/v1/skills` | skill upload, review, install, browse |
 | App center | `/api/v1/apps` | scenario AI apps |
 | Notifications | `/api/v1/notifications` | in-app notifications and preferences |
@@ -619,6 +620,12 @@ Two layers: the "Model Management" page configures the models themselves (provid
 <summary><b>A document is stuck at some step — what now?</b></summary>
 
 Expand the task in the task list to see per-step progress (parsed → split → embedded → indexed); failures mark the exact step and error. Cancel (stops once the running step finishes) and retry (completed steps are reused via fingerprint match — no repeated paid calls) are both supported. Stuck tasks are automatically recovered or marked failed at startup after a service restart.
+</details>
+
+<details>
+<summary><b>A long video only covers its first few minutes after parsing?</b></summary>
+
+Video frame sampling is capped by "Max frames" (<code>max_frames</code>, default 60) — sampling stops once the cap is reached rather than spreading across the whole video. A 1-hour video at a 5-second interval needs ~720 frames; raise the cap in the KB parsing config (300+ recommended for long videos). Note VLM description time grows linearly with frame count; after parsing you can also generate a "narrative document" for important videos on demand — a chaptered coherent doc that condenses fragment descriptions into directly answerable knowledge.
 </details>
 
 <details>

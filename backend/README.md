@@ -37,21 +37,25 @@ backend/
 |- pyproject.toml
 |- src/
 |  |- core/                      # 应用工厂、中间件、数据库、安全
-|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/agent/question_generation/wiki/eval/…），零 feature/setting/core 依赖
+|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/agent/question_generation/wiki/video_narrative/eval/…），零 feature/setting/core 依赖
 |  |  |- agent/                  # Agent 引擎（ReAct 循环、工具、记忆、MCP）
 |  |  |- deep_research/          # 深度研究引擎
 |  |  |- document/               # 文档处理引擎（pipeline/splitters/converters/media/deepdoc）
 |  |  |- eval/                   # 评测引擎（检索/生成/embedding/claim 评估器）
-|  |  |- rag/                    # RAG 引擎（检索引擎、Grade→Retry）
-|  |  `- resume/                 # 简历解析引擎
+|  |  |- question_generation/    # 假设问题生成引擎
+|  |  |- rag/                    # RAG 引擎（检索引擎、Grade→Retry、查询改写）
+|  |  |- resume/                 # 简历解析引擎
+|  |  |- search/                 # Web 搜索引擎组件（中立端口 + provider）
+|  |  `- video_narrative/        # 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档）
 |  |- features/                  # 领域模块
 |  |  |- agent/
+|  |  |- agent_api/              # Agent API 密钥与 OpenAI 兼容网关
 |  |  |- app/
 |  |  |- deep_research/
 |  |  |- evaluation/
+|  |  |- knowledge_ops/          # 知识运营（事件账本、归因、治理视图）
 |  |  |- knowledge_space/
 |  |  |- notification/
-|  |  |- qa/
 |  |  |- skill/
 |  |  `- user/
 |  |- setting/                   # YAML 配置加载（单 default.yaml：凭据走 .env、连接参数带本地基线）
@@ -180,10 +184,9 @@ pytest -m "not slow"
 后端对外暴露的主要接口包括：
 
 - `/api/v1/user` — 认证、用户管理、RBAC 角色、模型配置、搜索配置、应用门禁
-- `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、深度研究、评测
-- `/api/v1/qa` — 基于知识库的问答
-- `/api/v1/ai-chat` — 流式对话和附件交互
-- `/api/v1/agent` — Agent、MCP Server、工具
+- `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、视频叙事文档、深度研究、评测、空间运营洞察
+- `/api/v1/agent` — Agent、会话对话（知识检索 / 附件 / 技能 / MCP 工具调用）
+- `/api/v1/agent-api` — Agent API 密钥管理；`/v1` 挂 OpenAI 兼容网关
 - `/api/v1/skills` — 技能广场
 - `/api/v1/apps` — 应用中心（简历挖掘）
 - `/api/v1/notifications` — 站内通知和偏好设置

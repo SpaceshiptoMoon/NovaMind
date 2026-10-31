@@ -40,6 +40,8 @@
 
 ### 平台级架构
 
+- [`splitting-strategy-matrix.md`](./splitting-strategy-matrix.md)：切分策略实测矩阵（8 切分器 × 参数组合的行为层与检索质量 A/B 数据、回归门禁用法）
+- [`parsing-test-matrix.md`](./parsing-test-matrix.md)：解析模块测试矩阵（组合空间全覆盖清单与执行记录：文本/图片/音频/视频全模态）
 - [`claude-code-mcp-setup.md`](./agent/claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
 - [`notification-architecture.md`](./notification-architecture.md)：通知系统架构（NotificationService.notify、WS 推送、轮询兜底）
 - [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）

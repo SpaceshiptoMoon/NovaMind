@@ -310,3 +310,24 @@ zip 压缩包与 eml/msg 邮件附件的容器递归解析（`engines/document/p
 配套（同批 69db9f53 断点修复）：`test_container_parsing_config.py` 锁定容器族策略
 恒为 deepdoc（不被用户 PDF 配置污染）；`test_file_validator_signatures.py` 容器段
 锁定四格式上传放行与 .zip 伪装拒收。
+
+## 多媒体全矩阵真机批次（2026-10-30~31）
+
+端到端全链路（真实服务栈：后端 8100 / ES / MinIO / MySQL / Redis / 嵌入式 worker）实测：
+格式 × 策略 × 交叉 × 大文件四层口径全绿，端到端暴露的校验器与切分缺陷当日修复。
+
+**格式 11/11**：
+- 音频 wav / mp3 / flac / ogg / m4a / aac——TTS 合成中文语音 faster-whisper 全部真转写（aac 繁体为 whisper 脚本随机性遗留）；暴露两处校验器缺口已修（b2224754）：aac 裸 ADTS 流魔数盲区（补 FFF1/FFF9 签名）、mkv 与 webm 同源 EBML 头误判（改中性占位 + DocType 二次判定）。
+- 视频 mp4 / mov / avi / mkv / webm——VLM 逐帧描述全部准确。
+
+**视频策略 7/7**：simple / scene / dedup / grouped / rewrite 全过（rewrite 与 grouped 均约 2x 耗时，符合设计）；frame_seq 需帧数 ≥4（DashScope 帧列表硬限）；video_native 需 VLM 协议 openai_video + `minio.public_endpoint` 公网可达（缺配置告警 + 降级链正确，完整链路属部署项）。
+
+**音频策略 5 配置**：热词实测显著生效（支持库→知识库 被修正）、language 自动检测同质量、diarization 本地协议静默忽略、云端 qwen-audio SERVER_ERROR 失败语义清晰。
+
+**交叉组合 8**：mov×scene、avi×dedup、mkv×grouped、webm×rewrite、mp3×hotwords、flac×autodetect、aac×diarization、ogg×hotwords 全绿。
+
+**大文件 4**：68s 长音频（TTS 10 句全转写）、1080p 90s 视频 ×2、57MB 分片上传闭环（服务端 chunk_size_hint 契约自洽）、**Sintel 1080p mkv 1.1GB / 14min48s / 40 片分片上传**——实测出 `max_frames` 封顶行为：抽帧抽满即停不均匀采样全片，**长视频必须显式调大 max_frames**（89 块全片覆盖需 300 帧 / 3s 间隔）。
+
+**视频叙事合成端到端**：Sintel 89 块 → Map-Reduce → 8 章节连贯文档（跨段推理"黑龙=当年幼龙"正确）；检索命中视频块自动附回章节摘要；Agent 检索工具输出章节上下文（3677563a）与前端生成入口（1f7a440b）落地后真机冒烟全绿。
+
+遗留观察项：whisper 中文繁体随机输出（待产品决策）；simple 策略短视频块缺时间锚（长视频链路有）；video_native 完整链路依赖公网 MinIO（部署项）；m4a 双清单（魔数/扩展名）不一致待收口。

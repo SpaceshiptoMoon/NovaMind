@@ -76,6 +76,16 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 - `guard_office_zip`：重复条目拒收（POI 5.4.0 语义）+ 解压比 1% 下限（POI ZipSecureFile 同款），OOXML 与 OCF（epub）共用。
 - 外部策略（external_ocr/mineru）在交外部服务前经 `_guard_pdf_payload` 快检（`%PDF-` 魔数 + needs_pass），坏文档不白耗外部算力。
 
+## 视频叙事文档（章节化连贯叙事，与碎片块并存）
+
+视频解析完成后可对单个文档按需（或经 kb 配置 `narrative_synthesis` 自动）触发叙事合成：
+
+- **引擎**：`engines/video_narrative/service.py`（`VideoNarrativeSynthesizer`）——从 ES 拉取该文档视频块（带 start_time/end_time 时间锚，缺失锚的块归一补轴），Map-Reduce 两阶段：分批章节摘要（Map）→ 全片梗概（Reduce），`NarrativeChapter.chunk_indices` 回链源块。
+- **落库**：`video_narratives` 表（`document_id` 唯一，status 0 运行 / 1 完成 / 2 失败；overview/chapters JSON + content_md 全文）。注意继承 `BaseModel`（带时间戳列）而非 `Base`。
+- **触发**：任务函数 `process_narrative_task`（worker 注册，arq 入队 kwargs 必须与签名一致）；kb 配置开启时由解析完成步骤 8b 自动入队（仅视频族），API `POST/GET /{kb_id}/documents/{doc_id}/narrative` 按需触发/读取。
+- **检索分层消费**：`SearchService._attach_narrative_chapters` 给命中的视频块附 `narrative_chapter`（标题/时间区间/章节摘要/全片梗概）；Agent 检索工具输出两层结构（结果行引用 + 章节去重列表），回答「这个视频讲了什么」类问题时 LLM 以章节摘要而非碎片拼接作答。
+- **成本提示**：每个长视频约 9 次 LLM 调用；与 `strategy=rewrite`（描述后重写连贯）叠加会双重连贯化，前端表单已加互斥告警。
+
 ## 三级指纹快照与断点续跑
 
 `pipeline_snapshots.py`：parse → split → embedding 三级快照（MinIO 存全量 metadata），指纹链 `parse_fingerprint → split_fingerprint`。配置未变的重跑/续跑跳过已完成阶段；切分配置漂移时放弃旧分块按 full_text 重切（解析产物仍复用）。旧快照的 figure 短路径经 `resolve_figure_short_paths` 兜底。
@@ -107,4 +117,5 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 | compat 工具（编码/XML/zip 守卫） | `engines/document/integrations/deepdoc/compat/compat.py` |
 | 读取端 presign | `features/knowledge_space/services/document_query_service.py` |
 | 假设问题生成引擎（管线尾段问题+向量） | `engines/question_generation/`（业务编排 `pipeline_steps.generate_questions_for_chunks`） |
+| 视频叙事合成引擎（Map-Reduce 章节化） | `engines/video_narrative/`（业务编排 `features/knowledge_space/services/video_narrative_service.py` + `tasks/video_narrative_task.py`） |
 | 前端解析结果视图 | `frontend/src/views/space/DocumentDetailView.vue` |
