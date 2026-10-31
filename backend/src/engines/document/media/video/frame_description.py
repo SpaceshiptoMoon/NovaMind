@@ -24,6 +24,7 @@ from novamind.engines.document.media.vlm import (
     build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
 )
+from novamind.shared.ai_models.llm.openai_compatible_video import MIN_VIDEO_FRAMES
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +438,26 @@ def _format_frame_time_table(frames: list[tuple[bytes, float, int]]) -> str:
     return " ".join(f"帧#{idx}={ts:.1f}s" for _, ts, idx in frames)
 
 
+def _pad_frame_urls_to_min(frame_urls: list[str], min_frames: int = MIN_VIDEO_FRAMES) -> list[str]:
+    """帧数不足服务商帧列表下限时重复末帧补齐，让短视频也能走帧序列模式。
+
+    DashScope 帧列表模式硬限 4-512 张；几秒钟的短视频按固定间隔只抽得 1-3 帧，
+    若直接请求必被拒。重复末帧是语义中性的填充——不引入新画面、模型只会把结尾
+    理解为静止，时刻表与锚点仍只描述真实帧，描述质量不受影响。空列表原样返回
+    （无帧可补，由调用方 early return）。
+
+    Args:
+        frame_urls: 单段帧的 data URL 列表（升序时间）。
+        min_frames: 服务商单次请求帧数下限。
+
+    Returns:
+        长度 ≥ min_frames 的列表（已够则原样返回同一对象）。
+    """
+    if not frame_urls or len(frame_urls) >= min_frames:
+        return frame_urls
+    return frame_urls + [frame_urls[-1]] * (min_frames - len(frame_urls))
+
+
 async def describe_frame_sequence(
     frames: list[tuple[bytes, float, int]],
     vlm_client: Any,
@@ -459,7 +480,8 @@ async def describe_frame_sequence(
     喂 VLM，模型感知时序。
 
     长视频按 ``chunk_frames``（DashScope 帧列表 4-512 张硬限）固定 size 分段，
-    尾段帧数 < ``min_tail_frames`` 并入前段；每段 prompt 注入帧时刻表校准时间
+    尾段帧数 < ``min_tail_frames`` 并入前段；短视频不足 4 帧时重复末帧补齐到下限
+    （见 ``_pad_frame_urls_to_min``）；每段 prompt 注入帧时刻表校准时间
     定位（实测帧序列模式有 ~1s 系统性偏移）。段间有界并发（默认 2，伪视频
     请求体大、网关超时风险高，不与逐帧并发同档）。
 
@@ -515,7 +537,9 @@ async def describe_frame_sequence(
             "exc": None,
         }
         prompt = prompt_template.format(time_table=_format_frame_time_table(chunk))
-        frame_urls = [build_image_data_url(fb, "image/jpeg") for fb, _, _ in chunk]
+        frame_urls = _pad_frame_urls_to_min(
+            [build_image_data_url(fb, "image/jpeg") for fb, _, _ in chunk]
+        )
         async with sem:
             try:
                 desc = await gen(

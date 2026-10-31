@@ -455,6 +455,47 @@ def test_plan_frame_sequence_chunks_uniform_split():
     assert plain == [(0, 512), (512, 1024), (1024, 1030)]
     assert all(e - s <= 512 for s, e in plain)
 
+
+def test_pad_frame_urls_to_min_pure_function():
+    """纯函数：不足下限重复末帧补齐；已够或为空原样返回。"""
+    from novamind.engines.document.media.video.frame_description import _pad_frame_urls_to_min
+
+    assert _pad_frame_urls_to_min(["a", "b", "c"], 4) == ["a", "b", "c", "c"]
+    assert _pad_frame_urls_to_min(["a"], 4) == ["a", "a", "a", "a"]
+    four = ["a", "b", "c", "d"]
+    assert _pad_frame_urls_to_min(four, 4) is four
+    five = ["a", "b", "c", "d", "e"]
+    assert _pad_frame_urls_to_min(five, 4) is five
+    assert _pad_frame_urls_to_min([], 4) == []
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_short_video_padded_to_min_frames():
+    """短视频 3 帧 < DashScope 下限 4：请求补至 4 张（末帧重复），时刻表/锚点仍只含真实 3 帧。
+
+    回归 doc 980：frame_interval=2.0 的几秒短片只抽得 3 帧，此前整段直接被
+    '帧序列不足单次请求下限：3 < 4' 拒绝、文档 FAILED。
+    """
+    vlm = FakeFrameSeqVlmClient(["短片描述"])
+    out = await describe_frame_sequence(
+        _frames(3), vlm, _SEQ_PROMPT, fps=0.5, logger=fake_log,
+    )
+
+    assert out == [("短片描述", 0.0, 10.0, [0, 1, 2])]
+    assert len(vlm.calls) == 1
+    urls, prompt, fps = vlm.calls[0]
+    assert len(urls) == 4 and urls[2] == urls[3]
+    assert fps == 0.5
+    assert "帧#2=10.0s" in prompt and "帧#3" not in prompt
+
+
+@pytest.mark.anyio("asyncio")
+async def test_frame_seq_exact_min_frames_not_padded():
+    """恰好 4 帧：不补帧（相邻正常场景不误伤）。"""
+    vlm = FakeFrameSeqVlmClient(["描述"])
+    await describe_frame_sequence(_frames(4), vlm, _SEQ_PROMPT, fps=0.2, logger=fake_log)
+    assert len(vlm.calls[0][0]) == 4
+
 # ==================== describe_video_native（S4 视频直输） ====================
 
 
