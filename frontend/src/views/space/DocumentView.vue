@@ -39,11 +39,26 @@
               <span class="stats-label">已完成</span>
               <strong class="stats-value">{{ kbStats.completed_documents }}</strong>
             </div>
-            <template v-if="kbStats.processing_documents > 0">
+            <!-- 与知识库卡片同一套三桶：失败 / 处理中（排队+运行）/ 待处理（未触发+已取消），非零才显示 -->
+            <template v-if="kbStats.failed_documents > 0">
+              <span class="stats-divider"></span>
+              <div class="stats-item">
+                <span class="stats-label">失败</span>
+                <strong class="stats-value is-danger">{{ kbStats.failed_documents }}</strong>
+              </div>
+            </template>
+            <template v-if="activeDocCount > 0">
               <span class="stats-divider"></span>
               <div class="stats-item">
                 <span class="stats-label">处理中</span>
-                <strong class="stats-value is-warning">{{ kbStats.processing_documents }}</strong>
+                <strong class="stats-value is-warning">{{ activeDocCount }}</strong>
+              </div>
+            </template>
+            <template v-if="idleDocCount > 0">
+              <span class="stats-divider"></span>
+              <div class="stats-item">
+                <span class="stats-label">待处理</span>
+                <strong class="stats-value is-muted">{{ idleDocCount }}</strong>
               </div>
             </template>
           </div>
@@ -312,7 +327,7 @@ import type { UploadFile } from 'element-plus'
 
 import { documentApi, knowledgeBaseApi } from '@/api/knowledge'
 import { spaceApi } from '@/api/space'
-import type { BatchUploadResponse, Document as DocType } from '@/api/types'
+import type { BatchUploadResponse, Document as DocType, KBStats } from '@/api/types'
 import {
   KbSidebar,
   buildKbNavItems,
@@ -355,12 +370,25 @@ const uploadProgressVisible = ref(false)
 
 const spaceTypes = ref<string[]>(['text'])
 const kbName = ref('')
-const kbStats = ref({
+const EMPTY_KB_STATS: KBStats = {
   document_count: 0,
   chunk_count: 0,
-  completed_documents: 0,
+  total_size_mb: 0,
+  unprocessed_documents: 0,
+  pending_documents: 0,
   processing_documents: 0,
-})
+  completed_documents: 0,
+  failed_documents: 0,
+  cancelled_documents: 0,
+}
+const kbStats = ref<KBStats>({ ...EMPTY_KB_STATS })
+// 头部三桶与知识库卡片同口径：排队中算"处理中"（系统自动消费），未触发与已取消算"待处理"（需用户动作）
+const activeDocCount = computed(
+  () => Number(kbStats.value.processing_documents) + Number(kbStats.value.pending_documents),
+)
+const idleDocCount = computed(
+  () => Number(kbStats.value.unprocessed_documents) + Number(kbStats.value.cancelled_documents),
+)
 const embeddingInfo = ref({
   textModel: '',
   textDimension: null as number | null,
@@ -827,12 +855,7 @@ onMounted(async () => {
   try {
     const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
     kbName.value = kbConfig.name || ''
-    kbStats.value = {
-      document_count: kbConfig.stats?.document_count ?? 0,
-      chunk_count: kbConfig.stats?.chunk_count ?? 0,
-      completed_documents: kbConfig.stats?.completed_documents ?? 0,
-      processing_documents: kbConfig.stats?.processing_documents ?? 0,
-    }
+    kbStats.value = { ...EMPTY_KB_STATS, ...(kbConfig.stats ?? {}) }
     if (
       kbConfig.config?.space_type &&
       Array.isArray(kbConfig.config.space_type) &&
@@ -1000,6 +1023,14 @@ onMounted(async () => {
 
 .stats-value.is-warning {
   color: var(--color-warning);
+}
+
+.stats-value.is-danger {
+  color: var(--color-danger);
+}
+
+.stats-value.is-muted {
+  color: var(--color-text-muted);
 }
 
 .stats-divider {

@@ -77,15 +77,7 @@ async def list_knowledge_bases(
     items = []
     for kb in knowledge_bases:
         resp = KnowledgeBaseResponse.model_validate(kb)
-        resp.stats = stats_map.get(kb.id, {
-            "document_count": 0,
-            "chunk_count": 0,
-            "total_size_mb": 0,
-            "uploaded_documents": 0,
-            "completed_documents": 0,
-            "failed_documents": 0,
-            "processing_documents": 0,
-        })
+        resp.stats = stats_map.get(kb.id) or kb_service.doc_repo.empty_stats()
         items.append(resp)
 
     return KnowledgeBaseListResponse(

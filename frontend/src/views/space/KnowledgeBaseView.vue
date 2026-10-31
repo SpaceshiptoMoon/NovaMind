@@ -88,15 +88,16 @@
                 <el-icon :size="13"><Document /></el-icon>
                 {{ kb.stats?.document_count ?? 0 }} 文档
               </span>
-              <!-- 后端 stats 数值为字符串（"0" 是 truthy），须 Number 归一后再判零 -->
-              <span
-                v-if="
-                  Number(kb.stats?.processing_documents) + Number(kb.stats?.pending_documents) > 0
-                "
-                class="meta-item meta-warn"
-              >
-                {{ Number(kb.stats?.processing_documents) + Number(kb.stats?.pending_documents) }}
-                处理中
+              <!-- 三桶按"需要用户关注的程度"排序，非零才显示：
+                   失败要去重试 → 处理中等着就行 → 待处理要手动触发 -->
+              <span v-if="kbBuckets(kb).failed > 0" class="meta-item meta-danger">
+                {{ kbBuckets(kb).failed }} 失败
+              </span>
+              <span v-if="kbBuckets(kb).active > 0" class="meta-item meta-warn">
+                {{ kbBuckets(kb).active }} 处理中
+              </span>
+              <span v-if="kbBuckets(kb).idle > 0" class="meta-item">
+                {{ kbBuckets(kb).idle }} 待处理
               </span>
             </div>
           </div>
@@ -247,6 +248,21 @@ const archivedCount = computed(() => knowledgeBases.value.filter((kb) => kb.stat
 const totalDocuments = computed(() =>
   knowledgeBases.value.reduce((sum, kb) => sum + Number(kb.stats?.document_count ?? 0), 0),
 )
+
+/**
+ * 卡片概览把后端六个状态桶压成三类：失败（要重试）/ 处理中（排队与运行中，系统自动消费）/
+ * 待处理（从未触发解析与已取消，需用户手动触发）。
+ * 后端 stats 数值可能为字符串（"0" 是 truthy），须 Number 归一后再判零。
+ */
+function kbBuckets(kb: KnowledgeBase): { failed: number; active: number; idle: number } {
+  const n = (v: unknown): number => Number(v ?? 0) || 0
+  const s = kb.stats
+  return {
+    failed: n(s?.failed_documents),
+    active: n(s?.processing_documents) + n(s?.pending_documents),
+    idle: n(s?.unprocessed_documents) + n(s?.cancelled_documents),
+  }
+}
 
 // 搜索 + 状态筛选后的列表
 const filteredKBs = computed(() => {
@@ -684,9 +700,13 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* 处理中文档数：语义警示色文字（不上底色，克制） */
+/* 状态桶文字：语义色不上底色（克制）；待处理沿用 .meta-item 的 muted 色 */
 .meta-warn {
   color: var(--color-warning);
+}
+
+.meta-danger {
+  color: var(--color-danger);
 }
 
 /* hover 操作：右上角浮层；紧凑卡（~92px 高）无头部余量，绝对定位必压标题行，

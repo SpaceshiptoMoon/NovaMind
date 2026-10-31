@@ -671,7 +671,10 @@ class DocumentRepository:
         通过 LEFT JOIN document_tasks（窗口函数取每个文档的最新一条 Task）
         获取当前处理状态和 chunk_count。
 
-        无 Task 的文档视为 pending（status=0, PENDING）。
+        六个状态桶互斥且完备（之和恒等于 document_count）：
+        unprocessed（无 Task，上传后从未触发解析）/ pending（最新 Task 排队中）/
+        processing / completed / failed / cancelled。"无 Task" 与"排队中"分开计，
+        前者需要用户动作、后者系统会自动消费，概览位不能混成一个数。
         """
         # 子查询：按 document_id 分区，取每个文档的最新 Task 记录
         ranked = (
@@ -706,12 +709,17 @@ class DocumentRepository:
                 cast(func.json_extract(latest.c.pipeline_result, "$.chunk_count"), Integer)
             ), 0).label("chunk_count"),
             func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
-            # pending: 无 Task 或 Task.status == PENDING
+            # LEFT JOIN 未命中时 task_status 为 NULL，与任何枚举值比较都不成立，
+            # 所以 unprocessed 与其余五桶天然互斥。
             func.coalesce(func.sum(case(
-                (latest.c.doc_id.is_(None), 1),
-                (latest.c.task_status == TaskStatus.PENDING, 1),
-                else_=0,
+                (latest.c.doc_id.is_(None), 1), else_=0
+            )), 0).label("unprocessed"),
+            func.coalesce(func.sum(case(
+                (latest.c.task_status == TaskStatus.PENDING, 1), else_=0
             )), 0).label("pending"),
+            func.coalesce(func.sum(case(
+                (latest.c.task_status == TaskStatus.PROCESSING, 1), else_=0
+            )), 0).label("processing"),
             func.coalesce(func.sum(case(
                 (latest.c.task_status == TaskStatus.COMPLETED, 1), else_=0
             )), 0).label("completed"),
@@ -719,8 +727,8 @@ class DocumentRepository:
                 (latest.c.task_status == TaskStatus.FAILED, 1), else_=0
             )), 0).label("failed"),
             func.coalesce(func.sum(case(
-                (latest.c.task_status == TaskStatus.PROCESSING, 1), else_=0
-            )), 0).label("processing"),
+                (latest.c.task_status == TaskStatus.CANCELLED, 1), else_=0
+            )), 0).label("cancelled"),
         ])
 
         return select(*columns).select_from(
@@ -728,14 +736,31 @@ class DocumentRepository:
         )
 
     @staticmethod
+    def empty_stats() -> dict[str, Any]:
+        """返回零值统计字典（键集与 _row_to_stats_dict 一致，供无文档的库兜底）。"""
+        return {
+            "document_count": 0,
+            "chunk_count": 0,
+            "total_size_mb": 0,
+            "unprocessed_documents": 0,
+            "pending_documents": 0,
+            "processing_documents": 0,
+            "completed_documents": 0,
+            "failed_documents": 0,
+            "cancelled_documents": 0,
+        }
+
+    @staticmethod
     def _row_to_stats_dict(row) -> dict[str, Any]:
-        """将统计查询结果行转为字典"""
+        """将统计查询结果行转为字典（六个状态桶之和等于 document_count）。"""
         return {
             "document_count": row.document_count,
             "chunk_count": row.chunk_count,
             "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
+            "unprocessed_documents": row.unprocessed,
             "pending_documents": row.pending,
+            "processing_documents": row.processing,
             "completed_documents": row.completed,
             "failed_documents": row.failed,
-            "processing_documents": row.processing,
+            "cancelled_documents": row.cancelled,
         }

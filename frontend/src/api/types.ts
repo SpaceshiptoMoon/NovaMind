@@ -492,14 +492,23 @@ export interface ParsingConfig {
   audio?: AudioParsingConfig
 }
 
+/**
+ * 知识库文档统计。六个状态桶按每个文档最新一条任务项归类，互斥且完备：
+ * 六桶之和恒等于 document_count。
+ */
 export interface KBStats {
   document_count: number
   chunk_count: number
   total_size_mb: number
+  /** 上传后从未创建解析任务，需要用户手动触发处理 */
+  unprocessed_documents: number
+  /** 最新任务排队中，系统会自动消费 */
   pending_documents: number
+  processing_documents: number
   completed_documents: number
   failed_documents: number
-  processing_documents: number
+  /** 用户主动取消，需重新触发处理 */
+  cancelled_documents: number
 }
 
 export interface QuestionGenerationLLMConfig {
