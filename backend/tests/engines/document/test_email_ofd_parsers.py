@@ -102,6 +102,40 @@ def test_ofd_text_layer_extracted_in_page_order():
     assert joined.index("第一页") < joined.index("第二页"), "页序错乱"
 
 
+def test_ofd_routed_to_dedicated_parser_via_runtime():
+    """runtime 分派层：ofd 走文本族 → RAGFlowOfdParser 抽出文字层（非按纯文本读、非拒绝）。
+
+    回归 fdedd5a4 误诊：当时把 ofd 从文本族摘出并显式拒绝，切断了已接线的专用解析器；
+    doc 952 的 0 字符实为夹具本身无 TextCode（空文档），不是分派问题。
+    """
+    result = asyncio.run(
+        DeepDocParser().parse_bytes(
+            _build_ofd(), file_type="ofd",
+            parsing_config={}, splitting_config={"chunk_size": 500},
+        )
+    )
+    assert "项目立项申请" in result.full_text and "预算明细" in result.full_text
+    assert result.chunks
+
+
+def test_ofd_without_text_layer_yields_empty_not_error():
+    """空 OFD（只有包结构、无 Page 内容/TextCode）→ 0 字符正常返回，交由管线层空文本守卫按格式给文案。"""
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("OFD.xml", f'<ofd:OFDDoc xmlns:ofd="{_OFD_NS}"/>')
+        zf.writestr(
+            "Doc_0/Document.xml",
+            f'<ofd:Document xmlns:ofd="{_OFD_NS}"><ofd:Pages><ofd:Page ID="1"/></ofd:Pages></ofd:Document>',
+        )
+    result = asyncio.run(
+        DeepDocParser().parse_bytes(
+            buf.getvalue(), file_type="ofd",
+            parsing_config={}, splitting_config={"chunk_size": 500},
+        )
+    )
+    assert result.full_text.strip() == ""
+
+
 def test_ofd_non_zip_rejected():
     """非 zip 载荷 → MismatchedPayloadError。"""
     with pytest.raises(MismatchedPayloadError):

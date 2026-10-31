@@ -116,14 +116,27 @@ def _raise_on_empty_parse(
     parse_result: Any,
     parsing_config: dict[str, Any],
     document_id: int,
+    file_type: str | None = None,
 ) -> None:
     """解析跑完但 0 字符 → 抛 DocumentProcessingError，不静默当成功。
 
-    full 模式（上游对齐的逐框融合：文字层 + OCR 回退）跑完仍 0 字符，意味着文字层为空
-    且 OCR 也未识别到文字——可能是 OCR 模型未就绪或页面本就是纯无字图片。plain 模式 /
-    default 策略仅抽文字层，0 字符意味着无文字层（扫描件），建议切 full。
+    文案按格式分化——"检查 OCR 模型 / 改用 full 模式"只对 PDF 成立（文字层 + OCR
+    回退是 PDF 解析器的能力面）；其它格式（txt/docx/ofd/eml…）0 字符意味着源文件
+    本身没有可提取正文，给 PDF 文案会把用户引向无关的 OCR 排查（doc 952 空 OFD
+    夹具实测误导）。
+
+    PDF：full 模式（上游对齐的逐框融合：文字层 + OCR 回退）跑完仍 0 字符，意味着
+    文字层为空且 OCR 也未识别到文字——可能是 OCR 模型未就绪或页面本就是纯无字图片。
+    plain 模式 / default 策略仅抽文字层，0 字符意味着无文字层（扫描件），建议切 full。
 
     守"没选就不兜底"原则：不自动回退到其它模式，由用户显式切换（保证解析路径可追踪）。
+
+    Args:
+        full_text: 解析产出全文。
+        parse_result: 解析结果对象（取 metadata 诊断信息）。
+        parsing_config: 文本解析配置（strategy / deepdoc_pdf_mode）。
+        document_id: 文档 ID。
+        file_type: 文档扩展名（小写），决定文案走 PDF 分支还是通用分支；None 视作非 PDF。
     """
     if full_text.strip():
         return
@@ -132,7 +145,15 @@ def _raise_on_empty_parse(
     strategy = parsing_config.get("strategy", "default")
     pdf_mode = meta.get("pdf_mode") or parsing_config.get("deepdoc_pdf_mode") or ""
     mode_desc = f"{strategy}/{pdf_mode}" if pdf_mode else strategy
-    if pdf_mode == "plain" or strategy == "default":
+    ext = (file_type or "").lower()
+    if ext != "pdf":
+        label = f"{ext} 文档" if ext else "文档"
+        hint = (
+            f"解析抽出 0 字符：{label}经 {mode_desc} 策略解析后没有任何文本内容。"
+            f"源文件可能本身没有可提取的正文（空文档、仅占位结构或纯图片内容），"
+            f"请检查文件内容是否正确。"
+        )
+    elif pdf_mode == "plain" or strategy == "default":
         hint = (
             f"解析抽出 0 字符：{mode_desc} 模式仅抽取文字层、未做 OCR，"
             f"但该 PDF（{pages or '?'} 页）文字层为空（疑似扫描件或图片 PDF）。"
@@ -547,7 +568,9 @@ async def execute_document_pipeline(
     )
     # 空文本检测：解析跑完但 0 字符——不静默当成功（否则前端看到"成功但无内容"的假成功）。
     # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
-    _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
+    _raise_on_empty_parse(
+        full_text, parse_result, parsing_config, document_id, file_type=document.file_type
+    )
     await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
 
     # 上传 figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。

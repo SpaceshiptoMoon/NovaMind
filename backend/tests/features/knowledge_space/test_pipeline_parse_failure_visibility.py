@@ -221,6 +221,7 @@ def test_empty_parse_plain_mode_suggests_full():
             parse_result=parse_result,
             parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"},
             document_id=96,
+            file_type="pdf",
         )
     assert "改用 full" in ei.value.error_message
     assert "120" in ei.value.error_message
@@ -235,6 +236,7 @@ def test_empty_parse_full_mode_suggests_ocr_check():
             parse_result=parse_result,
             parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "full"},
             document_id=96,
+            file_type="pdf",
         )
     assert "OCR 模型" in ei.value.error_message
     assert "ocr_sources" in ei.value.error_message
@@ -262,5 +264,39 @@ def test_empty_parse_default_strategy_no_pdf_mode():
             parse_result=parse_result,
             parsing_config={"strategy": "default"},
             document_id=96,
+            file_type="pdf",
         )
     assert "改用 full" in ei.value.error_message
+
+
+def test_empty_parse_non_pdf_uses_generic_hint_without_ocr_advice():
+    """非 PDF（ofd/docx/txt…）0 字符：文案说源文件没有可提取正文，不提 OCR 模型 / full 模式。
+
+    回归 doc 952：空 OFD 夹具曾拿到"检查 OCR 模型是否就绪"的 PDF 文案，把排查引向无关方向。
+    """
+    parse_result = SimpleNamespace(full_text="", chunks=[], metadata={})
+    with pytest.raises(DocumentProcessingError) as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="",
+            parse_result=parse_result,
+            parsing_config={"strategy": "deepdoc"},
+            document_id=952,
+            file_type="ofd",
+        )
+    msg = ei.value.error_message
+    assert "ofd 文档" in msg and "没有任何文本内容" in msg
+    assert "OCR" not in msg and "full" not in msg
+
+
+def test_empty_parse_file_type_none_treated_as_non_pdf():
+    """file_type 未知（None）按非 PDF 处理：不能默认把用户引向 PDF 专属的 OCR 排查。"""
+    parse_result = SimpleNamespace(full_text="  ", chunks=[], metadata={})
+    with pytest.raises(DocumentProcessingError) as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="  ",
+            parse_result=parse_result,
+            parsing_config={"strategy": "default"},
+            document_id=1,
+        )
+    assert "OCR" not in ei.value.error_message
+    assert "文档经 default 策略" in ei.value.error_message
