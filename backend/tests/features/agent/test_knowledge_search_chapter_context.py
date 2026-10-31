@@ -7,13 +7,12 @@
 import json
 
 import pytest
-
 from novamind.engines.agent.context_types import KnowledgeSearchItem
 from novamind.engines.agent.tool.builtins.knowledge_search import (
     _CHAPTER_SUMMARY_MAX_CHARS,
-    _format_hits_with_chapters,
-    _fmt_ts,
     KnowledgeSearchTool,
+    _fmt_ts,
+    _format_hits_with_chapters,
 )
 
 
@@ -23,6 +22,7 @@ def _item(
     narrative: dict | None = None,
     filename: str | None = "sintel.mp4",
 ) -> KnowledgeSearchItem:
+    """构造带可选叙事章节的单条检索命中桩。"""
     return KnowledgeSearchItem(
         content=content,
         score=0.9,
@@ -34,6 +34,7 @@ def _item(
 
 
 def _chapter(title: str = "龙穴绝境", overview: str = "全片梗概") -> dict:
+    """构造标准章节摘要 dict（时间锚 498s-615s）。"""
     return {
         "title": title,
         "start_time": 498.0,
@@ -44,6 +45,8 @@ def _chapter(title: str = "龙穴绝境", overview: str = "全片梗概") -> dic
 
 
 class TestFmtTs:
+    """秒数时间锚格式化（含非法输入兜底）。"""
+
     def test_seconds_formats(self):
         assert _fmt_ts(0) == "00:00"
         assert _fmt_ts(59) == "00:59"
@@ -58,6 +61,8 @@ class TestFmtTs:
 
 
 class TestFormatHitsWithChapters:
+    """命中行 + 章节去重 + 全片梗概去重的格式化行为。"""
+
     def test_hit_with_chapter_gets_reference_and_chapter_row(self):
         rows, chapters, overviews = _format_hits_with_chapters(
             [_item(narrative=_chapter())]
