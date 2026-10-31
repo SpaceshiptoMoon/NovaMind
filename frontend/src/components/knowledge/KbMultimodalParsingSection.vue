@@ -364,6 +364,37 @@
           />
           <span class="field-hint">超出的步骤截断，默认 30（长视频可调大）</span>
         </el-form-item>
+        <el-form-item label="叙事合成">
+          <el-switch v-model="configForm.videoNarrativeSynthesis" />
+          <span class="field-hint">
+            解析完成后用 LLM 把碎片描述合成为章节化叙事文档（与碎片块并存；问答命中视频内容时自动附带章节摘要，回答"这个视频讲了什么"类问题质量更好）。每个长视频约 9 次 LLM 调用，建议只对重要视频开启
+          </span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoNarrativeSynthesis" label="叙事 LLM">
+          <el-select
+            v-model="configForm.videoNarrativeLlmModel"
+            clearable
+            filterable
+            placeholder="留空时继承空间默认 LLM"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in llmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoNarrativeSynthesis" label=" ">
+          <el-alert
+            v-if="configForm.videoStrategy === 'rewrite'"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="当前策略已是 rewrite（描述后重写连贯），再开叙事合成会对同一段内容做两轮连贯化、双倍 LLM 成本，一般二选一即可。"
+          />
+        </el-form-item>
       </el-form>
     </div>
 
@@ -549,6 +580,8 @@ type MultimodalParsingFormModel = {
   videoStepsEnabled: boolean
   videoStepsLlmModel: string
   videoStepsMaxSteps: number
+  videoNarrativeSynthesis: boolean
+  videoNarrativeLlmModel: string
   audioAsrModel: string
   audioAsrLanguage: string
   audioHotwordsText: string

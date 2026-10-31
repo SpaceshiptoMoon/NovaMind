@@ -11,6 +11,8 @@ import type {
   DocumentTaskItemListResponse,
   DocumentFramesResponse,
   ChunkPositionResponse,
+  VideoNarrativeResponse,
+  VideoNarrativeTriggerResponse,
 } from '../types'
 
 /**
@@ -75,6 +77,21 @@ export const documentApi = {
   getDocument(spaceId: number, kbId: number, docId: number) {
     return request.get<DocumentDetail>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}`,
+    )
+  },
+
+  /** 触发视频叙事合成（异步入队；重复调用覆盖旧文档） */
+  generateNarrative(spaceId: number, kbId: number, docId: number, llmModel?: string) {
+    return request.post<VideoNarrativeTriggerResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/narrative`,
+      { llm_model: llmModel || null },
+    )
+  },
+
+  /** 读取视频叙事文档（章节化连贯文档；未生成时 exists=false） */
+  getNarrative(spaceId: number, kbId: number, docId: number) {
+    return request.get<VideoNarrativeResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/narrative`,
     )
   },
 

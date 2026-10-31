@@ -422,6 +422,10 @@ export interface VideoParsingConfig {
   steps_llm_model?: string
   /** 步骤条目上限，1~200，默认 30 */
   steps_max_steps?: number
+  /** 叙事合成：解析完成后自动合成章节化连贯叙事文档（Map-Reduce，与碎片块并存；检索命中后附章节摘要） */
+  narrative_synthesis?: boolean
+  /** 叙事合成 LLM 模型名（留空 = 用户默认 LLM） */
+  narrative_llm_model?: string
 }
 
 export interface AudioParsingConfig {
@@ -654,6 +658,38 @@ export interface ChunkListResponse {
 export interface DocumentFramesResponse {
   frames: Array<{ index: number; url: string }>
   total: number
+}
+
+/** 视频叙事章节（叙事合成 Map-Reduce 产物） */
+export interface NarrativeChapter {
+  title?: string
+  start_time?: number
+  end_time?: number
+  summary?: string
+  /** 该章节覆盖的块索引列表（检索附回时按此匹配） */
+  chunk_indices?: number[]
+}
+
+/** 视频叙事文档（GET narrative 响应；未生成时 exists=false） */
+export interface VideoNarrativeResponse {
+  document_id: number
+  status: 'not_generated' | 'running' | 'completed' | 'failed' | 'unknown'
+  exists: boolean
+  /** 全片梗概 */
+  overview?: string | null
+  chapters?: NarrativeChapter[]
+  /** 渲染好的完整 Markdown 全文 */
+  content_md?: string | null
+  error_message?: string | null
+  updated_at?: string | null
+}
+
+/** 触发叙事合成（POST narrative 响应） */
+export interface VideoNarrativeTriggerResponse {
+  document_id: number
+  job_id: string | null
+  status: 'queued'
+  message: string
 }
 
 export interface DocumentListResponse {

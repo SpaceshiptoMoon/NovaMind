@@ -223,6 +223,8 @@ const configForm = reactive({
   videoStepsEnabled: false,
   videoStepsLlmModel: '',
   videoStepsMaxSteps: 30,
+  videoNarrativeSynthesis: false,
+  videoNarrativeLlmModel: '',
 
   audioAsrModel: '',
   audioAsrLanguage: '',
@@ -314,6 +316,8 @@ watch(hasVideo, (value) => {
     configForm.videoStepsEnabled = false
     configForm.videoStepsLlmModel = ''
     configForm.videoStepsMaxSteps = 30
+    configForm.videoNarrativeSynthesis = false
+    configForm.videoNarrativeLlmModel = ''
   }
 })
 
@@ -446,6 +450,8 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoStepsEnabled = parsing?.video?.steps_enabled ?? false
   configForm.videoStepsLlmModel = parsing?.video?.steps_llm_model || ''
   configForm.videoStepsMaxSteps = parsing?.video?.steps_max_steps ?? 30
+  configForm.videoNarrativeSynthesis = parsing?.video?.narrative_synthesis ?? false
+  configForm.videoNarrativeLlmModel = parsing?.video?.narrative_llm_model || ''
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
   configForm.audioAsrLanguage = parsing?.audio?.language || ''
   configForm.audioHotwordsText = (parsing?.audio?.hotwords || []).join('、')
@@ -627,6 +633,10 @@ function buildParsingConfig(): ParsingConfig {
       ? configForm.videoStepsLlmModel || undefined
       : undefined
     video.steps_max_steps = configForm.videoStepsMaxSteps
+    video.narrative_synthesis = configForm.videoNarrativeSynthesis
+    video.narrative_llm_model = configForm.videoNarrativeSynthesis
+      ? configForm.videoNarrativeLlmModel || undefined
+      : undefined
     parsing.video = video
   }
 

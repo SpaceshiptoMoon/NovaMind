@@ -132,6 +132,66 @@
     <div class="content-layout">
       <!-- 左栏：分块列表 -->
       <div class="content-main">
+        <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
+        <div v-if="isVideoDoc" class="narrative-section chunks-section">
+          <div class="section-header">
+            <h4>叙事文档</h4>
+            <div class="section-header-right">
+              <el-tag :type="narrativeTagType" effect="plain" size="small">
+                {{ narrativeStatusText }}
+              </el-tag>
+              <el-button
+                v-if="narrativeStatus === 'completed'"
+                text
+                size="small"
+                @click="narrativeExpanded = !narrativeExpanded"
+              >
+                <el-icon class="section-action-icon"><View /></el-icon>
+                {{ narrativeExpanded ? '收起' : '查看章节' }}
+              </el-button>
+              <el-button
+                text
+                size="small"
+                :loading="narrativeGenerating"
+                @click="handleGenerateNarrative"
+              >
+                {{ narrativeStatus === 'completed' ? '重新生成' : '生成章节文档' }}
+              </el-button>
+            </div>
+          </div>
+          <p class="narrative-desc">
+            用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 + 章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
+          </p>
+          <div
+            v-if="narrativeStatus === 'completed' && narrativeExpanded"
+            class="narrative-body"
+          >
+            <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
+            <div
+              v-for="(ch, i) in narrative?.chapters ?? []"
+              :key="i"
+              class="narrative-chapter"
+            >
+              <div class="chapter-title">
+                <span class="chapter-index-badge">{{ i + 1 }}</span>
+                <strong>{{ ch.title }}</strong>
+                <span
+                  v-if="ch.start_time != null"
+                  class="meta-tag time-tag"
+                >
+                  {{ formatDuration(ch.start_time) }}
+                  -
+                  {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
+                </span>
+              </div>
+              <p class="chapter-summary">{{ ch.summary }}</p>
+            </div>
+          </div>
+          <p v-if="narrativeStatus === 'failed'" class="narrative-error">
+            {{ narrative?.error_message || '合成失败，可重试' }}
+          </p>
+        </div>
+
         <!-- 分块列表 -->
         <div class="chunks-section">
           <div class="section-header">
@@ -279,9 +339,9 @@
  * kbId 优先取 query，缺失时先反查归属知识库再加载，失败落「文档不存在」空态。
  */
 
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, ArrowRight, View } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
@@ -289,7 +349,7 @@ import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
 import { TaskNodeLogTable } from '@/components/knowledge'
-import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
+import type { DocumentDetail, Chunk, DocumentTaskItem, VideoNarrativeResponse } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
@@ -372,6 +432,9 @@ async function fetchDocument() {
     totalChunks.value = data.chunk_count || 0
     chunkCurrentPage.value = 1
     await fetchChunks()
+    // 文档类型就绪后才能判定视频文档，再拉叙事状态；已在合成中则续上轮询
+    await fetchNarrative()
+    if (narrative.value?.status === 'running') scheduleNarrativePolling()
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
     ElMessage.error(err.response?.data?.error?.message || '获取文档详情失败')
@@ -427,6 +490,109 @@ onMounted(async () => {
   fetchDocument()
   fetchLatestTask()
 })
+
+// ===== 视频叙事文档（章节化连贯文档，按需生成） =====
+
+// 与后端 _attach_narrative_chapters 的视频族判定同源（小写扩展名）
+const VIDEO_FILE_TYPES = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm'])
+
+const narrative = ref<VideoNarrativeResponse | null>(null)
+const narrativeExpanded = ref(false)
+const narrativeGenerating = ref(false)
+// 轮询句柄：running 状态下 3s 间隔查询直至 completed/failed；卸载时清理
+let narrativePollTimer: ReturnType<typeof setTimeout> | null = null
+
+const isVideoDoc = computed(() =>
+  VIDEO_FILE_TYPES.has((document.value?.file_type || '').toLowerCase()),
+)
+
+const narrativeStatus = computed(
+  () => narrative.value?.status ?? 'not_generated',
+)
+
+const narrativeStatusText = computed(
+  () =>
+    (
+      {
+        not_generated: '未生成',
+        running: '合成中',
+        completed: '已完成',
+        failed: '失败',
+        unknown: '未知',
+      } as Record<string, string>
+    )[narrativeStatus.value] || '未知',
+)
+
+const narrativeTagType = computed(() => {
+  if (narrativeStatus.value === 'completed') return 'success' as const
+  if (narrativeStatus.value === 'failed') return 'danger' as const
+  if (narrativeStatus.value === 'running') return 'warning' as const
+  return 'info' as const
+})
+
+/** 拉取叙事文档状态；视频文档才发请求。 */
+async function fetchNarrative() {
+  if (kbId.value === 0 || !isVideoDoc.value) return
+  try {
+    narrative.value = await documentApi.getNarrative(spaceId.value, kbId.value, docId.value)
+  } catch {
+    // 状态获取失败不阻塞页面（保持未生成态，按钮仍可触发）
+  }
+}
+
+/** 停止叙事轮询。 */
+function stopNarrativePolling() {
+  if (narrativePollTimer !== null) {
+    clearTimeout(narrativePollTimer)
+    narrativePollTimer = null
+  }
+}
+
+/** 合成中轮询：直到终态或页面卸载；上限 15 分钟（10min 视频硬限 + 合成裕量）。 */
+function scheduleNarrativePolling() {
+  stopNarrativePolling()
+  const deadline = Date.now() + 15 * 60 * 1000
+  const tick = async () => {
+    await fetchNarrative()
+    const status = narrative.value?.status
+    if (status === 'completed' || status === 'failed' || Date.now() > deadline) {
+      narrativePollTimer = null
+      return
+    }
+    narrativePollTimer = setTimeout(tick, 3000)
+  }
+  narrativePollTimer = setTimeout(tick, 3000)
+}
+
+/** 触发叙事合成；重复生成覆盖旧文档（后端语义），弹确认防误覆盖。 */
+async function handleGenerateNarrative() {
+  if (kbId.value === 0) return
+  if (narrativeStatus.value === 'completed') {
+    try {
+      await ElMessageBox.confirm(
+        '重新生成将覆盖现有章节文档，确定继续？',
+        '重新生成叙事文档',
+        { type: 'warning', confirmButtonText: '重新生成', cancelButtonText: '取消' },
+      )
+    } catch {
+      return
+    }
+  }
+  narrativeGenerating.value = true
+  try {
+    await documentApi.generateNarrative(spaceId.value, kbId.value, docId.value)
+    narrative.value = { ...(narrative.value ?? { document_id: docId.value, exists: true }), status: 'running' }
+    ElMessage.success('叙事合成已入队')
+    scheduleNarrativePolling()
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '触发叙事合成失败')
+  } finally {
+    narrativeGenerating.value = false
+  }
+}
+
+onUnmounted(stopNarrativePolling)
 
 // 任务到达后：失败/处理中的任务默认展开时间线（直接看到卡在哪个节点）
 function maybeAutoExpandTimeline() {
@@ -656,6 +822,49 @@ function maybeAutoExpandTimeline() {
 
 .section-action-icon {
   margin-right: var(--space-1);
+}
+
+/* ===== Narrative Section（视频叙事文档） ===== */
+
+.narrative-desc {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.narrative-overview {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text);
+}
+
+.narrative-chapter {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.chapter-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.chapter-summary {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.narrative-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
 }
 
 .chunk-count {
