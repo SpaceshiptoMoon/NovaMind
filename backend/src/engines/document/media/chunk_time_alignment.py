@@ -43,20 +43,31 @@ def extract_anchor_indices(text: str) -> list[int]:
 
 
 def build_frame_timeline_map(
-    descriptions: list[tuple[str, float, int]],
+    descriptions: list[tuple[str, float, int]] | list[tuple[str, float, float | None, int]],
 ) -> dict[int, tuple[float | None, float | None]]:
     """从帧描述列表构建 ``{frame_idx: (start_sec, end_sec)}``。
 
-    ``descriptions`` 为 ``[(desc, timestamp, frame_idx), ...]``，按 frame_idx 升序排序后，
-    每帧 ``end`` = 下一帧 ``timestamp``（末帧 ``end=None``，视频末尾开放区间）。
+    ``descriptions`` 两种形态（按 frame_idx 升序排序后逐条消费）：
+
+    - 三元组 ``(desc, timestamp, frame_idx)``：逐帧描述（simple/rewrite），
+      每帧 ``end`` = 下一帧 ``timestamp``（末帧 ``end=None``，视频末尾开放区间）。
+    - 四元组 ``(desc, start_ts, end_ts, frame_idx)``：段落描述（grouped/frame_seq/
+      video_native 的锚点行只带段首帧 idx），``end`` 优先用显式 ``end_ts``——段落
+      真实区间在描述产物里就有，经帧时间轴近似会把一段 540s 的片缩成帧间隔
+      3s（单段视频的段首帧恰是末帧，更是直接 ``end=None``，doc 980 实测）。
+      显式 ``end_ts`` 为 None 时回落下一帧 ``start``，末条仍为 None。
 
     用 dict 而非 list：个别帧 VLM 失败被跳过时 frame_idx 仍递增、可能不连续，dict 按 idx 精确反查。
     """
-    sorted_desc = sorted(descriptions, key=lambda d: d[2])  # 按 frame_idx 升序
+    keyed = [(d[0], d[1], d[2] if len(d) > 3 else None, d[-1]) for d in descriptions]
+    sorted_desc = sorted(keyed, key=lambda d: d[3])  # 按 frame_idx 升序
     timeline: dict[int, tuple[float | None, float | None]] = {}
-    for i, (_, ts, frame_idx) in enumerate(sorted_desc):
-        end_ts = sorted_desc[i + 1][1] if i + 1 < len(sorted_desc) else None
-        timeline[frame_idx] = (ts, end_ts)
+    for i, (_desc, ts, explicit_end, frame_idx) in enumerate(sorted_desc):
+        if explicit_end is not None:
+            timeline[frame_idx] = (ts, explicit_end)
+            continue
+        next_start = sorted_desc[i + 1][1] if i + 1 < len(sorted_desc) else None
+        timeline[frame_idx] = (ts, next_start)
     return timeline
 
 
@@ -208,8 +219,10 @@ def align_chunk_times(
                 for i in idxs
                 if i in timeline_map and timeline_map[i][1] is not None
             ]
-            new_meta["start_time"] = min(starts) if starts else None
-            new_meta["end_time"] = max(ends) if ends else None
+            # 出口统一 float：上游各策略产物里 int 秒与 float 秒并存（doc 955=0 /
+            # 980=0.0 实测漂移），ES numeric 虽兼容但前端展示与区间运算按 float 契约
+            new_meta["start_time"] = float(min(starts)) if starts else None
+            new_meta["end_time"] = float(max(ends)) if ends else None
             if is_video:
                 fis: list[int] = []
                 for i in idxs:

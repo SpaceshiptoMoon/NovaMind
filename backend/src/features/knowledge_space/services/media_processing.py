@@ -1105,12 +1105,14 @@ async def process_video_document(
             )
             lines: list[str] = []
             frame_groups = {}
-            timeline_input: list[tuple[str, float, int]] = []
-            for desc, start_ts, _end_ts, idx_list in grouped_descs:
+            # 四元组 (desc, start, end, anchor_idx)：段落真实 end 直达时间轴，
+            # 不再经帧时间轴近似（组首帧到下组首帧会把段区间截短，末段更是 None）
+            timeline_input: list[tuple[str, float, float | None, int]] = []
+            for desc, start_ts, end_ts, idx_list in grouped_descs:
                 anchor_idx = idx_list[0]
                 lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
                 frame_groups[anchor_idx] = idx_list
-                timeline_input.append((desc, start_ts, anchor_idx))
+                timeline_input.append((desc, start_ts, end_ts, anchor_idx))
             full_text = "\n\n".join(lines)
             frame_timeline_map = build_frame_timeline_map(timeline_input)
             descriptions_count = len(grouped_descs)
@@ -1139,12 +1141,13 @@ async def process_video_document(
             )
             seq_lines: list[str] = []
             frame_groups = {}
-            seq_timeline_input: list[tuple[str, float, int]] = []
-            for desc, start_ts, _end_ts, idx_list in seq_descs:
+            # 四元组同 grouped：段描述产物自带 (start, end)，直送时间轴
+            seq_timeline_input: list[tuple[str, float, float | None, int]] = []
+            for desc, start_ts, end_ts, idx_list in seq_descs:
                 anchor_idx = idx_list[0]
                 seq_lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
                 frame_groups[anchor_idx] = idx_list
-                seq_timeline_input.append((desc, start_ts, anchor_idx))
+                seq_timeline_input.append((desc, start_ts, end_ts, anchor_idx))
             full_text = "\n\n".join(seq_lines)
             frame_timeline_map = build_frame_timeline_map(seq_timeline_input)
             descriptions_count = len(seq_descs)
@@ -1294,14 +1297,15 @@ async def process_video_document(
 
             native_lines: list[str] = []
             frame_groups = {}
-            native_timeline_input: list[tuple[str, float, int]] = []
-            for desc, start_ts, _end_ts, idx_list in native_descs:
+            # 四元组同 grouped：片描述产物自带 (start, end)，直送时间轴
+            native_timeline_input: list[tuple[str, float, float | None, int]] = []
+            for desc, start_ts, end_ts, idx_list in native_descs:
                 if not idx_list:
                     continue  # 片区间未覆盖任何场景帧（均分兜底片），无锚点可挂
                 anchor_idx = idx_list[0]
                 native_lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
                 frame_groups[anchor_idx] = idx_list
-                native_timeline_input.append((desc, start_ts, anchor_idx))
+                native_timeline_input.append((desc, start_ts, end_ts, anchor_idx))
             full_text = "\n\n".join(native_lines)
             frame_timeline_map = build_frame_timeline_map(native_timeline_input)
             descriptions_count = len(native_descs)

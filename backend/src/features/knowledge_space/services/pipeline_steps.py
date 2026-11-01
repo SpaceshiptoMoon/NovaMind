@@ -347,10 +347,14 @@ def build_es_chunks(
                     chunk_meta["figure_image_links"] = all_figure_links
                     chunk_meta["figure_image_count"] = len(all_figure_links)
         else:
-            # start_time/end_time 仅音视频分段有意义；图片无时间维度，不带
+            # start_time/end_time 仅音视频分段有意义；图片无时间维度，不带。
+            # 出口统一 float（int 秒与 float 秒上游并存，doc 955/980 实测漂移）——
+            # build_es_chunks 是 ES 写入最后关口，不依赖 align 单点保证。
             if chunk_type != ChunkType.IMAGE:
-                chunk_meta["start_time"] = meta.get("start_time")
-                chunk_meta["end_time"] = meta.get("end_time")
+                start_time = meta.get("start_time")
+                end_time = meta.get("end_time")
+                chunk_meta["start_time"] = float(start_time) if start_time is not None else None
+                chunk_meta["end_time"] = float(end_time) if end_time is not None else None
             # ASR 质量元数据（批次②④，聚合在 1.4 步完成）：置信度 0~1 +
             # 说话人标签串（如 "0,1"）。无数据不写键，保持 None 语义。
             if meta.get("confidence") is not None:
@@ -425,16 +429,20 @@ def build_es_chunks(
             "question_embeddings": [],
             "created_at": now_china().isoformat(),
         }
-        if not is_text:
-            # VIDEO chunk 的 image_url 取该 chunk 首帧的 MinIO path 作为缩略图（真实帧图），
-            # 不再误导指向整个视频文件；无可用帧则空串。IMAGE 模态维持 media_url（图片文件本身）。
-            if chunk_type == ChunkType.VIDEO:
-                if frame_paths and meta.get("frame_indices"):
-                    chunk_data["image_url"] = frame_paths.get(meta["frame_indices"][0], "") or ""
-                else:
-                    chunk_data["image_url"] = ""
+        if chunk_type == ChunkType.VIDEO:
+            # VIDEO 的 image_url 取该 chunk 首帧的 MinIO path 作为缩略图（真实帧图），
+            # 不再误导指向整个视频文件；无可用帧则空串。
+            if frame_paths and meta.get("frame_indices"):
+                chunk_data["image_url"] = frame_paths.get(meta["frame_indices"][0], "") or ""
             else:
-                chunk_data["image_url"] = media_url
+                chunk_data["image_url"] = ""
+        elif chunk_type == ChunkType.IMAGE:
+            # IMAGE 的 image_url 就是图片文件本身
+            chunk_data["image_url"] = media_url
+        # AUDIO 不写 image_url：历史 else 分支把它填成了音频文件路径，任何把它
+        # 当"图"渲染的消费方（缩略图/多模态上下文）拿到的都是音频对象（ES 实证
+        # doc 976/990），预览源正确性由 media_url 单独承担。缺失键 = 明确语义，
+        # 不用空串占位误导"有图但为空"。
         es_chunks.append(chunk_data)
     return es_chunks
 
