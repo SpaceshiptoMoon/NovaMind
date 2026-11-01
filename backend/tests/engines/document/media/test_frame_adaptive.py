@@ -19,6 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from novamind.engines.document.media.video.frame_extraction import (
     _select_adaptive_keyframes,
     compute_phash,
+    extract_frames_adaptive,
     extract_frames_adaptive_from_path,
     extract_frames_fixed,
     hamming_distance,
@@ -242,3 +243,23 @@ def test_adaptive_degrades_to_uniform_on_feature_failure(tmp_path):
     idx_list = [idx for _, _, idx in frames]
     assert ts_list == sorted(ts_list)
     assert idx_list == list(range(len(frames)))
+
+
+@pytest.mark.skipif(not _HAS_FFMPEG, reason="ffmpeg 不可用")
+def test_adaptive_garbage_bytes_raises_clearly():
+    """损坏输入（垃圾 bytes）：bytes 版经临时文件与归一化兜底后，仍以显式异常
+    上抛（VideoMetadataError/RuntimeError），不裸 IndexError/KeyError。"""
+    garbage = b"not-a-video-file-at-all" * 64
+    from novamind.engines.document.media.video.video_utils import VideoMetadataError
+
+    raised = None
+    try:
+        asyncio.run(extract_frames_adaptive(garbage, max_frames=10))
+    except (VideoMetadataError, RuntimeError) as e:
+        raised = e
+    except Exception as e:  # noqa: BLE001
+        raised = e
+    assert raised is not None, "垃圾输入必须显式失败，不能静默返回"
+    assert isinstance(raised, (VideoMetadataError, RuntimeError)), (
+        f"应为显式业务异常，实际 {type(raised).__name__}"
+    )

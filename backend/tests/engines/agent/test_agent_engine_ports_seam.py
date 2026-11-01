@@ -200,7 +200,7 @@ def test_knowledge_search_tool_search_uses_port():
     )
     fake_port.search.assert_awaited_once_with(
         space_id=1, user_id=7, query="q", top_k=5,
-        search_mode="content_hybrid", kb_id=9,
+        search_mode="content_hybrid", kb_id=9, tags=None,
     )
     data = json.loads(out)
     assert data["results"][0]["filename"] == "f.md"
