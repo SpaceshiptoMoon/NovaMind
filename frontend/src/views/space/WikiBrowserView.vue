@@ -1976,7 +1976,7 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-10);
+  padding: var(--space-6) var(--space-10) var(--space-8);
 }
 
 /* 右侧本页目录：与页面树同款扁平语言 */
@@ -2080,6 +2080,13 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
 }
 
+/* meta 项之间的点分隔（首个徽标后，视觉分组） */
+.page-meta .meta-item + .meta-item::before {
+  content: '·';
+  margin-right: 12px;
+  color: var(--color-text-faint);
+}
+
 .page-actions {
   display: flex;
   align-items: center;
@@ -2089,6 +2096,11 @@ onBeforeUnmount(() => {
 
 .page-body {
   line-height: 1.8;
+  font-size: var(--text-base);
+}
+
+.page-body :deep(p) {
+  margin: 0 0 0.85em;
 }
 
 /* 标题锚点：hover 标题时显示 # 链接 + 跳转不贴顶 */
@@ -2114,14 +2126,16 @@ onBeforeUnmount(() => {
 }
 
 .page-body :deep(.wiki-link) {
-  color: var(--el-color-primary);
+  color: var(--color-primary);
   text-decoration: none;
-  border-bottom: 1px dashed var(--el-color-primary-light-5);
   cursor: pointer;
+  transition: color var(--transition-fast);
 }
 
 .page-body :deep(.wiki-link:hover) {
-  border-bottom-style: solid;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .sources-panel {
@@ -2137,8 +2151,13 @@ onBeforeUnmount(() => {
 }
 
 .source-link {
-  color: var(--el-color-primary);
+  color: var(--color-primary);
   text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .source-deleted {
