@@ -63,6 +63,15 @@
             </template>
           </div>
           <div class="right-actions">
+            <!-- 本页全选（半选态）：勾选追加当前页全部，取消移除当前页全部，其它页选择保留 -->
+            <el-checkbox
+              class="select-all-check"
+              :model-value="allSelected"
+              :indeterminate="someSelected"
+              @change="toggleSelectAllPage"
+            >
+              全选本页
+            </el-checkbox>
             <el-button v-if="selectedIds.length > 0" @click="showProcessDialog(selectedIds)">
               批量处理 ({{ selectedIds.length }})
             </el-button>
@@ -461,6 +470,28 @@ function toggleDocSelection(doc: DocType) {
     selectedIds.value.splice(idx, 1)
   } else {
     selectedIds.value.push(doc.id)
+  }
+}
+
+/** 全选态：当前页全部已选（列表非空才有全选语义） */
+const allSelected = computed(
+  () =>
+    documents.value.length > 0 && documents.value.every((d) => selectedIds.value.includes(d.id)),
+)
+
+/** 半选态：当前页部分已选 */
+const someSelected = computed(
+  () => !allSelected.value && documents.value.some((d) => selectedIds.value.includes(d.id)),
+)
+
+/** 本页全选/清除：勾选追加当前页全部未选 id，取消移除当前页全部 id（其它页选择保留，
+ * 支持跨页累积后一次批量处理）。 */
+function toggleSelectAllPage(checked: boolean | string | number) {
+  const pageIds = documents.value.map((d) => d.id)
+  if (checked) {
+    selectedIds.value = [...new Set([...selectedIds.value, ...pageIds])]
+  } else {
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.includes(id))
   }
 }
 
@@ -1043,6 +1074,16 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* 本页全选：与批量处理按钮同排 */
+.select-all-check {
+  margin-right: 2px;
+}
+
+.select-all-check :deep(.el-checkbox__label) {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
 
 .filter-label {
