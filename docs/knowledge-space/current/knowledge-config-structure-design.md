@@ -254,7 +254,7 @@ Recommended structure:
 {
   "parsing": {
     "video": {
-      "strategy": "simple | scene | dedup | grouped | rewrite | frame_seq | video_native",
+      "strategy": "simple | scene | dedup | grouped | rewrite | frame_seq | video_native | adaptive",
       "frame_interval": 5.0,
       "max_frames": 60,
       "vlm_model": null,
@@ -291,6 +291,7 @@ Recommended structure:
 | `rewrite` | 固定间隔 | 逐帧+LLM 重写 | 逐帧结果润色 | 保留时间锚点 |
 | `frame_seq` | 固定间隔 | 整段帧序列伪视频 | 全场景通用（推荐） | 需 VLM 协议 `openai_video` |
 | `video_native` | 场景切换点 | 切片直输 | 慢切换（会议/讲座/访谈） | 需 `openai_video` + `minio.public_endpoint`；录屏不推荐 |
+| `adaptive` | 粗采候选（≤1fps） | FPS 全局代表帧 | 通用（最少帧代表全片） | 预算即 `max_frames`，零调参；特征异常自动降级均匀采样 |
 
 ### S3 `frame_seq` 帧序列伪视频（2026-10）
 
@@ -335,9 +336,29 @@ MinIO 对象，模型直接看视频（`{"type":"video_url","video_url":{"url":.
 - **时间权威在代码侧**：chunk 时间区间全部由代码绝对时间构建；prompt 注入
   `{t0}` 片起始绝对秒做双重校正，但模型输出的时间只给人看不参与对齐。
 
+### S5 `adaptive` 自适应代表帧（2026-11）
+
+以「最少帧代表整个视频」为目标的全局选帧策略（学术口径：keyframe selection 的
+聚类/覆盖法，最远点采样 FPS）。两遍法：第一遍流式粗采候选（步长默认
+`max(1.0, duration/200)`，即 ≤1fps）逐候选算 **pHash**（32x32 灰度 DCT 低频
+64bit，纯 numpy 零模型）→ FPS 全局选代表帧（预算 = `max_frames`）→ 第二遍只
+对选中时间戳精抽全尺寸 JPEG。
+
+- **覆盖保证**：FPS 性质保证每个未选候选都与某已选帧相近；时间间隔约束
+  （默认 1s，引擎常量）保证代表帧时间分布下限。
+- **冗余塌缩**：最近距离 ≤ `_ADAPTIVE_COVERAGE_DISTANCE`(=6) 即提前终止——
+  静态内容所有候选互为近邻，自然塌缩为极少帧；量级标定见常量注释（合成静态
+  视频实测 seek/编码噪声 0~4，场景切换 ≥10）。
+- **零调参**：预算复用 `max_frames`，无阈值旋钮（对比 scene_threshold 的
+  参数敏感性）；`frame_interval` 不消费。
+- **失败方向安全**：特征/选帧异常降级候选均匀采样（覆盖不劣于 fixed）；
+  直读失败走归一化兜底（同 scene）。
+- **下游零改动**：产物与 fixed/scene 同构（jpeg/ts/idx），描述策略
+  （逐帧/分组/序列/叙事合成）全部可用。
+
 ### Rules
 
-- `frame_interval` and `max_frames` work together (except `scene` / `video_native`).
+- `frame_interval` and `max_frames` work together (except `scene` / `video_native` / `adaptive`).
 - `vlm_model` 必选：留空任务直接失败（不回退用户默认、不串用 image 的模型）。
 - `vlm_fallback_model` 是用户显式配置的备用模型，配额/鉴权失败时回退一次。
 - `vlm_skip_on_quota_error=true` 时全帧配额失败写占位描述而非任务失败。

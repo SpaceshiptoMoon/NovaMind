@@ -29,6 +29,8 @@ from novamind.engines.document.media.video import (
     describe_rewrite,
     describe_single,
     describe_video_native,
+    extract_frames_adaptive,
+    extract_frames_adaptive_from_path,
     extract_frames_fixed,
     extract_frames_fixed_from_path,
     extract_frames_scene,
@@ -978,6 +980,14 @@ async def process_video_document(
             frames = await extract_frames_scene_from_path(file_path, max_frames, **scene_kwargs)
         else:
             frames = await extract_frames_scene(file_content, max_frames, **scene_kwargs)
+    elif strategy == "adaptive":
+        # adaptive（S5 自适应代表帧）：粗采 pHash → FPS 全局选代表 → 按时间戳
+        # 精抽。预算即 max_frames，min_interval 用引擎默认（零调参卖点，不透传
+        # 用户配置），下游描述策略与时间锚链路零改动。
+        if file_path is not None:
+            frames = await extract_frames_adaptive_from_path(file_path, max_frames)
+        else:
+            frames = await extract_frames_adaptive(file_content, max_frames)
     else:
         if file_path is not None:
             frames = await extract_frames_fixed_from_path(file_path, frame_interval, max_frames)

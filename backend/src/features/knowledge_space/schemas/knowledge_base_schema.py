@@ -286,10 +286,11 @@ class VideoParsingConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     strategy: Literal[
-        "simple", "scene", "dedup", "grouped", "rewrite", "frame_seq", "video_native"
+        "simple", "scene", "dedup", "grouped", "rewrite", "frame_seq", "video_native",
+        "adaptive",
     ] = Field(
         default="simple",
-        description="视频解析策略：7 预设（抽帧/去重/描述三阶段组合）",
+        description="视频解析策略：8 预设（抽帧/去重/描述三阶段组合）",
     )
     frame_interval: float = Field(default=5.0, ge=0.5, le=60.0)
     max_frames: int = Field(default=60, ge=1, le=1000)

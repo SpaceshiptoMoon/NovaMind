@@ -316,3 +316,275 @@ def _uniform_sample_indices(
     if base is not None:
         return [base[p] for p in picked]
     return picked
+
+# ========== 自适应抽帧（adaptive）：粗采特征 → FPS 预算选代表帧 → 按时间戳精抽 ==========
+
+# FPS 选帧的默认时间间隔下限（秒）：选中的代表帧彼此至少相距这么远，保证时间
+# 分布下限——完全静止的视频里所有候选互为近邻（汉明距离趋零），没有该约束时
+# 代表帧会在时间上堆叠。语义同 scene 策略的 min_interval，但这里约束的是
+# 「已选集」双向近邻而非相邻切换点。
+_ADAPTIVE_MIN_INTERVAL = 1.0
+
+# 覆盖距离阈值：未选候选与已选集的最近汉明距离 ≤ 该值即视为「已覆盖」，
+# FPS 提前终止。量级标定（合成静态视频实测，6 轮对照）：同一画面的 seek 解码
+# + 编码噪声使 pHash 距离在 0~4 波动（JPEG/YUV 转换与 seek 恢复点差异），
+# 而真实场景切换的距离远超 10（pHash 惯例 ≤10 判同图）。取 6 = 覆盖实测噪声
+# 上界 4 加裕量，同时与真实变化保持安全距离；继续选噪声距离内的帧只会浪费
+# VLM 预算。若未来引入 CLIP 语义特征，该阈值需随特征空间重新标定。
+_ADAPTIVE_COVERAGE_DISTANCE = 6
+
+
+def compute_phash(pil_image) -> int:  # noqa: F821
+    """计算 PIL 图像的感知哈希（pHash，64bit 整数）。
+
+    32x32 灰度 → 2D DCT-II → 左上 8x8 低频块（丢 DC 分量）→ 逐位按中位数阈值化。
+    纯 numpy 实现（DCT 矩阵一次乘法），零外部模型依赖。
+
+    视觉上相近的图 hash 汉明距离小（0≈相同），内容差异越大距离越大——对亮度
+    线性漂移、轻微压缩噪声稳定，适合做"感知唯一性"度量。
+
+    Args:
+        pil_image: PIL 图像（任意尺寸，内部统一缩放到 32x32）。
+
+    Returns:
+        64bit 整数哈希。
+    """
+    import numpy as np
+
+    gray = pil_image.convert("L").resize((32, 32))
+    arr = np.asarray(gray, dtype=np.float64)
+    # DCT-II 变换矩阵（正交归一）：D[k, n] = s_k * cos(pi*(2n+1)*k / (2N))
+    n = 32
+    k_idx = np.arange(n).reshape(-1, 1)
+    nn = np.arange(n).reshape(1, -1)
+    d = np.cos(np.pi * (2 * nn + 1) * k_idx / (2 * n)) * np.sqrt(2.0 / n)
+    d[0, :] = np.sqrt(1.0 / n)
+    dct = d @ arr @ d.T
+    low = dct[:8, :8].flatten()[1:]  # 左上 8x8 低频块，丢 DC 分量
+    median = np.median(low)
+    bits = (low > median).astype(np.int64)
+    return int(sum(int(bit) << i for i, bit in enumerate(bits)))
+
+
+def hamming_distance(h1: int, h2: int) -> int:
+    """两个 64bit 哈希的汉明距离（不同 bit 数，0~64）。"""
+    return bin(h1 ^ h2).count("1")
+
+
+def _select_adaptive_keyframes(
+    hashes: list[int],
+    valid_ts: list[float],
+    budget: int,
+    min_interval: float = _ADAPTIVE_MIN_INTERVAL,
+) -> list[int]:
+    """从候选帧哈希做最远点采样（FPS）选代表帧，返回候选索引列表（时间升序）。
+
+    算法（覆盖保证下的冗余消除，"最少帧代表整个视频"的直接实现）：
+
+    1. 起始帧 = 与其它所有候选总汉明距离最大的帧（最不寻常的画面）；
+    2. 贪心循环：每轮选「距已选集最近距离最大」的未选候选（最远点），
+       同时维护时间约束——与任一已选帧时间距离 < ``min_interval`` 的候选被
+       屏蔽，保证代表帧的时间分布下限；
+    3. 当最大最近距离 ≤ ``_ADAPTIVE_COVERAGE_DISTANCE``（所有未屏蔽候选都已被
+       已选集覆盖，如整段静止画面）提前终止——冗余塌缩是本策略的预期行为；
+    4. 预算 ``budget`` 或候选穷尽即停。
+
+    Args:
+        hashes: 候选帧 pHash 列表。
+        valid_ts: 与 hashes 对齐的时间戳（秒）。
+        budget: 代表帧数上限（现有 max_frames 配置，>0）。
+        min_interval: 已选帧间最小时间距离（秒）。
+
+    Returns:
+        候选帧索引列表，按时间戳升序。
+    """
+    n = len(hashes)
+    if n == 0 or budget <= 0:
+        return []
+    if n == 1:
+        return [0]
+
+    # 距离矩阵（n ≤ 候选上限 200，O(n²) popcount 量级毫秒级）
+    dm = [[hamming_distance(hashes[i], hashes[j]) for j in range(n)] for i in range(n)]
+
+    # 起始帧：与其它帧总距离最大 = 全局最不寻常的画面
+    first = max(range(n), key=lambda i: sum(dm[i]))
+    selected = [first]
+    # md[i] = 候选 i 到已选集的最近距离（FPS 增量维护）
+    md = dm[first][:]
+    last_selected_ts = valid_ts[first] if first < len(valid_ts) else 0.0
+
+    while len(selected) < budget:
+        pick = -1
+        pick_dist = -1
+        for i in range(n):
+            if i in selected:
+                continue
+            ts_i = valid_ts[i] if i < len(valid_ts) else 0.0
+            # 时间屏蔽：与最近已选帧的距离不足 min_interval 的候选不参选
+            if abs(ts_i - last_selected_ts) < min_interval:
+                continue
+            if md[i] > pick_dist:
+                pick = i
+                pick_dist = md[i]
+        if pick < 0 or pick_dist <= _ADAPTIVE_COVERAGE_DISTANCE:
+            # 无可参选候选（时间屏蔽穷尽）或全覆盖（剩余候选与已选集距离都在
+            # 覆盖阈值内，感知近重复）：提前终止——冗余塌缩是本策略的预期行为
+            break
+        selected.append(pick)
+        last_selected_ts = valid_ts[pick] if pick < len(valid_ts) else 0.0
+        md = [min(cur, dm[pick][i]) for i, cur in enumerate(md)]
+
+    return sorted(selected)
+
+
+def _extract_adaptive_from_path(
+    filepath: str,
+    max_frames: int,
+    min_interval: float,
+    candidate_step: float | None,
+) -> list[tuple[bytes, float, int]]:
+    """自适应抽帧的同步实现（在 to_thread 中执行）：两遍法。
+
+    第一遍逐候选解码算 pHash（小成本特征）；FPS 全局选代表帧；第二遍只对
+    选中帧重新解码导出全尺寸 JPEG。特征计算异常时降级为候选均匀采样（覆盖
+    不劣于 fixed），保证失败方向安全。
+    """
+    metadata = read_video_metadata(filepath)
+    duration = metadata.get("duration", 0) or 0
+    fps = metadata.get("fps", 30) or 30
+    n_images = metadata.get("n_images", 0) or 0
+
+    if duration <= 0:
+        if n_images > 0 and fps > 0:
+            duration = n_images / fps
+        else:
+            raise VideoMetadataError(
+                f"无法读取视频时长或总帧数: duration={duration}, fps={fps}, n_images={n_images}"
+            )
+
+    if candidate_step is None:
+        candidate_step = max(1.0, duration / _MAX_CANDIDATE_FRAMES)
+
+    candidate_ts: list[float] = []
+    t = 0.0
+    while t < duration and len(candidate_ts) < _MAX_CANDIDATE_FRAMES:
+        candidate_ts.append(t)
+        t += candidate_step
+
+    # 第一遍：逐候选解码 + pHash（解码失败项跳过，时间戳以实际可解码项为准）。
+    # 特征/选帧异常 → 无法判定代表性 → 全量降级候选均匀采样（能力缺失优于
+    # 错误结果，最差不劣于 fixed），不让单帧的图像库异常炸掉整个解析任务。
+    hashes: list[int] = []
+    valid_ts: list[float] = []
+    selected_ts: list[float]
+    try:
+        for ts in candidate_ts:
+            pil = read_frame_at(filepath, ts, fps)
+            if pil is None:
+                continue
+            hashes.append(compute_phash(pil))
+            valid_ts.append(ts)
+        if not valid_ts:
+            raise RuntimeError("自适应抽帧未能解码任何候选帧")
+        selected_idx = _select_adaptive_keyframes(
+            hashes, valid_ts, budget=max_frames, min_interval=min_interval
+        )
+        selected_ts = [valid_ts[i] for i in selected_idx]
+    except Exception as exc:  # noqa: BLE001
+        # 特征/选帧异常 → 候选时间戳均匀采样兜底（能力缺失优于错误结果，
+        # 最差不劣于 fixed）。按时间戳而非候选索引工作，与特征失败前的
+        # 部分解码状态解耦。
+        logger.warning("自适应选帧异常，降级候选均匀采样", extra={"error": str(exc)})
+        pick_idx = _uniform_sample_indices(len(candidate_ts), max_frames)
+        selected_ts = [candidate_ts[i] for i in pick_idx]
+
+    # 第二遍：只对选中时间戳解码导出全尺寸 JPEG
+    frames: list[tuple[bytes, float, int]] = []
+    for frame_idx, ts in enumerate(selected_ts):
+        pil = read_frame_at(filepath, ts, fps)
+        if pil is None:
+            continue
+        buf = io.BytesIO()
+        pil.save(buf, format="JPEG", quality=85)
+        frames.append((buf.getvalue(), ts, frame_idx))
+
+    if not frames:
+        raise RuntimeError("自适应抽帧选中帧均解码失败")
+
+    return frames
+
+
+async def extract_frames_adaptive(
+    file_content: bytes,
+    max_frames: int = 60,
+    *,
+    min_interval: float = _ADAPTIVE_MIN_INTERVAL,
+    candidate_step: float | None = None,
+) -> list[tuple[bytes, float, int]]:
+    """自适应抽帧（bytes 版）：写临时文件后委托路径版实现。
+
+    以「最少帧代表整个视频」为目标：全局最远点采样（FPS）消除冗余候选，
+    时间间隔约束保证覆盖分布，预算复用 max_frames 配置，零阈值调参。
+    特征/选帧异常时降级候选均匀采样，最差不劣于 fixed。
+
+    Returns:
+        ``[(jpeg_bytes, timestamp, frame_idx), ...]``，与其它抽帧策略同结构。
+    """
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".video", delete=False) as tmp:
+        tmp.write(file_content)
+        tmp_path = tmp.name
+
+    try:
+        return await extract_frames_adaptive_from_path(
+            tmp_path,
+            max_frames,
+            min_interval=min_interval,
+            candidate_step=candidate_step,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+async def extract_frames_adaptive_from_path(
+    filepath: str,
+    max_frames: int = 60,
+    *,
+    min_interval: float = _ADAPTIVE_MIN_INTERVAL,
+    candidate_step: float | None = None,
+) -> list[tuple[bytes, float, int]]:
+    """自适应抽帧（路径版，大文件管道入口）：直读失败走归一化兜底，同 scene。"""
+    normalized_path: str | None = None
+    try:
+        try:
+            return await asyncio.to_thread(
+                _extract_adaptive_from_path,
+                filepath,
+                max_frames,
+                min_interval,
+                candidate_step,
+            )
+        except Exception as direct_error:
+            logger.warning(
+                "自适应抽帧直读失败，进入转换层兜底",
+                extra={
+                    "source_path": filepath,
+                    "error_type": type(direct_error).__name__,
+                    "error": str(direct_error),
+                },
+            )
+            normalized_path = await asyncio.to_thread(
+                normalize_video_for_frame_extraction, filepath
+            )
+            return await asyncio.to_thread(
+                _extract_adaptive_from_path,
+                normalized_path,
+                max_frames,
+                min_interval,
+                candidate_step,
+            )
+    finally:
+        if normalized_path:
+            Path(normalized_path).unlink(missing_ok=True)

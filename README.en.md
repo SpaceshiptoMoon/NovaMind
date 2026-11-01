@@ -94,7 +94,7 @@ If you want to build more than a chat window — a system that can organize know
 
 - **Text documents**: PDF (DeepDoc full mode with per-span text layer + OCR fusion, or lightweight plain mode), DOCX, TXT, MD, CSV, HTML, JSON
 - **Image understanding**: VLM-generated descriptions, or DeepDoc OCR for in-image text
-- **Video parsing**: 7 strategy presets (fixed-interval / scene-change / deduplicated sampling × per-frame / grouped / frame-sequence pseudo-video / native video clips), audio-track ASR fusion, LLM step synthesis, dual-anchor timeline alignment
+- **Video parsing**: 8 strategy presets (fixed-interval / scene-change / deduplicated sampling × per-frame / grouped / frame-sequence pseudo-video / native video clips / adaptive representative frames — coarse sampling + farthest-point selection, fewest frames covering the whole video), audio-track ASR fusion, LLM step synthesis, dual-anchor timeline alignment
 - **Video narrative document**: after parsing, fragment frame descriptions can be synthesized into a chaptered coherent narrative (whole-video synopsis + chapter timeline), coexisting with the fragment chunks; QA auto-attaches the matched chapter summary — "what is this video about" gets a coherent answer instead of stitched fragments
 - **Audio transcription**: local **faster-whisper** by default (free, no API key, model pre-downloaded at deploy time); switchable to cloud ASR (OpenAI Whisper / DashScope Paraformer)
 - **Formulas & tables**: PDF formula recognition (pix2text-mfr INT8), table structure restoration with inline HTML

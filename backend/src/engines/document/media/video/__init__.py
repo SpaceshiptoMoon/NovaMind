@@ -1,4 +1,4 @@
-"""视频处理模块：帧提取（固定间隔 / 场景切换）+ 帧去重 + 帧描述（single/grouped/frame_seq/rewrite/video_native）+ 音轨提取 + 场景对齐聚片。
+"""视频处理模块：帧提取（固定间隔 / 场景切换 / 自适应代表帧）+ 帧去重 + 帧描述（single/grouped/frame_seq/rewrite/video_native）+ 音轨提取 + 场景对齐聚片。
 每类帧提取均提供 bytes 与 *_from_path 两种入口；路径版供大文件管道（worker 落盘后直传路径）。
 """
 from novamind.engines.document.media.video.audio_track import (
@@ -20,6 +20,8 @@ from novamind.engines.document.media.video.frame_description import (
     describe_video_native,
 )
 from novamind.engines.document.media.video.frame_extraction import (
+    extract_frames_adaptive,
+    extract_frames_adaptive_from_path,
     extract_frames_fixed,
     extract_frames_scene,
     extract_frames_scene_from_path,
@@ -38,6 +40,8 @@ __all__ = [
     "extract_frames_fixed_from_path",
     "extract_frames_scene",
     "extract_frames_scene_from_path",
+    "extract_frames_adaptive",
+    "extract_frames_adaptive_from_path",
     "extract_audio_track",
     "AudioTrackExtractionError",
     "dedup_none",

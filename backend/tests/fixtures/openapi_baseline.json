@@ -13423,7 +13423,7 @@
           },
           "strategy": {
             "default": "simple",
-            "description": "视频解析策略：7 预设（抽帧/去重/描述三阶段组合）",
+            "description": "视频解析策略：8 预设（抽帧/去重/描述三阶段组合）",
             "enum": [
               "simple",
               "scene",
@@ -13431,7 +13431,8 @@
               "grouped",
               "rewrite",
               "frame_seq",
-              "video_native"
+              "video_native",
+              "adaptive"
             ],
             "title": "Strategy",
             "type": "string"

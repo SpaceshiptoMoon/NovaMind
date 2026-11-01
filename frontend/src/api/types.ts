@@ -381,7 +381,15 @@ export interface SplittingConfig {
 
 export interface VideoParsingConfig {
   /** 视频解析策略：7 预设（抽帧/去重/描述三阶段组合） */
-  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'frame_seq' | 'video_native'
+  strategy?:
+    | 'simple'
+    | 'scene'
+    | 'dedup'
+    | 'grouped'
+    | 'rewrite'
+    | 'frame_seq'
+    | 'video_native'
+    | 'adaptive'
   /** 抽帧间隔（秒），0.5~60；动作密集视频可调小捕捉短动作 */
   frame_interval?: number
   /** 最大帧数，1~1000；长视频建议调大（如 300）避免尾部截断 */
@@ -2083,7 +2091,6 @@ export interface ApiKeyRevokeResponse {
   status: 'active' | 'revoked'
   revoked_at: string | null
 }
-
 
 export interface ToolFunction {
   name: string

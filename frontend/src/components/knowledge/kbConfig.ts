@@ -18,6 +18,7 @@ export type VideoStrategy =
   | 'rewrite'
   | 'frame_seq'
   | 'video_native'
+  | 'adaptive'
 
 /** 视频解析策略选项（7 预设映射到抽帧/去重/描述三阶段组合）。 */
 export const videoStrategyItems: Array<{
@@ -40,6 +41,11 @@ export const videoStrategyItems: Array<{
     value: 'video_native',
     label: '视频直输',
     desc: '按场景切换切片直输 VLM，慢切换场景（会议/讲座）最优（需 openai_video + minio 公网端点；录屏不推荐）',
+  },
+  {
+    value: 'adaptive',
+    label: '自适应代表帧',
+    desc: '粗采候选 + 全局代表帧选择（最远点采样）：静态内容自动塌缩、动态内容保证覆盖，用最少帧代表全片；预算即帧数上限，零调参',
   },
 ]
 
@@ -74,6 +80,7 @@ export function getVideoStrategyValue(value: unknown): VideoStrategy {
     'rewrite',
     'frame_seq',
     'video_native',
+    'adaptive',
   ]
   return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
 }
