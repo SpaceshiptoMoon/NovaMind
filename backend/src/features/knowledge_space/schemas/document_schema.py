@@ -35,6 +35,7 @@ class DocumentResponse(BaseModel):
     file_type: str = Field(..., description="文件类型")
     file_size: int = Field(..., description="文件大小(字节)")
     file_hash: str = Field(..., description="文件哈希")
+    tags: list[str] | None = Field(None, description="用户自定义标签（规范化字符串数组）")
     doc_metadata: dict[str, Any] | None = Field(None, description="文档元数据")
     created_at: datetime = Field(..., description="上传时间")
     updated_at: datetime | None = Field(None, description="更新时间")
@@ -394,6 +395,16 @@ class DocumentReviewSettingsUpdate(BaseModel):
     )
     owner_id: int | None = Field(
         default=None, gt=0, description="内容责任人改派（仅空间管理员）；不传=不修改",
+    )
+
+
+class DocumentTagsUpdateRequest(BaseModel):
+    """文档标签打标请求（整体替换语义：以本次提交为准，非增量追加）。"""
+
+    tags: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="标签列表（≤20 个；服务端规范化：trim/casefold/去重/截断 50 字符）",
     )
 
 

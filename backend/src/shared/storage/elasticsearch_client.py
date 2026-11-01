@@ -470,8 +470,17 @@ class ElasticsearchClient:
 
     # ========== 搜索辅助 ==========
 
-    def _build_kb_filter(self, kb_id: int | None = None) -> list[dict]:
+    def _build_kb_filter(
+        self, kb_id: int | None = None, doc_tags: list[str] | None = None,
+    ) -> list[dict]:
         """构建知识库过滤条件 + 文档生命周期排除式过滤（kb-ops B1）。
+
+        Args:
+            kb_id: 知识库过滤；None 不过滤。
+            doc_tags: 用户标签过滤（terms，命中任一即保留）；None/空 不过滤。
+                chunk 上的 metadata.doc_tags 由解析尾段从 documents.tags 冗余、
+                手动改标经 update_by_query 即时同步（写入时打标原则）。
+
 
         排除式而非白名单式（must lifecycle_status=active）：存量 chunk 无该字段，
         must_not terms 对 missing 字段不命中 → 自动视为可召回，零回填；
@@ -493,6 +502,11 @@ class ElasticsearchClient:
                 ]
             }
         })
+        if doc_tags:
+            # .keyword 子字段：标签字段在存量索引被 dynamic 映射固定为 text（中文
+            # 被标准分词切成单字 token），terms 精确匹配必须走子字段；新索引显式
+            # 声明同形态（见 index_schema），两态统一。
+            filters.append({"terms": {"metadata.doc_tags.keyword": doc_tags}})
         return filters
 
     # ========== 搜索功能 ==========
@@ -500,6 +514,7 @@ class ElasticsearchClient:
     async def vector_search(
         self, space_id: int, query_vector: list[float], top_k: int = 5,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
         field: str | None = None,
         chunk_type_filter: str | None = None,
     ) -> list[dict[str, Any]]:
@@ -510,6 +525,7 @@ class ElasticsearchClient:
             query_vector: 查询向量。
             top_k: 返回条数上限（自动截断到 MAX_SEARCH_RESULTS）。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
             field: 向量字段名；None 用 schema 默认 embedding 字段。
             chunk_type_filter: 分块类型过滤（如 wiki_page）；None 表示不过滤。
 
@@ -523,7 +539,7 @@ class ElasticsearchClient:
         index_name = self.generate_index_name(space_id)
         # 字段名经 schema 解析；默认 embedding 字段
         field = field or self._schema.field_names.embedding
-        filters = self._build_kb_filter(kb_id)
+        filters = self._build_kb_filter(kb_id, doc_tags=doc_tags)
         if chunk_type_filter:
             filters.append({"term": {self._schema.field_names.chunk_type: chunk_type_filter}})
 
@@ -588,6 +604,7 @@ class ElasticsearchClient:
     async def text_search(
         self, space_id: int, query: str, top_k: int = 5,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """全文搜索（match 查询 content 字段，保留字符已转义）。
 
@@ -596,13 +613,14 @@ class ElasticsearchClient:
             query: 查询文本。
             top_k: 返回条数上限（自动截断到 MAX_SEARCH_RESULTS）。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source；失败返回空表。
         """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
-        filters = self._build_kb_filter(kb_id)
+        filters = self._build_kb_filter(kb_id, doc_tags=doc_tags)
         safe_query = self._escape_query(query)
 
         search_query = {"match": {self._schema.field_names.content: safe_query}}
@@ -619,6 +637,7 @@ class ElasticsearchClient:
         text_weight: float = 0.3,
         rrf_k: int = 60,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """混合搜索（向量 + 全文），使用加权 RRF 融合。
 
@@ -631,6 +650,7 @@ class ElasticsearchClient:
             text_weight: 全文路权重。
             rrf_k: RRF 平滑常数（默认 60）。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
@@ -638,8 +658,8 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         vector_results, text_results = await asyncio.gather(
-            self.vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
-            self.text_search(space_id, query, top_k * 2, kb_id=kb_id),
+            self.vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.text_search(space_id, query, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
         )
 
         return self.rrf_fuse(
@@ -711,6 +731,7 @@ class ElasticsearchClient:
     async def content_bm25_search(
         self, space_id: int, query: str, top_k: int = 10,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """内容 BM25 检索（text_search 的语义别名）。
 
@@ -719,15 +740,17 @@ class ElasticsearchClient:
             query: 查询文本。
             top_k: 返回条数上限。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source。
         """
-        return await self.text_search(space_id, query, top_k, kb_id=kb_id)
+        return await self.text_search(space_id, query, top_k, kb_id=kb_id, doc_tags=doc_tags)
 
     async def content_vector_search(
         self, space_id: int, query_vector: list[float], top_k: int = 10,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """内容向量检索（vector_search 的语义别名）。
 
@@ -736,16 +759,18 @@ class ElasticsearchClient:
             query_vector: 查询向量。
             top_k: 返回条数上限。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source。
         """
-        return await self.vector_search(space_id, query_vector, top_k, kb_id=kb_id)
+        return await self.vector_search(space_id, query_vector, top_k, kb_id=kb_id, doc_tags=doc_tags)
 
     async def content_hybrid_search(
         self, space_id: int, query: str, query_vector: list[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         rrf_k: int = 60, kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """内容混合检索（BM25 + 向量，RRF 融合）。
 
@@ -758,17 +783,19 @@ class ElasticsearchClient:
             bm25_weight: BM25 路权重。
             rrf_k: RRF 平滑常数。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
         """
         return await self.hybrid_search(
-            space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
+            space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id, doc_tags=doc_tags
         )
 
     async def question_bm25_search(
         self, space_id: int, query: str, top_k: int = 10,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """问题 BM25 检索（match 查询 questions 字段）。
 
@@ -777,6 +804,7 @@ class ElasticsearchClient:
             query: 查询文本。
             top_k: 返回条数上限。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source。
@@ -784,7 +812,7 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         safe_query = self._escape_query(query)
-        filters = self._build_kb_filter(kb_id)
+        filters = self._build_kb_filter(kb_id, doc_tags=doc_tags)
 
         match_query = {"match": {self._schema.field_names.questions: safe_query}}
         body = {"query": {"bool": {"must": [match_query], "filter": filters}}} if filters else {"query": match_query}
@@ -793,6 +821,7 @@ class ElasticsearchClient:
     async def question_vector_search(
         self, space_id: int, query_vector: list[float], top_k: int = 10,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """问题向量检索（nested 路径下 vector 子字段的 knn 查询）。
 
@@ -801,13 +830,14 @@ class ElasticsearchClient:
             query_vector: 查询向量。
             top_k: 返回条数上限。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source。
         """
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
-        filters = self._build_kb_filter(kb_id)
+        filters = self._build_kb_filter(kb_id, doc_tags=doc_tags)
         fn = self._schema.field_names
         nested_path = fn.question_embeddings
         nested_field = f"{fn.question_embeddings}.{fn.question_embeddings_vector}"
@@ -833,6 +863,7 @@ class ElasticsearchClient:
         self, space_id: int, query: str, query_vector: list[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         rrf_k: int = 60, kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """问题混合检索（BM25 + 向量，RRF 融合）。
 
@@ -845,6 +876,7 @@ class ElasticsearchClient:
             bm25_weight: BM25 路权重。
             rrf_k: RRF 平滑常数。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
@@ -852,8 +884,8 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         vector_results, text_results = await asyncio.gather(
-            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
-            self.question_bm25_search(space_id, query, top_k * 2, kb_id=kb_id),
+            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.question_bm25_search(space_id, query, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
         )
 
         return self.rrf_fuse(
@@ -867,6 +899,7 @@ class ElasticsearchClient:
         self, space_id: int, query: str, top_k: int = 10,
         content_weight: float = 0.6, question_weight: float = 0.4,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """全字段 BM25 检索（内容 + 问题，should 加权求和）。
 
@@ -877,6 +910,7 @@ class ElasticsearchClient:
             content_weight: content 字段 boost 权重。
             question_weight: questions 字段 boost 权重。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，每项含 chunk_id、score、source；失败返回空表。
@@ -884,7 +918,7 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         safe_query = self._escape_query(query)
-        filters = self._build_kb_filter(kb_id)
+        filters = self._build_kb_filter(kb_id, doc_tags=doc_tags)
 
         try:
             fn = self._schema.field_names
@@ -918,6 +952,7 @@ class ElasticsearchClient:
         self, space_id: int, query_vector: list[float], top_k: int = 10,
         content_weight: float = 0.6, question_weight: float = 0.4,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """全字段向量检索（内容向量 + 问题向量，RRF 融合）。
 
@@ -928,6 +963,7 @@ class ElasticsearchClient:
             content_weight: 内容向量路权重。
             question_weight: 问题向量路权重。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             融合排序后的结果列表，每项含 chunk_id、score、source、hit_sources。
@@ -935,8 +971,8 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         content_results, question_results = await asyncio.gather(
-            self.content_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
-            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
+            self.content_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
         )
 
         return self.rrf_fuse(
@@ -951,6 +987,7 @@ class ElasticsearchClient:
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         content_weight: float = 0.6, question_weight: float = 0.4,
         rrf_k: int = 60, kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """全字段全算法融合检索（BM25/向量 x 内容/问题 四路 RRF）。
 
@@ -965,6 +1002,7 @@ class ElasticsearchClient:
             question_weight: 问题侧权重。
             rrf_k: RRF 平滑常数。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             融合排序后的结果列表（单路失败自动剔除该路，不整体失败）。
@@ -972,10 +1010,10 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
         results = await asyncio.gather(
-            self.content_bm25_search(space_id, query, top_k * 2, kb_id=kb_id),
-            self.content_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
-            self.question_bm25_search(space_id, query, top_k * 2, kb_id=kb_id),
-            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id),
+            self.content_bm25_search(space_id, query, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.content_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.question_bm25_search(space_id, query, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
+            self.question_vector_search(space_id, query_vector, top_k * 2, kb_id=kb_id, doc_tags=doc_tags),
             return_exceptions=True,
         )
 
@@ -1011,6 +1049,7 @@ class ElasticsearchClient:
         question_weight: float = 0.4,
         rrf_k: int = 60,
         kb_id: int | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """根据模式路由到对应的检索方法（统一入口）。
 
@@ -1028,6 +1067,7 @@ class ElasticsearchClient:
             question_weight: 问题侧权重。
             rrf_k: RRF 平滑常数。
             kb_id: 知识库过滤；None 表示不过滤。
+            doc_tags: 文档标签过滤（terms，命中任一即保留）；None/空 不过滤。
 
         Returns:
             结果列表，形状同具体模式方法。
@@ -1036,34 +1076,34 @@ class ElasticsearchClient:
             elasticsearch.ConnectionError: ES 连接类基础设施异常原样抛出。
         """
         mode_handlers = {
-            "content_bm25": lambda: self.content_bm25_search(space_id, query, top_k, kb_id=kb_id),
+            "content_bm25": lambda: self.content_bm25_search(space_id, query, top_k, kb_id=kb_id, doc_tags=doc_tags),
             "content_vector": lambda: (
-                self.content_vector_search(space_id, query_vector, top_k, kb_id=kb_id)
+                self.content_vector_search(space_id, query_vector, top_k, kb_id=kb_id, doc_tags=doc_tags)
                 if query_vector else []
             ),
             "content_hybrid": lambda: (
                 self.content_hybrid_search(
-                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
+                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id, doc_tags=doc_tags
                 )
-                if query_vector else self.content_bm25_search(space_id, query, top_k, kb_id=kb_id)
+                if query_vector else self.content_bm25_search(space_id, query, top_k, kb_id=kb_id, doc_tags=doc_tags)
             ),
-            "question_bm25": lambda: self.question_bm25_search(space_id, query, top_k, kb_id=kb_id),
+            "question_bm25": lambda: self.question_bm25_search(space_id, query, top_k, kb_id=kb_id, doc_tags=doc_tags),
             "question_vector": lambda: (
-                self.question_vector_search(space_id, query_vector, top_k, kb_id=kb_id)
+                self.question_vector_search(space_id, query_vector, top_k, kb_id=kb_id, doc_tags=doc_tags)
                 if query_vector else []
             ),
             "question_hybrid": lambda: (
                 self.question_hybrid_search(
-                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
+                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id, doc_tags=doc_tags
                 )
-                if query_vector else self.question_bm25_search(space_id, query, top_k, kb_id=kb_id)
+                if query_vector else self.question_bm25_search(space_id, query, top_k, kb_id=kb_id, doc_tags=doc_tags)
             ),
             "all_bm25": lambda: self.all_bm25_search(
-                space_id, query, top_k, content_weight, question_weight, kb_id=kb_id
+                space_id, query, top_k, content_weight, question_weight, kb_id=kb_id, doc_tags=doc_tags
             ),
             "all_vector": lambda: (
                 self.all_vector_search(
-                    space_id, query_vector, top_k, content_weight, question_weight, kb_id=kb_id
+                    space_id, query_vector, top_k, content_weight, question_weight, kb_id=kb_id, doc_tags=doc_tags
                 )
                 if query_vector else []
             ),
@@ -1071,10 +1111,10 @@ class ElasticsearchClient:
                 self.all_hybrid_search(
                     space_id, query, query_vector, top_k,
                     vector_weight, bm25_weight, content_weight, question_weight,
-                    rrf_k, kb_id=kb_id,
+                    rrf_k, kb_id=kb_id, doc_tags=doc_tags,
                 )
                 if query_vector else self.all_bm25_search(
-                    space_id, query, top_k, content_weight, question_weight, kb_id=kb_id
+                    space_id, query, top_k, content_weight, question_weight, kb_id=kb_id, doc_tags=doc_tags
                 )
             ),
         }

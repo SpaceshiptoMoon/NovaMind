@@ -6,7 +6,7 @@ import asyncio
 import mimetypes
 import os
 from pathlib import Path as FilePath
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
@@ -61,6 +61,7 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentProcessResponse,
     DocumentResponse,
     DocumentReviewSettingsUpdate,
+    DocumentTagsUpdateRequest,
     DocumentUploadResponse,
     FailedFileItem,
 )
@@ -80,6 +81,7 @@ from novamind.features.knowledge_space.services.document_file_types import SUPPO
 from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.services.tag_service import DocumentTagService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -328,6 +330,52 @@ async def init_chunk_upload(
         max_total_bytes=max_total_bytes,
     )
     return ChunkUploadInitResponse(**result)
+
+
+@router.get(
+    "/{kb_id}/documents/tags",
+    summary="聚合知识库标签",
+    description="知识库内全部活跃文档 chunk 的标签计数（标签云/检索筛选器数据源）。"
+    "声明在 /{document_id} 系列路由之前，避免 'tags' 被 document_id 路径参数吞噬。",
+)
+async def aggregate_kb_tags(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """KB 级标签聚合：terms agg 统计 metadata.doc_tags（仅 active chunk）。"""
+    await validate_kb_access(kb_id, space_id, db)
+    service = DocumentTagService(db)
+    items = await service.aggregate_kb_tags(space_id, kb_id)
+    return {"kb_id": kb_id, "total": len(items), "items": items}
+
+
+@router.put(
+    "/{kb_id}/documents/{document_id}/tags",
+    summary="设置文档标签",
+    description="整体替换文档标签（以本次提交为准）。标签规范化后落库并即时同步"
+    "该文档全部 chunk 的 ES metadata.doc_tags（检索过滤即时生效）；ES 同步失败自动回滚 DB。",
+)
+async def set_document_tags(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    body: DocumentTagsUpdateRequest,
+    member: SpaceMember = Depends(validate_space_editor),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """打标（编辑者及以上权限）：规范化 → DB → ES chunk 同步 → 失败回滚。"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    service = DocumentTagService(db)
+    tags = await service.set_document_tags(document, body.tags)
+    return {"document_id": document_id, "kb_id": kb_id, "tags": tags}
 
 
 @router.put(

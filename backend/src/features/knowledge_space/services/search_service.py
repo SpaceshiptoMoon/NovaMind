@@ -690,6 +690,10 @@ class SearchService:
         except Exception:
             wiki_boost_factor = 1.0
 
+        # 标签过滤不入缓存：标签随时可改且缓存键未纳入 filters（改标后
+        # 旧缓存命中会给出未过滤结果），宁缺缓存保正确
+        doc_tags = (request.filters.tags or None) if request.filters else None
+
         rq = RetrievalQuery(
             space_id=space_id,
             kb_id=kb_id,
@@ -710,9 +714,12 @@ class SearchService:
             rerank_model=rerank_model,
             user_id=user_id,
             wiki_boost_factor=wiki_boost_factor,
+            doc_tags=doc_tags,
         )
         # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
-        use_cache_for_engine = use_cache and request.query_rewrite is None
+        use_cache_for_engine = (
+            use_cache and request.query_rewrite is None and not doc_tags
+        )
         # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
         try:
             result = await self.retrieval_engine.retrieve_raw(

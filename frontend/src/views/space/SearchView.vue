@@ -29,6 +29,30 @@
           </el-button>
         </div>
 
+        <!-- 标签筛选（KB 级聚合数据源；多选 OR 语义，可手输新标签） -->
+        <div v-if="kbTagOptions.length > 0" class="tags-filter-bar">
+          <span class="tags-filter-label">标签</span>
+          <el-select
+            v-model="searchForm.tags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="按标签过滤（可多选）"
+            class="tags-filter-select"
+          >
+            <el-option
+              v-for="opt in kbTagOptions"
+              :key="opt.tag"
+              :label="`${opt.tag} (${opt.count})`"
+              :value="opt.tag"
+            />
+          </el-select>
+        </div>
+
         <!-- 下方：结果 + 参数 -->
         <div class="search-body">
           <!-- ====== 中间：检索结果 ====== -->
@@ -600,6 +624,7 @@ const originalMode = ref<string | null>(null)
 const defaultSearchForm = {
   kb_id: null as number | null,
   query: '',
+  tags: [] as string[],
   search_mode: 'content_hybrid',
   top_k: 10,
   vector_weight: 0.7,
@@ -644,9 +669,23 @@ async function fetchKnowledgeBases() {
     if (knowledgeBases.value.length > 0 && !searchForm.kb_id) {
       searchForm.kb_id = knowledgeBases.value[0]!.id
       fetchSearchModes()
+      fetchKbTags()
     }
   } catch {
     ElMessage.error('获取知识库列表失败')
+  }
+}
+
+const kbTagOptions = ref<{ tag: string; count: number }[]>([])
+
+/** 拉取当前知识库的标签聚合（KB 级作用域），供标签筛选器取值。 */
+async function fetchKbTags() {
+  if (!searchForm.kb_id) return
+  try {
+    const data = await documentApi.getKbTags(spaceId.value, searchForm.kb_id)
+    kbTagOptions.value = data.items || []
+  } catch {
+    kbTagOptions.value = []
   }
 }
 
@@ -674,6 +713,7 @@ async function fetchSearchModes() {
 }
 
 function handleKbChange() {
+  fetchKbTags()
   fetchSearchModes()
 }
 
@@ -710,6 +750,7 @@ async function handleSearch() {
       query: searchForm.query,
       search_mode: searchForm.search_mode,
       top_k: searchForm.top_k,
+      filters: searchForm.tags.length ? { tags: searchForm.tags } : undefined,
       weights: {
         vector_weight: searchForm.vector_weight,
         bm25_weight: searchForm.bm25_weight,
@@ -804,6 +845,26 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border);
   background: var(--color-bg-card);
   flex-shrink: 0;
+}
+
+/* 标签筛选条：紧贴检索栏下方，同卡片底色 */
+.tags-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-3);
+  background: var(--color-bg-card);
+  flex-shrink: 0;
+}
+
+.tags-filter-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.tags-filter-select {
+  max-width: 420px;
 }
 
 .query-input {

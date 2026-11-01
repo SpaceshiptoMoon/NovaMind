@@ -2918,6 +2918,21 @@
             "readOnly": true,
             "title": "Table Count"
           },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "用户自定义标签（规范化字符串数组）",
+            "title": "Tags"
+          },
           "token_count": {
             "description": "空白词计数（管道写 total_tokens 键；旧键 token_count 兜底兼容）",
             "readOnly": true,
@@ -3336,6 +3351,21 @@
             "readOnly": true,
             "title": "Table Count"
           },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "用户自定义标签（规范化字符串数组）",
+            "title": "Tags"
+          },
           "token_count": {
             "description": "空白词计数（管道写 total_tokens 键；旧键 token_count 兜底兼容）",
             "readOnly": true,
@@ -3454,6 +3484,22 @@
           }
         },
         "title": "DocumentReviewSettingsUpdate",
+        "type": "object"
+      },
+      "DocumentTagsUpdateRequest": {
+        "description": "文档标签打标请求（整体替换语义：以本次提交为准，非增量追加）。",
+        "properties": {
+          "tags": {
+            "description": "标签列表（≤20 个；服务端规范化：trim/casefold/去重/截断 50 字符）",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "title": "DocumentTagsUpdateRequest",
         "type": "object"
       },
       "DocumentTaskItemListResponse": {
@@ -9226,6 +9272,22 @@
         "title": "SearchConfigUpdate",
         "type": "object"
       },
+      "SearchFilters": {
+        "description": "检索元数据过滤条件（pre-filter，ES terms 命中任一即保留）。\n\n首期只开放用户标签；后续按需扩 document_ids / 日期范围等受控字段。",
+        "properties": {
+          "tags": {
+            "description": "文档标签过滤（OR 语义：命中任一标签的文档参与召回；空列表 = 不过滤）",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "title": "SearchFilters",
+        "type": "object"
+      },
       "SearchLLMConfig": {
         "description": "LLM 回答配置\n\n对召回结果生成 LLM 回答。",
         "properties": {
@@ -9367,6 +9429,17 @@
             "description": "检索模式不可用时是否自动降级",
             "title": "Fallback On Unavailable",
             "type": "boolean"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchFilters"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "元数据过滤条件（None = 不过滤；带过滤的检索不走缓存）"
           },
           "llm": {
             "anyOf": [
@@ -22375,6 +22448,69 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/tags": {
+      "get": {
+        "description": "知识库内全部活跃文档 chunk 的标签计数（标签云/检索筛选器数据源）。声明在 /{document_id} 系列路由之前，避免 'tags' 被 document_id 路径参数吞噬。",
+        "operationId": "aggregate_kb_tags_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_tags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Aggregate Kb Tags Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Documents Tags Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "聚合知识库标签",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}": {
       "delete": {
         "description": "从知识库中删除文档。编辑者只能删除自己上传的文档，管理员可删除任意文档。",
@@ -23765,6 +23901,183 @@
           }
         ],
         "summary": "设置文档复审策略",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/stream": {
+      "get": {
+        "description": "视频文档的 HTTP Range 流式端点（区间请求返回 206 分段），供前端 <video> 内联播放；鉴权支持 Authorization 头或 ?token= 查询串（媒体标签无法携带自定义请求头）。非视频类型返回 400。",
+        "operationId": "stream_document_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__stream_get",
+        "parameters": [
+          {
+            "description": "空间ID",
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "description": "空间ID",
+              "exclusiveMinimum": 0,
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "媒体标签专用的 access token",
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "媒体标签专用的 access token",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "流式播放文档",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/tags": {
+      "put": {
+        "description": "整体替换文档标签（以本次提交为准）。标签规范化后落库并即时同步该文档全部 chunk 的 ES metadata.doc_tags（检索过滤即时生效）；ES 同步失败自动回滚 DB。",
+        "operationId": "set_document_tags_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__tags_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentTagsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Document Tags Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Documents  Document Id  Tags Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置文档标签",
         "tags": [
           "文档管理",
           "文档管理"

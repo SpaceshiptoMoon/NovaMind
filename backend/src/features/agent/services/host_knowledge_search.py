@@ -187,6 +187,7 @@ class HostKnowledgeSearchPort:
         search_mode: str = SearchMode.CONTENT_HYBRID.value,
         kb_id: int | None = None,
         score_threshold: float | None = None,
+        tags: list[str] | None = None,
     ) -> list[KnowledgeSearchItem]:
         """按模式检索知识库内容；指定 kb_id 单库检索，缺省时取空间前 3 个 KB 跨库检索按分数合并取 top_k；单库失败静默跳过。
 
@@ -203,6 +204,7 @@ class HostKnowledgeSearchPort:
             按分数排序的 KnowledgeSearchItem 列表（content/score/document_id/chunk_id 等）。
         """
         from novamind.features.knowledge_space.schemas.search_schema import (
+            SearchFilters,
             SearchRequest,
         )
 
@@ -211,6 +213,7 @@ class HostKnowledgeSearchPort:
             search_mode=search_mode,
             top_k=top_k,
             score_threshold=score_threshold if score_threshold is not None else 0.0,
+            filters=SearchFilters(tags=tags) if tags else None,
         )
         search_service = await self._build_search_service()
 
@@ -327,6 +330,7 @@ class HostKnowledgeSearchPort:
         top_k: int = 5,
         search_mode: str = SearchMode.CONTENT_HYBRID.value,
         kb_ids: list[int] | None = None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         """带质量保障层的知识库检索管线：改写 → 检索 → grade-retry（可选）→ 阈值过滤。
 
@@ -356,7 +360,10 @@ class HostKnowledgeSearchPort:
             rewrite_degraded、grade_traces、insufficient_evidence（过滤后为空且曾
             有原始结果时 True）、raw_count（过滤前数量）。
         """
-        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
+        from novamind.features.knowledge_space.schemas.search_schema import (
+            SearchFilters,
+            SearchRequest,
+        )
 
         # ===== 1. 查询改写（会话模型；失败降级原 query） =====
         rewritten = query
@@ -392,6 +399,7 @@ class HostKnowledgeSearchPort:
                     search_mode=mode,
                     top_k=top_k,
                     score_threshold=threshold if threshold is not None else 0.0,
+                    filters=SearchFilters(tags=tags) if tags else None,
                 )
                 if kb_ids:
                     kb_targets: list[int] = list(kb_ids)

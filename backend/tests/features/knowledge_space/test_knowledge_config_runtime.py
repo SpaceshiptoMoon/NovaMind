@@ -1041,9 +1041,11 @@ async def test_process_video_document_grouped_strategy_passes_frame_groups(monke
     # frame_groups 映射组首→组内所有帧 idx
     ta = captured["video_time_alignment"]
     assert ta["frame_groups"] == {0: [0, 1], 2: [2, 3]}
-    # timeline 用组首 ts：组0 (0.0, 下一组首 10.0)，组1 (10.0, None 末组)
-    assert ta["timeline_map"][0] == (0.0, 10.0)
-    assert ta["timeline_map"][2] == (10.0, None)
+    # timeline 用组真实区间（四元组显式 end 优先）：组0 (0.0, 5.0)、组1 (10.0, 15.0)。
+    # 旧断言 (0.0,10.0)/(10.0,None) 是帧时间轴近似的 bug 行为——组真实 end 在
+    # grouped_descs 里就有，近似会把段区间截短、末组变 None（doc 980 回归已修）。
+    assert ta["timeline_map"][0] == (0.0, 5.0)
+    assert ta["timeline_map"][2] == (10.0, 15.0)
 
 
 @pytest.mark.anyio("asyncio")

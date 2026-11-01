@@ -153,6 +153,15 @@ class DefaultIndexSchema:
                     # 子字段（无法直接按 path 过滤）、frame_indices 推断为 long。
                     "frame_paths": {"type": "keyword"},
                     "frame_indices": {"type": "integer"},
+                    # 用户自定义标签（文档级打标，chunk 写入时冗余）：查询/聚合统一走
+                    # .keyword 子字段（terms 精确 + agg）。声明形态刻意与 dynamic 推断
+                    # 的 text+fields.keyword 一致——存量索引先于本声明写入，字段已被
+                    # 动态映射固定为 text；新旧两态形态一致后，.keyword 恒精确可用，
+                    # 不需要 reindex 存量。
+                    "doc_tags": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword", "ignore_above": 256}},
+                    },
                     # 引用溯源链（tagged_rechunk 产物）：页码列表/source_id 列表/
                     # 条目类型列表/条目数。显式声明避免动态映射把整型页码列表推断为
                     # text（range/term 查询失效）；存量索引由 dynamic mapping 兜底。

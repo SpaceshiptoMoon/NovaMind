@@ -179,6 +179,19 @@ class ExpansionConfig(BaseModel):
     )
 
 
+class SearchFilters(BaseModel):
+    """检索元数据过滤条件（pre-filter，ES terms 命中任一即保留）。
+
+    首期只开放用户标签；后续按需扩 document_ids / 日期范围等受控字段。
+    """
+
+    tags: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="文档标签过滤（OR 语义：命中任一标签的文档参与召回；空列表 = 不过滤）",
+    )
+
+
 class SearchRequest(BaseModel):
     """
     统一检索请求
@@ -268,6 +281,13 @@ class SearchRequest(BaseModel):
         default=None,
         description="检索期上下文扩展配置（None = 全部启用，等价 ExpansionConfig()）",
     )
+
+    # 元数据过滤（pre-filter）：不传完全等价于现行为，零破坏
+    filters: SearchFilters | None = Field(
+        default=None,
+        description="元数据过滤条件（None = 不过滤；带过滤的检索不走缓存）",
+    )
+
 
 
 

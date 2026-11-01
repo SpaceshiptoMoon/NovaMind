@@ -61,6 +61,7 @@ class RetrievalQuery:
         "rerank_model",
         "user_id",
         "wiki_boost_factor",
+        "doc_tags",
     )
 
     def __init__(
@@ -85,6 +86,7 @@ class RetrievalQuery:
         rerank_model: str | None,
         user_id: int | None = None,
         wiki_boost_factor: float = 1.0,
+        doc_tags: list[str] | None = None,
     ) -> None:
         """汇集影响纯检索结果的全部字段（空间/KB 定位、查询串、模式与权重、rerank 配置）；赋值即冻结入参。"""
         self.space_id = space_id
@@ -111,6 +113,10 @@ class RetrievalQuery:
         # 分数 ×factor 后稳定重排；1.0 = 关闭。宿主按 KB config wiki.enabled
         # 计算；factor 影响排序故必须参与缓存键（见 _build_cache_key）
         self.wiki_boost_factor = wiki_boost_factor
+        # 用户标签过滤（pre-filter，ES terms metadata.doc_tags）：影响结果集，
+        # 宿主把 SearchRequest.filters.tags 透传进来；None = 不过滤。
+        # 宿主侧约定：带 doc_tags 的检索不入缓存（标签随时可改，缓存键未纳入）
+        self.doc_tags = doc_tags
 
 
 class RetrievalEngine:
@@ -225,6 +231,7 @@ class RetrievalEngine:
                 rrf_k=q.rrf_k,
                 merge_mode=q.sub_query_merge_mode,
                 embedding_client=embedding_client,
+                doc_tags=q.doc_tags,
             )
         else:
             # 普通模式或 HyDE 模式：单次检索
@@ -241,6 +248,7 @@ class RetrievalEngine:
                 content_weight=q.content_weight,
                 question_weight=q.question_weight,
                 rrf_k=q.rrf_k,
+                doc_tags=q.doc_tags,
             )
 
         # 4. 补充分块详情
@@ -368,6 +376,7 @@ class RetrievalEngine:
         rrf_k: int = 60,
         merge_mode: str = "rrf",
         embedding_client: Any | None = None,
+        doc_tags: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Sub Query 多路检索并合并结果
@@ -417,6 +426,7 @@ class RetrievalEngine:
                 content_weight=content_weight,
                 question_weight=question_weight,
                 rrf_k=rrf_k,
+                doc_tags=doc_tags,
             )
 
         all_results = await asyncio.gather(

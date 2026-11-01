@@ -50,6 +50,11 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "ALTER TABLE qa_session_configs ADD COLUMN llm_config JSON NULL",
     ),
     (
+        "documents",
+        "tags",
+        "ALTER TABLE documents ADD COLUMN tags JSON NULL COMMENT '用户自定义标签（规范化字符串数组；chunk 冗余到 metadata.doc_tags）'",
+    ),
+    (
         "document_task_items",
         "process_mode",
         "ALTER TABLE document_task_items ADD COLUMN process_mode SMALLINT NOT NULL DEFAULT 0 COMMENT 'Task process mode'",

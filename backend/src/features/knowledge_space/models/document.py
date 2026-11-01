@@ -72,6 +72,12 @@ class Document(BaseModel):
     # 存储信息（MinIO 路径 + parsed_text_object）
     storage = Column(JSON, nullable=False, default=dict, comment="存储信息（MinIO）")
 
+    # 用户自定义标签（free-form 字符串数组）：业务分类过滤维度，正交于下方
+    # 治理字段（owner/lifecycle 有行为语义，tags 纯检索过滤）。写入侧约定：
+    # chunk 落 ES 时冗余到 metadata.doc_tags（写入时打标原则），手动改标走
+    # update_by_query 即时同步，重解析由解析尾段从本列回填。
+    tags = Column(JSON, nullable=True, comment="用户自定义标签（规范化字符串数组）")
+
     deleted_at = Column(DateTime, nullable=True, index=True, comment="软删除时间")
 
     # ========== 生命周期治理（kb-ops B1：Glean 式新鲜度四要素） ==========

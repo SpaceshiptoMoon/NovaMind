@@ -601,6 +601,8 @@ export interface Document {
   file_type: string
   file_size: number
   file_hash: string
+  /** 用户自定义标签（规范化字符串数组，业务分类过滤用） */
+  tags?: string[] | null
   doc_metadata: Record<string, unknown> | null
   chunk_count: number
   token_count: number
@@ -930,6 +932,13 @@ export interface SearchRequest {
   fallback_on_unavailable?: boolean
   use_cache?: boolean
   expansion?: SearchExpansion
+  /** 元数据过滤（pre-filter）；不传等价不过滤（带过滤的检索后端不走缓存） */
+  filters?: SearchFilters
+}
+
+export interface SearchFilters {
+  /** 文档标签过滤（OR 语义：命中任一标签的文档参与召回；空 = 不过滤） */
+  tags?: string[]
 }
 
 export interface SearchResultItem {

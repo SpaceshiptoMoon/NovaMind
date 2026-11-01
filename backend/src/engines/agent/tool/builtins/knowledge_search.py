@@ -239,6 +239,11 @@ class KnowledgeSearchTool(BaseTool):
                                 "description": "Search mode: content_vector (semantic), content_bm25 (keyword), content_hybrid (both, recommended)",
                                 "default": SearchMode.CONTENT_HYBRID.value,
                             },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Filter by document tags (OR semantics; user-assigned labels visible via document_list). Omit to search everything.",
+                            },
                         },
                         "required": ["space_id", "query"],
                     },
@@ -449,6 +454,7 @@ class KnowledgeSearchTool(BaseTool):
             kb_id = args.get("kb_id")
             top_k = args.get("top_k", 5)
             search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
+            tags = args.get("tags") or None
 
             pipeline_cfg = context.get("knowledge_pipeline")
             if pipeline_cfg:
@@ -461,6 +467,7 @@ class KnowledgeSearchTool(BaseTool):
                 top_k=top_k,
                 search_mode=search_mode,
                 kb_id=kb_id,
+                tags=tags,
             )
 
             if not items:
@@ -530,6 +537,7 @@ class KnowledgeSearchTool(BaseTool):
             top_k=top_k,
             search_mode=search_mode,
             kb_ids=kb_ids,
+            tags=args.get("tags") or None,
         )
 
         items = result["items"]

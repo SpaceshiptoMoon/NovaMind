@@ -110,6 +110,42 @@
           <span class="meta-label">解析质量</span>
           <span class="meta-value">无警告</span>
         </div>
+        <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑 -->
+        <div class="meta-item">
+          <span class="meta-label">标签</span>
+          <span v-if="!tagsEditing" class="meta-value tags-value">
+            <template v-if="(document.tags || []).length > 0">
+              <el-tag
+                v-for="t in document.tags"
+                :key="t"
+                size="small"
+                effect="plain"
+                class="tag-chip"
+              >{{ t }}</el-tag>
+            </template>
+            <span v-else class="tags-empty">无</span>
+            <el-button text size="small" class="tags-edit-btn" @click="startEditTags">
+              编辑
+            </el-button>
+          </span>
+          <span v-else class="meta-value tags-value">
+            <el-select
+              v-model="tagsInput"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              placeholder="输入标签回车，可多个"
+              size="small"
+              class="tags-editor"
+              :max-collapse-tags="10"
+            />
+            <el-button size="small" type="primary" :loading="tagsSaving" @click="saveTags">
+              保存
+            </el-button>
+            <el-button size="small" @click="tagsEditing = false">取消</el-button>
+          </span>
+        </div>
       </div>
 
       <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
@@ -502,6 +538,39 @@ const narrativeGenerating = ref(false)
 // 轮询句柄：running 状态下 3s 间隔查询直至 completed/failed；卸载时清理
 let narrativePollTimer: ReturnType<typeof setTimeout> | null = null
 
+// 用户自定义标签：行内编辑状态（保存走 PUT tags，后端规范化并即时同步 ES chunk）
+const tagsEditing = ref(false)
+const tagsSaving = ref(false)
+const tagsInput = ref<string[]>([])
+
+function startEditTags() {
+  tagsInput.value = [...(document.value?.tags || [])]
+  tagsEditing.value = true
+}
+
+async function saveTags() {
+  if (!document.value) return
+  tagsSaving.value = true
+  try {
+    const data = await documentApi.setDocumentTags(
+      spaceId.value,
+      kbId.value,
+      document.value.id,
+      tagsInput.value,
+    )
+    document.value.tags = data.tags
+    tagsEditing.value = false
+    ElMessage.success('标签已保存，检索过滤即时生效')
+  } catch (err: unknown) {
+    const message =
+      (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+        ?.message || '标签保存失败'
+    ElMessage.error(message)
+  } finally {
+    tagsSaving.value = false
+  }
+}
+
 const isVideoDoc = computed(() =>
   VIDEO_FILE_TYPES.has((document.value?.file_type || '').toLowerCase()),
 )
@@ -715,6 +784,30 @@ function maybeAutoExpandTimeline() {
 .quality-warnings {
   color: var(--color-warning, #b45309);
   cursor: help;
+}
+
+/* 标签行：展示态 tag 排布 + 行内编辑态控件 */
+.tags-value {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-chip {
+  margin-right: 2px;
+}
+
+.tags-empty {
+  color: var(--color-text-muted);
+}
+
+.tags-edit-btn {
+  padding: 0 4px;
+}
+
+.tags-editor {
+  min-width: 220px;
 }
 
 /* ===== Pipeline Timeline Section ===== */

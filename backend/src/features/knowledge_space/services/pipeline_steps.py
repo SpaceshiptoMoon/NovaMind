@@ -308,7 +308,13 @@ def build_es_chunks(
                 slot_to_anchor_position[meta["section_slot"]] = pos
 
     for i, (text, meta) in enumerate(chunk_items):
-        chunk_meta: dict[str, Any] = {"content_hash": document.file_hash}
+        # doc_tags：文档级用户标签冗余到每个 chunk（写入时打标原则）——检索侧
+        # pre-filter 直接按 chunk 命中，无需回表；手动改标走 update_by_query
+        # 即时刷新（tag_service），重解析经此处从文档行回填不丢标签。
+        chunk_meta: dict[str, Any] = {
+            "content_hash": document.file_hash,
+            "doc_tags": list(getattr(document, "tags", None) or []),
+        }
         if is_text:
             chunk_meta.update({
                 "parser": parse_metadata.get("parser", ""),

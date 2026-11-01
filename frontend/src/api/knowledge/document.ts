@@ -159,6 +159,21 @@ export const documentApi = {
     )
   },
 
+  /** 设置文档标签（整体替换；后端规范化并即时同步该文档全部 ES chunk） */
+  setDocumentTags(spaceId: number, kbId: number, docId: number, tags: string[]) {
+    return request.put<{ document_id: number; kb_id: number; tags: string[] }>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/tags`,
+      { tags },
+    )
+  },
+
+  /** 聚合知识库标签（KB 级作用域，标签云/检索筛选器数据源） */
+  getKbTags(spaceId: number, kbId: number) {
+    return request.get<{ kb_id: number; total: number; items: { tag: string; count: number }[] }>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/tags`,
+    )
+  },
+
   /** 获取文档封面图 Blob URL（图片类文档预览用，调用方负责 revokeObjectURL） */
   async getDocumentImage(spaceId: number, kbId: number, docId: number): Promise<string> {
     const blob = await request.download(
