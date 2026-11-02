@@ -427,21 +427,6 @@ async def process_document_task(
                     object_name=storage_info.get("minio_object_name"),
                     dest_path=downloaded_path,
                 )
-            except Exception as dl_exc:  # noqa: BLE001
-                # 对象丢失（DB 记录在、MinIO 对象不在，如存储被清理）：重试不可能
-                # 让键名长出来——直接永久终判给直达文案，不烧 arq 重试次数
-                #（doc 96 实测：NoSuchKey 被当可重试错误，白烧 max_tries 次）。
-                # 与上方「缺定位信息」守卫同款永久语义。getattr 判定避开 S3Error
-                # 的模块级 import（本文件下载段为懒 import 风格）。
-                if getattr(dl_exc, "code", None) in ("NoSuchKey", "NoSuchBucket"):
-                    raise PermanentProcessingError(
-                        document_id=document_id,
-                        error_message=(
-                            f"文档 {document.filename} 的存储对象不存在"
-                            "（可能已被清理），请重新上传该文档"
-                        ),
-                    ) from dl_exc
-                raise
                 if downloaded_bytes <= 0:
                     raise DocumentProcessingError(
                         document_id=document_id,
@@ -462,6 +447,23 @@ async def process_document_task(
                     model_config_port=bg_model_config_port,
                     file_path=downloaded_path,
                 )
+            except Exception as dl_exc:  # noqa: BLE001
+                # 对象丢失（DB 记录在、MinIO 对象不在，如存储被清理）：重试不可能
+                # 让键名长出来——直接永久终判给直达文案，不烧 arq 重试次数
+                #（doc 96 实测：NoSuchKey 被当可重试错误，白烧 max_tries 次）。
+                # 与上方「缺定位信息」守卫同款永久语义。getattr 判定避开 S3Error
+                # 的模块级 import（本文件下载段为懒 import 风格）。
+                # 注意：下载与 pipeline 共用本 except，非 S3 错误原样 re-raise，
+                # MemoryError 池重建等下游分流不受影响。
+                if getattr(dl_exc, "code", None) in ("NoSuchKey", "NoSuchBucket"):
+                    raise PermanentProcessingError(
+                        document_id=document_id,
+                        error_message=(
+                            f"文档 {document.filename} 的存储对象不存在"
+                            "（可能已被清理），请重新上传该文档"
+                        ),
+                    ) from dl_exc
+                raise
             finally:
                 Path(downloaded_path).unlink(missing_ok=True)
 
