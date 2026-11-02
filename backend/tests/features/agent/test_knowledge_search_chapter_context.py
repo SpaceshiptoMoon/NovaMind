@@ -14,6 +14,8 @@ from novamind.engines.agent.tool.builtins.knowledge_search import (
     _fmt_ts,
     _format_hits_with_chapters,
 )
+from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.ports import KnowledgePipelineConfig
 
 
 def _item(
@@ -164,8 +166,8 @@ class TestPipelineSearchChapterOutput:
         out = await tool._pipeline_search(
             _Port(),
             {"space_id": 38, "query": "黑龙", "top_k": 5},
-            {},
-            {"user_id": 1},
+            KnowledgePipelineConfig(),
+            ToolContext(db_session=None, user_id=1, agent_id=1),
         )
         payload = json.loads(out)
         assert payload["total"] == 2

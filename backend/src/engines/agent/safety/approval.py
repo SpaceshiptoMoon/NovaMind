@@ -1,8 +1,7 @@
 """危险操作审批 hook：code_execution 执行前检测，HARDLINE 直接拒绝；DANGEROUS 异步审批，deny/超时拒绝，无审批通道（非 WS）告警放行。"""
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from novamind.engines.agent.safety.patterns import detect_dangerous_code
@@ -10,6 +9,12 @@ from novamind.engines.agent.tool.definition import ToolDefinition
 from novamind.engines.agent.tool.hooks import ToolHook
 from novamind.engines.agent.tool.result import ToolResult
 from novamind.shared.logging import get_logger
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING 引用防运行时环：本模块经 safety/__init__ 连带加载，而
+    # ToolContext（tool/context.py）真实 import approval_registry 时会触发
+    # 父包 __init__ 回头加载本模块
+    from novamind.engines.agent.tool.context import ToolContext
 
 logger = get_logger(__name__)
 
@@ -38,7 +43,7 @@ class ApprovalHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """执行前危险检测：HARDLINE 拒绝；DANGEROUS 异步审批，deny/超时拒绝，无通道告警放行。
 
@@ -64,8 +69,8 @@ class ApprovalHook(ToolHook):
         if level == "hardline":
             raise ApprovalRejectedError(f"已阻止危险操作：{desc}")
         # E5: DANGEROUS → WS 异步审批（若有审批通道），否则告警放行
-        registry = context.get("approval_registry")
-        event_sink: Callable | None = context.get("event_sink")
+        registry = context.approval_registry
+        event_sink = context.event_sink
         if not registry or not event_sink:
             logger.warning(
                 "检测到危险操作但无审批通道，告警放行",
@@ -100,7 +105,7 @@ class ApprovalHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """执行后钩子：原样透传工具结果，本 hook 无后处理语义。
 

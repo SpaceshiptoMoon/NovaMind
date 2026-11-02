@@ -7,6 +7,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition
 from novamind.engines.agent.tool.result import ToolResult
 from novamind.shared.logging import get_logger
@@ -27,7 +28,7 @@ class ToolHook(ABC):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """
         执行前钩子
@@ -44,7 +45,7 @@ class ToolHook(ABC):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """
         执行后钩子
@@ -62,7 +63,7 @@ class LoggingHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """记录工具调用开始日志；不修改参数。
 
@@ -86,7 +87,7 @@ class LoggingHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """记录工具调用完成日志（状态与耗时）；不修改结果。
 
@@ -125,7 +126,7 @@ class ToolResultSanitizeHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """前置无操作，原样放行。
 
@@ -144,7 +145,7 @@ class ToolResultSanitizeHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """转义工具结果中的 <system- 前缀（含 '<' 才处理，快路径零开销）。
 
@@ -181,7 +182,7 @@ class ResultTruncationHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """前置无操作，原样放行。
 
@@ -200,7 +201,7 @@ class ResultTruncationHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """结果超上限时硬截断并追加截断标记，metadata 记录原长度。
 
@@ -236,7 +237,7 @@ class ResultBudgetHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """前置无操作，原样放行。
 
@@ -255,7 +256,7 @@ class ResultBudgetHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """结果超阈值时仅在 metadata 标记 oversized 并生成行边界预览，不截断正文。
 
@@ -308,7 +309,7 @@ class ToolOutputBudgetHook(ToolHook):
         self,
         tool: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> dict[str, Any] | None:
         """前置无操作，原样放行。
 
@@ -327,7 +328,7 @@ class ToolOutputBudgetHook(ToolHook):
         tool: ToolDefinition,
         arguments: dict[str, Any],
         result: ToolResult,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """输出超预算时 head/tail 双端截断（吸附行边界）并注明省略量；豁免工具原样透传。
 

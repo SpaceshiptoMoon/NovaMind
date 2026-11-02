@@ -10,6 +10,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.usage import CanonicalUsage, normalize_usage
 from novamind.shared.logging import get_logger
@@ -41,7 +42,7 @@ class PlanningFlow:
         llm_client: BaseLLM,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        context: dict[str, Any],
+        context: ToolContext,
         user_query: str,
         max_tokens: int = 4096,
         temperature: float = 0.7,

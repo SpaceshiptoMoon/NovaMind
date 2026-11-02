@@ -1,75 +1,68 @@
-"""子 agent 客户端工厂（_subagent_client_factory）回归测试。
+"""子 agent 客户端工厂（context_assembly.build_llm_vlm_client_factory）回归测试。
 
-历史 bug：方法被误叠 ``@staticmethod`` 且签名保留 ``(self, user_id)``，
-实例访问 ``self._subagent_client_factory(user_id)`` 时实参 user_id 落到形参
-self、真形参 user_id 缺参，Agent 对话在构造 SubAgentRunner 时直接
-TypeError（端到端实测暴露，单测此前未覆盖该工厂）。
+历史 bug：旧私有方法 ``AgentChatService._subagent_client_factory`` 被误叠
+``@staticmethod`` 且签名保留 ``(self, user_id)``，实例访问时实参 user_id 落到
+形参 self、真形参 user_id 缺参，Agent 对话在构造 SubAgentRunner 时直接
+TypeError（端到端实测暴露，单测此前未覆盖该工厂）。重构后工厂收口到
+``context_assembly.build_llm_vlm_client_factory``。
 
 契约：引擎（SubAgentRunner）只收 ``async factory(model) -> 客户端``；
-本工厂由业务侧闭包 user_id，LLM 优先、失败回退 VLM。
+user_id 由业务侧闭包绑定，LLM 优先、失败回退 VLM。
 """
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.context_assembly import (
+    build_llm_vlm_client_factory,
+)
 
 pytestmark = pytest.mark.unit
 
 
-def _build_service(llm, vlm) -> AgentChatService:
-    """绕过 __init__ 构造最小 ChatService：只注入模型配置服务的双取客户端方法。"""
-    svc = AgentChatService.__new__(AgentChatService)
-    svc.model_config_service = SimpleNamespace(
+def _build_factory(llm, vlm, user_id: int = 7):
+    """构造被测工厂：ModelConfigService 桩只注入双取客户端方法，user_id 绑定 7。"""
+    mcs = SimpleNamespace(
         get_llm_client_by_model=AsyncMock(return_value=llm),
         get_vlm_client_by_model=AsyncMock(return_value=vlm),
     )
-    return svc
+    return build_llm_vlm_client_factory(mcs, user_id), mcs
 
 
 @pytest.mark.asyncio
 async def test_factory_binds_user_and_returns_llm_client():
-    """实例调用传 user_id 拿到 async 工厂；factory(model) 优先返回 LLM 客户端。"""
+    """factory(model) 优先返回 LLM 客户端，且以绑定的 user_id 调模型配置服务。"""
     llm, vlm = object(), object()
-    svc = _build_service(llm, vlm)
-
-    factory = svc._subagent_client_factory(7)
+    factory, mcs = _build_factory(llm, vlm)
     assert callable(factory)
 
     client = await factory("glm-5.3-flash")
     assert client is llm
-    svc.model_config_service.get_llm_client_by_model.assert_awaited_once_with(
-        7, "glm-5.3-flash"
-    )
+    mcs.get_llm_client_by_model.assert_awaited_once_with(7, "glm-5.3-flash")
 
 
 @pytest.mark.asyncio
 async def test_factory_falls_back_to_vlm_on_llm_failure():
     """LLM 取客户端失败时回退 VLM 客户端（业务侧降级策略不进引擎）。"""
     llm, vlm = object(), object()
-    svc = _build_service(llm, vlm)
-    svc.model_config_service.get_llm_client_by_model = AsyncMock(
-        side_effect=RuntimeError("额度不可用")
-    )
+    factory, mcs = _build_factory(llm, vlm)
+    mcs.get_llm_client_by_model = AsyncMock(side_effect=RuntimeError("额度不可用"))
 
-    client = await svc._subagent_client_factory(7)("qwen3.8-27b")
+    client = await factory("qwen3.8-27b")
     assert client is vlm
-    svc.model_config_service.get_vlm_client_by_model.assert_awaited_once_with(
-        7, "qwen3.8-27b"
-    )
+    mcs.get_vlm_client_by_model.assert_awaited_once_with(7, "qwen3.8-27b")
 
 
-def test_factory_signature_is_instance_method_with_user_id():
-    """签名守卫：必须为 (self, user_id) 实例方法形态，防再次误叠 @staticmethod。
+def test_factory_signature_takes_model_and_binds_user_id():
+    """签名守卫：工厂构造收 (model_config_service, user_id)，产物闭包只暴露 (model)。
 
-    误叠后实例访问只收到一个位置实参（user_id 落到 self），运行期以
-    "missing user_id" TypeError 暴露；此处用签名静态断言提前拦截。
+    历史回归：旧实现误叠 @staticmethod 时实参错位（user_id 落 self）以
+    TypeError 暴露；新契约下对构造签名与产物工厂形参做静态断言提前拦截。
     """
     import inspect
 
-    params = list(inspect.signature(AgentChatService._subagent_client_factory).parameters)
-    assert params == ["self", "user_id"]
-    assert not isinstance(
-        inspect.getattr_static(AgentChatService, "_subagent_client_factory"),
-        staticmethod,
-    )
+    params = list(inspect.signature(build_llm_vlm_client_factory).parameters)
+    assert params == ["model_config_service", "user_id"]
+    factory, _ = _build_factory(object(), object())
+    assert list(inspect.signature(factory).parameters) == ["model"]
+    assert not inspect.ismethod(factory)

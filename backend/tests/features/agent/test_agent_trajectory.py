@@ -12,7 +12,7 @@ import pytest
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.features.agent.schemas.agent_schema import SystemPromptResponse
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.chat_service import AgentChatService, TurnPersistence
 from novamind.shared.ai_models.base_model import (
     BaseLLM,
     LLMResponseWithTools,
@@ -96,8 +96,8 @@ async def test_handle_assistant_tool_calls_persists_extra_usage() -> None:
         "duration_ms": 250,
     })
     conv = SimpleNamespace(id=7)
-    context: dict = {"current_iteration": 1}
-    await svc._handle_assistant_tool_calls(event, conv, context, "决策文本", None)
+    turn = TurnPersistence(iteration=1)
+    await svc._handle_assistant_tool_calls(event, conv, turn, "决策文本", None)
     assert captured["extra"]["usage"]["total_tokens"] == 12
     assert captured["extra"]["duration_ms"] == 250
     assert captured["extra"]["tool_calls"]
@@ -138,7 +138,7 @@ async def test_get_system_prompt_returns_full_prompt() -> None:
 @pytest.mark.asyncio
 async def test_handle_plan_created_persists_role_plan() -> None:
     """_handle_plan_created 落 role='plan' 消息，extra.plan 存 title/steps/step_count/statuses。
-    并在 context 建立 plan_state/plan_msg_id 供后续 plan.* 事件推进终态。
+    并在 turn 建立 plan_state/plan_msg_id 供后续 plan.* 事件推进终态。
     """
     svc = AgentChatService.__new__(AgentChatService)
     captured: dict = {}
@@ -152,15 +152,15 @@ async def test_handle_plan_created_persists_role_plan() -> None:
         "title": "调研计划", "steps": ["步骤1", "步骤2", "步骤3"], "step_count": 3,
     })
     conv = SimpleNamespace(id=7)
-    context: dict = {}
-    await svc._handle_plan_created(event, conv, context)
+    turn = TurnPersistence()
+    await svc._handle_plan_created(event, conv, turn)
     assert captured["role"] == "plan"
     assert captured["content"] == "调研计划"
     assert captured["extra"]["plan"]["step_count"] == 3
     assert len(captured["extra"]["plan"]["steps"]) == 3
     assert captured["extra"]["plan"]["statuses"] == ["not_started"] * 3
-    assert context["plan_msg_id"] == 101
-    assert context["plan_state"]["statuses"] == ["not_started"] * 3
+    assert turn.plan_msg_id == 101
+    assert turn.plan_state["statuses"] == ["not_started"] * 3
 
 
 @pytest.mark.asyncio

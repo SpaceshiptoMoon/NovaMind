@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -72,7 +73,7 @@ class PlanOutputTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """按步骤号从 agent_messages 表取回该步落库全文，超长按 offset/limit 切片。
 
@@ -92,8 +93,8 @@ class PlanOutputTool(BaseTool):
         if not isinstance(step, int) or step < 1:
             return json.dumps({"error": "step 必须为从 1 开始的整数"})
 
-        conversation_id = context.get("conversation_id")
-        db = context.get("db_session")
+        conversation_id = context.conversation_id
+        db = context.db_session
         if not conversation_id or not db:
             return json.dumps({"error": "无法确定会话或数据库不可用"})
 
@@ -105,7 +106,7 @@ class PlanOutputTool(BaseTool):
         # 用户可借自家 agent 读他人会话的步骤产出）。越权与未找到同文案防探测。
         sess = await db.execute(select(AgentSession).where(AgentSession.id == conversation_id))
         session_row = sess.scalar_one_or_none()
-        if not session_row or session_row.user_id != context.get("user_id"):
+        if not session_row or session_row.user_id != context.user_id:
             return json.dumps({"error": f"步骤 {step} 无已落库产出"})
 
         # plan_step_index 存 0-based 下标（planning_flow 循环变量 i），工具对模型暴露

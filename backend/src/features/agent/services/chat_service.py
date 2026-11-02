@@ -7,6 +7,7 @@ import asyncio
 import base64
 import json
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
@@ -18,7 +19,6 @@ from novamind.engines.agent.memory.context_scrubber import StreamingContextScrub
 from novamind.engines.agent.memory.interfaces import MemorySnapshot
 from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
-from novamind.engines.agent.tool.base import ToolContext
 from novamind.engines.search.ports import WebSearchPort
 from novamind.features.agent.attachments.repository import ChatAttachmentRepository
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
@@ -36,6 +36,11 @@ from novamind.features.agent.schemas.agent_schema import (
     SystemPromptResponse,
 )
 from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.context_assembly import (
+    ChatPorts,
+    build_tool_context,
+    filter_visible_mcp_ids,
+)
 from novamind.features.agent.services.host_knowledge_search import (
     HostKnowledgeSearchPort,
 )
@@ -70,6 +75,33 @@ def _agent_memory_flag(key: str) -> bool:
 # 本地定义避免 features → engines 仅为此拉 import）
 NOT_STARTED_VALUE = "not_started"
 IN_PROGRESS_VALUE = "in_progress"
+
+
+@dataclass
+class TurnPersistence:
+    """单次对话请求的落库状态板（单聊/群聊共用，不进 ToolContext）。
+
+    接替原 context dict 上的 11 个服务层状态 key（current_iteration/plan_*/
+    assistant_msg_id/tc_*）——这些是事件处理与持久化的中间状态，工具与引擎
+    均不可见，与端口容器（ToolContext）职责正交。
+    """
+
+    iteration: int | None = None
+    """当前 ReAct 轮号（1-based），随带 iteration 的事件推进，落库打标用。"""
+    assistant_msg_id: int | None = None
+    """本轮 assistant 决策消息 id（tool_call 记录关联锚点）。"""
+    tool_call_ids: dict[str, int] = field(default_factory=dict)
+    """call_id → agent_tool_calls.id 映射（tool_result 回写关联）。"""
+    plan_msg_id: int | None = None
+    """plan 消息 id（计划状态持久化锚点，仅计划模式）。"""
+    plan_state: dict[str, Any] | None = None
+    """计划单一事实源（title/steps/statuses/summary），经 update_extra 持久化。"""
+    plan_step_index: int | None = None
+    """当前执行中的计划步骤下标。"""
+    plan_finalizing: bool = False
+    """plan.completed 已发出：后续 done 为外层收尾（落最终 summary）。"""
+    plan_iter_offset: int = 0
+    """计划模式轮号偏移（内层引擎每步从 1 重计数，加偏移全局连续化）。"""
 
 
 class AgentChatService:
@@ -191,7 +223,6 @@ class AgentChatService:
             memory_store = self._memory_store_port
             memory_search = self._memory_search_port
             prompt_provider = self._prompt_provider
-            knowledge_search_port = self._knowledge_search_port
 
             # 创建 MemoryManager（每请求实例）
             memory_manager = await self._create_memory_manager(
@@ -227,87 +258,38 @@ class AgentChatService:
                     "created_at": datetime.now(UTC).isoformat(),
                 })
 
-            context = ToolContext(
-                db_session=self.db,
+            # 工具执行上下文：单点装配（context_assembly，单聊/群聊共用）。
+            # 端口条件注入（web_search 按勾选、local_workspace 按会话绑定、
+            # subagent/research 按勾选）、知识管线配置、embedding resolver
+            # 与 memory 上限全部收敛在装配函数内；服务层落库状态走 turn
+            # （TurnPersistence），不再混入 context。
+            turn = TurnPersistence()
+            context = await build_tool_context(
+                self.db,
                 user_id=user_id,
-                agent_id=agent_id,
+                agent=agent,
+                session=conv,
+                conversation_id=conv.id,
                 session_id=conv.session_id,
-            ).to_dict()
-            context["conversation_id"] = conv.id
-            context["tool_result_turn_budget"] = 100_000
-            # 引擎端口注入（供 builtin 工具经 context 取用）
-            # web_search_port：装配点已按数据库默认搜索引擎(is_primary)构造注入；
-            # 仅当 Agent 勾选 web_search 工具时下发给引擎
-            context["web_search_port"] = (
-                self._web_search_port
-                if "web_search" in (agent.enabled_tools or [])
-                else None
-            )
-            context["knowledge_search_port"] = knowledge_search_port
-            # 本地工作区端口：会话绑定了工作区即注入（绑定本身即授权，
-            # 不要求 agent 单独勾选——本地文件夹模式下工具默认必带）
-            if (conv.extra_config or {}).get("workspace"):
-                from novamind.features.agent.services.local_workspace.assembly import (
-                    build_local_workspace_port,
-                )
-
-                context["local_workspace_port"] = await build_local_workspace_port(
-                    self.db, user_id, conv
-                )
-            else:
-                context["local_workspace_port"] = None
-            # 知识检索管线配置（批2）：会话级知识绑定 + 会话模型 LLM。
-            # llm_client 是 _build_context 已解析的会话模型客户端——改写/打分与主回答
-            # 同模型，修掉 QA「改写固定用用户默认模型」的错位；会话无绑定时配置仍注入
-            # （管线质量层默认生效），仅范围约束为不限定。
-            session_bindings = (conv.extra_config or {}).get("knowledge_bindings")
-            context["knowledge_pipeline"] = {
-                "llm_client": llm_client,
-                "knowledge_bindings": session_bindings,
-                "conversation_history": [
+                model=model,
+                llm_client=llm_client,
+                conversation_history=[
                     {"role": m.get("role"), "content": str(m.get("content") or "")}
                     for m in messages[-6:]
                     if m.get("role") in ("user", "assistant")
                 ],
-            }
-            context["attachment_read_port"] = self._attachment_read_port
-            context["memory_store_port"] = memory_store
-            context["memory_search_port"] = memory_search
-            context["embedding_client_resolver"] = self._build_embedding_resolver(user_id)
-
-            # E6 子 agent 委派：Agent 勾选 task 工具时注入 SubAgentRunner
-            if "task" in (agent.enabled_tools or []):
-                from novamind.engines.agent.subagent import SubAgentRunner
-
-                context["subagent_runner"] = SubAgentRunner(
-                    agent_engine=self.agent_engine,
-                    tool_executor=self.agent_engine.tool_executor,
-                    client_factory=self._subagent_client_factory(user_id),
-                    model=model,
-                    enabled_tools=agent.enabled_tools or [],
-                    enabled_mcp_ids=await self._filter_visible_mcp_ids(
-                        user_id, agent.enabled_mcp_servers or []
-                    ),
-                    parent_context=context,
-                )
-            else:
-                context["subagent_runner"] = None
-
-            # 深度研究（批3）：Agent 勾选 research 工具时注入请求级服务工厂。
-            # 每次调用构造独立 DeepResearchService：db session 用全局工厂新开
-            # （研究内部 rollback/错误恢复不得连坐外层 chat 事务）、web 适配器
-            # 按请求 cleanup；space_id=None 时内部源按无空间处理（SearchService
-            # 层拦截，内部检索跳过只走外部）。
-            context["research_service_factory"] = (
-                await self._build_research_service_factory()
-                if "research" in (agent.enabled_tools or [])
-                else None
+                ports=ChatPorts(
+                    web_search_port=self._web_search_port,
+                    knowledge_search_port=self._knowledge_search_port,
+                    memory_store_port=self._memory_store_port,
+                    memory_search_port=self._memory_search_port,
+                    attachment_read_port=self._attachment_read_port,
+                ),
+                model_config_service=self.model_config_service,
+                agent_engine=self.agent_engine,
+                approval_registry=approval_registry,
+                event_sink=event_sink,
             )
-
-            # E5 异步审批：注入 approval_registry + event_sink（WS 端点传入，
-            # ApprovalHook DANGEROUS 时发 approval_request + 等用户决策）
-            context["approval_registry"] = approval_registry
-            context["event_sink"] = event_sink
 
             full_response = ""
             full_reasoning = ""
@@ -392,33 +374,33 @@ class AgentChatService:
                         # plan 模式 iteration 全局连续化：内层引擎每步从 1 重计数，
                         # 加 plan 步偏移后写回 event.data——落库与前端收到的事件同源同值，
                         # 前端按 iteration 分组不再跨计划步碰撞。偏移仅在内层 done 时推进。
-                        event.data["iteration"] = context.get("plan_iter_offset", 0) + (raw_iter or 0)
-                    context["current_iteration"] = event.data.get("iteration")
+                        event.data["iteration"] = turn.plan_iter_offset + (raw_iter or 0)
+                    turn.iteration = event.data.get("iteration")
                 if event.event_type == "plan.created":
                     # 计划生成：落库 role='plan' 消息（extra.plan 存 title/steps），
-                    # 并在 context 建立 plan_state 单一事实源——后续 plan.* 事件推进
+                    # 并在 turn 建立 plan_state 单一事实源——后续 plan.* 事件推进
                     # statuses，经 update_extra 持久化终态（历史回放可还原进度）
-                    await self._handle_plan_created(event, conv, context)
+                    await self._handle_plan_created(event, conv, turn)
                     yield self._emit("plan.created", event.data)
                 elif event.event_type == "plan.step_started":
-                    context["plan_step_index"] = event.data.get("step_index")
-                    await self._apply_plan_step_status(context, event.data.get("step_index"), IN_PROGRESS_VALUE)
+                    turn.plan_step_index = event.data.get("step_index")
+                    await self._apply_plan_step_status(turn, event.data.get("step_index"), IN_PROGRESS_VALUE)
                     yield self._emit("plan.step_started", event.data)
                 elif event.event_type == "plan.step_completed":
-                    await self._apply_plan_step_status(context, event.data.get("step_index"), "completed")
+                    await self._apply_plan_step_status(turn, event.data.get("step_index"), "completed")
                     yield self._emit("plan.step_completed", event.data)
                 elif event.event_type == "plan.step_failed":
-                    await self._apply_plan_step_status(context, event.data.get("step_index"), "blocked")
+                    await self._apply_plan_step_status(turn, event.data.get("step_index"), "blocked")
                     yield self._emit("plan.step_failed", event.data)
                 elif event.event_type == "plan.completed":
                     # 外层 done 前置标志：plan 模式下区分内层/外层 done，外层才落最终 summary；
                     # 同时把 summary/interrupted 写入 plan_state 持久化（计划终态）
-                    state = context.get("plan_state")
+                    state = turn.plan_state
                     if state is not None:
                         state["summary"] = event.data.get("summary", "")
                         state["interrupted"] = bool(event.data.get("interrupted"))
-                        await self._persist_plan_state(context)
-                    context["plan_finalizing"] = True
+                        await self._persist_plan_state(turn)
+                    turn.plan_finalizing = True
                     yield self._emit("plan.completed", event.data)
                 elif event.event_type.startswith("plan."):
                     yield self._emit(event.event_type, event.data)
@@ -449,17 +431,17 @@ class AgentChatService:
                     iteration_text = full_response[iteration_start:]
                     iteration_reasoning = full_reasoning[iteration_reasoning_start:]
                     await self._handle_assistant_tool_calls(
-                        event, conv, context, iteration_text, iteration_reasoning
+                        event, conv, turn, iteration_text, iteration_reasoning
                     )
                     iteration_start = len(full_response)
                     iteration_reasoning_start = len(full_reasoning)
                     yield self._emit("assistant_tool_calls", event.data)
                 elif event.event_type == "tool_call":
-                    await self._handle_tool_call(event, user_msg, conv, context)
+                    await self._handle_tool_call(event, user_msg, conv, turn)
                     yield self._emit("tool_call", event.data)
 
                 elif event.event_type == "tool_result":
-                    await self._handle_tool_result(event, conv, context)
+                    await self._handle_tool_result(event, conv, turn)
                     self._extract_sources(event, collected_sources)
                     yield self._emit("tool_result", event.data)
 
@@ -481,7 +463,7 @@ class AgentChatService:
                     # plan 模式内层 ReAct 的 done：先 flush 再切片落库该步结论文本
                     # （role='assistant' + extra.plan_step_index），推进迭代偏移并按步
                     # 重置累积器；只有 plan.completed 之后的 done（plan_finalizing）才落最终 summary
-                    if plan_mode and not context.get("plan_finalizing"):
+                    if plan_mode and not turn.plan_finalizing:
                         remaining = scrubber.flush()
                         if remaining:
                             full_response += remaining
@@ -492,9 +474,9 @@ class AgentChatService:
                         step_reasoning = full_reasoning[iteration_reasoning_start:] or None
                         if event.data.get("truncated", False):
                             step_text += "\n\n[本步因达到迭代上限被截断]"
-                        await self._handle_plan_step_result(conv, context, step_text, step_reasoning)
+                        await self._handle_plan_step_result(conv, turn, step_text, step_reasoning)
                         # 迭代偏移推进 + 累积器按步重置（防跨步串文本 + 内存有界）
-                        context["plan_iter_offset"] = context.get("current_iteration", 0)
+                        turn.plan_iter_offset = turn.iteration or 0
                         full_response = ""
                         full_reasoning = ""
                         iteration_start = 0
@@ -509,7 +491,7 @@ class AgentChatService:
                         full_reasoning += remaining_r
                     if event.data.get("truncated", False):
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
-                    if plan_mode and context.get("plan_finalizing"):
+                    if plan_mode and turn.plan_finalizing:
                         # 外层 done：最终回答用 PlanningFlow _finalize 的 summary，
                         # 而非累积切片（各步 ReAct 文本已由 assistant_tool_calls 落决策消息）
                         final_text = event.data.get("full_response", "")
@@ -527,7 +509,7 @@ class AgentChatService:
                         event, conv, content, final_text,
                         reasoning=final_reasoning,
                         sources=collected_sources or None,
-                        iteration=context.get("current_iteration"),
+                        iteration=turn.iteration,
                     )
                     # E1 可观测性：done 加 cost_usd + 写 agent_usage 表
                     done_data = await self._record_usage(
@@ -657,22 +639,6 @@ class AgentChatService:
             memory_on_turn_done=_agent_memory_flag("on_turn_done"),
         )
 
-    def _subagent_client_factory(self, user_id: int):
-        """构造子 agent 客户端工厂（业务侧闭包用户身份与 LLM→VLM 兜底策略）。
-
-        引擎（SubAgentRunner）只收 ``async factory(model) -> 客户端``；
-        凭证解析与降级策略属业务，不进引擎接口。
-        """
-        mcs = self.model_config_service
-
-        async def factory(model: str):
-            try:
-                return await mcs.get_llm_client_by_model(user_id, model)
-            except Exception:
-                return await mcs.get_vlm_client_by_model(user_id, model)
-
-        return factory
-
     async def _build_memory_reconciler(
         model_config_service: ModelConfigService,
         user_id: int,
@@ -755,46 +721,6 @@ class AgentChatService:
             owner_agent_id=agent_id,
         )
 
-    def _build_embedding_resolver(self, user_id: int):
-        """构造 embedding 客户端 resolver（供 memory 工具 _index_to_es 经
-        context["embedding_client_resolver"] 调用，与 MemoryManager 的
-        embedding_factory 同源）。"""
-        async def resolver():
-            embedding_model = await self.model_config_service.get_user_default_model_name(
-                user_id, "embedding"
-            )
-            if not embedding_model:
-                raise RuntimeError("未配置 embedding 模型")
-            return await self.model_config_service.get_embedding_client_by_model(
-                user_id, embedding_model
-            )
-        return resolver
-
-    async def _build_research_service_factory(self):
-        """构造 DeepResearchService 工厂（供 research 工具经 context 调用）。
-
-        每次调用构造独立服务实例：db session 用全局工厂新开（研究内部 rollback /
-        错误恢复不得连坐外层 chat 事务）、web 适配器按请求构造、cleanup 统一关闭；
-        ES 客户端经 shared/storage 客户端工厂取单例（与 web 适配层 dependencies 同款装配）。
-        """
-        from novamind.core.database.database import get_session_factory
-        from novamind.shared.storage.client_factory import get_elasticsearch_client
-
-        es_client = await get_elasticsearch_client()
-
-        def factory():
-            from novamind.features.deep_research.services.deep_research_service import (
-                DeepResearchService,
-            )
-
-            return DeepResearchService(
-                get_session_factory()(),
-                model_config_service=self.model_config_service,
-                es_client=es_client,
-            )
-
-        return factory
-
     # ==================== 阶段方法 ====================
 
     async def _prepare(
@@ -838,33 +764,6 @@ class AgentChatService:
         )
 
         return agent, conv, user_msg
-
-    async def _filter_visible_mcp_ids(self, user_id: int, raw_ids: list[int]) -> list[int]:
-        """过滤掉当前用户不可见（他人私有）的 MCP 服务器 id。
-
-        聊天路径的失败方向安全：历史数据可能含越权 id（归属校验前落库），
-        此处静默剔除并告警而非抛错——能力缺失优于杀死进行中的会话。
-
-        Args:
-            user_id: 当前用户 ID。
-            raw_ids: agent 配置的 MCP 服务器 id 列表。
-
-        Returns:
-            仅含可见（自有或系统级）服务器 id 的列表。
-        """
-        if not raw_ids:
-            return []
-        from novamind.features.agent.repository.agent_repository import McpServerRepository
-
-        visible = {s.id for s in await McpServerRepository(self.db).list_by_user(user_id)}
-        filtered = [i for i in raw_ids if i in visible]
-        dropped = [i for i in raw_ids if i not in visible]
-        if dropped:
-            logger.warning(
-                "agent 启用了不可见的 MCP 服务器，已在本次会话中剔除",
-                user_id=user_id, dropped_mcp_ids=dropped,
-            )
-        return filtered
 
     async def _build_context(
         self,
@@ -911,8 +810,8 @@ class AgentChatService:
             if "local_workspace" not in enabled_tools:
                 enabled_tools.append("local_workspace")
         # 归属过滤：他人私有 MCP 服务器不可借用（含其凭证），剔除并告警不抛错
-        enabled_mcp_ids = await self._filter_visible_mcp_ids(
-            user_id, agent.enabled_mcp_servers or []
+        enabled_mcp_ids = await filter_visible_mcp_ids(
+            self.db, user_id, agent.enabled_mcp_servers or []
         )
         tools = (
             tool_executor.resolve_tools_openai_format(enabled_tools, enabled_mcp_ids)
@@ -1601,10 +1500,10 @@ class AgentChatService:
     # ==================== 事件处理 ====================
 
     async def _handle_plan_created(
-        self, event: AgentEvent, conv: AgentSession, context: dict[str, Any]
+        self, event: AgentEvent, conv: AgentSession, turn: TurnPersistence
     ) -> None:
         """处理 plan.created 事件：落库 role='plan' 消息（extra.plan 存计划清单），
-        并在 context 建立 plan_state 单一事实源（statuses 全 not_started）与 plan_msg_id，
+        并在 turn 建立 plan_state 单一事实源（statuses 全 not_started）与 plan_msg_id，
         供后续 plan.* 事件推进状态后经 _persist_plan_state 持久化终态。
         """
         plan = event.data
@@ -1620,8 +1519,8 @@ class AgentChatService:
                 "statuses": [NOT_STARTED_VALUE] * len(steps),
             }},
         )
-        context["plan_msg_id"] = msg.id
-        context["plan_state"] = {
+        turn.plan_msg_id = msg.id
+        turn.plan_state = {
             "title": plan.get("title", ""),
             "steps": steps,
             "step_count": plan.get("step_count", len(steps)),
@@ -1629,31 +1528,31 @@ class AgentChatService:
         }
 
     async def _apply_plan_step_status(
-        self, context: dict[str, Any], step_index: Any, status: str
+        self, turn: TurnPersistence, step_index: Any, status: str
     ) -> None:
         """推进 plan_state 中指定步骤的状态并持久化（step_started/completed/failed 共用）。
 
         Args:
-            context: 执行上下文（含 plan_state/plan_msg_id）。
+            turn: 落库状态板（含 plan_state/plan_msg_id）。
             step_index: 步骤下标；None 或越界时静默跳过（防御畸形事件）。
             status: 目标状态（in_progress/completed/blocked）。
         """
-        state = context.get("plan_state")
+        state = turn.plan_state
         if state is None or not isinstance(step_index, int):
             return
         statuses = state.get("statuses")
         if not isinstance(statuses, list) or step_index < 0 or step_index >= len(statuses):
             return
         statuses[step_index] = status
-        await self._persist_plan_state(context)
+        await self._persist_plan_state(turn)
 
-    async def _persist_plan_state(self, context: dict[str, Any]) -> None:
-        """把 context['plan_state'] 整体写回 plan 消息 extra（statuses/summary 终态）。
+    async def _persist_plan_state(self, turn: TurnPersistence) -> None:
+        """把 turn.plan_state 整体写回 plan 消息 extra（statuses/summary 终态）。
 
         update_extra 是整体替换：调用方必须传完整 plan dict。失败不阻断对话（warning）。
         """
-        plan_msg_id = context.get("plan_msg_id")
-        state = context.get("plan_state")
+        plan_msg_id = turn.plan_msg_id
+        state = turn.plan_state
         if not plan_msg_id or not state:
             return
         try:
@@ -1664,7 +1563,7 @@ class AgentChatService:
     async def _handle_plan_step_result(
         self,
         conv: AgentSession,
-        context: dict[str, Any],
+        turn: TurnPersistence,
         step_text: str,
         step_reasoning: str | None,
     ) -> None:
@@ -1681,8 +1580,8 @@ class AgentChatService:
                 role="assistant",
                 content=step_text or None,
                 reasoning=step_reasoning,
-                extra={"plan_step_index": context.get("plan_step_index")},
-                iteration=context.get("current_iteration"),
+                extra={"plan_step_index": turn.plan_step_index},
+                iteration=turn.iteration,
             )
         except Exception as e:
             logger.warning("计划步骤结论落库失败", conversation_id=conv.id, error=str(e))
@@ -1708,12 +1607,12 @@ class AgentChatService:
         self,
         event: AgentEvent,
         conv: AgentSession,
-        context: dict[str, Any],
+        turn: TurnPersistence,
         iteration_text: str = "",
         iteration_reasoning: str = "",
     ) -> None:
         """处理 assistant_tool_calls 事件：落库「AI 决定调用工具」的 assistant 决策消息，
-        并把 message_id 记入 context，供本轮 tool_call 记录关联（而非挂在 user 消息上）。
+        并把 message_id 记入 turn，供本轮 tool_call 记录关联（而非挂在 user 消息上）。
 
         content 存该轮 AI 真实输出文本（经流级 scrubber 清洗，可能为空），
         reasoning 存该轮思考过程（同轮切片，供前端每步显示 think），
@@ -1733,22 +1632,22 @@ class AgentChatService:
             content=iteration_text or None,
             reasoning=iteration_reasoning or None,
             extra=extra,
-            iteration=context.get("current_iteration"),
+            iteration=turn.iteration,
         )
-        context["assistant_msg_id"] = msg.id
+        turn.assistant_msg_id = msg.id
 
     async def _handle_tool_call(
         self,
         event: AgentEvent,
         user_msg: AgentMessage,
         conv: AgentSession,
-        context: dict[str, Any],
+        turn: TurnPersistence,
     ) -> None:
         """处理 tool_call 事件：保存工具调用记录"""
         call_id = event.data.get("call_id", "")
         # 优先关联到本轮 assistant 决策消息（_handle_assistant_tool_calls 写入）；
         # 缺失时 fallback 到 user 消息，保持旧链路兼容
-        assistant_msg_id = context.get("assistant_msg_id")
+        assistant_msg_id = turn.assistant_msg_id
         tc = await self.tc_repo.create(
             message_id=assistant_msg_id if assistant_msg_id is not None else user_msg.id,
             conversation_id=conv.id,
@@ -1757,19 +1656,19 @@ class AgentChatService:
             tool_source="mcp" if event.data["tool_name"].startswith("mcp__") else "skill" if event.data["tool_name"].startswith("skill__") else "builtin",
             arguments=event.data.get("arguments", {}),
             status="running",
-            iteration=context.get("current_iteration"),
+            iteration=turn.iteration,
         )
-        context[f"tc_{call_id}"] = tc.id
+        turn.tool_call_ids[call_id] = tc.id
 
     async def _handle_tool_result(
         self,
         event: AgentEvent,
         conv: AgentSession,
-        context: dict[str, Any],
+        turn: TurnPersistence,
     ) -> None:
         """处理 tool_result 事件：双路持久化（完整结果 → tool_calls，预览/原文 → messages）"""
         call_id = event.data.get("call_id", "")
-        tc_id = context.get(f"tc_{call_id}")
+        tc_id = turn.tool_call_ids.get(call_id)
         full_result = event.data.get("full_result", "")
         oversized = event.data.get("oversized", False)
 
@@ -1800,7 +1699,7 @@ class AgentChatService:
             content=message_content,
             tool_call_id=call_id,
             tool_name=event.data.get("tool_name"),
-            iteration=context.get("current_iteration"),
+            iteration=turn.iteration,
         )
 
     async def _handle_done(

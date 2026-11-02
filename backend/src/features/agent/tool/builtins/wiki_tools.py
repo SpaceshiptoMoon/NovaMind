@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -310,7 +311,7 @@ class WikiTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """按函数名分发到对应实现；缺 db 会话或 user_id 上下文直接返回错误 JSON。
 
@@ -322,8 +323,8 @@ class WikiTool(BaseTool):
         Returns:
             对应实现的 JSON 输出；未知函数名或缺上下文返回含 error 的 JSON。
         """
-        db = context.get("db_session")
-        user_id = context.get("user_id")
+        db = context.db_session
+        user_id = context.user_id
         if not db or user_id is None:
             return _err("无法访问数据库或用户上下文")
 

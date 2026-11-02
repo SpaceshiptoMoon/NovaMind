@@ -15,6 +15,7 @@ from novamind.engines.agent.retry import (
     is_retryable_error,
     retry_llm_call,
 )
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.shared.ai_models.base_model import BaseLLM
@@ -53,18 +54,24 @@ class AgentEngine:
         tool_executor: ToolExecutor,
         retry_config: RetryConfig | None = None,
         loop_detection: LoopDetectionConfig | None = None,
+        tool_result_turn_budget: int = 100_000,
     ):
-        """注入工具执行器，初始化重试与循环检测配置（均可用默认值）；引擎无状态，LLM 客户端按 run 调用注入。"""
+        """注入工具执行器，初始化重试与循环检测配置（均可用默认值）；引擎无状态，LLM 客户端按 run 调用注入。
+
+        tool_result_turn_budget：单轮工具结果总量预算（字符），超限裁剪最大结果——
+        引擎调参通道，此前误挂在 context dict 上，归位为引擎自身配置。
+        """
         self.tool_executor = tool_executor
         self._retry_config = retry_config or RetryConfig()
         self._loop_detection = loop_detection
+        self._tool_result_turn_budget = tool_result_turn_budget
 
     async def run(
         self,
         llm_client: BaseLLM,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        context: dict[str, Any],
+        context: ToolContext,
         max_iterations: int = 10,
         max_tokens: int = 4096,
         temperature: float = 0.7,
@@ -325,7 +332,7 @@ class AgentEngine:
         llm_client: BaseLLM,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        context: dict[str, Any],
+        context: ToolContext,
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -409,7 +416,7 @@ class AgentEngine:
         llm_client: BaseLLM,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
-        context: dict[str, Any],
+        context: ToolContext,
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -587,7 +594,7 @@ class AgentEngine:
         tool_name: str,
         raw_arguments: Any,
         call_id: str,
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> tuple[AgentEvent, AgentEvent, dict[str, Any], dict[str, Any]]:
         """执行单个工具调用（含 JSON 解析守卫 + 参数校验 + 异常隔离）
 
@@ -660,7 +667,7 @@ class AgentEngine:
     async def _process_tool_calls(
         self,
         tool_calls: list[Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> tuple[list[AgentEvent], dict[str, Any], list[dict[str, Any]]]:
         """处理非流式路径的工具调用（并行执行，单工具故障隔离）"""
         import uuid
@@ -692,7 +699,7 @@ class AgentEngine:
                 assistant_tool_calls.append(tc_dict)
                 tool_result_messages.append(tool_msg)
 
-        self._apply_turn_budget(tool_result_messages, context.get("tool_result_turn_budget", 100_000))
+        self._apply_turn_budget(tool_result_messages, self._tool_result_turn_budget)
 
         assistant_msg = {"role": "assistant", "content": None, "tool_calls": assistant_tool_calls}
         return events, assistant_msg, tool_result_messages
@@ -700,7 +707,7 @@ class AgentEngine:
     async def _process_tool_calls_collected(
         self,
         collected: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> tuple[list[AgentEvent], dict[str, Any], list[dict[str, Any]]]:
         """处理流式路径收集到的工具调用（并行执行，单工具故障隔离）"""
         import uuid
@@ -733,7 +740,7 @@ class AgentEngine:
                 assistant_tool_calls.append(tc_dict)
                 tool_result_messages.append(tool_msg)
 
-        self._apply_turn_budget(tool_result_messages, context.get("tool_result_turn_budget", 100_000))
+        self._apply_turn_budget(tool_result_messages, self._tool_result_turn_budget)
 
         assistant_msg = {"role": "assistant", "content": None, "tool_calls": assistant_tool_calls}
         return events, assistant_msg, tool_result_messages

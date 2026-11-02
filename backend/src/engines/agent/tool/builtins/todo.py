@@ -8,6 +8,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -97,7 +98,7 @@ class TodoTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """按会话 ID 读或写任务清单：无 items 时读当前列表，有 items 时按 merge 写入并返回统计。
 
@@ -109,7 +110,7 @@ class TodoTool(BaseTool):
         Returns:
             JSON 文本：读模式为 items/total/active 统计；写模式为更新消息 + 同组统计。
         """
-        conversation_id = context.get("conversation_id")
+        conversation_id = context.conversation_id
 
         if not conversation_id:
             return json.dumps({"error": "无法确定会话 ID"}, ensure_ascii=False)

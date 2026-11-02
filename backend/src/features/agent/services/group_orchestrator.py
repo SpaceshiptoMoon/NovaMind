@@ -22,7 +22,6 @@ from novamind.core.ws import envelope
 from novamind.engines.agent.agent_engine import AgentEngine  # noqa: F401 类型引用
 from novamind.engines.agent.memory.context_scrubber import StreamingContextScrubber
 from novamind.engines.agent.memory.short_term import sanitize_user_content
-from novamind.engines.agent.tool.base import ToolContext
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.group import AgentGroup, AgentGroupRun
@@ -33,9 +32,12 @@ from novamind.features.agent.repository.group_repository import (
     GroupRunRepository,
 )
 from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.chat_service import AgentChatService, TurnPersistence
+from novamind.features.agent.services.context_assembly import (
+    ChatPorts,
+    build_tool_context,
+)
 from novamind.features.agent.tool.builtins.consult_member import (
-    CONSULT_CONTEXT_KEY,
     CONSULT_FN_KEY,
     CONSULT_MEMBERS_KEY,
     ConsultMemberTool,
@@ -44,7 +46,6 @@ from novamind.features.agent.tool.builtins.consult_member import (
     TOOL_NAME as CONSULT_TOOL_NAME,
 )
 from novamind.features.agent.tool.builtins.group_messaging import (
-    MESSAGING_CONTEXT_KEY,
     MESSAGING_FN_KEY,
     MESSAGING_MEMBERS_KEY,
 )
@@ -460,8 +461,7 @@ class GroupOrchestrator:
         chat2.attachment_repo = ChatAttachmentRepository(session)
         for name in (
             "_build_context", "_resolve_model", "_create_memory_manager",
-            "_compress_messages", "_build_embedding_resolver",
-            "_build_research_service_factory", "_filter_visible_mcp_ids",
+            "_compress_messages",
         ):
             setattr(chat2, name, getattr(src, name))
         orch = GroupOrchestrator.__new__(GroupOrchestrator)
@@ -647,65 +647,39 @@ class GroupOrchestrator:
         # 无需二次注入。_build_context 内部已按会话工作区绑定强制并入
         # local_workspace 勾选并生成工作目录 prompt——群聊成员与单聊同口径。
 
-        context = ToolContext(
-            db_session=self.db, user_id=user_id,
-            agent_id=member["agent_id"], session_id=conv.session_id,
-        ).to_dict()
-        context["conversation_id"] = conv.id
-        context["tool_result_turn_budget"] = 100_000
-        # 成员能力与单聊全量对齐：勾了 task/research 就接子代理/研究工厂。
-        # 嵌套放大由 agent 自身 max_tool_calls_per_turn 与引擎迭代上限约束。
-        if "task" in (agent.enabled_tools or []):
-            from novamind.engines.agent.subagent import SubAgentRunner
-
-            context["subagent_runner"] = SubAgentRunner(
-                agent_engine=self.chat_service.agent_engine,
-                tool_executor=self.chat_service.agent_engine.tool_executor,
-                client_factory=self.chat_service._subagent_client_factory(user_id),
-                model=model,
-                enabled_tools=agent.enabled_tools or [],
-                enabled_mcp_ids=await self.chat_service._filter_visible_mcp_ids(
-                    user_id, agent.enabled_mcp_servers or []
-                ),
-                parent_context=context,
-            )
-        else:
-            context["subagent_runner"] = None
-        context["research_service_factory"] = (
-            await self.chat_service._build_research_service_factory()
-            if "research" in (agent.enabled_tools or [])
-            else None
+        # 工具上下文：单点装配（context_assembly，与单聊同口径；群聊无审批通道，
+        # approval/event_sink 恒 None——审批钩子按「无通道告警放行」降级）。
+        # conversation_history 传空：成员上下文由其私有会话消息组装（触发消息已
+        # 先一步投递落库），知识改写不跨成员会话借历史。
+        turn_state = TurnPersistence()
+        context = await build_tool_context(
+            self.db,
+            user_id=user_id,
+            agent=agent,
+            session=conv,
+            conversation_id=conv.id,
+            session_id=conv.session_id,
+            model=model,
+            llm_client=llm_client,
+            conversation_history=[],
+            ports=ChatPorts(
+                web_search_port=self.chat_service._web_search_port,
+                knowledge_search_port=self.chat_service._knowledge_search_port,
+                memory_store_port=self.chat_service._memory_store_port,
+                memory_search_port=self.chat_service._memory_search_port,
+                attachment_read_port=self.chat_service._attachment_read_port,
+            ),
+            model_config_service=self.chat_service.model_config_service,
+            agent_engine=self.chat_service.agent_engine,
+            approval_registry=None,
+            event_sink=None,
         )
-        context["web_search_port"] = self.chat_service._web_search_port
-        context["knowledge_search_port"] = self.chat_service._knowledge_search_port
-        # 本地工作区端口：群会话绑定工作区即注入（绑定本身即授权，工具默认必带）
-        if (conv.extra_config or {}).get("workspace"):
-            from novamind.features.agent.services.local_workspace.assembly import (
-                build_local_workspace_port,
-            )
-
-            context["local_workspace_port"] = await build_local_workspace_port(
-                self.db, user_id, conv
-            )
-        else:
-            context["local_workspace_port"] = None
-        context["knowledge_pipeline"] = {
-            "llm_client": llm_client,
-            "knowledge_bindings": (conv.extra_config or {}).get("knowledge_bindings"),
-            "conversation_history": [],
-        }
-        context["attachment_read_port"] = self.chat_service._attachment_read_port
-        context["memory_store_port"] = self.chat_service._memory_store_port
-        context["memory_search_port"] = self.chat_service._memory_search_port
-        context["embedding_client_resolver"] = self.chat_service._build_embedding_resolver(user_id)
-        context["approval_registry"] = None
-        context["event_sink"] = None
 
         is_host = consult_bundle is not None
         if is_host:
-            context[CONSULT_CONTEXT_KEY] = consult_bundle
+            context.group_consult = consult_bundle
         else:
-            context[MESSAGING_CONTEXT_KEY] = {
+            context.group_messaging = {
                 MESSAGING_FN_KEY: self._make_messaging_fn(run, member, members, group),
                 MESSAGING_MEMBERS_KEY: [
                     {"agent_id": m["agent_id"], "name": m["name"]}
@@ -763,16 +737,16 @@ class GroupOrchestrator:
                 steering_queue=steering_queue,
             ):
                 if "iteration" in event.data:
-                    context["current_iteration"] = event.data.get("iteration")
+                    turn_state.iteration = event.data.get("iteration")
                 if event.event_type == "assistant_tool_calls":
                     msg = await self.agent_service.save_message(
                         conversation_id=conv.id, role="assistant",
                         content=event.data.get("content") or None,
                         extra={"tool_calls": event.data.get("tool_calls", [])},
-                        iteration=context.get("current_iteration"),
+                        iteration=turn_state.iteration,
                     )
                     assistant_msg_id = msg.id
-                    context["assistant_msg_id"] = msg.id
+                    turn_state.assistant_msg_id = msg.id
                 elif event.event_type == "tool_call":
                     tc = await self.chat_service.tc_repo.create(
                         message_id=assistant_msg_id or 0,
@@ -782,9 +756,9 @@ class GroupOrchestrator:
                         tool_source="builtin",
                         arguments=event.data.get("arguments", {}),
                         status="running",
-                        iteration=context.get("current_iteration"),
+                        iteration=turn_state.iteration,
                     )
-                    context[f"tc_{event.data.get('call_id')}"] = tc.id
+                    turn_state.tool_call_ids[event.data.get("call_id") or ""] = tc.id
                     turn_tools.append({
                         "call_id": event.data.get("call_id") or "",
                         "tool_name": event.data.get("tool_name", ""),
@@ -795,7 +769,7 @@ class GroupOrchestrator:
                     yield self._member_event(event.event_type, member, dict(event.data)), full_response
                 elif event.event_type == "tool_result":
                     call_id = event.data.get("call_id", "")
-                    tc_id = context.get(f"tc_{call_id}")
+                    tc_id = turn_state.tool_call_ids.get(call_id)
                     full_result = event.data.get("full_result", "")
                     if tc_id:
                         await self.chat_service.tc_repo.update(
@@ -809,7 +783,7 @@ class GroupOrchestrator:
                         content=event.data.get("result", "") or full_result,
                         tool_call_id=call_id,
                         tool_name=event.data.get("tool_name"),
-                        iteration=context.get("current_iteration"),
+                        iteration=turn_state.iteration,
                     )
                     for step in reversed(turn_tools):
                         if step["call_id"] == call_id:
@@ -839,7 +813,7 @@ class GroupOrchestrator:
                     if process_out is not None:
                         process_out["tools"] = turn_tools
                         process_out["reasoning"] = turn_reasoning or ""
-                    await self._finish_member_turn(conv, agent, event, speech, context)
+                    await self._finish_member_turn(conv, agent, event, speech, turn_state)
                     yield self._member_event("done", member, {
                         "content": speech,
                         "total_tokens": event.data.get("total_tokens", 0),
@@ -863,7 +837,7 @@ class GroupOrchestrator:
         agent: AgentDefinition,
         event: Any,
         speech: str,
-        context: dict[str, Any],
+        turn_state: TurnPersistence,
     ) -> None:
         """成员 turn 收尾：最终 assistant 落库 + 会话统计 + 标题（flush，调用方 commit）。"""
         total_tokens = event.data.get("total_tokens", 0)
@@ -874,7 +848,7 @@ class GroupOrchestrator:
             conversation_id=conv.id, role="assistant",
             content=speech, token_count=total_tokens,
             extra=done_extra or None,
-            iteration=context.get("current_iteration"),
+            iteration=turn_state.iteration,
         )
         await self.agent_service.update_session_stats(conv.id, total_tokens)
         await self.db.refresh(conv)

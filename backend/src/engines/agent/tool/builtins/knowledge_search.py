@@ -5,6 +5,8 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.ports import KnowledgePipelineConfig
 from novamind.engines.rag.modes import SearchMode
 from novamind.shared.logging import get_logger
 
@@ -293,7 +295,7 @@ class KnowledgeSearchTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """校验 context 中的检索端口后按工具名分发执行；端口未配置返回错误 JSON。
 
@@ -305,7 +307,7 @@ class KnowledgeSearchTool(BaseTool):
         Returns:
             JSON 文本：命中为结果集，无权限或异常为 {error}；未知工具为纯文本提示。
         """
-        port = context.get("knowledge_search_port")
+        port = context.knowledge_search_port
         if port is None:
             return json.dumps(
                 {"error": "知识库检索端口未配置，无法执行知识库搜索"},
@@ -327,13 +329,14 @@ class KnowledgeSearchTool(BaseTool):
     # ==================== 空间与知识库发现 ====================
 
     @staticmethod
-    def _session_bindings(context: dict[str, Any]) -> tuple[list[int] | None, list[int] | None]:
+    def _session_bindings(context: ToolContext) -> tuple[list[int] | None, list[int] | None]:
         """解析会话知识绑定，返回 (bound_space_ids, bound_kb_ids)；无绑定 both None。
 
         knowledge_pipeline 配置仅在主对话场景注入（chat_service）；task 子 agent 等
         场景无此键，视为不限定。
         """
-        bindings = (context.get("knowledge_pipeline") or {}).get("knowledge_bindings") or {}
+        cfg = context.knowledge_pipeline
+        bindings = (cfg.knowledge_bindings if cfg else None) or {}
         return bindings.get("space_ids"), bindings.get("kb_ids")
 
     @staticmethod
@@ -344,10 +347,10 @@ class KnowledgeSearchTool(BaseTool):
             ensure_ascii=False,
         )
 
-    async def _list_spaces(self, port, context: dict[str, Any]) -> str:
+    async def _list_spaces(self, port, context: ToolContext) -> str:
         """列出用户可访问的知识空间；会话绑定 space_ids 时只返回绑定内空间。"""
         try:
-            user_id = context["user_id"]
+            user_id = context.user_id
             spaces = await port.list_spaces(user_id)
             bound_space_ids, _ = self._session_bindings(context)
             if bound_space_ids:
@@ -367,11 +370,11 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"获取空间列表失败：{str(e)}"}, ensure_ascii=False)
 
     async def _list_knowledge_bases(
-        self, port, args: dict[str, Any], context: dict[str, Any]
+        self, port, args: dict[str, Any], context: ToolContext
     ) -> str:
         """列出指定空间下的知识库；会话绑定时越权拒绝，绑定 kb_ids 则过滤。"""
         try:
-            user_id = context["user_id"]
+            user_id = context.user_id
             space_id = args["space_id"]
             bound_space_ids, bound_kb_ids = self._session_bindings(context)
 
@@ -407,10 +410,10 @@ class KnowledgeSearchTool(BaseTool):
             logger.error("获取知识库列表失败", error=str(e))
             return json.dumps({"error": f"获取知识库列表失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _list_all_knowledge_bases(self, port, context: dict[str, Any]) -> str:
+    async def _list_all_knowledge_bases(self, port, context: ToolContext) -> str:
         """跨空间列出用户所有可访问的知识库；会话绑定时只返回范围内 KB。"""
         try:
-            user_id = context["user_id"]
+            user_id = context.user_id
             kbs = await port.list_all_knowledge_bases(user_id)
             bound_space_ids, bound_kb_ids = self._session_bindings(context)
             if bound_space_ids:
@@ -439,7 +442,7 @@ class KnowledgeSearchTool(BaseTool):
 
     # ==================== 搜索与文档列表 ====================
 
-    async def _search(self, port, args: dict[str, Any], context: dict[str, Any]) -> str:
+    async def _search(self, port, args: dict[str, Any], context: ToolContext) -> str:
         """检索用户可见知识库，返回格式化的命中列表 JSON。
 
         context 带 knowledge_pipeline 配置（会话级知识绑定 + 会话模型，主对话场景由
@@ -447,7 +450,7 @@ class KnowledgeSearchTool(BaseTool):
         拒答声明）；无配置走裸检索（task 子 agent 等场景，行为不变）。
         """
         try:
-            user_id: int = context["user_id"]
+            user_id: int = context.user_id
 
             space_id = args["space_id"]
             query = args["query"]
@@ -456,7 +459,7 @@ class KnowledgeSearchTool(BaseTool):
             search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
             tags = args.get("tags") or None
 
-            pipeline_cfg = context.get("knowledge_pipeline")
+            pipeline_cfg = context.knowledge_pipeline
             if pipeline_cfg:
                 return await self._pipeline_search(port, args, pipeline_cfg, context)
 
@@ -493,20 +496,20 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
 
     async def _pipeline_search(
-        self, port, args: dict[str, Any], cfg: dict[str, Any], context: dict[str, Any]
+        self, port, args: dict[str, Any], cfg: KnowledgePipelineConfig, context: ToolContext
     ) -> str:
         """走质量管线的检索：注入会话绑定范围约束，结果附检索质量元数据。
 
         范围约束优先级（没选不兜底）：会话绑定 kb_ids 显式给定时忽略工具入参 kb_id
         （会话约束是用户声明，工具入参越权扩域）；仅 space_ids 时取交集。
         """
-        user_id: int = context["user_id"]
+        user_id: int = context.user_id
         space_id = args["space_id"]
         query = args["query"]
         top_k = args.get("top_k", 5)
         search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
 
-        bindings = cfg.get("knowledge_bindings") or {}
+        bindings = cfg.knowledge_bindings or {}
         bound_space_ids = bindings.get("space_ids")
         bound_kb_ids = bindings.get("kb_ids")
 
@@ -528,12 +531,12 @@ class KnowledgeSearchTool(BaseTool):
             space_id=space_id,
             user_id=user_id,
             query=query,
-            llm_client=cfg.get("llm_client"),
-            conversation_history=cfg.get("conversation_history"),
-            rewrite_strategy=cfg.get("rewrite_strategy", "completion"),
-            grade_retry_enabled=bool(cfg.get("grade_retry_enabled", False)),
-            grade_passing_score=int(cfg.get("grade_passing_score", 5)),
-            score_threshold=cfg.get("score_threshold", 0.3),
+            llm_client=cfg.llm_client,
+            conversation_history=cfg.conversation_history,
+            rewrite_strategy=cfg.rewrite_strategy,
+            grade_retry_enabled=cfg.grade_retry_enabled,
+            grade_passing_score=cfg.grade_passing_score,
+            score_threshold=cfg.score_threshold,
             top_k=top_k,
             search_mode=search_mode,
             kb_ids=kb_ids,
@@ -570,11 +573,11 @@ class KnowledgeSearchTool(BaseTool):
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     async def _list_documents(
-        self, port, args: dict[str, Any], context: dict[str, Any]
+        self, port, args: dict[str, Any], context: ToolContext
     ) -> str:
         """列出文档；会话绑定时越权空间/知识库拒绝，绑定 kb_ids 时限定单库。"""
         try:
-            user_id = context["user_id"]
+            user_id = context.user_id
             space_id = args["space_id"]
             kb_id = args["kb_id"]
             page = args.get("page", 1)

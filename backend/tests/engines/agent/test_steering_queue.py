@@ -8,6 +8,7 @@
 import pytest
 from novamind.engines.agent.safety import SteeringQueue
 from novamind.engines.agent.safety.steering import SteeringQueue as SteeringQueueDirect
+from novamind.engines.agent.tool.context import ToolContext
 
 pytestmark = pytest.mark.unit
 
@@ -55,6 +56,7 @@ def _run_engine_with_steering(steering_queue, max_iterations=2):
     engine.tool_executor = AsyncMock()
     engine._retry_config = None
     engine._loop_detection = None
+    engine._tool_result_turn_budget = 100_000
     engine.tool_executor.execute.return_value = ToolResult(
         status=ToolResultStatus.SUCCESS, content="ok", duration_ms=1,
     )
@@ -82,7 +84,7 @@ def _run_engine_with_steering(steering_queue, max_iterations=2):
     async def collect():
         async for evt in engine.run(
             llm_client=AsyncMock(), messages=messages, tools=[{"fake": 1}],
-            context={}, max_iterations=max_iterations,
+            context=ToolContext(db_session=None, user_id=1, agent_id=1), max_iterations=max_iterations,
             steering_queue=steering_queue,
         ):
             events.append(evt)

@@ -4,6 +4,7 @@ import asyncio
 import pytest
 from novamind.engines.agent.safety import ApprovalHook, ApprovalRejectedError
 from novamind.engines.agent.safety.patterns import detect_dangerous_code
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
 
 pytestmark = pytest.mark.unit
@@ -45,7 +46,7 @@ async def test_approval_hook_hardline_rejects():
         await hook.before_execute(
             _tool_def("code_execution"),
             {"code": "import os; os.system('rm -rf /home')"},
-            {},
+            ToolContext(db_session=None, user_id=1, agent_id=1),
         )
 
 
@@ -56,7 +57,7 @@ async def test_approval_hook_dangerous_passes():
     ret = await hook.before_execute(
         _tool_def("code_execution"),
         {"code": "DROP TABLE users"},
-        {},
+        ToolContext(db_session=None, user_id=1, agent_id=1),
     )
     assert ret is None  # 放行
 
@@ -67,7 +68,7 @@ async def test_approval_hook_safe_passes():
     ret = await hook.before_execute(
         _tool_def("code_execution"),
         {"code": "print('hi')"},
-        {},
+        ToolContext(db_session=None, user_id=1, agent_id=1),
     )
     assert ret is None
 
@@ -79,7 +80,7 @@ async def test_approval_hook_non_target_tool_ignored():
     ret = await hook.before_execute(
         _tool_def("web_search"),
         {"code": "rm -rf /"},
-        {},
+        ToolContext(db_session=None, user_id=1, agent_id=1),
     )
     assert ret is None  # 不检测，放行
 
@@ -118,7 +119,7 @@ async def test_approval_hook_dangerous_approve_via_registry():
     ret = await hook.before_execute(
         _tool_def("code_execution"),
         {"code": "DROP TABLE users"},
-        {"approval_registry": registry, "event_sink": event_sink},
+        ToolContext(db_session=None, user_id=1, agent_id=1, approval_registry=registry, event_sink=event_sink),
     )
     assert ret is None  # approve 放行
     assert sink_events and sink_events[0]["type"] == "approval_request"
@@ -137,7 +138,7 @@ async def test_approval_hook_dangerous_deny_via_registry():
         await hook.before_execute(
             _tool_def("code_execution"),
             {"code": "DROP TABLE users"},
-            {"approval_registry": registry, "event_sink": event_sink},
+            ToolContext(db_session=None, user_id=1, agent_id=1, approval_registry=registry, event_sink=event_sink),
         )
 
 
@@ -148,6 +149,6 @@ async def test_approval_hook_dangerous_no_registry_fallback_warn():
     ret = await hook.before_execute(
         _tool_def("code_execution"),
         {"code": "DROP TABLE users"},
-        {},  # 无 registry/event_sink
+        ToolContext(db_session=None, user_id=1, agent_id=1),  # 无 registry/event_sink
     )
     assert ret is None  # fallback 放行

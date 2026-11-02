@@ -6,60 +6,9 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from novamind.engines.agent.tool.context import ToolContext
 
-class ToolContext:
-    """工具执行上下文
-
-    ``db_session`` 在引擎层保持不透明（``Any``）——具体类型由宿主在装配点注入，
-    引擎不感知 SQLAlchemy，避免引擎层对 ORM 的反向依赖。
-    """
-
-    __slots__ = ("db_session", "user_id", "agent_id", "session_id", "_extra")
-
-    def __init__(
-        self,
-        db_session: Any,
-        user_id: int,
-        agent_id: int,
-        session_id: str,
-    ):
-        self.db_session = db_session
-        self.user_id = user_id
-        self.agent_id = agent_id
-        self.session_id = session_id
-        self._extra: dict[str, Any] = {}
-
-    def set(self, key: str, value: Any) -> None:
-        """写入扩展上下文字段（自定义端口/配置等经此处挂载，供工具执行时取用）。
-
-        Args:
-            key: 扩展字段名。
-            value: 字段值。
-        """
-        self._extra[key] = value
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """读取扩展上下文字段，缺省返回 default。
-
-        Args:
-            key: 扩展字段名。
-            default: 字段缺失时的返回值。
-
-        Returns:
-            字段值或 default。
-        """
-        return self._extra.get(key, default)
-
-    def to_dict(self) -> dict[str, Any]:
-        """合并固定字段与扩展字段为单层 dict，即工具执行时的 context 形态。"""
-        d: dict[str, Any] = {
-            "db_session": self.db_session,
-            "user_id": self.user_id,
-            "agent_id": self.agent_id,
-            "session_id": self.session_id,
-        }
-        d.update(self._extra)
-        return d
+__all__ = ["BaseTool", "ToolContext"]
 
 
 class BaseTool(ABC):
@@ -104,7 +53,7 @@ class BaseTool(ABC):
 
     @abstractmethod
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """
         执行指定工具，返回结果文本
@@ -112,7 +61,8 @@ class BaseTool(ABC):
         Args:
             tool_name: 工具名称（保证是本工具注册的之一）
             arguments: 工具参数
-            context: 执行上下文，包含 db_session、user_id 等
+            context: 强类型执行上下文，身份字段必有、端口字段按能力注入
+                （缺失即该能力不可用，工具侧显式报「未配置」）
 
         Returns:
             工具执行结果文本

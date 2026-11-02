@@ -4,7 +4,7 @@
 1. AgentEngine 每轮迭代 LLM 决定调用工具时，先产出 `assistant_tool_calls` 事件
    （data.tool_calls 为该轮全部 OpenAI 格式 tool_calls），排在 tool_call/tool_result 之前
 2. ChatService._handle_assistant_tool_calls 落库 role=assistant/content=None/extra.tool_calls
-   决策消息，并把 message_id 写入 context["assistant_msg_id"]
+   决策消息，并把 message_id 写入 turn.assistant_msg_id
 3. ChatService._handle_tool_call 用 assistant_msg_id 关联 tool_call 记录
    （缺失时 fallback 到 user_msg.id，保持旧链路兼容）
 """
@@ -15,7 +15,7 @@ import pytest
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.chat_service import AgentChatService, TurnPersistence
 from novamind.shared.ai_models.base_model import (
     BaseLLM,
     LLMResponseWithTools,
@@ -124,7 +124,7 @@ def _build_chat_service_with_save() -> AgentChatService:
 @pytest.mark.asyncio
 async def test_handle_assistant_tool_calls_persists_decision_message() -> None:
     """_handle_assistant_tool_calls 落库 role=assistant/content=None/extra.tool_calls，
-    并把 message_id 写入 context["assistant_msg_id"] 供本轮 tool_call 关联。
+    并把 message_id 写入 turn.assistant_msg_id 供本轮 tool_call 关联。
 
     无 AI 文本时（iteration_text 默认空）content 落 None。
     """
@@ -135,15 +135,15 @@ async def test_handle_assistant_tool_calls_persists_decision_message() -> None:
                    "function": {"name": "web_search", "arguments": '{"query":"x"}'}}]
     event = AgentEvent("assistant_tool_calls", {"tool_calls": tool_calls})
     conv = SimpleNamespace(id=7)
-    context: dict = {}
+    turn = TurnPersistence()
 
-    await svc._handle_assistant_tool_calls(event, conv, context)
+    await svc._handle_assistant_tool_calls(event, conv, turn)
 
     assert saved["role"] == "assistant"
     assert saved["content"] is None
     assert saved["conversation_id"] == 7
     assert saved["extra"] == {"tool_calls": tool_calls}
-    assert context["assistant_msg_id"] == 99
+    assert turn.assistant_msg_id == 99
 
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_handle_assistant_tool_calls_persists_iteration_text() -> None:
 
     event = AgentEvent("assistant_tool_calls", {"tool_calls": []})
     await svc._handle_assistant_tool_calls(
-        event, SimpleNamespace(id=7), {}, iteration_text="我先查一下知识库",
+        event, SimpleNamespace(id=7), TurnPersistence(), iteration_text="我先查一下知识库",
     )
     assert saved["content"] == "我先查一下知识库"
 
@@ -176,7 +176,7 @@ def _build_chat_service_with_tc_repo() -> AgentChatService:
 
 @pytest.mark.asyncio
 async def test_handle_tool_call_uses_assistant_msg_id_when_present() -> None:
-    """context 有 assistant_msg_id 时，tool_call 记录关联到 assistant 决策消息（非 user 消息）"""
+    """turn 有 assistant_msg_id 时，tool_call 记录关联到 assistant 决策消息（非 user 消息）"""
     svc = _build_chat_service_with_tc_repo()
     captured = svc._tc_create_captured  # type: ignore[attr-defined]
 
@@ -185,23 +185,23 @@ async def test_handle_tool_call_uses_assistant_msg_id_when_present() -> None:
     })
     user_msg = SimpleNamespace(id=5)
     conv = SimpleNamespace(id=7)
-    context = {"assistant_msg_id": 99}
+    turn = TurnPersistence(assistant_msg_id=99)
 
-    await svc._handle_tool_call(event, user_msg, conv, context)
+    await svc._handle_tool_call(event, user_msg, conv, turn)
 
     assert captured["message_id"] == 99  # 关联 assistant 决策消息，而非 user_msg.id=5
 
 
 @pytest.mark.asyncio
 async def test_handle_tool_call_falls_back_to_user_msg_id() -> None:
-    """context 无 assistant_msg_id（旧链路/未先发决策事件）时 fallback 到 user_msg.id"""
+    """turn 无 assistant_msg_id（旧链路/未先发决策事件）时 fallback 到 user_msg.id"""
     svc = _build_chat_service_with_tc_repo()
     captured = svc._tc_create_captured  # type: ignore[attr-defined]
 
     event = AgentEvent("tool_call", {
         "tool_name": "todo", "arguments": {}, "call_id": "call_w",
     })
-    await svc._handle_tool_call(event, SimpleNamespace(id=5), SimpleNamespace(id=7), {})
+    await svc._handle_tool_call(event, SimpleNamespace(id=5), SimpleNamespace(id=7), TurnPersistence())
     assert captured["message_id"] == 5
 
 

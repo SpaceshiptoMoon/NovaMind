@@ -8,6 +8,7 @@ import json
 import pytest
 import pytest_asyncio
 from novamind.core.database.base import Base
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.features.agent.tool.builtins.wiki_tools import WikiTool
 from novamind.features.knowledge_space.models.wiki import (
     WikiPage,
@@ -60,8 +61,8 @@ async def db():
     await engine.dispose()
 
 
-def _ctx(db, user_id: int) -> dict:
-    return {"db_session": db, "user_id": user_id}
+def _ctx(db, user_id: int) -> ToolContext:
+    return ToolContext(db_session=db, user_id=user_id, agent_id=1)
 
 
 @pytest.fixture

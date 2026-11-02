@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -75,7 +76,7 @@ class TaskTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """校验 context 中的子 agent runner 后启动独立子 ReAct 循环并返回其 summary。
 
@@ -89,7 +90,7 @@ class TaskTool(BaseTool):
         """
         if tool_name != "task":
             return f"未知工具：{tool_name}"
-        runner = context.get("subagent_runner")
+        runner = context.subagent_runner
         if runner is None:
             return json.dumps(
                 {"error": "子 agent runner 未配置（需 Agent 勾选 task 工具）"},

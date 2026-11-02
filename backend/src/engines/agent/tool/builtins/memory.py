@@ -5,13 +5,14 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 _MEMORY_LIMIT_PER_USER_AGENT = 50
-# C-2：记忆条数上限改由 ToolContext 注入（context key: memory_limit_per_user_agent）。
-# 保留模块常量作 fallback 默认——feature 装配点（agent）可经 context 覆盖，
+# C-2：记忆条数上限改由 ToolContext 注入（memory_limit_per_user_agent 字段）。
+# 保留模块常量作 fallback 默认——feature 装配点（agent）可经 ToolContext 覆盖，
 # 引擎本身不内嵌 app 策略数值。
 
 
@@ -83,9 +84,9 @@ class MemoryTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
-        """校验 context 中的记忆存储端口后按 action 分发执行；写入前经安全扫描。
+        """校验上下文中的记忆存储端口后按 action 分发执行；写入前经安全扫描。
 
         Args:
             tool_name: 工具名（仅认 memory）。
@@ -98,7 +99,7 @@ class MemoryTool(BaseTool):
         if tool_name != "memory":
             return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 
-        store = context.get("memory_store_port")
+        store = context.memory_store_port
         if store is None:
             return json.dumps(
                 {"error": "记忆存储端口未配置，无法执行记忆操作"},
@@ -116,7 +117,7 @@ class MemoryTool(BaseTool):
             return await handler()
         return json.dumps({"error": f"未知操作：{action}"}, ensure_ascii=False)
 
-    async def _add(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
+    async def _add(self, store, args: dict[str, Any], context: ToolContext) -> str:
         """添加记忆"""
         try:
             from novamind.engines.agent.memory.security import scan_memory_content
@@ -126,8 +127,8 @@ class MemoryTool(BaseTool):
             if not content:
                 return json.dumps({"error": "add 操作必须提供 content"}, ensure_ascii=False)
 
-            user_id = context["user_id"]
-            agent_id = context["agent_id"]
+            user_id = context.user_id
+            agent_id = context.agent_id
 
             scan = scan_memory_content(content)
             if not scan:
@@ -137,8 +138,14 @@ class MemoryTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            # 记忆数量上限检查（C-2：上限经 context 注入，fallback 模块常量）
-            limit = context.get("memory_limit_per_user_agent", _MEMORY_LIMIT_PER_USER_AGENT)
+            # 记忆数量上限检查（C-2：上限经 ToolContext 注入，None 回退模块常量；
+            # 显式 0 表示「禁止新增」是合法策略，不能被 or 回退吞掉）
+            injected_limit = context.memory_limit_per_user_agent
+            limit = (
+                injected_limit
+                if injected_limit is not None
+                else _MEMORY_LIMIT_PER_USER_AGENT
+            )
             _, total = await store.list_by_agent(agent_id, user_id, limit=1)
             if total >= limit:
                 return json.dumps(
@@ -174,7 +181,7 @@ class MemoryTool(BaseTool):
             logger.error("添加记忆失败", error=str(e))
             return json.dumps({"error": f"添加记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _replace(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
+    async def _replace(self, store, args: dict[str, Any], context: ToolContext) -> str:
         """替换记忆"""
         try:
             from novamind.engines.agent.memory.security import scan_memory_content
@@ -184,8 +191,8 @@ class MemoryTool(BaseTool):
             if not old_content or not new_content:
                 return json.dumps({"error": "replace 操作必须提供 old_content 和 content"}, ensure_ascii=False)
 
-            user_id = context["user_id"]
-            agent_id = context["agent_id"]
+            user_id = context.user_id
+            agent_id = context.agent_id
 
             scan = scan_memory_content(new_content)
             if not scan:
@@ -212,15 +219,15 @@ class MemoryTool(BaseTool):
             logger.error("替换记忆失败", error=str(e))
             return json.dumps({"error": f"替换记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _remove(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
+    async def _remove(self, store, args: dict[str, Any], context: ToolContext) -> str:
         """移除记忆"""
         try:
             old_content = args.get("old_content", "")
             if not old_content:
                 return json.dumps({"error": "remove 操作必须提供 old_content"}, ensure_ascii=False)
 
-            user_id = context["user_id"]
-            agent_id = context["agent_id"]
+            user_id = context.user_id
+            agent_id = context.agent_id
 
             entry = await store.find_by_content_contains(agent_id, user_id, old_content)
             if not entry:
@@ -230,7 +237,7 @@ class MemoryTool(BaseTool):
             await store.flush()
 
             try:
-                search_port = context.get("memory_search_port")
+                search_port = context.memory_search_port
                 if search_port:
                     await search_port.delete_memory(agent_id, entry.id)
             except Exception as e:
@@ -244,10 +251,10 @@ class MemoryTool(BaseTool):
             logger.error("移除记忆失败", error=str(e))
             return json.dumps({"error": f"移除记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _index_to_es(self, memory, context: dict[str, Any]) -> None:
+    async def _index_to_es(self, memory, context: ToolContext) -> None:
         """将记忆索引到 ES（经端口 + embedding resolver）"""
-        search_port = context.get("memory_search_port")
-        embedding_resolver = context.get("embedding_client_resolver")
+        search_port = context.memory_search_port
+        embedding_resolver = context.embedding_client_resolver
         if not search_port or not embedding_resolver:
             return
 

@@ -2,12 +2,13 @@
 
 工具定义与 Claude Code / dsh 同名工具语义对齐；会话未绑定工作区时端口缺位，
 execute_tool 返回引导文案（能力缺失优于报错栈）。绑定会话的 system prompt
-fragment 由引擎经 context["workspace_prompt"] 动态注入（工作目录+守则）。
+fragment（工作目录+守则）由 chat_service 组装 system prompt 时直接追加。
 """
 import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 
 _WORKSPACE_MISSING = (
     "当前会话未绑定本地工作区。请用户在会话设置中绑定工作区"
@@ -189,8 +190,8 @@ class LocalWorkspaceTool(BaseTool):
     def get_system_prompt_fragment(self) -> str:
         """工作模式守则（enabled_tools 含 local_workspace 时注入）。
 
-        工作目录路径不在此处——它随会话变化，经 context["workspace_prompt"]
-        由 chat_service 追加（避免进入按 agent 冻结的 prompt 缓存）。
+        工作目录路径不在此处——它随会话变化，由 chat_service 组装 system
+        prompt 时直接追加（避免进入按 agent 冻结的 prompt 缓存）。
         """
         return (
             "# Workspace Mode\n"
@@ -207,9 +208,9 @@ class LocalWorkspaceTool(BaseTool):
         )
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
-        port = context.get("local_workspace_port")
+        port = context.local_workspace_port
         if port is None:
             return json.dumps({"error": _WORKSPACE_MISSING}, ensure_ascii=False)
         result = await port.execute(tool_name, arguments)

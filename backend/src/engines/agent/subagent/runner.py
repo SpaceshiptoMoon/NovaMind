@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
@@ -32,7 +34,7 @@ class SubAgentRunner:
         model: str,
         enabled_tools: list[str],
         enabled_mcp_ids: list[int],
-        parent_context: dict[str, Any],
+        parent_context: ToolContext,
     ) -> None:
         """注入父引擎、工具端口与客户端工厂；enabled_tools 预先剔除 task/todo，从源头阻止子 agent 再委派。
 
@@ -77,9 +79,9 @@ class SubAgentRunner:
             {"role": "user", "content": prompt},
         ]
 
-        # 子 context：复用父端口，但 subagent_runner=None（双保险防递归）
-        sub_context = dict(self._parent_context)
-        sub_context["subagent_runner"] = None
+        # 子 context：复用父端口，但 subagent_runner=None（双保险防递归）。
+        # dataclasses.replace 派生新实例而非可变共享——子代理改动不回写父 context。
+        sub_context = replace(self._parent_context, subagent_runner=None)
 
         # 跑子 ReAct（非流式，max_iterations 收紧）
         full_response = ""

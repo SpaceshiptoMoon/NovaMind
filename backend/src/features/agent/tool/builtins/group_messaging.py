@@ -7,13 +7,13 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-# 成员通过 context["group_messaging"] 携带的回调字典键：
+# 成员经 ToolContext.group_messaging 携带回调字典：
 # fn=协程(tool_name, arguments)->str；members=同组成员清单（[{agent_id,name}]）
-MESSAGING_CONTEXT_KEY = "group_messaging"
 MESSAGING_FN_KEY = "fn"
 MESSAGING_MEMBERS_KEY = "members"
 
@@ -88,10 +88,10 @@ class GroupMessagingTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """经 context 回调落投递（编排器注入），收件人校验限定同组成员。"""
-        bundle = context.get(MESSAGING_CONTEXT_KEY) or {}
+        bundle = context.group_messaging or {}
         fn = bundle.get(MESSAGING_FN_KEY)
         if fn is None:
             return "错误：当前会话未启用群聊通信"

@@ -17,6 +17,8 @@ import pytest
 import pytest_asyncio
 from novamind.engines.agent.context_types import KnowledgeSearchItem
 from novamind.engines.agent.tool.builtins.knowledge_search import KnowledgeSearchTool
+from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.ports import KnowledgePipelineConfig
 from novamind.features.agent.schemas.agent_schema import (
     SessionKnowledgeBindingsUpdate,
 )
@@ -112,6 +114,11 @@ def _make_port_with_search(search_fn):
     return port
 
 
+def _tool_ctx() -> ToolContext:
+    """工具级 ToolContext 身份桩（db/user/agent 最小三元组，端口按用例注入）。"""
+    return ToolContext(db_session=None, user_id=1, agent_id=1)
+
+
 # ==================== pipeline_search 三分支 ====================
 
 
@@ -199,14 +206,11 @@ async def test_tool_pipeline_space_binding_rejects_out_of_scope():
     item = KnowledgeSearchItem(content="c", score=0.9)
     port = _FakePort(items=[item])
     tool = KnowledgeSearchTool()
-    cfg = {
-        "llm_client": None,
-        "knowledge_bindings": {"space_ids": [7], "kb_ids": None},
-    }
+    cfg = KnowledgePipelineConfig(knowledge_bindings={"space_ids": [7], "kb_ids": None})
 
     # 反：越权空间
     out = await tool._pipeline_search(
-        port, {"space_id": 99, "query": "q"}, cfg, {"user_id": 1}
+        port, {"space_id": 99, "query": "q"}, cfg, _tool_ctx()
     )
     data = json.loads(out)
     assert "error" in data and "不在范围内" in data["error"]
@@ -214,7 +218,7 @@ async def test_tool_pipeline_space_binding_rejects_out_of_scope():
 
     # 正：绑定内空间
     out = await tool._pipeline_search(
-        port, {"space_id": 7, "query": "q"}, cfg, {"user_id": 1}
+        port, {"space_id": 7, "query": "q"}, cfg, _tool_ctx()
     )
     data = json.loads(out)
     assert data["total"] == 1 and data["results"][0]["content"] == "c"
@@ -226,22 +230,21 @@ async def test_tool_pipeline_kb_binding_overrides_arg():
     """会话绑定 kb_ids 时忽略工具入参 kb_id（用户声明优先于模型意图扩域）。"""
     port = _FakePort(items=[KnowledgeSearchItem(content="c", score=0.9)])
     tool = KnowledgeSearchTool()
-    cfg = {
-        "llm_client": None,
-        "knowledge_bindings": {"space_ids": [7], "kb_ids": [101, 102]},
-    }
+    cfg = KnowledgePipelineConfig(
+        knowledge_bindings={"space_ids": [7], "kb_ids": [101, 102]}
+    )
 
     out = await tool._pipeline_search(
-        port, {"space_id": 7, "query": "q", "kb_id": 999}, cfg, {"user_id": 1}
+        port, {"space_id": 7, "query": "q", "kb_id": 999}, cfg, _tool_ctx()
     )
     data = json.loads(out)
     assert data["total"] == 1
     assert port.calls[0]["kb_ids"] == [101, 102]
 
     # 无 kb 绑定时工具入参透传
-    cfg2 = {"llm_client": None, "knowledge_bindings": {"space_ids": [7], "kb_ids": None}}
+    cfg2 = KnowledgePipelineConfig(knowledge_bindings={"space_ids": [7], "kb_ids": None})
     await tool._pipeline_search(
-        port, {"space_id": 7, "query": "q", "kb_id": 55}, cfg2, {"user_id": 1}
+        port, {"space_id": 7, "query": "q", "kb_id": 55}, cfg2, _tool_ctx()
     )
     assert port.calls[1]["kb_ids"] == [55]
 
@@ -257,7 +260,7 @@ async def test_tool_search_without_pipeline_cfg_falls_back():
     out = await tool.execute_tool(
         "knowledge_search",
         {"space_id": 1, "query": "q"},
-        {"user_id": 1, "knowledge_search_port": port},
+        ToolContext(db_session=None, user_id=1, agent_id=1, knowledge_search_port=port),
     )
     data = json.loads(out)
     assert data["results"][0]["content"] == "legacy"
@@ -292,19 +295,24 @@ async def test_tool_list_spaces_filters_by_binding():
         SimpleNamespace(id=99, name="越权空间", description=""),
     ]
     tool = KnowledgeSearchTool()
-    ctx = {
-        "user_id": 1,
-        "knowledge_pipeline": {
-            "knowledge_bindings": {"space_ids": [7], "kb_ids": None}
-        },
-    }
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=1,
+        knowledge_search_port=_fake_discovery_port(spaces),
+        knowledge_pipeline=KnowledgePipelineConfig(
+            knowledge_bindings={"space_ids": [7], "kb_ids": None}
+        ),
+    )
 
-    out = await tool.execute_tool("list_spaces", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(spaces), **ctx})
+    out = await tool.execute_tool("list_spaces", {}, ctx)
     data = json.loads(out)
     assert [s["id"] for s in data["spaces"]] == [7]
 
     # 无绑定：全量透出（行为不变）
-    out = await tool.execute_tool("list_spaces", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(spaces)})
+    out = await tool.execute_tool(
+        "list_spaces", {},
+        ToolContext(db_session=None, user_id=1, agent_id=1,
+                    knowledge_search_port=_fake_discovery_port(spaces)),
+    )
     data = json.loads(out)
     assert sorted(s["id"] for s in data["spaces"]) == [7, 99]
 
@@ -318,30 +326,29 @@ async def test_tool_list_all_kbs_filters_by_binding():
         SimpleNamespace(id=201, name="C", space_id=99, description="", space_name="S99"),
     ]
     tool = KnowledgeSearchTool()
-    ctx = {
-        "user_id": 1,
-        "knowledge_pipeline": {
-            "knowledge_bindings": {"space_ids": [7], "kb_ids": [102]}
-        },
-    }
-
-    out = await tool.execute_tool(
-        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs), **ctx}
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=1,
+        knowledge_search_port=_fake_discovery_port(all_kbs=all_kbs),
+        knowledge_pipeline=KnowledgePipelineConfig(
+            knowledge_bindings={"space_ids": [7], "kb_ids": [102]}
+        ),
     )
+
+    out = await tool.execute_tool("list_all_knowledge_bases", {}, ctx)
     data = json.loads(out)
     assert [kb["id"] for kb in data["knowledge_bases"]] == [102]
 
     # 仅 space_ids 绑定：该空间全部 KB
-    ctx["knowledge_pipeline"]["knowledge_bindings"] = {"space_ids": [7], "kb_ids": None}
-    out = await tool.execute_tool(
-        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs), **ctx}
-    )
+    ctx.knowledge_pipeline.knowledge_bindings = {"space_ids": [7], "kb_ids": None}
+    out = await tool.execute_tool("list_all_knowledge_bases", {}, ctx)
     data = json.loads(out)
     assert sorted(kb["id"] for kb in data["knowledge_bases"]) == [101, 102]
 
     # 无绑定：全量
     out = await tool.execute_tool(
-        "list_all_knowledge_bases", {}, {"user_id": 1, "knowledge_search_port": _fake_discovery_port(all_kbs=all_kbs)}
+        "list_all_knowledge_bases", {},
+        ToolContext(db_session=None, user_id=1, agent_id=1,
+                    knowledge_search_port=_fake_discovery_port(all_kbs=all_kbs)),
     )
     data = json.loads(out)
     assert data["total"] == 3
@@ -355,26 +362,22 @@ async def test_tool_list_kbs_out_of_scope_rejected():
         SimpleNamespace(id=102, name="B", space_id=7, description=""),
     ]
     tool = KnowledgeSearchTool()
-    ctx = {
-        "user_id": 1,
-        "knowledge_pipeline": {
-            "knowledge_bindings": {"space_ids": [7], "kb_ids": [101]}
-        },
-    }
     port = _fake_discovery_port(space_kbs=space_kbs)
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=1, knowledge_search_port=port,
+        knowledge_pipeline=KnowledgePipelineConfig(
+            knowledge_bindings={"space_ids": [7], "kb_ids": [101]}
+        ),
+    )
 
     # 反：越权空间
-    out = await tool.execute_tool(
-        "list_knowledge_bases", {"space_id": 99}, {"user_id": 1, "knowledge_search_port": port, **ctx}
-    )
+    out = await tool.execute_tool("list_knowledge_bases", {"space_id": 99}, ctx)
     data = json.loads(out)
     assert "不在范围内" in data["error"]
     port.list_knowledge_bases.assert_not_awaited()
 
     # 正：绑定内空间，kb 过滤
-    out = await tool.execute_tool(
-        "list_knowledge_bases", {"space_id": 7}, {"user_id": 1, "knowledge_search_port": port, **ctx}
-    )
+    out = await tool.execute_tool("list_knowledge_bases", {"space_id": 7}, ctx)
     data = json.loads(out)
     assert [kb["id"] for kb in data["knowledge_bases"]] == [101]
 
@@ -392,32 +395,23 @@ async def test_tool_document_list_out_of_scope_rejected():
             can_access_space=AsyncMock(return_value=True),
         )
 
-    ctx = {
-        "user_id": 1,
-        "knowledge_pipeline": {
-            "knowledge_bindings": {"space_ids": [7], "kb_ids": [101]}
-        },
-    }
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=1, knowledge_search_port=_port(),
+        knowledge_pipeline=KnowledgePipelineConfig(
+            knowledge_bindings={"space_ids": [7], "kb_ids": [101]}
+        ),
+    )
 
     # 反：越权空间
-    out = await tool.execute_tool(
-        "document_list", {"space_id": 99, "kb_id": 101},
-        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
-    )
+    out = await tool.execute_tool("document_list", {"space_id": 99, "kb_id": 101}, ctx)
     assert "不在范围内" in json.loads(out)["error"]
 
     # 反：越权 KB
-    out = await tool.execute_tool(
-        "document_list", {"space_id": 7, "kb_id": 999},
-        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
-    )
+    out = await tool.execute_tool("document_list", {"space_id": 7, "kb_id": 999}, ctx)
     assert "不在范围内" in json.loads(out)["error"]
 
     # 正：范围内
-    out = await tool.execute_tool(
-        "document_list", {"space_id": 7, "kb_id": 101},
-        {"user_id": 1, "knowledge_search_port": _port(), **ctx},
-    )
+    out = await tool.execute_tool("document_list", {"space_id": 7, "kb_id": 101}, ctx)
     data = json.loads(out)
     assert data["kb_id"] == 101 and data["documents"] == []
 

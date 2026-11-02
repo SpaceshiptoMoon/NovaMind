@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -70,7 +71,7 @@ class WebSearchTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """路由 web_search 调用并格式化结果；结束后关闭端口释放 HTTP 连接。
 
@@ -86,11 +87,11 @@ class WebSearchTool(BaseTool):
             return await self._search(arguments, context)
         return f"未知工具：{tool_name}"
 
-    async def _search(self, args: dict[str, Any], context: dict[str, Any]) -> str:
+    async def _search(self, args: dict[str, Any], context: ToolContext) -> str:
         """走 ExternalSearchService 联网搜索并格式化结果；未配置 provider 时降级提示。"""
         port = None
         try:
-            port = context.get("web_search_port")
+            port = context.web_search_port
             if port is None:
                 return json.dumps(
                     {"error": "网页搜索端口未配置，无法执行联网搜索"},

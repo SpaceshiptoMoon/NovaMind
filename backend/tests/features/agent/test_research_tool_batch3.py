@@ -12,9 +12,12 @@
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.ports import KnowledgePipelineConfig
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
@@ -50,12 +53,14 @@ def _tool_with_factory(events: list[dict]) -> tuple:
 
     tool = ResearchTool()
     svc = _make_service(events)
-    context = {
-        "research_service_factory": lambda: svc,
-        "event_sink": AsyncMock(),
-        "user_id": 1,
-        "knowledge_pipeline": {"knowledge_bindings": {"space_ids": [7]}},
-    }
+    context = ToolContext(
+        db_session=None, user_id=1, agent_id=1,
+        research_service_factory=lambda: svc,
+        event_sink=AsyncMock(),
+        knowledge_pipeline=KnowledgePipelineConfig(
+            knowledge_bindings={"space_ids": [7]}
+        ),
+    )
     return tool, context
 
 
@@ -82,7 +87,7 @@ async def test_research_tool_happy_path_with_progress():
     assert result["stats"] == {"rounds": 3}
     assert result["citations"] == [{"title": "src", "url": "http://x"}]
 
-    sink = context["event_sink"]
+    sink = context.event_sink
     # progress + plan + completed 终态（done 后工具层补发 100%）
     assert sink.await_count == 3
     types = [c.args[0]["type"] for c in sink.await_args_list]
@@ -109,7 +114,10 @@ async def test_research_tool_missing_factory_rejected():
 
     tool = ResearchTool()
     result = json.loads(
-        await tool.execute_tool("research", {"query": "合法长度的研究问题"}, {"event_sink": None})
+        await tool.execute_tool(
+            "research", {"query": "合法长度的研究问题"},
+            ToolContext(db_session=None, user_id=1, agent_id=1),
+        )
     )
     assert "error" in result
 
@@ -140,8 +148,13 @@ async def test_research_tool_invalid_enum_falls_back():
     result = json.loads(await tool.execute_tool(
         "research",
         {"query": "复杂课题全面调研", "research_mode": "ultra", "search_source": "darkweb"},
-        {"research_service_factory": lambda: svc, "event_sink": None, "user_id": 1,
-         "knowledge_pipeline": {"knowledge_bindings": {"space_ids": [7]}}},
+        ToolContext(
+            db_session=None, user_id=1, agent_id=1,
+            research_service_factory=lambda: svc,
+            knowledge_pipeline=KnowledgePipelineConfig(
+                knowledge_bindings={"space_ids": [7]}
+            ),
+        ),
     ))
     assert "error" not in result
     assert captured["request"].research_mode == "standard"
@@ -161,7 +174,7 @@ async def test_research_tool_error_event_short_circuits():
     result = json.loads(await tool.execute_tool("research", {"query": "研究一下长尾问题"}, context))
     assert result == {"error": "搜索引擎不可用"}
     # 失败终态：前端进度卡靠它停 spinner（否则停在最后一条进度假活）
-    sink = context["event_sink"]
+    sink = context.event_sink
     assert sink.await_count == 2
     assert sink.await_args_list[1].args[0]["data"]["status"] == "failed"
 
@@ -194,8 +207,11 @@ async def test_research_tool_exception_returns_fixed_message():
     tool = ResearchTool()
     result = json.loads(await tool.execute_tool(
         "research", {"query": "研究主题足够长"},
-        {"research_service_factory": lambda: svc, "event_sink": None, "user_id": 1,
-         "knowledge_pipeline": {}},
+        ToolContext(
+            db_session=None, user_id=1, agent_id=1,
+            research_service_factory=lambda: svc,
+            knowledge_pipeline=KnowledgePipelineConfig(),
+        ),
     ))
     assert result == {"error": "深度研究执行失败，请稍后重试"}
 
@@ -212,8 +228,11 @@ async def test_research_tool_no_sink_silent():
     tool = ResearchTool()
     result = json.loads(await tool.execute_tool(
         "research", {"query": "研究主题足够长"},
-        {"research_service_factory": lambda: _make_service(events), "event_sink": None,
-         "user_id": 1, "knowledge_pipeline": {}},
+        ToolContext(
+            db_session=None, user_id=1, agent_id=1,
+            research_service_factory=lambda: _make_service(events),
+            knowledge_pipeline=KnowledgePipelineConfig(),
+        ),
     ))
     assert result["report"] == "报告"
 
@@ -227,7 +246,9 @@ async def test_factory_injection_contract(monkeypatch):
     """
     import inspect
 
-    from novamind.features.agent.services.chat_service import AgentChatService
+    from novamind.features.agent.services.context_assembly import (
+        build_research_service_factory,
+    )
 
     async def _fake_es_client():
         return object()
@@ -236,8 +257,7 @@ async def test_factory_injection_contract(monkeypatch):
         "novamind.shared.storage.client_factory.get_elasticsearch_client",
         _fake_es_client,
     )
-    svc = AgentChatService.__new__(AgentChatService)
-    factory = await svc._build_research_service_factory()
+    factory = await build_research_service_factory(SimpleNamespace())
     assert callable(factory)
     assert not inspect.iscoroutine(factory)
     assert not inspect.ismethod(factory)

@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolParameter, ToolSource
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.registry import ToolRegistry
@@ -44,7 +45,7 @@ class _NoopTool(BaseTool):
         return self._fns
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         return "ok"
 
@@ -225,7 +226,7 @@ class _FlakyTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         self._calls += 1
         if self._calls <= self._fail_times:
@@ -242,7 +243,7 @@ async def test_failure_result_carries_tool_purpose_hint():
     executor = ToolExecutor(registry, mcp_client_manager=None)
 
     result = await executor.execute(
-        "flaky_read", {"page_id": 1}, {"session_id": "s1"}
+        "flaky_read", {"page_id": 1}, ToolContext(db_session=None, user_id=1, agent_id=1, session_id="s1")
     )
     assert result.status.value == "error"
     # 用途摘要取 function 定义的 description（_raw_fn 桩为 "d"）
@@ -257,7 +258,7 @@ async def test_consecutive_failures_escalate_to_stop_retry_hint():
     registry.register(_FlakyTool(fail_times=99))
     executor = ToolExecutor(registry, mcp_client_manager=None)
 
-    ctx = {"session_id": "s1"}
+    ctx = ToolContext(db_session=None, user_id=1, agent_id=1, session_id="s1")
     first = await executor.execute("flaky_read", {"page_id": 1}, ctx)
     second = await executor.execute("flaky_read", {"page_id": 2}, ctx)
     third = await executor.execute("flaky_read", {"page_id": 3}, ctx)
@@ -267,7 +268,7 @@ async def test_consecutive_failures_escalate_to_stop_retry_hint():
     assert "请勿以相同方式重试" in third.content
     assert "已连续失败 3 次" in third.content
     # 失败不跨会话泄漏
-    other = await executor.execute("flaky_read", {"page_id": 4}, {"session_id": "s2"})
+    other = await executor.execute("flaky_read", {"page_id": 4}, ToolContext(db_session=None, user_id=2, agent_id=1, session_id="s2"))
     assert "请勿以相同方式重试" not in other.content
 
 
@@ -279,7 +280,7 @@ async def test_success_resets_consecutive_failure_counter():
     registry.register(flaky)
     executor = ToolExecutor(registry, mcp_client_manager=None)
 
-    ctx = {"session_id": "s1"}
+    ctx = ToolContext(db_session=None, user_id=1, agent_id=1, session_id="s1")
     await executor.execute("flaky_read", {"page_id": 1}, ctx)
     await executor.execute("flaky_read", {"page_id": 2}, ctx)
     ok = await executor.execute("flaky_read", {"page_id": 3}, ctx)
@@ -302,7 +303,7 @@ async def test_timeout_also_gets_guidance():
         default_timeout_ms = 500
 
         async def execute_tool(
-            self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+            self, tool_name: str, arguments: dict[str, Any], context: ToolContext
         ) -> str:
             await asyncio.sleep(5)
             return "late"
@@ -315,7 +316,7 @@ async def test_timeout_also_gets_guidance():
         )
     )
     executor = ToolExecutor(registry, mcp_client_manager=None)
-    result = await executor.execute("slow_fn", {}, {"session_id": "s1"})
+    result = await executor.execute("slow_fn", {}, ToolContext(db_session=None, user_id=1, agent_id=1, session_id="s1"))
     assert result.status == ToolResultStatus.TIMEOUT
     assert "请勿以相同方式重试" not in result.content  # 首败普通指引
     assert "修正后可重试" in result.content

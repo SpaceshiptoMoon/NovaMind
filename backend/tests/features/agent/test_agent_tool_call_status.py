@@ -16,7 +16,7 @@ from novamind.features.agent.schemas.agent_schema import (
     ToolCallResponse,
 )
 from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.chat_service import AgentChatService, TurnPersistence
 
 pytestmark = pytest.mark.unit
 
@@ -93,17 +93,17 @@ async def test_handle_tool_call_persists_call_id() -> None:
     })
     user_msg = SimpleNamespace(id=5)
     conv = SimpleNamespace(id=7)
-    context: dict = {}
+    turn = TurnPersistence()
 
-    await svc._handle_tool_call(event, user_msg, conv, context)
+    await svc._handle_tool_call(event, user_msg, conv, turn)
 
     assert captured["call_id"] == "call_xyz"
     assert captured["message_id"] == 5
     assert captured["conversation_id"] == 7
     assert captured["tool_name"] == "web_search"
     assert captured["status"] == "running"
-    # context 记录 call_id → tool_call 主键映射，供 _handle_tool_result 回填
-    assert context["tc_call_xyz"] == 42
+    # turn 记录 call_id → tool_call 主键映射，供 _handle_tool_result 回填
+    assert turn.tool_call_ids["call_xyz"] == 42
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_handle_tool_call_empty_call_id_becomes_none() -> None:
     event = AgentEvent("tool_call", {
         "tool_name": "todo", "arguments": {}, "call_id": "",
     })
-    await svc._handle_tool_call(event, SimpleNamespace(id=5), SimpleNamespace(id=7), {})
+    await svc._handle_tool_call(event, SimpleNamespace(id=5), SimpleNamespace(id=7), TurnPersistence())
     assert captured["call_id"] is None
 
 

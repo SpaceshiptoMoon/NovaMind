@@ -8,6 +8,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -91,7 +92,7 @@ class ResearchTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """执行深度研究：消费 research_stream 事件流，进度旁路推 WS，报告落工具结果。
 
@@ -108,7 +109,7 @@ class ResearchTool(BaseTool):
         if tool_name != "research":
             return f"未知工具：{tool_name}"
 
-        factory = context.get("research_service_factory")
+        factory = context.research_service_factory
         if factory is None:
             return json.dumps(
                 {"error": "深度研究服务未配置（需 Agent 勾选 research 工具）"},
@@ -122,13 +123,16 @@ class ResearchTool(BaseTool):
                 ensure_ascii=False,
             )
 
-        event_sink = context.get("event_sink")
+        event_sink = context.event_sink
         request = self._build_request(arguments)
-        user_id = int(context.get("user_id") or 0)
+        user_id = int(context.user_id or 0)
         # 研究空间取会话知识绑定的第一个 space（批2 范围约束同样约束研究）；
         # 无绑定时 None——研究会话落库 NULL（无空间归属），内部检索无空间上下文
-        pipeline_cfg = context.get("knowledge_pipeline") or {}
-        bound_space_ids = ((pipeline_cfg.get("knowledge_bindings") or {}).get("space_ids"))
+        pipeline_cfg = context.knowledge_pipeline
+        bound_space_ids = (
+            (pipeline_cfg.knowledge_bindings or {}).get("space_ids")
+            if pipeline_cfg else None
+        )
         space_id = int(bound_space_ids[0]) if bound_space_ids else None
 
         topic = ""

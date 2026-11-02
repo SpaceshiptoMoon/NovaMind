@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 import pytest_asyncio
 from novamind.core.database.base import Base
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -57,8 +58,10 @@ async def agent_db():
     await engine.dispose()
 
 
-def _ctx(db: AsyncSession, user_id: int = OWNER_USER_ID) -> dict:
-    return {"conversation_id": CONV_ID, "db_session": db, "user_id": user_id}
+def _ctx(db: AsyncSession, user_id: int = OWNER_USER_ID) -> ToolContext:
+    return ToolContext(
+        db_session=db, user_id=user_id, agent_id=1, conversation_id=CONV_ID
+    )
 
 
 # ==================== 正例 ====================
@@ -139,10 +142,17 @@ async def test_plan_output_invalid_step(agent_db: AsyncSession) -> None:
 async def test_plan_output_missing_context(agent_db: AsyncSession) -> None:
     """缺 conversation_id 或 db_session 返回 error，不抛异常"""
     tool = PlanOutputTool()
-    data = json.loads(await tool.execute_tool("plan_output", {"step": 1}, {}))
-    assert "error" in data
+    # 缺 conversation_id
     data = json.loads(await tool.execute_tool(
-        "plan_output", {"step": 1}, {"conversation_id": CONV_ID, "user_id": OWNER_USER_ID},
+        "plan_output", {"step": 1},
+        ToolContext(db_session=None, user_id=OWNER_USER_ID, agent_id=1),
+    ))
+    assert "error" in data
+    # 缺 db_session
+    data = json.loads(await tool.execute_tool(
+        "plan_output", {"step": 1},
+        ToolContext(db_session=None, user_id=OWNER_USER_ID, agent_id=1,
+                    conversation_id=CONV_ID),
     ))
     assert "error" in data
 

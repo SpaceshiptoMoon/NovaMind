@@ -8,6 +8,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -78,7 +79,7 @@ class ReadAttachmentTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """校验 context 中的附件读取端口后分页返回附件提取文本；端口未配置返回错误 JSON。
 
@@ -90,7 +91,7 @@ class ReadAttachmentTool(BaseTool):
         Returns:
             JSON 文本：附件元信息 + content + has_more；归属不符或异常为 {error}。
         """
-        port = context.get("attachment_read_port")
+        port = context.attachment_read_port
         if port is None:
             return json.dumps(
                 {"error": "附件读取端口未配置，无法读取附件内容"},
@@ -115,7 +116,7 @@ class ReadAttachmentTool(BaseTool):
             limit = 8000
         limit = min(max(1, limit), MAX_CHUNK_LIMIT)
 
-        user_id = context.get("user_id")
+        user_id = context.user_id
         if user_id is None:
             return json.dumps(
                 {"error": "缺少 user_id，无法校验附件归属"},

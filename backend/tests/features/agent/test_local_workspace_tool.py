@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.features.agent.services.local_workspace.port import InProcessExecutor
 from novamind.features.agent.tool.builtins.local_workspace import LocalWorkspaceTool
 
@@ -23,8 +24,11 @@ def tool() -> LocalWorkspaceTool:
     return LocalWorkspaceTool()
 
 
-def _ctx(root: Path) -> dict:
-    return {"local_workspace_port": InProcessExecutor(root=str(root))}
+def _ctx(root: Path) -> ToolContext:
+    return ToolContext(
+        db_session=None, user_id=1, agent_id=1,
+        local_workspace_port=InProcessExecutor(root=str(root)),
+    )
 
 
 @pytest.mark.asyncio
@@ -123,7 +127,9 @@ async def test_bash_empty_command(tool: LocalWorkspaceTool, ws_root: Path):
 
 @pytest.mark.asyncio
 async def test_no_port_returns_guidance(tool: LocalWorkspaceTool):
-    out = json.loads(await tool.execute_tool("read", {"path": "a.txt"}, {}))
+    out = json.loads(await tool.execute_tool(
+    "read", {"path": "a.txt"}, ToolContext(db_session=None, user_id=1, agent_id=1)
+))
     assert "未绑定本地工作区" in out["error"]
 
 

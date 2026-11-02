@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolParameter, ToolSource
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.result import ToolResultStatus
@@ -124,7 +125,7 @@ async def test_engine_feeds_back_parse_error_without_executing():
     """畸形 JSON 参数 → tool_result status=failed，执行器零触碰（旧版静默 args={} 执行）"""
     engine = _engine(_touching_executor())
     call_evt, result_evt, _, tool_msg = await engine._execute_single_tool(
-        "search", '{"query": ', "call_1", {},
+        "search", '{"query": ', "call_1", ToolContext(db_session=None, user_id=1, agent_id=1),
     )
     assert result_evt.data["status"] == "failed"
     assert "不是合法 JSON" in result_evt.data["full_result"]
@@ -145,7 +146,7 @@ async def test_engine_feeds_back_schema_error_from_executor():
     }
     engine = _engine(executor)
     _, result_evt, _, tool_msg = await engine._execute_single_tool(
-        "search", json.dumps({"wrong": "arg"}), "call_2", {},
+        "search", json.dumps({"wrong": "arg"}), "call_2", ToolContext(db_session=None, user_id=1, agent_id=1),
     )
     assert result_evt.data["status"] == "failed"
     assert "参数校验失败" in result_evt.data["full_result"]

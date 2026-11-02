@@ -20,7 +20,7 @@ from novamind.features.agent.schemas.agent_schema import (
     SystemPromptResponse,
 )
 from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.chat_service import AgentChatService, TurnPersistence
 
 pytestmark = pytest.mark.unit
 
@@ -332,7 +332,7 @@ async def test_handle_assistant_tool_calls_persists_usage_duration() -> None:
 
     svc.agent_service = SimpleNamespace(save_message=fake_save)  # type: ignore[assignment]
     conv = SimpleNamespace(id=7)
-    context: dict = {"current_iteration": 1}
+    turn = TurnPersistence(iteration=1)
     event = AgentEvent(
         "assistant_tool_calls",
         {
@@ -345,7 +345,7 @@ async def test_handle_assistant_tool_calls_persists_usage_duration() -> None:
         },
     )
 
-    await svc._handle_assistant_tool_calls(event, conv, context, "决策文本", None)
+    await svc._handle_assistant_tool_calls(event, conv, turn, "决策文本", None)
 
     assert saved["extra"]["usage"]["total_tokens"] == 150
     assert saved["extra"]["duration_ms"] == 1234

@@ -770,8 +770,8 @@ async def test_delete_agent_last_member_dissolves_group(group_db):
 @pytest.mark.asyncio
 async def test_consult_tool_rejects_non_member():
     """consult_member 工具：member_id 不在名单内被拒，合法名单回调可达。"""
+    from novamind.engines.agent.tool.context import ToolContext
     from novamind.features.agent.tool.builtins.consult_member import (
-        CONSULT_CONTEXT_KEY,
         ConsultMemberTool,
     )
 
@@ -779,12 +779,13 @@ async def test_consult_tool_rejects_non_member():
         return f"ok:{member_id}:{question}"
 
     tool = ConsultMemberTool()
-    ctx = {
-        CONSULT_CONTEXT_KEY: {
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=7,
+        group_consult={
             "fn": fake_fn,
             "members": [{"agent_id": 7, "name": "A", "role_hint": "研究"}],
-        }
-    }
+        },
+    )
     bad = await tool.execute_tool(
         "consult_member", {"member_id": 99, "question": "q"}, ctx
     )
@@ -807,8 +808,8 @@ def test_consult_tool_def_enum():
 @pytest.mark.asyncio
 async def test_messaging_tool_rejects_non_member():
     """send_direct_message：收件人非同组成员被工具侧拒绝。"""
+    from novamind.engines.agent.tool.context import ToolContext
     from novamind.features.agent.tool.builtins.group_messaging import (
-        MESSAGING_CONTEXT_KEY,
         GroupMessagingTool,
     )
 
@@ -819,12 +820,13 @@ async def test_messaging_tool_rejects_non_member():
         return '{"ok": true}'
 
     tool = GroupMessagingTool()
-    ctx = {
-        MESSAGING_CONTEXT_KEY: {
+    ctx = ToolContext(
+        db_session=None, user_id=1, agent_id=7,
+        group_messaging={
             "fn": fake_fn,
             "members": [{"agent_id": 7, "name": "A"}],
-        }
-    }
+        },
+    )
     bad = await tool.execute_tool(
         "send_direct_message", {"to_member": 42, "content": "hi"}, ctx
     )

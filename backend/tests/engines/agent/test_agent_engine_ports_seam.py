@@ -5,7 +5,7 @@
    long_term/memory_manager）不再 import 被切割的宿主依赖
    （features.knowledge_space/features.user/features.deep_research/
    shared.clients/features.agent.repository/shared.prompts/AgentMemory ORM）。
-2. 工具经 context["*_port"] 调用端口，端口缺失时返回「未配置」错误而非崩溃。
+2. 工具经 ToolContext 端口字段调用宿主实现，端口缺失时返回「未配置」错误而非崩溃。
 3. LongTermMemory 经 LongTermMemoryStorePort/PromptProvider 工作，不接触 repository/ORM。
 4. 宿主适配器满足端口协议。
 """
@@ -39,6 +39,7 @@ from novamind.engines.agent.tool.builtins.knowledge_search import (
 )
 from novamind.engines.agent.tool.builtins.memory import MemoryTool
 from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.search.ports import WebSearchResult
 
 pytestmark = pytest.mark.unit
@@ -115,7 +116,7 @@ def _run(coro):
 
 def test_web_search_tool_missing_port_returns_error():
     tool = WebSearchTool()
-    out = _run(tool.execute_tool("web_search", {"query": "x"}, context={}))
+    out = _run(tool.execute_tool("web_search", {"query": "x"}, context=ToolContext(db_session=None, user_id=7, agent_id=1)))
     assert "未配置" in out
 
 
@@ -132,7 +133,7 @@ def test_web_search_tool_uses_port():
         tool.execute_tool(
             "web_search",
             {"query": "q", "max_results": 3},
-            context={"web_search_port": fake_port},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, web_search_port=fake_port),
         )
     )
     fake_port.search.assert_awaited_once_with(query="q", max_results=3)
@@ -143,7 +144,7 @@ def test_web_search_tool_uses_port():
 
 def test_knowledge_search_tool_missing_port_returns_error():
     tool = KnowledgeSearchTool()
-    out = _run(tool.execute_tool("list_spaces", {}, context={}))
+    out = _run(tool.execute_tool("list_spaces", {}, context=ToolContext(db_session=None, user_id=7, agent_id=1)))
     assert "未配置" in out
 
 
@@ -155,7 +156,7 @@ def test_knowledge_search_tool_list_spaces_uses_port():
         ),
     )
     out = _run(
-        tool.execute_tool("list_spaces", {}, context={"knowledge_search_port": fake_port, "user_id": 7})
+        tool.execute_tool("list_spaces", {}, context=ToolContext(db_session=None, user_id=7, agent_id=1, knowledge_search_port=fake_port))
     )
     fake_port.list_spaces.assert_awaited_once_with(7)
     data = json.loads(out)
@@ -172,7 +173,7 @@ def test_knowledge_search_tool_list_kbs_access_denied():
         tool.execute_tool(
             "list_knowledge_bases",
             {"space_id": 5},
-            context={"knowledge_search_port": fake_port, "user_id": 7},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, knowledge_search_port=fake_port),
         )
     )
     fake_port.can_access_space.assert_awaited_once_with(5, 7)
@@ -195,7 +196,7 @@ def test_knowledge_search_tool_search_uses_port():
         tool.execute_tool(
             "knowledge_search",
             {"space_id": 1, "query": "q", "kb_id": 9, "top_k": 5},
-            context={"knowledge_search_port": fake_port, "user_id": 7},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, knowledge_search_port=fake_port),
         )
     )
     fake_port.search.assert_awaited_once_with(
@@ -219,7 +220,7 @@ def test_knowledge_search_tool_search_truncates_long_content():
         tool.execute_tool(
             "knowledge_search",
             {"space_id": 1, "query": "q"},
-            context={"knowledge_search_port": fake_port, "user_id": 7},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, knowledge_search_port=fake_port),
         )
     )
     data = json.loads(out)
@@ -241,7 +242,7 @@ def test_knowledge_search_tool_document_list_uses_port():
         tool.execute_tool(
             "document_list",
             {"space_id": 1, "kb_id": 2},
-            context={"knowledge_search_port": fake_port, "user_id": 7},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, knowledge_search_port=fake_port),
         )
     )
     data = json.loads(out)
@@ -251,7 +252,7 @@ def test_knowledge_search_tool_document_list_uses_port():
 
 def test_memory_tool_missing_port_returns_error():
     tool = MemoryTool()
-    out = _run(tool.execute_tool("memory", {"action": "add", "category": "fact"}, context={}))
+    out = _run(tool.execute_tool("memory", {"action": "add", "category": "fact"}, context=ToolContext(db_session=None, user_id=7, agent_id=1)))
     assert "未配置" in out
 
 
@@ -271,7 +272,7 @@ def test_memory_tool_add_uses_port():
         tool.execute_tool(
             "memory",
             {"action": "add", "category": "fact", "content": "hello"},
-            context={"memory_store_port": fake_store, "user_id": 7, "agent_id": 1},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, memory_store_port=fake_store),
         )
     )
     data = json.loads(out)
@@ -296,12 +297,11 @@ def test_memory_tool_add_honors_context_injected_limit():
         tool.execute_tool(
             "memory",
             {"action": "add", "category": "fact", "content": "hello"},
-            context={
-                "memory_store_port": fake_store,
-                "user_id": 7,
-                "agent_id": 1,
-                "memory_limit_per_user_agent": 0,
-            },
+            context=ToolContext(
+                db_session=None, user_id=7, agent_id=1,
+                memory_store_port=fake_store,
+                memory_limit_per_user_agent=0,
+            ),
         )
     )
     data = json.loads(out)
@@ -325,7 +325,7 @@ def test_memory_tool_add_falls_back_to_default_limit():
         tool.execute_tool(
             "memory",
             {"action": "add", "category": "fact", "content": "hello"},
-            context={"memory_store_port": fake_store, "user_id": 7, "agent_id": 1},
+            context=ToolContext(db_session=None, user_id=7, agent_id=1, memory_store_port=fake_store),
         )
     )
     data = json.loads(out)
@@ -348,12 +348,11 @@ def test_memory_tool_remove_uses_port_and_search_port():
         tool.execute_tool(
             "memory",
             {"action": "remove", "old_content": "c"},
-            context={
-                "memory_store_port": fake_store,
-                "memory_search_port": fake_search,
-                "user_id": 7,
-                "agent_id": 1,
-            },
+            context=ToolContext(
+                db_session=None, user_id=7, agent_id=1,
+                memory_store_port=fake_store,
+                memory_search_port=fake_search,
+            ),
         )
     )
     data = json.loads(out)

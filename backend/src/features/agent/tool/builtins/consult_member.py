@@ -7,12 +7,12 @@
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-# 主持人调用成员时通过 context["group_consult"] 携带的回调字典键
-CONSULT_CONTEXT_KEY = "group_consult"
+# 主持人调用成员时经 ToolContext.group_consult 携带回调字典
 # 回调字典约定键：fn=协程(member_id, question)->str；members=本群可咨询成员清单
 CONSULT_FN_KEY = "fn"
 CONSULT_MEMBERS_KEY = "members"
@@ -129,7 +129,7 @@ class ConsultMemberTool(BaseTool):
         }
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """经 context 回调拉起成员 turn，答复全文回流（回调缺失/成员非法返回错误文本）。"""
         question = str(arguments.get("question") or "").strip()
@@ -137,7 +137,7 @@ class ConsultMemberTool(BaseTool):
         if not question:
             return "错误：question 不能为空"
 
-        bundle = context.get(CONSULT_CONTEXT_KEY) or {}
+        bundle = context.group_consult or {}
         fn = bundle.get(CONSULT_FN_KEY)
         members = bundle.get(CONSULT_MEMBERS_KEY) or []
         member_ids = {m.get("agent_id") for m in members}

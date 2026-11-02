@@ -5,6 +5,7 @@ from collections import OrderedDict
 from typing import Any
 
 from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
 from novamind.engines.agent.tool.hooks import ToolHook
 from novamind.engines.agent.tool.registry import ToolRegistry
@@ -66,21 +67,21 @@ class ToolExecutor:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> ToolResult:
         """执行工具调用（含超时保护 + 钩子异常隔离）。
 
         Args:
             tool_name: 工具名（MCP 工具带 mcp__ 前缀）。
             arguments: 工具参数，可被 before 钩子改写。
-            context: 执行上下文，透传给工具实现。
+            context: 强类型执行上下文，透传给工具实现。
 
         Returns:
             ToolResult：status 为 SUCCESS/TIMEOUT/ERROR，content 或 data 承载结果。
         """
         tool_def = self._resolve_tool_definition(tool_name)
         timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
-        session_id = str(context.get("session_id") or "")
+        session_id = str(context.session_id or "")
 
         # 参数 schema 校验（钩子链之前）：畸形参数不进入执行，错误回喂模型自纠
         from novamind.engines.agent.tool.validation import validate_tool_arguments
@@ -290,7 +291,7 @@ class ToolExecutor:
         self,
         tool_def: ToolDefinition,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> str:
         """路由到实际执行器"""
         if tool_def.name.startswith(MCP_PREFIX):
@@ -319,7 +320,7 @@ class ToolExecutor:
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        context: dict[str, Any],
+        context: ToolContext,
     ) -> str:
         """路由到内置工具实现，异常统一捕获为错误 JSON 返回。"""
         tool = self._tool_registry.find_tool_provider(tool_name)

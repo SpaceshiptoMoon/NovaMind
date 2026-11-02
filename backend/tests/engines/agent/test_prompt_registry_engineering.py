@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from novamind.engines.agent.tool.context import ToolContext
 
 pytestmark = pytest.mark.unit
 
@@ -202,7 +203,7 @@ def _runner(engine, enabled_tools=None):
         model="gpt-4o-mini",
         enabled_tools=enabled_tools if enabled_tools is not None else ["web_search"],
         enabled_mcp_ids=[],
-        parent_context={"conversation_id": 55, "subagent_runner": "parent"},
+        parent_context=ToolContext(db_session=None, user_id=1, agent_id=1, conversation_id=55, subagent_runner="parent"),
     )
 
 
@@ -249,8 +250,8 @@ class TestSubAgentRunner:
         await runner.run_subagent("任务")
 
         sub_context = engine.calls[0]["context"]
-        assert sub_context["conversation_id"] == 55  # 父端口复用
-        assert sub_context["subagent_runner"] is None
+        assert sub_context.conversation_id == 55  # 父端口复用
+        assert sub_context.subagent_runner is None
 
     @pytest.mark.asyncio
     async def test_llm_fallback_to_vlm(self):
@@ -277,7 +278,7 @@ class TestSubAgentRunner:
         runner = SubAgentRunner(
             agent_engine=engine, tool_executor=executor, client_factory=fallback_factory,
             model="gpt-4o-mini", enabled_tools=["web_search"],
-            enabled_mcp_ids=[], parent_context={},
+            enabled_mcp_ids=[], parent_context=ToolContext(db_session=None, user_id=1, agent_id=1),
         )
         await runner.run_subagent("任务")
         assert engine.calls[0]["llm_client"] == "vlm-client"

@@ -12,6 +12,7 @@ from novamind.engines.agent.tool.builtins.read_attachment import (
     MAX_CHUNK_LIMIT,
     ReadAttachmentTool,
 )
+from novamind.engines.agent.tool.context import ToolContext
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +44,9 @@ def test_schema_declares_read_attachment():
 @pytest.mark.asyncio
 async def test_port_missing_returns_error():
     tool = ReadAttachmentTool()
-    out = json.loads(await tool.execute_tool("read_attachment", {"attachment_id": 1}, {}))
+    out = json.loads(await tool.execute_tool(
+        "read_attachment", {"attachment_id": 1}, ToolContext(db_session=None, user_id=42, agent_id=1),
+    ))
     assert "error" in out
 
 
@@ -52,7 +55,7 @@ async def test_reads_via_port_with_clamped_limit():
     tool = ReadAttachmentTool()
     port = AsyncMock()
     port.get_attachment_text.return_value = _chunk()
-    context = {"user_id": 42, "attachment_read_port": port}
+    context = ToolContext(db_session=None, user_id=42, agent_id=1, attachment_read_port=port)
 
     out = json.loads(
         await tool.execute_tool(
@@ -75,7 +78,7 @@ async def test_attachment_not_owned_returns_error():
     tool = ReadAttachmentTool()
     port = AsyncMock()
     port.get_attachment_text.side_effect = KeyError("nope")
-    context = {"user_id": 42, "attachment_read_port": port}
+    context = ToolContext(db_session=None, user_id=42, agent_id=1, attachment_read_port=port)
 
     out = json.loads(
         await tool.execute_tool("read_attachment", {"attachment_id": 999}, context)
@@ -89,7 +92,7 @@ async def test_port_internal_error_returns_error():
     tool = ReadAttachmentTool()
     port = AsyncMock()
     port.get_attachment_text.side_effect = RuntimeError("db down")
-    context = {"user_id": 42, "attachment_read_port": port}
+    context = ToolContext(db_session=None, user_id=42, agent_id=1, attachment_read_port=port)
 
     out = json.loads(
         await tool.execute_tool("read_attachment", {"attachment_id": 7}, context)

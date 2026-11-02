@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.engines.agent.tool.context import ToolContext
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -71,7 +72,7 @@ class ReadToolResultTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
         """按 tool_call_id 从 agent_tool_calls 表取回原始结果，超长按 offset/limit 切片并附 has_more 标记。
 
@@ -90,7 +91,7 @@ class ReadToolResultTool(BaseTool):
         if tc_id is None:
             return json.dumps({"error": "缺少 tool_call_id 参数"})
 
-        db = context.get("db_session")
+        db = context.db_session
         if not db:
             return json.dumps({"error": "无法访问数据库"})
 
@@ -113,7 +114,7 @@ class ReadToolResultTool(BaseTool):
             select(AgentSession).where(AgentSession.id == tc.conversation_id)
         )
         session_row = sess_result.scalar_one_or_none()
-        if not session_row or session_row.user_id != context.get("user_id"):
+        if not session_row or session_row.user_id != context.user_id:
             return json.dumps({"error": f"未找到工具调用记录: {tc_id}"})
 
         content = tc.result or "(空结果)"

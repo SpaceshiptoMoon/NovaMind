@@ -3,6 +3,7 @@ import json
 
 import pytest
 from novamind.engines.agent.tool.builtins.task import TaskTool
+from novamind.engines.agent.tool.context import ToolContext
 
 pytestmark = pytest.mark.unit
 
@@ -20,7 +21,10 @@ def test_task_tool_schema():
 @pytest.mark.asyncio
 async def test_task_tool_no_runner():
     tool = TaskTool()
-    result = await tool.execute_tool("task", {"description": "d", "prompt": "p"}, {})
+    result = await tool.execute_tool(
+        "task", {"description": "d", "prompt": "p"},
+        ToolContext(db_session=None, user_id=1, agent_id=1),
+    )
     parsed = json.loads(result)
     assert "error" in parsed
 
@@ -39,7 +43,7 @@ async def test_task_tool_with_mock_runner():
     result = await tool.execute_tool(
         "task",
         {"description": "研究X", "prompt": "研究 X 的现状"},
-        {"subagent_runner": MockRunner()},
+        ToolContext(db_session=None, user_id=1, agent_id=1, subagent_runner=MockRunner()),
     )
     parsed = json.loads(result)
     assert parsed["summary"] == "子 agent 结果"
@@ -50,7 +54,8 @@ async def test_task_tool_with_mock_runner():
 async def test_task_tool_empty_prompt():
     tool = TaskTool()
     result = await tool.execute_tool(
-        "task", {"description": "d", "prompt": ""}, {"subagent_runner": object()}
+        "task", {"description": "d", "prompt": ""},
+        ToolContext(db_session=None, user_id=1, agent_id=1, subagent_runner=object()),
     )
     parsed = json.loads(result)
     assert "error" in parsed
@@ -59,5 +64,5 @@ async def test_task_tool_empty_prompt():
 @pytest.mark.asyncio
 async def test_task_tool_unknown_name():
     tool = TaskTool()
-    result = await tool.execute_tool("other", {}, {})
+    result = await tool.execute_tool("other", {}, ToolContext(db_session=None, user_id=1, agent_id=1))
     assert "未知工具" in result
