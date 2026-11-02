@@ -57,7 +57,8 @@ features/knowledge_space/services/
 
 文档成功终态后（可选）触发 Wiki 生成：`tasks/document_tasks.py` → `tasks/wiki_tasks.py`
 → `services/wiki_ingest_service.py` 四阶段 Map-Reduce（候选 → 引文标注 → 写页 → 收链）。
-Wiki 页面不入 ES 检索。
+Wiki 页面以 `chunk_type="wiki_page"` 入 ES 向量库（`services/wiki_es_sync.py`），检索时
+参与加权（rerank 之后命中项分数 ×boost_factor，factor 入缓存键；详见 `wiki-architecture.md`）。
 ```
 
 ## Directory Guide

@@ -54,7 +54,7 @@ region 基座键集、构造、规范化、占位符兜底读取唯一定义在 
 图片只服务「命中 chunk 后展示配图」，不做 VLM 语义描述。三层分工：
 
 1. **引擎层只插占位符**：`document_model.document_salt(payload)`（sha256 前 12 hex，内容绑定——正文同形串无法伪造合法占位符）+ `figure_placeholder(salt, artifact_id)` → `__FIGURE_URL__{salt}_{artifact_id}__`。同文档同盐，金样/快照/指纹稳定。
-2. **业务层替换为短文件名**：`_upload_figure_images_to_minio`（上传门禁 `pdf/xlsx/xls/docx/ppt/pptx/epub`）把 blob 传 MinIO（`{base}_figures/` 目录），`_restore_figure_links` 把占位符替换为 `figure_xxx.png` 短路径；**剥除用精确串匹配**（strip_targets = 解析器占位符全集 − 上传成功集合），上传失败的图片从正文剥除而非残留占位符。上传完成后 region 内 `image_blobs` 清除降内存。
+2. **业务层替换为短文件名**：`_upload_figure_images_to_minio`（上传门禁 `pdf/xlsx/xls/docx/ppt/pptx/epub/zip/eml/msg`，含容器格式——成员图片经重编号合并后走同一上传链）把 blob 传 MinIO（`{base}_figures/` 目录），`_restore_figure_links` 把占位符替换为 `figure_xxx.png` 短路径；**剥除用精确串匹配**（strip_targets = 解析器占位符全集 − 上传成功集合），上传失败的图片从正文剥除而非残留占位符。上传完成后 region 内 `image_blobs` 清除降内存。
 3. **读取端 presign 换签名 URL**：`document_query_service.presign_figure_links`（6 小时时效）在 parsed-text / chunks 端点返回前即时换签；存储侧恒存短路径。旧快照经 `pipeline_snapshots.resolve_figure_short_paths` 兜底补算。
 
 region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / caption / text / member_texts / member_bboxes / image_blobs`。
@@ -84,7 +84,7 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 - **落库**：`video_narratives` 表（`document_id` 唯一，status 0 运行 / 1 完成 / 2 失败；overview/chapters JSON + content_md 全文）。注意继承 `BaseModel`（带时间戳列）而非 `Base`。
 - **触发**：任务函数 `process_narrative_task`（worker 注册，arq 入队 kwargs 必须与签名一致）；kb 配置开启时由解析完成步骤 8b 自动入队（仅视频族），API `POST/GET /{kb_id}/documents/{doc_id}/narrative` 按需触发/读取。
 - **检索分层消费**：`SearchService._attach_narrative_chapters` 给命中的视频块附 `narrative_chapter`（标题/时间区间/章节摘要/全片梗概）；Agent 检索工具输出两层结构（结果行引用 + 章节去重列表），回答「这个视频讲了什么」类问题时 LLM 以章节摘要而非碎片拼接作答。
-- **成本提示**：每个长视频约 9 次 LLM 调用；与 `strategy=rewrite`（描述后重写连贯）叠加会双重连贯化，前端表单已加互斥告警。
+- **成本提示**：每个长视频约 9 次 LLM 调用；与 `strategy=rewrite`（描述后重写连贯）叠加会双重连贯化（前端配置表单当前未提供互斥告警，配置面自行避免同开）。
 
 ## 三级指纹快照与断点续跑
 
@@ -98,7 +98,7 @@ region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / c
 ## 上传格式门禁
 
 - 上传白名单唯一定义：`services/document_file_types.py`（xls/ppt 旧二进制刻意未登记，解析路由支持但上传面收口）。
-- figure 上传门禁（七格式）：`document_pipeline.py` `("pdf","xlsx","xls","docx","ppt","pptx","epub")`。
+- figure 上传门禁（十格式）：`document_pipeline.py` `_FIGURE_UPLOAD_FILE_TYPES = ("pdf","xlsx","xls","docx","ppt","pptx","epub","zip","eml","msg")`。
 
 ## 关键文件索引
 

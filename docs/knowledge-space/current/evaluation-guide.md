@@ -44,6 +44,13 @@
 | `question` | 是 | 测试问题。评测时作为检索查询，并作为生成阶段的输入 |
 | `expected_answer` | 是 | 期望答案（参考答案）。用于正确性、上下文召回、答案相似度等指标 |
 
+除两个必填字段外，每条用例还支持两个**可选**字段（JSON 与 CSV 均可携带，多值用分隔符拆分）：
+
+| 字段 | 说明 |
+|------|------|
+| `contexts` | 自带参考资料（gold contexts）；**非空时该用例跳过检索，直接评生成质量**（`evaluation_schema.TestCase`） |
+| `expected_sources` | 期望命中的来源（document_id 或 chunk_id）；提供时检索命中指标按硬基准重算（命中任一期望来源即计命中，precision/首命中排名据此覆盖），LLM 相关性判断明细保留作对照 |
+
 **JSON 格式**（根对象可带可选 `name` 字段）：
 
 ```json

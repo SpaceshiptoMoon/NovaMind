@@ -447,7 +447,7 @@ NovaMind/
 |  |  |- features/                 # 领域模块（user / knowledge_space / agent / agent_api / knowledge_ops / …）
 |  |  |- setting/                  # YAML 配置加载
 |  |  `- shared/                   # 共享基础设施（storage/ai_models/mq/document/…）
-|  `- tests/                       # 按被测对象分层（architecture/core/shared/engines/features）
+|  `- tests/                       # 按被测对象分层（architecture/core/shared/engines/features/integration）
 |- frontend/                       # Vue 3 + TypeScript 前端
 |  |- src/
 |  |  |- api/                      # 按领域分组的类型化 API 客户端

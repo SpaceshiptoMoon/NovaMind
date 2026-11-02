@@ -56,10 +56,17 @@ YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认�
 - `no_speech_prob > 0.6 且 avg_logprob < -1.0` → 丢弃（模型自己没把握的段，静音/噪声编造）；
 - 相邻 segment 文本完全相同 → 折叠为一条（静音/音乐段典型重复幻觉；非相邻重复不动）。
 
+其后再加两道统计判据过滤（均通用判据、非案例拟合）：
+- `_filter_stock_phrase_segments`：结构门控（段时长 <4s + 文本 <30 字 + 与相邻段间隔 >2s）
+  命中后比对幻觉套话短语表（HF 社区高频字幕尾残留，中英双收）——三项结构条件同时满足
+  才进入短语比对，正常口头禅不误伤；
+- `_filter_low_energy_segments`：`local_whisper_min_speech_dbfs`（YAML，默认 -40 dBFS）
+  以下的短文本段判为底噪/静音残留丢弃；置空禁用。
+
 ## 4. 快照失效语义（配置变化 → 正确重转写）
 
 音频解析指纹 = 文件哈希 + 解析配置 + **`asr_engine` 引擎参数块**（`_audio_asr_fingerprint_params`）：
-`protocol/model/model_dir/model_slug/device/compute_type/beam_size/vad_enabled/hotwords`（热词排序后参与哈希）。
+`protocol/model/model_dir/model_slug/device/compute_type/beam_size/vad_enabled/min_speech_dbfs/empty_result_retry_language/hotwords/diarization_enabled/speaker_count`（热词排序后参与哈希）。
 
 任一变化（切档位、改设备、加热词、换协议）→ 指纹变化 → 存量音频文档下次 RETRY
 重新转写；未变化的 RETRY 仍命中快照免重跑。指纹构造是命中检查与保存侧共用的单一

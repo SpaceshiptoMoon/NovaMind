@@ -1,8 +1,9 @@
 # Wiki 生成与浏览架构
 
-> 最后更新：2026-10-29。Wiki 机制移植自腾讯 WeKnora；纯函数件（linkify/dedup/handles/slug/taxonomy）已下沉 `engines/wiki/`（通用引擎域），持久化（四表 ORM/仓储）、ES 同步、任务编排、API 留 `features/knowledge_space/`（不建独立 feature）。
+> 最后更新：2026-11-02。Wiki 机制移植自腾讯 WeKnora；纯函数件（linkify/dedup/handles/slug/taxonomy）已下沉 `engines/wiki/`（通用引擎域），持久化（四表 ORM/仓储）、ES 同步、任务编排、API 留 `features/knowledge_space/`（不建独立 feature）。
 > 端到端实测通过：16 页 / 72 互链 / 0 孤儿，编辑-版本-回滚-Agent 工具全链路可用。
 > 2026-09-22 对齐 WeKnora 补齐 reparse/retract 语义四批（retract worker / reparse scrub / refs 替换 / 清理收敛），见「重解析与删除语义」。
+> 2026-11 阅读页改造与配套后端：导航徽标 / 类型筛选 chips / 可信度条 / 反向链接 / snippet 高亮；文档级 wiki-references 反查端点；synthesis/comparison 入侧栏索引。见「API」「Agent 工具」「前端」。
 
 ## 定位
 
@@ -17,14 +18,14 @@
 
 | 表 | 说明 |
 |---|---|
-| `wiki_pages`（WikiPage） | 页面主表：slug/title/page_type(summary,entity,concept,synthesis,comparison)/content/summary/aliases/source_refs/chunk_refs/in_links/out_links/version/last_edit_source |
+| `wiki_pages`（WikiPage） | 页面主表：slug/title/page_type(summary,entity,concept,synthesis,comparison)/content/summary/aliases/category_path(扁平目录路径)/source_refs/chunk_refs/in_links/out_links/version/last_edit_source |
 | `wiki_page_revisions`（WikiPageRevision） | 版本快照，唯一约束 `(page_id, version)`，两级保留（软 50 只清 pipeline 来源 / 硬 200 全清） |
 | `wiki_page_issues`（WikiPageIssue） | 问题登记（实体混淆/事实矛盾/过期等），人工与 Agent 共用闭环 |
 | `wiki_ingest_records`（WikiIngestRecord） | 生成任务履历：status(PENDING/RUNNING/DONE/FAILED/CANCELLED) + step_progress JSON（崩溃可见） |
 
 **软删唯一约束**：`deleted_flag BIGINT`（0=存活，删除写时间戳）配唯一索引 `(kb_id, slug, deleted_flag)`。MySQL 无 partial index，不要改回 Postgres 方案。
 
-**配置段**：`KnowledgeBaseConfig.wiki: WikiGenerationConfig`（enabled / llm / granularity(focused,standard,exhaustive) / max_pages_per_ingest / content_instructions / extraction_instructions），见 `schemas/knowledge_base_schema.py`。
+**配置段**：`KnowledgeBaseConfig.wiki: WikiGenerationConfig`（enabled / llm / granularity(focused,standard,exhaustive) / max_pages_per_ingest / content_instructions / extraction_instructions / boost_factor——检索加权系数，None=默认 1.3），见 `schemas/knowledge_base_schema.py`。
 
 ## 生成管道（`services/wiki_ingest_service.py`）
 
@@ -73,7 +74,7 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 
 前缀 `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki`：
 
-- 读：`GET /pages`、`GET /pages/{slug:path}`、`GET /pages/{slug:path}/sources`、`GET /index`、`GET /search`、`GET /stats`、`GET /ingest/status`、`GET /graph`、`GET /lint`、`GET /issues`
+- 读：`GET /pages`、`GET /pages/{slug:path}`、`GET /pages/{slug:path}/sources`、`GET /index`（按类型分组；2026-11 起五类全组，synthesis/comparison 也入侧栏索引）、`GET /search`、`GET /stats`、`GET /ingest/status`、`GET /graph`、`GET /lint`、`GET /issues`
 - 写：`POST /pages`、`PUT /pages/{slug:path}`（version 乐观锁，冲突 409）、`DELETE /pages/{slug:path}`（软删）、`POST /issues`（报告页面问题，Agent `wiki_flag_issue` 与人工共用）
 - 版本：`GET /revisions/{slug:path}`、`GET /revisions/{slug:path}/{version:int}`、`POST /revert`
 - 运维：`POST /rebuild`、`POST /lint/autofix`（死链剥除/空页归档/失效来源回收）、`PUT /issues/{issue_id}/status`
@@ -82,17 +83,24 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 
 **版本语义**：仅用户可见字段（title/content/summary/page_type/status）变更才 bump version；链接维护等簿记写不动 version。回滚 = 用旧版内容创建新版本（`edit_source=revert`），可再回。
 
+**文档级反查**（2026-11，`api/document_routes.py`）：`GET /api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/wiki-references` —— 按 source_refs 反查引用该文档的存活页（复用 retract 反查 + 逐页精确项二次防御），文档详情页「已纳入 Wiki」反向条数据源。
+
 ## Agent 工具（`features/agent/tool/builtins/wiki_tools.py`）
 
-类名 `WikiTool`（非 Toolset），4 个工具：
+类名 `WikiTool`（非 Toolset），8 个工具：
 
-- `wiki_search(queries, kb_ids?)` / `wiki_read_page(slugs)` — 读
-- `wiki_write_page(...)` — 仅 synthesis/comparison 两类（跨文档综合页，Agent 专属），EDITOR+ 权限，`[[slug|...]]` 出链对已有 slug 校验
-- `wiki_flag_issue(slug, issue_type, description)` — 报问题进 `wiki_page_issues`，与人工处理共用闭环
+- `wiki_search(kb_id, query, limit?)` / `wiki_read_page(kb_id, slugs)` — 读（单 KB 关键词搜索；读页一次最多 5 个 slug）
+- `wiki_write_page(kb_id, slug, title, content, page_type, summary?)` — 仅 synthesis/comparison 两类（跨文档综合页，Agent 专属），EDITOR+ 权限，`[[slug|...]]` 出链对已有 slug 校验
+- `wiki_replace_text(kb_id, slug, old_text, new_text)` — 单页内精确文本全量替换（bump version，旧版先快照；修小错不整页覆盖）
+- `wiki_rename_page(kb_id, slug, new_slug)` — 改 slug 并自动改写全 KB `[[旧slug]]` 互链（新 slug 须保持同类型前缀）
+- `wiki_flag_issue(kb_id, slug, issue_type, description)` — 报问题进 `wiki_page_issues`，与人工处理共用闭环
+- `wiki_read_issue(kb_id, issue_id?|slug?)` — 读单个问题，或按页列 pending 问题
+- `wiki_update_issue(kb_id, issue_id, status)` — 更新问题状态（resolved/ignored/pending），闭合处理环
 
 ## 前端
 
-- **`views/space/WikiBrowserView.vue`**：三页签（浏览/图谱/问题）。浏览 = 左列表 + 右 MD 正文 + 来源折叠面板；`[[slug|title]]` 渲染前正则替换为 `<a data-slug>` 再 `renderMarkdown`；编辑抽屉（乐观锁 409 提示）+ 历史抽屉（行级 diff + 回滚，diff 在 `utils/wikiDiff.ts`）；生成中顶部横幅轮询 `/ingest/status`。
+- **`views/space/WikiBrowserView.vue`**：三页签（浏览/图谱/问题）。浏览 = 左列表 + 右 MD 正文 + 来源折叠面板；`[[slug|title]]` 渲染前正则替换为 `<a data-slug>` 再 `renderMarkdownWithToc`；编辑抽屉（乐观锁 409 提示）+ 历史抽屉（行级 diff + 回滚，diff 在 `utils/wikiDiff.ts`）；生成中顶部横幅轮询 `/ingest/status`。2026-11 阅读页改造：侧栏类型筛选 chips（全部/单类型）、搜索 snippet 关键词 `<mark>` 高亮、正文页可信度条（来源数点击展开来源面板）、「引用此页的页面」反向链接折叠面板、右栏本页目录滚动高亮；KbSidebar 的 Wiki 导航项徽标（生成中 `⟳` / 待处理问题数）也由本视图供给。
+- **`views/space/DocumentDetailView.vue`**：文档 meta 区「已纳入 Wiki」反向条——`documentApi.getWikiReferences` 打文档级 wiki-references 端点，点击 slug 直达 wiki 页，无引用不显示。
 - **`components/knowledge/WikiGraphPanel.vue`**：ECharts 力导向图谱（overview / ego 邻域），按 page_type 着色 + 图例过滤、拖拽/缩放、悬停提示、点击跳页面；颜色读 Element Plus CSS 变量适配暗色主题；echarts 按需引入（Graph/Tooltip/Legend），仅随 Wiki 懒加载 chunk 下载。
 - **`components/knowledge/KbWikiSection.vue`**：KB 配置「Wiki 生成」步骤（`kbConfig.ts` 的 `applyWikiConfig` / `buildWikiConfigFromForm` 双向转换）。
 
@@ -104,9 +112,10 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 
 - 模型：`backend/src/features/knowledge_space/models/wiki.py`
 - 管道：`backend/src/features/knowledge_space/services/wiki_ingest_service.py`
+- 服务（同目录）：`wiki_page_service.py`（写/版本/回滚/问题）、`wiki_query_service.py`（列表/详情/索引/搜索）、`wiki_graph_service.py`（图谱）、`wiki_lint_service.py`（lint/autofix）、`wiki_retract_service.py`（删除回收）、`wiki_es_sync.py`（ES 同步）
 - 仓储：`backend/src/features/knowledge_space/repository/wiki_repository.py`、`wiki_issue_repository.py`
-- 路由：`backend/src/features/knowledge_space/api/wiki_routes.py`
+- 路由：`backend/src/features/knowledge_space/api/wiki_routes.py`（`document_routes.py` 另含文档级 wiki-references 反查端点）
 - 任务：`backend/src/features/knowledge_space/tasks/wiki_tasks.py`
 - Agent：`backend/src/features/agent/tool/builtins/wiki_tools.py`
 - 提示词：`backend/src/features/knowledge_space/prompts/templates.py`（`wiki_` 前缀 9 个模板键：candidate_slug / chunk_citation / page_modify_system+user / summary_page / dedup / taxonomy_plan / index_intro / index_intro_update）
-- 前端：`frontend/src/views/space/WikiBrowserView.vue`、`frontend/src/api/knowledge/wiki.ts`
+- 前端：`frontend/src/views/space/WikiBrowserView.vue`、`frontend/src/views/space/DocumentDetailView.vue`、`frontend/src/api/knowledge/wiki.ts`、`frontend/src/api/knowledge/document.ts`（getWikiReferences）

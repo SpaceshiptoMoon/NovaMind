@@ -8,7 +8,7 @@
 - `frontend/`：Vue 3 + TypeScript 前端
 - `docs/`：设计文档、架构说明和历史记录
 - `docker/`：Dockerfile、Nginx、Supervisord 和运行时配置模板
-- `test_data/`：上传样例和测试数据
+- `test_data/`：上传样例和测试数据（约定目录，不进 Git；本地添加大样例文件时自行创建）
 
 如果你是第一次阅读本项目，建议先看根目录 `README.md`，再回到本页定位代码。
 
@@ -113,7 +113,6 @@ schemas/
 | `frontend/src/views/space/` | 空间、知识库、文档和配置流程 |
 | `frontend/src/views/chat/` | 聊天工作区 |
 | `frontend/src/views/agent/` | Agent 列表与聊天 |
-| `frontend/src/views/research/` | 深度研究页面 |
 | `frontend/src/views/skill/` | 技能广场和管理审核 |
 | `frontend/src/views/app/` | 应用中心 |
 | `frontend/src/views/user/` | 个人资料、模型、通知、用户管理 |

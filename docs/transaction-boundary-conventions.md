@@ -17,7 +17,7 @@ CLAUDE.md 规则拆成两条不变式：
 ### Repository 层（现行约定）
 - 写方法统一 `async with session.begin_nested():` 包裹 + `flush()`（拿到主键/时间戳可再 `refresh()`），**不 `commit()`**。标准样例：`agent_api/repository/api_key_repository.py`、`notification/repository/notification_repository.py`。
 - 2026-07 存量的 flush-only 写法（knowledge_space 早期 repo）不要求全量改造——它们同样满足「零 commit」不变式，改动触及时顺手对齐即可。
-- 已知刻意例外：`knowledge_space/repository/document_task_repository.py` 的批次概览路径保留 flush-only 并有注释自证（紧急路径，勿动）。
+- 已知刻意例外：`knowledge_space/repository/document_task_repository.py` 的 `mark_failed_independent`（紧急兜底：ORM session 不可用时独立连接 raw SQL + 直接 commit）有注释自证（紧急路径，勿动）。
 
 ### Service 层
 - `commit()` 是事务边界的确认点，**保留**。尤其当存在不可逆外部副作用时：

@@ -21,7 +21,6 @@ NovaMind 前端是一个基于 Vue 3 + TypeScript 的应用，为知识空间、
 - `space`：空间列表、知识库、KB 配置、文档、任务批次、检索、评测、空间设置；文档详情含视频叙事文档区块（按需生成/查看章节化连贯叙事）
 - `chat`：AI 聊天工作区
 - `agent`：Agent 列表与 Agent 聊天
-- `research`：深度研究与历史记录
 - `skill`：技能广场、管理审核、技能详情
 - `app`：应用中心与简历挖掘等场景页
 - `user`：个人资料、通知、修改密码、模型配置、用户管理
@@ -99,8 +98,7 @@ npm run preview
 - `/home/spaces` — 空间、知识库、KB 配置、文档、任务、评测、检索
 - `/home/workspace/chat` — AI 聊天工作区
 - `/home/workspace/agents` — Agent 列表与聊天
-- `/home/workspace/research` — 深度研究与历史记录
-- `/home/workspace/skills` — 技能广场与管理审核
+- `/home/apps/skills` — 技能广场与管理审核
 - `/home/apps` — 应用中心（简历挖掘）
 - `/403` — 无权限页
 

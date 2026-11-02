@@ -22,28 +22,46 @@ The current project already has:
 - frontend knowledge-base config page
 - runtime logic for text, image, video, and audio pipelines
 
-The current implementation is moving to a modality-first structure:
+The current implementation has landed the modality-first structure:
 
 ```json
 {
   "parsing": {
-    "strategy": "default | deepdoc",
-    "deepdoc_parser_id": "pdf_full | ...",
-    "deepdoc_pdf_mode": "full | plain",
-    "ocr_enabled": false,
-    "vlm_description_enabled": false,
-    "vlm_model": null,
+    "text": {
+      "pdf": {
+        "strategy": "default | deepdoc | external_ocr | mineru",
+        "parser": "full",
+        "ocr_task": "document_parsing | multi_lan"
+      },
+      "docx": { "strategy": "default | deepdoc" },
+      "excel": { "strategy": "deepdoc" },
+      "ppt": { "strategy": "deepdoc" },
+      "epub": { "strategy": "deepdoc" },
+      "markdown": { "strategy": "default | deepdoc" },
+      "html": { "strategy": "default | deepdoc" },
+      "txt": { "strategy": "default | deepdoc" },
+      "json": { "strategy": "default | deepdoc" }
+    },
+    "image": {
+      "strategy": "vlm | deepdoc_ocr | combined | external_ocr",
+      "vlm_model": null
+    },
     "video": {
+      "strategy": "simple | scene | dedup | grouped | rewrite | frame_seq | video_native | adaptive",
       "frame_interval": 5.0,
       "max_frames": 60
     },
     "audio": {
-      "asr_model": "whisper-1",
+      "asr_model": null,
       "language": null
     }
   }
 }
 ```
+
+（旧扁平键 `strategy` / `deepdoc_parser_id` / `deepdoc_pdf_mode` 仍在 schema 顶层保留
+作迁移入口；`ocr_enabled` 已随 Tesseract 兜底删除、`vlm_description_enabled` 仅作旧
+配置迁移键，两者均不再是现行字段。）
 
 This document is the implementation reference for the current codebase.
 
@@ -132,7 +150,7 @@ Text parsing is organized by document type:
 {
   "parsing": {
     "text": {
-      "pdf": { "strategy": "default | deepdoc", "parser": "full", "ocr_enabled": false },
+      "pdf": { "strategy": "default | deepdoc | external_ocr | mineru", "parser": "full", "ocr_task": "document_parsing | multi_lan" },
       "docx": { "strategy": "default | deepdoc" },
       "excel": { "strategy": "deepdoc" },
       "ppt": { "strategy": "deepdoc" },
@@ -167,23 +185,30 @@ Current structure:
 ```json
 {
   "pdf": {
-    "strategy": "default | deepdoc",
+    "strategy": "default | deepdoc | external_ocr | mineru",
     "parser": "full",
-    "ocr_enabled": false
+    "ocr_task": "document_parsing | multi_lan"
   }
 }
 ```
 
 ### Behavior rules
 
-- `strategy` is required.
+- `strategy` defaults to `default`.
 - `strategy=default`
-  - `parser` must not be provided.
+  - `parser` is not consumed; a stale `parser` from a previous deepdoc config is
+    auto-cleared by the schema validator (not an error).
 - `strategy=deepdoc`
   - `parser` is optional; currently the only valid value is `full`
     (the upstream-aligned per-box fusion pipeline). The historical `plain`
     mode lives on as a compatibility alias via `deepdoc_pdf_mode`.
-- `ocr_enabled` is independent and may remain available.
+- `strategy=external_ocr`
+  - 整本 PDF 交外部 OCR 服务（配置中心 `ocr` 段，如 qwen3.5-ocr）识别；
+    `ocr_task` 选 `document_parsing`（整本直传带版面结构，默认）或
+    `multi_lan`（逐页渲图纯文本）。适用于文字层为空的扫描件/图片型 PDF。
+- `strategy=mineru`
+  - 交外部 MinerU 引擎（配置中心 `mineru` 段，独立环境 CLI 子进程）；
+    引擎未安装时任务显式终态失败。
 
 ### Parser ID history (2026-08/09 convergence)
 
@@ -230,9 +255,11 @@ Current implemented structure:
 {
   "parsing": {
     "image": {
-      "strategy": "vlm | deepdoc_ocr",
-      "vlm_description_enabled": false,
-      "vlm_model": null
+      "strategy": "vlm | deepdoc_ocr | combined | external_ocr",
+      "ocr_task": "document_parsing | multi_lan",
+      "vlm_model": null,
+      "vlm_fallback_model": null,
+      "vlm_skip_on_quota_error": false
     }
   }
 }
@@ -243,8 +270,18 @@ Current implemented structure:
 - `strategy=deepdoc_ocr` (migrated from the historical value `ocr`)
   - uses DeepDoc's OCR path; `vlm_model` is ignored.
 - `strategy=vlm`
-  - generates a VLM description for the image; `vlm_model` is optional.
+  - generates a VLM description for the image; `vlm_model` is required
+    (blank fails fast, no default fallback).
   - image embedding always goes through VLM description + text embedding.
+- `strategy=combined`
+  - DeepDoc OCR + VLM 结构化 caption 合并入库：逐字层（图中文字/实体）双通道
+    交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重；需要 VLM 模型，
+    OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号（warning-only）。
+- `strategy=external_ocr`
+  - 外部 OCR 服务（配置中心 `ocr` 段）提取文字再走文本 embedding（无需 VLM）；
+    `ocr_task` 留空按文件形态自动（PDF→document_parsing，图片→multi_lan）。
+- `vlm_fallback_model`：主模型配额/鉴权失败时换备用重试一次（图片路径单次调用）；
+  `vlm_skip_on_quota_error=true` 时主备均失败写占位描述而非任务失败。
 
 ## Video Parsing Structure
 
@@ -272,15 +309,18 @@ Recommended structure:
       "transcribe_audio": false,
       "asr_model": null,
       "language": null,
+      "hotwords": null,
       "steps_enabled": false,
       "steps_llm_model": null,
-      "steps_max_steps": 30
+      "steps_max_steps": 30,
+      "narrative_synthesis": false,
+      "narrative_llm_model": null
     }
   }
 }
 ```
 
-### 七种策略（抽帧/去重/描述三阶段组合预设）
+### 八种策略（抽帧/去重/描述三阶段组合预设）
 
 | strategy | 抽帧 | 描述 | 适用 | 备注 |
 |---|---|---|---|---|
@@ -364,17 +404,28 @@ MinIO 对象，模型直接看视频（`{"type":"video_url","video_url":{"url":.
 - `vlm_skip_on_quota_error=true` 时全帧配额失败写占位描述而非任务失败。
 - 所有策略共用音轨 ASR 融合（`transcribe_audio`）与步骤综合（`steps_enabled`）——
   S3/S4 的段/片产出与 grouped 同构（`frame_groups` 锚点展开），下游零改动复用。
+- `narrative_synthesis=true` 时视频解析完成后自动合成章节化叙事文档
+  （Map-Reduce，`narrative_llm_model` 留空 = 用户默认 LLM；与 `rewrite`
+  策略叠加会双重连贯化——注意：前端配置表单当前只透传该配置、未渲染
+  专属开关 UI，也无互斥告警）。
 
 ## Audio Parsing Structure
 
-Recommended structure:
+Current implemented structure:
 
 ```json
 {
   "parsing": {
     "audio": {
-      "asr_model": "whisper-1",
-      "language": null
+      "asr_model": null,
+      "language": null,
+      "hotwords": null,
+      "clean_enabled": false,
+      "clean_llm_model": null,
+      "split_mode": null,
+      "pause_gap_seconds": null,
+      "diarization_enabled": false,
+      "speaker_count": null
     }
   }
 }
@@ -384,16 +435,25 @@ Recommended structure:
 
 - `asr_model` and `language` are not mutually exclusive.
 - `language=null` means auto-detect.
+- `asr_model=null`（默认）走本地 faster-whisper（引擎档位由 YAML
+  `knowledge_base.parsing.local_whisper_model` 决定，默认 large-v3）；云端模型名
+  （如 whisper-1 / paraformer-v2）须在模型管理中配置同名凭证。历史默认
+  `whisper-1` 已修正为 None——旧值会让未显式选模型的 KB 去查不存在的云端凭证。
+- `clean_enabled`/`clean_llm_model`：LLM 逐批清洗转写文本（双产物 raw+clean，
+  入库检索用 clean）；`split_mode="pause_topic"` + `pause_gap_seconds`（默认
+  0.8s）：停顿边界优先切分；`diarization_enabled`/`speaker_count`（2~100）：
+  说话人分离，仅 DashScope 协议生效。详见 audio-asr-pipeline.md。
 
 ## Splitting Structure
 
 The current splitting model is mostly reusable and does not require a major redesign.
 
-Recommended to keep:
+Current implemented structure:
 
-- top-level text splitting
-- `splitting.audio`
-- `splitting.video`
+- top-level text splitting (`splitting`，八种策略见下节)
+- 音频切分模式在 `parsing.audio`（`split_mode` / `pause_gap_seconds`），不在
+  `splitting` 下——schema 无 `splitting.audio` / `splitting.video` 子节
+- 媒体转写（`[HH:MM:SS#idx]` 锚点行）在切分层自动走 line-aware 路径
 
 Current image splitting overrides were previously removed and should not be reintroduced without a concrete runtime need.
 
@@ -562,13 +622,13 @@ This reduces risk because parser runtime behavior can stay mostly stable while c
 
 Minimum rules to enforce:
 
-- `pdf.strategy` must be one of `default | deepdoc`
-- `pdf.strategy=default` forbids `parser`
+- `pdf.strategy` must be one of `default | deepdoc | external_ocr | mineru`
+- `pdf.strategy=default` does not consume `parser`（残留旧值由 schema 校验器自动清空）
 - `pdf.strategy=deepdoc` allows `parser` (only `full` is currently valid)
 - `excel` / `ppt` / `epub` / `zip` / `eml` / `msg` / `ofd` are pinned to `strategy=deepdoc`（容器/邮件族只有 deepdoc 认识：容器递归与附件解析都在 deepdoc 路径，配置域不设独立策略项）
-- `image.strategy` must be one of `vlm | deepdoc_ocr`
-- `video.frame_interval` must remain in `1.0 ~ 60.0`
-- `video.max_frames` must remain in `1 ~ 200`
+- `image.strategy` must be one of `vlm | deepdoc_ocr | combined | external_ocr`
+- `video.frame_interval` must remain in `0.5 ~ 60.0`
+- `video.max_frames` must remain in `1 ~ 1000`
 
 ## Implementation Recommendation
 

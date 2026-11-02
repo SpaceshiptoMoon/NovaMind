@@ -307,8 +307,8 @@ zip 压缩包与 eml/msg 邮件附件的容器递归解析（`engines/document/p
 | C-EML-ATTACH | eml 带 txt 附件 | 正文+附件内容都进产物 | ✅ |
 | C-EML-LIMIT | 附件数超限 | 同一限额拒收 | ✅ |
 
-配套（同批 69db9f53 断点修复）：`test_container_parsing_config.py` 锁定容器族策略
-恒为 deepdoc（不被用户 PDF 配置污染）；`test_file_validator_signatures.py` 容器段
+配套（同批 69db9f53 断点修复）：`tests/features/knowledge_space/test_container_parsing_config.py` 锁定容器族策略
+恒为 deepdoc（不被用户 PDF 配置污染）；`tests/shared/document/test_file_validator_signatures.py` 容器段
 锁定四格式上传放行与 .zip 伪装拒收。
 
 ## 多媒体全矩阵真机批次（2026-10-30~31）

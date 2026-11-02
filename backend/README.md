@@ -46,7 +46,8 @@ backend/
 |  |  |- rag/                    # RAG 引擎（检索引擎、Grade→Retry、查询改写）
 |  |  |- resume/                 # 简历解析引擎
 |  |  |- search/                 # Web 搜索引擎组件（中立端口 + provider）
-|  |  `- video_narrative/        # 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档）
+|  |  |- video_narrative/        # 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档）
+|  |  `- wiki/                   # Wiki 纯函数件（互链/去重/句柄/slug/分类法）
 |  |- features/                  # 领域模块
 |  |  |- agent/
 |  |  |- agent_api/              # Agent API 密钥与 OpenAI 兼容网关

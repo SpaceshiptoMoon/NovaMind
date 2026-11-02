@@ -62,7 +62,7 @@ deep_research / app / user  ──notify()──▶   ├─ 偏好过滤 (Notif
 调用点铁律：**必须在业务 commit 之后调 `NotificationService.notify`**——repo.create 只是
 flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通知。
 
-## 已接线事件（8 种 NotificationType 全部生效）
+## 已接线事件（10 种 NotificationType 全部生效）
 
 | type | 触发点 | 接收人 | link |
 |---|---|---|---|
@@ -73,6 +73,8 @@ flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通
 | resume_completed | 简历成功 / 最终失败 / 前置取消 | 发起用户 | `/home/apps/resume/session/{id}` 或 `/home/apps/resume/history` |
 | password_reset | `forgot_password`（link=None，防枚举语义不变） | 请求重置者 | — |
 | wiki_ready | Wiki 生成任务完成/失败（`wiki_tasks`） | 文档上传者 | `/home/spaces/{sid}/knowledge-bases/{kid}/wiki` |
+| kb_ops_weekly_digest | 知识库运营周报任务（`knowledge_ops/tasks/weekly_digest.py`） | 空间成员 | `/space/{sid}/kb-ops/gap-report` |
+| kb_review_due | 知识库复审到期提醒任务（`knowledge_ops/tasks/review_reminder.py`） | 文档 owner | `/home/spaces/documents/{id}` |
 | system | 预留 | — | — |
 
 新增事件的步骤：调 `NotificationService.notify(...)` 即可，link 对照

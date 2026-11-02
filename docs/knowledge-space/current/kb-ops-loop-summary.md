@@ -21,14 +21,22 @@
 
 ## 二、系统全景（当前事实）
 
+> **⚠ 2026-10 后续架构变更（QA 对话链清退）**：本节成文后，qa feature（会话问答链）已整体清退，
+> 对话能力由 `features/agent/` 承接。对 kb-ops 的影响：① QueryReformulateDetector 检测类删除，
+> `query_reformulate` 事件不再产生；② citation-click 上报端点迁至 agent
+> （`POST /api/v1/agent/messages/{message_id}/citation-click`，EventRecorder 旁路不变）；
+> ③ `question_answers` 表成为 QA 存档只读（无新写入路径），归因/gap/周报链路仍消费该存档，
+> 但 agent 对话的失败信号（`agent_messages` + `agent_message_feedbacks`）当前不在归因扫批范围内。
+> 下文各组件行按当前代码状态标注。
+
 ### 2.1 新 feature：`knowledge_ops`
 
 | 组件 | 位置 | 职责 |
 |------|------|------|
-| **KbEvent 账本** | `models/kb_event.py` | 只追加运营事件（query_reformulate / citation_click / 归因类），脱敏+截断在写入端口保证；查询侧信号（问答量/零命中/低分）不进账本——由 `question_answers.extra` + 批次 2b 看板承担，避免双事实源 |
+| **KbEvent 账本** | `models/kb_event.py` | 只追加运营事件（citation_click / 归因类；query_reformulate 生产端已随 QA 清退停止写入），脱敏+截断在写入端口保证；查询侧信号（问答量/零命中/低分）不进账本——由 `question_answers.extra` + 批次 2b 看板承担，避免双事实源 |
 | **EventRecorder** | `services/event_recorder.py` | 旁路写入端口：独立短事务+显式 commit、**全异常吞掉**（账本挂了问答照常）、redact 脱敏、512 截断 |
-| **QueryReformulateDetector** | `services/query_reformulate_detector.py` | 会话内改写检测（检索失败强信号）：同会话 120s 窗（YAML 可配）+ 字符 3-gram Jaccard ≥0.5 双门槛，仅 RAG 会话；比对目标取 question_answers 最新 user 消息（R2 models 直查防环） |
-| **attribution_worker** | `tasks/attribution_worker.py` | 归因流水线（cron 每 30 分钟）：拉失败问答（零命中/低分/点踩，与看板同口径）→ 以会话 RAG 配置**重放检索**（原始阈值+降阈值两轮）→ 四分归因 → 写回 `extra.attribution` |
+| **query_reformulate_detector** | `services/query_reformulate_detector.py` | **检测类已随 QA 对话链清退删除**；文件保留 `normalize_query` 与 `char_trigram_similarity`（字符 3-gram Jaccard）两个共享工具，被 gap 聚类与矛盾检测复用 |
+| **attribution_worker** | `tasks/attribution_worker.py` | 归因流水线（cron 每 30 分钟）：拉失败问答（零命中/低分/点踩，与看板同口径）→ 以会话 RAG 配置**重放检索**（原始阈值+降阈值两轮）→ 四分归因 → 写回 `extra.attribution`。输入为 `question_answers`（QA 存档只读），agent 对话暂不进扫批 |
 | **GapRepository / GapReportService** | `repository/gap_repository.py`、`services/gap_report_service.py` | gap 清单（content_gap 归一化聚类+频次排序）/ 待归因计数 / 归因分布；空间双通道过滤 |
 | **weekly_digest** | `tasks/weekly_digest.py` | 周报 cron（每周一 09:23）：逐空间聚合上周 gap → 通知全部成员；**空窗不发**（防告警疲劳） |
 | **SuggestionRepository / new_version_detector** | `repository/suggestion_repository.py`、`services/new_version_detector.py` | 复审建议队列（new_version/contradiction 两类型）；新版识别=文件名归一化完全一致才建议（零误报口径），挂上传管道步骤 9 旁路 |
@@ -39,7 +47,7 @@
 
 | 模块 | 改动 | 批次 |
 |------|------|------|
-| **qa** | 埋点接线 `_maybe_detect_query_reformulate`（_prepare_chat 尾部，chat/chat_stream 两出口全覆盖）；`POST /qa/message/{id}/citation-click`；反馈落行 space 从会话配置兜底 | O1/O2/A2 |
+| **agent（原 qa，已迁移）** | citation-click 上报端点现挂 agent feature：`POST /api/v1/agent/messages/{message_id}/citation-click`（`AgentService.record_citation_click` → EventRecorder 旁路）；消息反馈（点赞/点踩）写 `agent_message_feedbacks`（`PUT /api/v1/agent/messages/{message_id}/feedback`）。原 qa feature 的 `_maybe_detect_query_reformulate` 埋点与 `POST /qa/message/{id}/citation-click` 已随 QA 对话链清退移除 | O2 |
 | **knowledge_space** | Document 模型生命周期六列（lifecycle_status/owner_id/effective_date/review_cycle_days/next_review_at/superseded_by_doc_id）+ `SCHEMA_MIGRATIONS` 幂等补列 + owner 存量回填；**LifecycleService 状态机**（ES chunk `update_by_query` 同步，失败回滚 DB；转换后失效检索缓存）；chunk 写入注入 lifecycle_status；转换/确认复审/复审策略 API | B1/B2 |
 | **shared/storage** | ES mapping 加 `lifecycle_status` keyword；**检索排除式过滤挂 `_build_kb_filter` 单点**（5 处检索路径全生效）：`must_not terms superseded/archived`——missing 字段自动可召回，存量零回填（语义已对真实 ES 实测钉死） | B1 |
 | **knowledge_space（权限）** | `document_permission_filter`：`custom_permissions.documents.hidden_doc_ids` → 检索结果宿主侧剔除（挂 `_search_via_engine`，引擎不感知权限；缓存键按 user_id 分段不串）；SpaceAccessChecker 校验器支持清单键；`SearchService.search` 加 `bypass_document_permission` 供归因绕权限重放 | backlog |
@@ -76,7 +84,8 @@ POST /spaces/{id}/knowledge-bases/{kb}/evaluation/test-sets/generate           �
 
 ### 2.5 YAML 配置（`knowledge_ops` 段，全部可在 `default.example` 查阅）
 
-改写检测窗口/阈值、归因低分/降级阈值/回溯窗/批上限、复审提前量/默认周期、测试集配额、质量基线开关（默认关）。
+归因低分/降级阈值/回溯窗/批上限、复审提前量/默认周期、测试集配额、质量基线开关（默认关）。
+（原「改写检测窗口/阈值」配置已随改写检测器清退移除。）
 
 ---
 

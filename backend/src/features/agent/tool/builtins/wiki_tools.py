@@ -20,7 +20,7 @@ def _err(message: str) -> str:
 
 
 class WikiTool(BaseTool):
-    """Wiki 读取/搜索/撰写/问题标记（4 个函数共用一个工具类）"""
+    """Wiki 读取/搜索/撰写/问题标记（8 个函数共用一个工具类）"""
 
     @property
     def name(self) -> str:
