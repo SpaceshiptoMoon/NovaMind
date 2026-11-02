@@ -50,6 +50,19 @@
                       @input="onSearchInput"
                     />
                   </div>
+                  <!-- 类型筛选 chips：全部/单类型；空组在任意态都隐藏（不占位） -->
+                  <div v-if="!searchQuery" class="type-filter">
+                    <button
+                      v-for="chip in typeFilterChips"
+                      :key="chip.value"
+                      type="button"
+                      class="type-chip"
+                      :class="{ 'is-active': typeFilter === chip.value }"
+                      @click="typeFilter = chip.value"
+                    >
+                      {{ chip.label }}
+                    </button>
+                  </div>
 
                   <div v-if="searchQuery" class="sidebar-group">
                     <div class="group-header">
@@ -77,7 +90,11 @@
                   </div>
 
                   <template v-else>
-                    <div v-for="group in indexGroups" :key="group.page_type" class="sidebar-group">
+                    <div
+                      v-for="group in filteredIndexGroups"
+                      :key="group.page_type"
+                      class="sidebar-group"
+                    >
                       <div class="group-header">
                         <span>{{ typeLabel(group.page_type) }}</span>
                         <small>{{ group.total }}</small>
@@ -683,6 +700,22 @@ const kbNavItems = computed(() => {
 
 // ============ 列表 / 索引 ============
 const indexGroups = ref<WikiIndexGroup[]>([])
+// 类型筛选：'' = 全部；单选某类型只显示该组。空组任何态都不渲染（不占位）
+const typeFilter = ref('')
+
+const typeFilterChips = computed(() => {
+  const chips = [{ value: '', label: '全部' }]
+  for (const g of indexGroups.value) {
+    if (g.total > 0) chips.push({ value: g.page_type, label: typeLabel(g.page_type) })
+  }
+  return chips
+})
+
+const filteredIndexGroups = computed(() =>
+  indexGroups.value.filter(
+    (g) => (!typeFilter.value || g.page_type === typeFilter.value) && g.total > 0,
+  ),
+)
 const hasAnyPage = computed(() => indexGroups.value.some((g) => g.total > 0))
 const searchQuery = ref('')
 const searchResults = ref<
@@ -1953,6 +1986,38 @@ onBeforeUnmount(() => {
 
 .sidebar-search {
   padding: 0 var(--space-2) var(--space-3);
+}
+
+.type-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.type-chip {
+  border: 1px solid var(--color-border-light);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.type-chip:hover {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.type-chip.is-active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
 }
 
 .sidebar-group {
