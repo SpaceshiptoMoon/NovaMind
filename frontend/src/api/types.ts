@@ -2567,6 +2567,8 @@ export interface WikiSearchResponse {
     title: string
     page_type: string
     summary: string
+    /** 命中位置前后各 60 字符的正文片段（后端 search_pages_ranked 产出） */
+    snippet: string
   }>
   total: number
   query: string

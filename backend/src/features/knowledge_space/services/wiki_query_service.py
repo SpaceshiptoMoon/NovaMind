@@ -148,7 +148,7 @@ class WikiQueryService:
         return await self.repo.search_pages_ranked(kb_id, q, limit=limit)
 
     async def get_index(self, *, kb_id: int, per_page: int):
-        """索引页组装：三类分组 + 生成状态 + index intro。
+        """索引页组装：五类分组 + 生成状态 + index intro。
 
         Args:
             kb_id: 知识库 ID。
@@ -158,7 +158,8 @@ class WikiQueryService:
             (分组列表, 是否生成中, index intro 文本) 三元组。
         """
         groups: list[WikiIndexGroup] = []
-        for page_type in ("entity", "concept", "summary"):
+        # 五类全组：synthesis/comparison 仅 Agent 创建，此前未入侧栏导致读者不可见
+        for page_type in ("entity", "concept", "summary", "synthesis", "comparison"):
             items, total = await self.repo.list_pages(
                 kb_id, page_type=page_type, status=WikiPageStatus.PUBLISHED,
                 page=1, page_size=per_page,

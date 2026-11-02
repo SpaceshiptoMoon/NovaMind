@@ -8,73 +8,55 @@
              banner/tabs 包进 v-else，避免空态下渲染空壳 tabs -->
         <el-empty v-if="kbInvalid" description="知识库不存在或链接无效，请从知识库列表重新进入" />
         <template v-else>
-        <!-- 顶部状态条 -->
-        <div v-if="ingestActive" class="ingest-banner">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          <span>Wiki 生成中（{{ ingestStatusText }}）{{ ingestStatus?.defer_wait ? `，最新文档${ingestStatus.defer_wait}` : '' }}，页面可能不完整…</span>
-        </div>
-        <div v-else-if="ingestStatus?.status === 'failed'" class="ingest-banner is-failed">
-          <el-icon><WarningFilled /></el-icon>
-          <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
-          <el-button
-            class="banner-retry-btn"
-            size="small"
-            :loading="rebuildRunning"
-            @click="retryWikiRebuild"
-          >
-            重试生成
-          </el-button>
-        </div>
+          <!-- 顶部状态条 -->
+          <div v-if="ingestActive" class="ingest-banner">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span
+              >Wiki 生成中（{{ ingestStatusText }}）{{
+                ingestStatus?.defer_wait ? `，最新文档${ingestStatus.defer_wait}` : ''
+              }}，页面可能不完整…</span
+            >
+          </div>
+          <div v-else-if="ingestStatus?.status === 'failed'" class="ingest-banner is-failed">
+            <el-icon><WarningFilled /></el-icon>
+            <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
+            <el-button
+              class="banner-retry-btn"
+              size="small"
+              :loading="rebuildRunning"
+              @click="retryWikiRebuild"
+            >
+              重试生成
+            </el-button>
+          </div>
 
-        <!-- 视图切换：浏览 / 图谱 / 问题。三个视图的内容直接放进对应 tab-pane，
+          <!-- 视图切换：浏览 / 图谱 / 问题。三个视图的内容直接放进对应 tab-pane，
              显隐完全交给 el-tabs 内部管理（图谱 pane 用 lazy 惰性挂载）。不要改回
              「tabs + 兄弟容器 v-show」写法——兄弟容器处于父级 dynamicChildren，
              实测反复触发 comment 占位符锚点失配（insertBefore(null)），patch 中断
              后 vdom 与 DOM 永久失同步：点左侧页面列表无反应、多视图同时可见 -->
-        <el-tabs v-model="activeView" class="wiki-view-tabs" @tab-change="onActiveViewChange">
-          <el-tab-pane label="浏览" name="browse">
-            <!-- 浏览视图（原有布局） -->
-            <div class="wiki-layout">
-              <!-- 左侧：页面列表 -->
-              <aside class="wiki-sidebar">
-                <div class="sidebar-search">
-                  <el-input
-                    v-model="searchQuery"
-                    placeholder="搜索页面…"
-                    clearable
-                    :prefix-icon="Search"
-                    @input="onSearchInput"
-                  />
-                </div>
-
-                <div v-if="searchQuery" class="sidebar-group">
-                  <div class="group-header">
-                    <span>搜索结果（{{ searchResults.length }}）</span>
+          <el-tabs v-model="activeView" class="wiki-view-tabs" @tab-change="onActiveViewChange">
+            <el-tab-pane label="浏览" name="browse">
+              <!-- 浏览视图（原有布局） -->
+              <div class="wiki-layout">
+                <!-- 左侧：页面列表 -->
+                <aside class="wiki-sidebar">
+                  <div class="sidebar-search">
+                    <el-input
+                      v-model="searchQuery"
+                      placeholder="搜索页面…"
+                      clearable
+                      :prefix-icon="Search"
+                      @input="onSearchInput"
+                    />
                   </div>
-                  <button
-                    v-for="item in searchResults"
-                    :key="item.slug"
-                    type="button"
-                    class="page-item"
-                    :class="{ 'is-active': item.slug === selectedSlug }"
-                    @click="selectPage(item.slug)"
-                  >
-                    <span class="page-title">{{ item.title }}</span>
-                    <span class="page-type-badge" :data-type="item.page_type">{{
-                      typeLabel(item.page_type)
-                    }}</span>
-                  </button>
-                  <p v-if="!searchResults.length" class="empty-hint">无匹配页面</p>
-                </div>
 
-                <template v-else>
-                  <div v-for="group in indexGroups" :key="group.page_type" class="sidebar-group">
+                  <div v-if="searchQuery" class="sidebar-group">
                     <div class="group-header">
-                      <span>{{ typeLabel(group.page_type) }}</span>
-                      <small>{{ group.total }}</small>
+                      <span>搜索结果（{{ searchResults.length }}）</span>
                     </div>
                     <button
-                      v-for="item in group.items"
+                      v-for="item in searchResults"
                       :key="item.slug"
                       type="button"
                       class="page-item"
@@ -82,297 +64,384 @@
                       @click="selectPage(item.slug)"
                     >
                       <span class="page-title">{{ item.title }}</span>
+                      <span class="page-type-badge" :data-type="item.page_type">{{
+                        typeLabel(item.page_type)
+                      }}</span>
+                      <span
+                        v-if="searchSnippetHtml(item)"
+                        class="page-snippet"
+                        v-html="searchSnippetHtml(item)"
+                      ></span>
                     </button>
+                    <p v-if="!searchResults.length" class="empty-hint">无匹配页面</p>
                   </div>
-                  <p v-if="!hasAnyPage" class="empty-hint">
-                    暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
-                  </p>
-                </template>
 
-                <div class="sidebar-footer">
-                  <el-button size="small" class="new-page-btn" @click="openCreate">
-                    <el-icon><Plus /></el-icon>
-                    新建页面
-                  </el-button>
-                </div>
-              </aside>
-
-              <!-- 右侧：页面内容（唯一滚动列；内部限宽阅读列，宽屏两侧留白） -->
-              <main ref="articleRef" class="wiki-content">
-                <div class="article-column">
-                <template v-if="currentPage">
-                  <div class="page-header">
-                    <div class="page-header-main">
-                      <h2 class="page-title-main">{{ currentPage.title }}</h2>
-                      <div class="page-meta">
-                        <span class="page-type-badge" :data-type="currentPage.page_type">{{
-                          typeLabel(currentPage.page_type)
-                        }}</span>
-                        <span class="meta-item">v{{ currentPage.version }}</span>
-                        <span class="meta-item">{{
-                          sourceLabel(currentPage.last_edit_source)
-                        }}</span>
-                        <span class="meta-item">{{ formatDate(currentPage.updated_at) }}</span>
+                  <template v-else>
+                    <div v-for="group in indexGroups" :key="group.page_type" class="sidebar-group">
+                      <div class="group-header">
+                        <span>{{ typeLabel(group.page_type) }}</span>
+                        <small>{{ group.total }}</small>
                       </div>
+                      <button
+                        v-for="item in group.items"
+                        :key="item.slug"
+                        type="button"
+                        class="page-item"
+                        :class="{ 'is-active': item.slug === selectedSlug }"
+                        @click="selectPage(item.slug)"
+                      >
+                        <span class="page-title">{{ item.title }}</span>
+                      </button>
                     </div>
-                    <div class="page-actions">
-                      <el-button size="small" @click="openEditor">编辑</el-button>
-                      <el-button size="small" @click="openHistory">历史</el-button>
-                      <el-dropdown trigger="click" @command="onPageCommand">
-                        <el-button size="small" text>
-                          <el-icon><MoreFilled /></el-icon>
-                        </el-button>
-                        <template #dropdown>
-                          <el-dropdown-menu>
-                            <el-dropdown-item command="sources">查看来源</el-dropdown-item>
-                            <el-dropdown-item command="report">报告问题</el-dropdown-item>
-                            <el-dropdown-item command="delete" divided>删除页面</el-dropdown-item>
-                          </el-dropdown-menu>
-                        </template>
-                      </el-dropdown>
-                    </div>
+                    <p v-if="!hasAnyPage" class="empty-hint">
+                      暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
+                    </p>
+                  </template>
+
+                  <div class="sidebar-footer">
+                    <el-button size="small" class="new-page-btn" @click="openCreate">
+                      <el-icon><Plus /></el-icon>
+                      新建页面
+                    </el-button>
                   </div>
+                </aside>
 
-                  <!-- 正文：[[slug|title]] 链接预处理后渲染 -->
-                  <div
-                    class="page-body markdown-body"
-                    v-html="renderedContent"
-                    @click="onContentClick"
-                  ></div>
+                <!-- 右侧：页面内容（唯一滚动列；内部限宽阅读列，宽屏两侧留白） -->
+                <main ref="articleRef" class="wiki-content">
+                  <div class="article-column">
+                    <template v-if="currentPage">
+                      <div class="page-header">
+                        <div class="page-header-main">
+                          <h2 class="page-title-main">{{ currentPage.title }}</h2>
+                          <div class="page-meta">
+                            <span class="page-type-badge" :data-type="currentPage.page_type">{{
+                              typeLabel(currentPage.page_type)
+                            }}</span>
+                            <!-- 可信度元信息：来源数可点展开来源面板（AI 生成内容的信任信号放第一屏） -->
+                            <button
+                              type="button"
+                              class="meta-item meta-source-btn"
+                              title="查看来源文档"
+                              @click="expandSources"
+                            >
+                              由 AI 从 {{ sourceCount }} 个来源文档生成
+                            </button>
+                            <span class="meta-item">v{{ currentPage.version }}</span>
+                            <span class="meta-item">{{
+                              sourceLabel(currentPage.last_edit_source)
+                            }}</span>
+                            <span class="meta-item">{{ formatDate(currentPage.updated_at) }}</span>
+                          </div>
+                        </div>
+                        <div class="page-actions">
+                          <el-button size="small" @click="openEditor">编辑</el-button>
+                          <el-button size="small" @click="openHistory">历史</el-button>
+                          <el-dropdown trigger="click" @command="onPageCommand">
+                            <el-button size="small" text>
+                              <el-icon><MoreFilled /></el-icon>
+                            </el-button>
+                            <template #dropdown>
+                              <el-dropdown-menu>
+                                <el-dropdown-item command="sources">查看来源</el-dropdown-item>
+                                <el-dropdown-item command="report">报告问题</el-dropdown-item>
+                                <el-dropdown-item command="delete" divided
+                                  >删除页面</el-dropdown-item
+                                >
+                              </el-dropdown-menu>
+                            </template>
+                          </el-dropdown>
+                        </div>
+                      </div>
 
-                  <!-- 来源折叠面板 -->
-                  <el-collapse v-if="sources.length" class="sources-panel">
-                    <el-collapse-item title="来源文档">
-                      <div v-for="source in sources" :key="source.document_id" class="source-row">
-                        <el-icon><Document /></el-icon>
-                        <template v-if="!source.deleted">
-                          <RouterLink
-                            :to="`/home/spaces/${spaceId}/documents/${source.document_id}`"
-                            class="source-link"
+                      <!-- 正文：[[slug|title]] 链接预处理后渲染 -->
+                      <div
+                        class="page-body markdown-body"
+                        v-html="renderedContent"
+                        @click="onContentClick"
+                      ></div>
+
+                      <!-- 来源折叠面板 + 引用此页的页面（反链，窄屏右栏隐藏时仍可达） -->
+                      <el-collapse
+                        v-if="sources.length || backlinkItems.length"
+                        v-model="openCollapse"
+                        class="sources-panel"
+                      >
+                        <el-collapse-item v-if="sources.length" title="来源文档" name="sources">
+                          <div
+                            v-for="source in sources"
+                            :key="source.document_id"
+                            class="source-row"
                           >
-                            {{ source.filename }}
-                          </RouterLink>
-                        </template>
-                        <span v-else class="source-deleted">{{ source.filename }}（已删除）</span>
+                            <el-icon><Document /></el-icon>
+                            <template v-if="!source.deleted">
+                              <RouterLink
+                                :to="`/home/spaces/${spaceId}/documents/${source.document_id}`"
+                                class="source-link"
+                              >
+                                {{ source.filename }}
+                              </RouterLink>
+                            </template>
+                            <span v-else class="source-deleted"
+                              >{{ source.filename }}（已删除）</span
+                            >
+                          </div>
+                        </el-collapse-item>
+                        <el-collapse-item
+                          v-if="backlinkItems.length"
+                          :title="`引用此页的页面（${backlinkItems.length}）`"
+                          name="backlinks"
+                        >
+                          <div v-for="b in backlinkItems" :key="b.slug" class="source-row">
+                            <a class="source-link" href="#" @click.prevent="selectPage(b.slug)">
+                              {{ b.title }}
+                            </a>
+                          </div>
+                        </el-collapse-item>
+                      </el-collapse>
+                    </template>
+
+                    <template v-else>
+                      <div class="wiki-empty">
+                        <el-empty
+                          :description="
+                            hasAnyPage || searchQuery
+                              ? '选择左侧页面查看'
+                              : '此知识库还没有 Wiki 页面'
+                          "
+                        />
                       </div>
-                    </el-collapse-item>
-                  </el-collapse>
-                </template>
-
-                <template v-else>
-                  <div class="wiki-empty">
-                    <el-empty
-                      :description="
-                        hasAnyPage || searchQuery ? '选择左侧页面查看' : '此知识库还没有 Wiki 页面'
-                      "
-                    />
+                    </template>
                   </div>
-                </template>
-                </div>
-              </main>
+                </main>
 
-              <!-- 右侧：本页目录（批 3 接入数据，滚动高亮当前小节）。
+                <!-- 右侧：本页目录（批 3 接入数据，滚动高亮当前小节）。
                    列本身常驻占位（224px 固定宽），无标题的页面只清空内容——
                    否则中列 flex:1 会在有/无目录的页面间跳宽 -->
-              <aside class="wiki-toc">
-                <template v-if="tocItems.length">
-                  <div class="toc-header">本页目录</div>
-                  <button
-                    v-for="item in tocItems"
-                    :key="item.id"
-                    type="button"
-                    class="toc-item"
-                    :class="[`is-l${item.level}`, { 'is-active': item.id === activeHeadingId }]"
-                    @click="scrollToHeading(item.id)"
-                  >
-                    {{ item.text }}
-                  </button>
-                </template>
-              </aside>
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="图谱" name="graph" lazy>
-            <div class="graph-wrap">
-              <WikiGraphPanel
-                :space-id="spaceId"
-                :kb-id="kbId"
-                :initial-center="selectedSlug || undefined"
-                @select="selectPageFromPanel"
-              />
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane
-            :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`"
-            name="issues"
-          >
-            <div class="issues-wrap">
-              <!-- 统计条：页面/链接/孤儿 + 五类型分布（lint 后同步刷新） -->
-              <div v-if="wikiStats" class="wiki-stats">
-                <div class="stats-item">
-                  <span class="stats-label">页面</span>
-                  <strong class="stats-value">{{ wikiStats.total_pages }}</strong>
-                </div>
-                <div class="stats-item">
-                  <span class="stats-label">链接</span>
-                  <strong class="stats-value">{{ wikiStats.total_links }}</strong>
-                </div>
-                <div class="stats-item">
-                  <span class="stats-label">孤儿页</span>
-                  <strong
-                    class="stats-value"
-                    :class="{ 'is-warning': wikiStats.orphan_count > 0 }"
-                    >{{ wikiStats.orphan_count }}</strong
-                  >
-                </div>
-                <template v-if="statsTypeEntries.length">
-                  <div class="stats-divider" />
-                  <div class="stats-types">
-                    <span
-                      v-for="t in statsTypeEntries"
-                      :key="t.type"
-                      class="type-chip"
-                      :data-type="t.type"
+                <aside class="wiki-toc">
+                  <template v-if="tocItems.length">
+                    <div class="toc-header">本页目录</div>
+                    <button
+                      v-for="item in tocItems"
+                      :key="item.id"
+                      type="button"
+                      class="toc-item"
+                      :class="[`is-l${item.level}`, { 'is-active': item.id === activeHeadingId }]"
+                      @click="scrollToHeading(item.id)"
                     >
-                      <i class="type-dot" />{{ typeLabel(t.type) }} {{ t.count }}
-                    </span>
+                      {{ item.text }}
+                    </button>
+                  </template>
+                  <!-- 链接到此页（反链）：谁引用了本页，点击跳转 -->
+                  <template v-if="backlinkItems.length">
+                    <div class="toc-header">链接到此页</div>
+                    <button
+                      v-for="b in backlinkItems"
+                      :key="b.slug"
+                      type="button"
+                      class="toc-item"
+                      :title="b.slug"
+                      @click="selectPage(b.slug)"
+                    >
+                      {{ b.title }}
+                    </button>
+                  </template>
+                  <!-- 本页问题入口：全局待处理计数可靠（本页精确过滤需先加载问题列表，不做） -->
+                  <template v-if="pendingIssueCount > 0">
+                    <div class="toc-header">质量</div>
+                    <button
+                      type="button"
+                      class="toc-item toc-issue-link"
+                      @click="activeView = 'issues'"
+                    >
+                      {{ pendingIssueCount }} 个待处理问题 →
+                    </button>
+                  </template>
+                </aside>
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane label="图谱" name="graph" lazy>
+              <div class="graph-wrap">
+                <WikiGraphPanel
+                  :space-id="spaceId"
+                  :kb-id="kbId"
+                  :initial-center="selectedSlug || undefined"
+                  @select="selectPageFromPanel"
+                />
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane
+              :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`"
+              name="issues"
+            >
+              <div class="issues-wrap">
+                <!-- 统计条：页面/链接/孤儿 + 五类型分布（lint 后同步刷新） -->
+                <div v-if="wikiStats" class="wiki-stats">
+                  <div class="stats-item">
+                    <span class="stats-label">页面</span>
+                    <strong class="stats-value">{{ wikiStats.total_pages }}</strong>
                   </div>
-                </template>
-              </div>
+                  <div class="stats-item">
+                    <span class="stats-label">链接</span>
+                    <strong class="stats-value">{{ wikiStats.total_links }}</strong>
+                  </div>
+                  <div class="stats-item">
+                    <span class="stats-label">孤儿页</span>
+                    <strong
+                      class="stats-value"
+                      :class="{ 'is-warning': wikiStats.orphan_count > 0 }"
+                      >{{ wikiStats.orphan_count }}</strong
+                    >
+                  </div>
+                  <template v-if="statsTypeEntries.length">
+                    <div class="stats-divider" />
+                    <div class="stats-types">
+                      <span
+                        v-for="t in statsTypeEntries"
+                        :key="t.type"
+                        class="type-chip"
+                        :data-type="t.type"
+                      >
+                        <i class="type-dot" />{{ typeLabel(t.type) }} {{ t.count }}
+                      </span>
+                    </div>
+                  </template>
+                </div>
 
-              <div class="issues-toolbar">
-                <el-radio-group
-                  v-model="issueFilter"
-                  size="small"
-                  :disabled="issuesLoading"
-                  @change="loadIssues"
-                >
-                  <el-radio-button value="pending">待处理</el-radio-button>
-                  <el-radio-button value="resolved">已解决</el-radio-button>
-                  <el-radio-button value="ignored">已忽略</el-radio-button>
-                </el-radio-group>
-                <div class="toolbar-right">
-                  <el-button
-                    v-if="lintFixableCount"
+                <div class="issues-toolbar">
+                  <el-radio-group
+                    v-model="issueFilter"
                     size="small"
-                    type="warning"
-                    plain
-                    :loading="autofixRunning"
-                    @click="runAutoFix"
-                  >
-                    自动修复（{{ lintFixableCount }}）
-                  </el-button>
-                  <el-button
-                    size="small"
-                    :icon="Refresh"
-                    :loading="lintRunning"
                     :disabled="issuesLoading"
-                    @click="runLint"
+                    @change="loadIssues"
                   >
-                    运行质量检查
-                  </el-button>
-                </div>
-              </div>
-
-              <!-- lint 检出问题（派生，非持久化）+ 持久化问题列表 -->
-              <div class="issues-list">
-              <div v-if="lintIssues.length" class="issues-card">
-                <div class="issues-heading-row">
-                  <h4 class="issues-heading">
-                    质量检查（{{ lintIssues.length }} 项）
-                    <span
-                      v-if="lintHealth !== null"
-                      class="health-chip"
-                      :data-grade="healthGrade"
-                      >健康分 {{ lintHealth }}</span
-                    >
-                  </h4>
-                  <el-button text size="small" @click="clearLint">清除</el-button>
-                </div>
-                <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-card">
-                  <span class="issue-severity" :data-severity="issue.severity">{{
-                    severityLabel(issue.severity)
-                  }}</span>
-                  <span class="issue-badge" data-status="pending">
-                    {{ lintTypeLabel(issue.issue_type) }}
-                  </span>
-                  <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
-                    issue.slug
-                  }}</span>
-                  <span class="issue-desc">{{ issue.description }}</span>
-                  <span v-if="issue.auto_fixable" class="fixable-tag">可自动修复</span>
-                </div>
-              </div>
-
-              <!-- 持久化问题列表 -->
-              <div v-if="issues.length" class="issues-card">
-                <h4 class="issues-heading">问题登记（{{ issues.length }} 项）</h4>
-                <div
-                  v-for="issue in issues"
-                  :key="issue.id"
-                  class="issue-card"
-                  :class="{ 'is-inactive': issue.status !== 'pending' }"
-                >
-                  <span class="issue-badge" :data-status="issue.status">
-                    {{ issueTypeLabel(issue.issue_type) }}
-                    <template v-if="issue.status === 'resolved'">· 已解决</template>
-                    <template v-else-if="issue.status === 'ignored'">· 已忽略</template>
-                  </span>
-                  <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
-                    issue.slug
-                  }}</span>
-                  <span class="issue-desc">
-                    {{ issue.description }}
-                  </span>
-                  <span class="issue-meta"
-                    >{{ issue.reported_by }}<template v-if="issue.created_at">
-                      · {{ formatDate(issue.created_at) }}</template
-                    ></span
-                  >
-                  <div class="issue-actions">
-                    <template v-if="issue.status === 'pending'">
-                      <el-button
-                        size="small"
-                        text
-                        type="success"
-                        :loading="updatingIssueId === issue.id"
-                        @click="setIssueStatus(issue, 'resolved')"
-                      >
-                        解决
-                      </el-button>
-                      <el-button
-                        size="small"
-                        text
-                        :loading="updatingIssueId === issue.id"
-                        @click="setIssueStatus(issue, 'ignored')"
-                      >
-                        忽略
-                      </el-button>
-                    </template>
+                    <el-radio-button value="pending">待处理</el-radio-button>
+                    <el-radio-button value="resolved">已解决</el-radio-button>
+                    <el-radio-button value="ignored">已忽略</el-radio-button>
+                  </el-radio-group>
+                  <div class="toolbar-right">
                     <el-button
-                      v-else
+                      v-if="lintFixableCount"
                       size="small"
-                      text
-                      type="primary"
-                      :loading="updatingIssueId === issue.id"
-                      @click="setIssueStatus(issue, 'pending')"
+                      type="warning"
+                      plain
+                      :loading="autofixRunning"
+                      @click="runAutoFix"
                     >
-                      重新打开
+                      自动修复（{{ lintFixableCount }}）
+                    </el-button>
+                    <el-button
+                      size="small"
+                      :icon="Refresh"
+                      :loading="lintRunning"
+                      :disabled="issuesLoading"
+                      @click="runLint"
+                    >
+                      运行质量检查
                     </el-button>
                   </div>
                 </div>
+
+                <!-- lint 检出问题（派生，非持久化）+ 持久化问题列表 -->
+                <div class="issues-list">
+                  <div v-if="lintIssues.length" class="issues-card">
+                    <div class="issues-heading-row">
+                      <h4 class="issues-heading">
+                        质量检查（{{ lintIssues.length }} 项）
+                        <span
+                          v-if="lintHealth !== null"
+                          class="health-chip"
+                          :data-grade="healthGrade"
+                          >健康分 {{ lintHealth }}</span
+                        >
+                      </h4>
+                      <el-button text size="small" @click="clearLint">清除</el-button>
+                    </div>
+                    <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-card">
+                      <span class="issue-severity" :data-severity="issue.severity">{{
+                        severityLabel(issue.severity)
+                      }}</span>
+                      <span class="issue-badge" data-status="pending">
+                        {{ lintTypeLabel(issue.issue_type) }}
+                      </span>
+                      <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
+                        issue.slug
+                      }}</span>
+                      <span class="issue-desc">{{ issue.description }}</span>
+                      <span v-if="issue.auto_fixable" class="fixable-tag">可自动修复</span>
+                    </div>
+                  </div>
+
+                  <!-- 持久化问题列表 -->
+                  <div v-if="issues.length" class="issues-card">
+                    <h4 class="issues-heading">问题登记（{{ issues.length }} 项）</h4>
+                    <div
+                      v-for="issue in issues"
+                      :key="issue.id"
+                      class="issue-card"
+                      :class="{ 'is-inactive': issue.status !== 'pending' }"
+                    >
+                      <span class="issue-badge" :data-status="issue.status">
+                        {{ issueTypeLabel(issue.issue_type) }}
+                        <template v-if="issue.status === 'resolved'">· 已解决</template>
+                        <template v-else-if="issue.status === 'ignored'">· 已忽略</template>
+                      </span>
+                      <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
+                        issue.slug
+                      }}</span>
+                      <span class="issue-desc">
+                        {{ issue.description }}
+                      </span>
+                      <span class="issue-meta"
+                        >{{ issue.reported_by
+                        }}<template v-if="issue.created_at">
+                          · {{ formatDate(issue.created_at) }}</template
+                        ></span
+                      >
+                      <div class="issue-actions">
+                        <template v-if="issue.status === 'pending'">
+                          <el-button
+                            size="small"
+                            text
+                            type="success"
+                            :loading="updatingIssueId === issue.id"
+                            @click="setIssueStatus(issue, 'resolved')"
+                          >
+                            解决
+                          </el-button>
+                          <el-button
+                            size="small"
+                            text
+                            :loading="updatingIssueId === issue.id"
+                            @click="setIssueStatus(issue, 'ignored')"
+                          >
+                            忽略
+                          </el-button>
+                        </template>
+                        <el-button
+                          v-else
+                          size="small"
+                          text
+                          type="primary"
+                          :loading="updatingIssueId === issue.id"
+                          @click="setIssueStatus(issue, 'pending')"
+                        >
+                          重新打开
+                        </el-button>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="!issues.length && !lintIssues.length" class="issues-card issues-empty">
+                    <el-empty
+                      :description="issueFilter === 'pending' ? '没有待处理问题' : '暂无记录'"
+                      :image-size="72"
+                    />
+                  </div>
+                </div>
               </div>
-              <div v-if="!issues.length && !lintIssues.length" class="issues-card issues-empty">
-                <el-empty
-                  :description="issueFilter === 'pending' ? '没有待处理问题' : '暂无记录'"
-                  :image-size="72"
-                />
-              </div>
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
+            </el-tab-pane>
+          </el-tabs>
         </template>
       </div>
     </div>
@@ -610,7 +679,7 @@ const indexGroups = ref<WikiIndexGroup[]>([])
 const hasAnyPage = computed(() => indexGroups.value.some((g) => g.total > 0))
 const searchQuery = ref('')
 const searchResults = ref<
-  Array<{ slug: string; title: string; page_type: string; summary: string }>
+  Array<{ slug: string; title: string; page_type: string; summary: string; snippet?: string }>
 >([])
 const selectedSlug = ref('')
 const currentPage = ref<WikiPage | null>(null)
@@ -678,7 +747,9 @@ async function retryWikiRebuild() {
   rebuildRunning.value = true
   try {
     const result = await wikiApi.rebuild(spaceId.value, kbId.value)
-    ElMessage.success(`已入队 ${result.enqueued} 个文档的 Wiki 生成（本次跳过已成功的 ${result.candidates - result.enqueued} 个）`)
+    ElMessage.success(
+      `已入队 ${result.enqueued} 个文档的 Wiki 生成（本次跳过已成功的 ${result.candidates - result.enqueued} 个）`,
+    )
     ingestStatus.value = await wikiApi.getIngestStatus(spaceId.value, kbId.value)
     if (ingestActive.value) startPolling()
   } catch (error: unknown) {
@@ -742,6 +813,40 @@ const issueFilter = ref('pending')
 // tab 角标计数：不能用 computed(issues)——issues 只含当前过滤结果，
 // 切"已解决"页签后角标会失真；在 loadIssues 拉 pending 列表时回写
 const pendingIssueCount = ref(0)
+
+// ---- 阅读页上下文（可信度条/反链/右栏整合批） ----
+// 来源折叠面板受控展开（可信度条点击 N 时展开 sources 组）
+const openCollapse = ref<string[]>([])
+const sourceCount = computed(
+  () => sources.value.length || (currentPage.value?.source_refs?.length ?? 0),
+)
+function expandSources() {
+  openCollapse.value = ['sources']
+}
+
+/** 反链标题映射：indexGroups 建 slug→title 兜底，缺失显示 slug */
+const backlinkItems = computed(() => {
+  const links = currentPage.value?.in_links || []
+  const titleMap = new Map<string, string>()
+  for (const g of indexGroups.value) {
+    for (const it of g.items) titleMap.set(it.slug, it.title)
+  }
+  return links.map((slug) => ({ slug, title: titleMap.get(slug) || slug }))
+})
+
+/** 搜索 snippet 高亮：先 HTML 转义再对关键词包 <mark>（防注入；空格模糊匹配） */
+function searchSnippetHtml(item: { snippet?: string }): string {
+  const raw = item.snippet || ''
+  const kw = searchQuery.value.trim()
+  if (!raw.trim() || !kw) return ''
+  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const pattern = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '[\\s\\S]*?')
+  try {
+    return esc.replace(new RegExp(pattern, 'gi'), (m) => `<mark>${m}</mark>`)
+  } catch {
+    return esc
+  }
+}
 
 // ---- Wiki 统计条（问题页顶部总览） ----
 const wikiStats = ref<WikiStatsResponse | null>(null)
@@ -830,7 +935,9 @@ async function setIssueStatus(issue: WikiIssue, status: 'resolved' | 'ignored' |
     if (status === 'pending') {
       ElMessage.success('已重新打开')
     } else {
-      ElMessage.success(status === 'resolved' ? '已解决，可在「已解决」页签查看' : '已忽略，可在「已忽略」页签查看')
+      ElMessage.success(
+        status === 'resolved' ? '已解决，可在「已解决」页签查看' : '已忽略，可在「已忽略」页签查看',
+      )
     }
     await loadIssues()
   } catch {
@@ -2078,6 +2185,7 @@ onBeforeUnmount(() => {
 .meta-item {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 /* meta 项之间的点分隔（首个徽标后，视觉分组） */
@@ -2153,6 +2261,49 @@ onBeforeUnmount(() => {
 .source-link {
   color: var(--color-primary);
   text-decoration: none;
+  cursor: pointer;
+}
+
+/* 侧栏搜索结果 snippet：小字两行截断，关键词 mark 高亮走主题强调底色 */
+.page-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-align: left;
+}
+
+.page-snippet :deep(mark),
+.page-snippet mark {
+  background: var(--color-warning-subtle);
+  color: var(--color-text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* 可信度条来源按钮：与 meta 项同字号，主色提示可点 */
+.meta-source-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.meta-source-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 右栏问题入口行：警示色文字（区别于普通目录项） */
+.toc-issue-link {
+  color: var(--color-warning);
 }
 
 .source-link:hover {
