@@ -95,20 +95,52 @@
                       :key="group.page_type"
                       class="sidebar-group"
                     >
-                      <div class="group-header">
+                      <button
+                        type="button"
+                        class="group-header is-toggle"
+                        @click="toggleTypeGroup(group.page_type)"
+                      >
+                        <el-icon
+                          class="group-caret"
+                          :class="{ 'is-collapsed': isTypeCollapsed(group.page_type) }"
+                        >
+                          <ArrowRight />
+                        </el-icon>
                         <span>{{ typeLabel(group.page_type) }}</span>
                         <small>{{ group.total }}</small>
-                      </div>
-                      <button
-                        v-for="item in group.items"
-                        :key="item.slug"
-                        type="button"
-                        class="page-item"
-                        :class="{ 'is-active': item.slug === selectedSlug }"
-                        @click="selectPage(item.slug)"
-                      >
-                        <span class="page-title">{{ item.title }}</span>
                       </button>
+                      <template v-if="!isTypeCollapsed(group.page_type)">
+                        <el-tooltip
+                          v-for="item in group.items"
+                          :key="item.slug"
+                          placement="right"
+                          :show-after="350"
+                          :disabled="!item.summary"
+                        >
+                          <template #content>
+                            <div class="page-preview">
+                              <div class="page-preview-type">{{ typeLabel(item.page_type) }}</div>
+                              <div class="page-preview-summary">{{ item.summary }}</div>
+                              <div
+                                v-if="item.in_links?.length || item.out_links?.length"
+                                class="page-preview-links"
+                              >
+                                链接
+                                {{ (item.in_links?.length ?? 0) + (item.out_links?.length ?? 0) }}
+                                条
+                              </div>
+                            </div>
+                          </template>
+                          <button
+                            type="button"
+                            class="page-item"
+                            :class="{ 'is-active': item.slug === selectedSlug }"
+                            @click="selectPage(item.slug)"
+                          >
+                            <span class="page-title">{{ item.title }}</span>
+                          </button>
+                        </el-tooltip>
+                      </template>
                     </div>
                     <p v-if="!hasAnyPage" class="empty-hint">
                       暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
@@ -219,13 +251,24 @@
 
                     <template v-else>
                       <div class="wiki-empty">
-                        <el-empty
-                          :description="
-                            hasAnyPage || searchQuery
-                              ? '选择左侧页面查看'
-                              : '此知识库还没有 Wiki 页面'
-                          "
-                        />
+                        <el-empty :description="emptyDescription">
+                          <template v-if="!searchQuery && !hasAnyPage" #default>
+                            <div class="wiki-empty-actions">
+                              <el-button
+                                v-if="wikiEnabled === false"
+                                type="primary"
+                                @click="goWikiConfig"
+                              >
+                                去开启 Wiki 自动生成
+                              </el-button>
+                              <el-button v-else @click="goWikiConfig">查看 Wiki 配置</el-button>
+                            </div>
+                          </template>
+                        </el-empty>
+                        <p v-if="!searchQuery && !hasAnyPage" class="wiki-empty-hint">
+                          开启后，上传的文档解析完成会由 AI 自动整理成互相链接的百科页：
+                          实体、概念、单文档摘要与跨文档综述，可在左侧按类型浏览或全局搜索。
+                        </p>
                       </div>
                     </template>
                   </div>
@@ -660,7 +703,7 @@ import {
   Search,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { wikiApi } from '@/api/knowledge'
+import { knowledgeBaseApi, wikiApi } from '@/api/knowledge'
 import { renderMarkdownWithToc } from '@/utils/markdown'
 import { diffLines as computeDiff, diffStats as diffStatsOf } from '@/utils/wikiDiff'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
@@ -702,6 +745,43 @@ const kbNavItems = computed(() => {
 const indexGroups = ref<WikiIndexGroup[]>([])
 // 类型筛选：'' = 全部；单选某类型只显示该组。空组任何态都不渲染（不占位）
 const typeFilter = ref('')
+
+// 组折叠状态：收起后组头保留（计数可见），组内页面隐藏
+const collapsedTypes = ref<string[]>([])
+
+function toggleTypeGroup(pageType: string) {
+  const list = collapsedTypes.value
+  const idx = list.indexOf(pageType)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(pageType)
+}
+
+function isTypeCollapsed(pageType: string): boolean {
+  return collapsedTypes.value.includes(pageType)
+}
+
+// wiki.enabled：决定空态是「去开启」引导还是「查看配置」
+const wikiEnabled = ref<boolean | null>(null)
+
+async function loadWikiEnabled() {
+  try {
+    const cfg = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
+    wikiEnabled.value = Boolean((cfg.config?.wiki as { enabled?: boolean } | undefined)?.enabled)
+  } catch {
+    wikiEnabled.value = null
+  }
+}
+
+function goWikiConfig() {
+  void router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/config`)
+}
+
+const emptyDescription = computed(() => {
+  if (searchQuery.value) return '没有匹配的页面，换个关键词试试'
+  if (hasAnyPage.value) return '选择左侧页面查看'
+  if (wikiEnabled.value === false) return '此知识库还未开启 Wiki 自动生成'
+  return '此知识库还没有 Wiki 页面，上传文档后会由 AI 自动整理生成'
+})
 
 const typeFilterChips = computed(() => {
   const chips = [{ value: '', label: '全部' }]
@@ -1492,7 +1572,8 @@ function formatDate(iso: string | null): string {
 // ============ 初始化 ============
 onMounted(async () => {
   await loadIndex()
-  void loadPendingIssueCount() // 导航徽标数据源（不阻塞首屏）
+  void loadPendingIssueCount()
+  void loadWikiEnabled() // 导航徽标数据源（不阻塞首屏）
   // URL ?page=slug 直达
   const initialSlug = route.query.page as string | undefined
   if (initialSlug) {
@@ -1559,22 +1640,37 @@ onBeforeUnmount(() => {
 .wiki-view-tabs :deep(.el-tabs__header) {
   flex-shrink: 0;
   margin: 0 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+}
+
+/* 胶囊分段控件（segmented control）：模式切换观感强于下划线 tab */
+.wiki-view-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 3px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-lg);
 }
 
 .wiki-view-tabs :deep(.el-tabs__nav-wrap::after) {
-  display: none; /* EP 默认灰色底线，换成自绘发丝线 */
+  display: none; /* EP 默认灰色底线，胶囊形态不需要 */
+}
+
+.wiki-view-tabs :deep(.el-tabs__nav) {
+  display: flex;
+  gap: 2px;
+  width: auto !important;
+  transform: none !important;
 }
 
 .wiki-view-tabs :deep(.el-tabs__item) {
-  height: 40px;
-  margin-right: var(--space-5);
-  padding: 0 var(--space-2);
+  height: auto;
+  padding: 6px 22px;
+  border-radius: calc(var(--radius-lg) - 3px);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  line-height: 40px;
-  transition: color var(--transition-fast);
+  line-height: 1.4;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .wiki-view-tabs :deep(.el-tabs__item:hover) {
@@ -1582,14 +1678,14 @@ onBeforeUnmount(() => {
 }
 
 .wiki-view-tabs :deep(.el-tabs__item.is-active) {
+  background: var(--color-bg-card);
   color: var(--color-text);
   font-weight: var(--weight-semibold);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
 }
 
 .wiki-view-tabs :deep(.el-tabs__active-bar) {
-  height: 2px;
-  border-radius: 1px;
-  background: var(--color-btn-primary);
+  display: none; /* 胶囊选中态用底色表达 */
 }
 
 .wiki-view-tabs :deep(.el-tabs__content) {
@@ -2046,6 +2142,75 @@ onBeforeUnmount(() => {
   letter-spacing: 0.05em;
 }
 
+/* 组头折叠：button 版组头需显式继承 div 组头的排版外观 */
+.group-header.is-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.group-header.is-toggle:hover span:first-of-type {
+  color: var(--color-text);
+}
+
+.group-caret {
+  transition: transform var(--transition-fast);
+}
+
+.group-caret:not(.is-collapsed) {
+  transform: rotate(90deg);
+}
+
+/* 页面 hover 预览卡（el-tooltip content） */
+.page-preview {
+  max-width: 280px;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.page-preview-type {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+  margin-bottom: 4px;
+}
+
+.page-preview-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.page-preview-links {
+  margin-top: 4px;
+  opacity: 0.75;
+}
+
+/* 空态引导（行动按钮 + 价值一句话） */
+.wiki-empty-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wiki-empty-hint {
+  max-width: 420px;
+  margin: 0 auto;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  text-align: center;
+}
+
 .group-header small {
   color: var(--color-text-faint);
   font-size: var(--text-xs);
@@ -2234,6 +2399,7 @@ onBeforeUnmount(() => {
 
 .wiki-empty {
   display: flex;
+  flex-direction: column;
   flex: 1;
   align-items: center;
   justify-content: center;
