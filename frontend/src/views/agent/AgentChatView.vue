@@ -443,7 +443,7 @@
         class="jump-to-bottom"
         title="回到底部"
         @click="
-          scrollToBottom()
+          scrollToBottom();
           stickToBottom = true
         "
       >
