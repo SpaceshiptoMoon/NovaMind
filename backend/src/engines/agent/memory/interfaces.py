@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from novamind.engines.agent.context_types import LongTermMemoryEntry  # noqa: F401
+from novamind.engines.agent.context_types import (  # noqa: F401
+    ContextSummaryEntry,
+    LongTermMemoryEntry,
+)
 
 # ==================== 数据模型 ====================
 
@@ -190,23 +193,42 @@ class IMemoryStore(ABC):
     长期记忆存储端口：记忆条目与压缩摘要的增删改查。
 
     引擎只定义契约——具体存哪个数据库（MySQL/PG/向量库）由业务侧实现并
-    注入。方法集即引擎消费面（LongTermMemory/ContextCompressor 实际调用）。
+    注入。方法集即引擎消费面（LongTermMemory/ContextCompressor/MemoryTool/
+    Mem0Reconciler 实际调用）；签名以宿主实现（HostMemoryStorePort）为权威
+    对齐——历史版本接口与实现分叉，调用方全按实现签名调用，接口形同虚设。
     """
 
     @abstractmethod
-    async def create(self, agent_id: int, user_id: int, category: str,
-                     content: str, source_conversation_id: int | None = None) -> LongTermMemoryEntry:
-        """新建一条长期记忆，返回含主键的完整条目。"""
+    async def create(
+        self,
+        agent_id: int,
+        user_id: int,
+        category: str,
+        content: str,
+        source_conversation_id: int | None = None,
+        source_type: str = "consolidate",
+        extra_data: dict | None = None,
+    ) -> LongTermMemoryEntry:
+        """写入一条长期记忆，返回含主键的完整条目（flush 不 commit）。"""
         ...
 
     @abstractmethod
-    async def find_similar(self, agent_id: int, content: str, limit: int = 5) -> list[LongTermMemoryEntry]:
-        """按内容相似度（LIKE/向量由实现决定）找近邻记忆，供去重合并判定。"""
+    async def find_similar(
+        self, agent_id: int, user_id: int, category: str, content: str
+    ) -> LongTermMemoryEntry | None:
+        """按同类别同内容精确匹配查重，命中返回条目否则 None。"""
         ...
 
     @abstractmethod
-    async def list_by_agent(self, agent_id: int, limit: int = 100) -> list[LongTermMemoryEntry]:
-        """列出某 Agent 的记忆条目。"""
+    async def list_by_agent(
+        self,
+        agent_id: int,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        category: str | None = None,
+    ) -> tuple[list[LongTermMemoryEntry], int]:
+        """分页列出 Agent 的记忆（可按类别过滤），返回（条目列表, 总数）。"""
         ...
 
     @abstractmethod
@@ -235,15 +257,22 @@ class IMemoryStore(ABC):
         ...
 
     @abstractmethod
-    async def search_by_keywords(self, agent_id: int, keywords: list[str],
-                                 limit: int = 20) -> list[LongTermMemoryEntry]:
-        """按关键词集过滤记忆（实现决定匹配语义）。"""
+    async def search_by_keywords(
+        self,
+        agent_id: int,
+        user_id: int,
+        query: str,
+        top_k: int = 5,
+        categories: list[str] | None = None,
+    ) -> list[LongTermMemoryEntry]:
+        """按内容子串过滤、相关度倒序取前 top_k 条（ES 检索的 MySQL 降级路径）。"""
         ...
 
     @abstractmethod
-    async def find_by_content_contains(self, agent_id: int, text: str,
-                                       limit: int = 20) -> list[LongTermMemoryEntry]:
-        """按正文包含文本过滤记忆。"""
+    async def find_by_content_contains(
+        self, agent_id: int, user_id: int, old_content: str
+    ) -> LongTermMemoryEntry | None:
+        """按正文包含子串查找，返回首个命中；无命中返回 None。"""
         ...
 
     @abstractmethod
@@ -252,18 +281,25 @@ class IMemoryStore(ABC):
         ...
 
     @abstractmethod
-    async def save_summary(self, agent_id: int, conversation_id: int | None, summary: Any) -> None:
-        """保存压缩摘要条目。"""
+    async def save_summary(
+        self,
+        conversation_id: int,
+        summary_text: str,
+        compressed_count: int = 0,
+        compression_ratio: float = 1.0,
+        token_count: int = 0,
+    ) -> None:
+        """追加一条会话上下文压缩摘要（append-only）。"""
         ...
 
     @abstractmethod
-    async def get_latest_summary(self, agent_id: int, conversation_id: int | None = None) -> Any:
-        """取最近一条压缩摘要；无则 None。"""
+    async def get_latest_summary(self, conversation_id: int) -> ContextSummaryEntry | None:
+        """取会话最新一条压缩摘要；无则 None。"""
         ...
 
 
 class IMemorySearch(ABC):
-    """长期记忆向量检索端口（ES 索引由实现方管理）。"""
+    """长期记忆向量检索端口（ES 索引由实现方管理）。签名以 HostMemorySearchPort 为权威。"""
 
     @abstractmethod
     async def ensure_index(self, agent_id: int) -> None:
@@ -271,22 +307,36 @@ class IMemorySearch(ABC):
         ...
 
     @abstractmethod
-    async def index_memory(self, agent_id: int, memory_id: int, user_id: int, category: str,
-                           content: str, embedding: list[float],
-                           source_type: str = "consolidate",
-                           source_conversation_id: int | None = None,
-                           created_at: Any = None) -> bool:
+    async def index_memory(
+        self,
+        agent_id: int,
+        memory_id: int,
+        user_id: int,
+        category: str,
+        content: str,
+        embedding: list[float],
+        source_type: str = "consolidate",
+        source_conversation_id: int | None = None,
+        created_at: Any = None,
+    ) -> bool:
         """索引单条记忆向量；返回 True 表示索引因维度不匹配被重建（调用方应全量重索引）。"""
         ...
 
     @abstractmethod
-    async def search(self, agent_id: int, query_embedding: list[float],
-                     top_k: int = 5, categories: list[str] | None = None) -> list[LongTermMemoryEntry]:
-        """按向量相似度检索记忆条目。"""
+    async def search(
+        self,
+        agent_id: int,
+        query_vector: list[float],
+        query_text: str,
+        top_k: int = 5,
+        user_id: int | None = None,
+        categories: list[str] | None = None,
+    ) -> list[dict]:
+        """Hybrid 向量+BM25 检索，返回含 memory_id/score 的命中文档列表（ES 不可用为空）。"""
         ...
 
     @abstractmethod
-    async def delete_memory(self, agent_id: int, memory_id: int) -> None:
-        """从索引删除单条记忆文档。"""
+    async def delete_memory(self, agent_id: int, memory_id: int) -> bool:
+        """从索引删除单条记忆文档；返回是否实际删除。"""
         ...
 

@@ -373,6 +373,9 @@ class AgentMemoryConfigYaml:
     compaction_async: bool = False
     # AsyncMemory 实例 LRU 缓存数（按 base_url/model/api_key 指纹为键）
     lru_size: int = 16
+    # 单用户单 Agent 的记忆条数上限（memory 工具新增时拦截；null/不配置走
+    # 工具内置默认 50。配置 None 语义=未设上限策略，由引擎默认兜底）
+    memory_limit_per_user_agent: int | None = None
 
 
 @dataclass

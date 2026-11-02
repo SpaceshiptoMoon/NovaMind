@@ -121,6 +121,7 @@ async def build_research_service_factory(
     es_client = await get_elasticsearch_client()
 
     def factory():
+        """构造独立 DeepResearchService（新开 db session，隔离研究事务）。"""
         from novamind.features.deep_research.services.deep_research_service import (
             DeepResearchService,
         )

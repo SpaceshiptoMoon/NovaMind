@@ -49,27 +49,13 @@ from novamind.features.agent.services.host_memory_store import (
     HostMemoryStorePort,
 )
 from novamind.features.agent.tool.builtins.plan_output import PlanOutputTool
-from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.setting.yaml_config.loader import get_config
 from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabilities
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
-
-
-def _agent_memory_flag(key: str) -> bool:
-    """读 agent.memory 配置节的布尔开关（缺节/缺键一律 False）。
-
-    MemoryManager 记忆开关的宿主侧读取点——引擎（engines/agent）不 import
-    setting，开关值在此读出后经构造链注入。
-    """
-    try:
-        return bool(getattr(get_config().agent.memory, key, False))
-    except Exception:
-        return False
 
 # Plan-and-Execute 步骤状态值（与 novamind.engines.agent.flow.planning_flow 常量对齐；
 # 本地定义避免 features → engines 仅为此拉 import）
@@ -577,151 +563,80 @@ class AgentChatService:
         memory_search: HostMemorySearchPort | None,
         prompt_provider: PromptManager,
     ) -> MemoryManager:
-        """创建请求级 MemoryManager 实例（端口由 chat_stream 注入）"""
-        async def llm_factory():
-            try:
-                return await self.model_config_service.get_llm_client_by_model(
-                    user_id, model
-                )
-            except Exception:
-                return await self.model_config_service.get_vlm_client_by_model(
-                    user_id, model
-                )
+        """创建请求级 MemoryManager 实例（装配收口在 memory_assembly，此为薄委托）。
 
-        async def embedding_factory():
-            embedding_model = await self.model_config_service.get_user_default_model_name(
-                user_id, "embedding"
-            )
-            if not embedding_model:
-                raise RuntimeError("未配置 embedding 模型")
-            return await self.model_config_service.get_embedding_client_by_model(
-                user_id, embedding_model
-            )
+        供 chat_stream / estimate_context_usage / get_system_prompt 与群聊
+        fork（GroupOrchestrator._fork_runtime）调用——群聊场景 self 已是
+        fork 实例，仓储随 self.db 绑定到分身会话。
+        """
+        from novamind.features.agent.services.memory_assembly import create_memory_manager
 
-        # 辅助模型：用于压缩摘要，优先用更便宜的模型
-        async def auxiliary_llm_factory():
-            return await llm_factory()
-
-        reconciler = None
-        if get_config().agent.memory.backend == "mem0":
-            try:
-                reconciler = await AgentChatService._build_memory_reconciler(
-                    model_config_service=self.model_config_service,
-                    user_id=user_id,
-                    agent_id=agent.id,
-                    memory_store=memory_store,
-                    memory_search=memory_search,
-                    embedding_factory=embedding_factory if memory_search else None,
-                )
-            except Exception as e:
-                # 装配失败（模型参数缺失/mem0ai 未装）→ warning 后走 builtin，
-                # 不阻断对话
-                logger.warning("Mem0 reconciler 装配失败，降级 builtin", error=str(e))
-
-        return MemoryManager.create(
-            message_repository=self.msg_repo,
-            tool_call_repository=self.tc_repo,
-            session_repository=self.session_repo,
-            long_term_store=memory_store,
-            summary_store=memory_store,
-            prompt_provider=prompt_provider,
-            model=model,
-            llm_client_factory=llm_factory,
-            memory_search=memory_search,
-            embedding_factory=embedding_factory if memory_search else None,
-            todo_store=self._todo_store,
+        return await create_memory_manager(
+            self.db, self.model_config_service,
+            agent=agent, user_id=user_id, model=model,
             conversation_id=conversation_id,
-            agent_id=agent.id,
-            user_id=user_id,
-            auxiliary_llm_factory=auxiliary_llm_factory,
-            reconciler=reconciler,
-            memory_compaction_async=_agent_memory_flag("compaction_async"),
-            memory_on_turn_done=_agent_memory_flag("on_turn_done"),
+            memory_store=memory_store, memory_search=memory_search,
+            prompt_provider=prompt_provider, todo_store=self._todo_store,
         )
 
-    async def _build_memory_reconciler(
-        model_config_service: ModelConfigService,
-        user_id: int,
-        agent_id: int,
-        memory_store: HostMemoryStorePort,
-        memory_search: HostMemorySearchPort | None,
-        embedding_factory=None,
-    ):
-        """构造 Mem0 调和器：按用户当前默认 LLM/embedding 模型的原始连接参数现配。
+    def fork_for_session(self, session: AsyncSession) -> "AgentChatService":
+        """派生绑定新 db 会话的分身（群聊成员并行 turn 专用）。
 
-        每次请求新配一份（模型配置变更即时生效）；AsyncMemory 实例在 reconciler
-        内部按参数指纹 LRU，避免同用户反复握手。
+        AsyncSession 不可并发共享：分身的仓储/端口/模型配置服务全部重建并
+        绑定到给定 session——方法是真方法（绑定分身自身），不再沿用主实例的
+        属性（历史上 setattr 搬运绑定方法导致分身方法实际跑在主 session 上，
+        与「逐一新建重绑」的设计意图相悖，此处一并修正）；无 db 状态的协作方
+        （引擎/prompt 注册表/prompt 构建器/web 搜索端口/ES 记忆仓储）直接共享。
+
+        走 ``__new__`` + 显式字段赋值而非 ``__init__``：__init__ 会重建
+        _prompt_builder（深访 agent_engine.tool_executor），而 prompt 构建
+        器无 db 状态、分身应与主实例共享同一注册表视图。新增 __init__ 字段
+        时在此同步补一行——字段清单就在本类内，不会像跨类 getattr/setattr
+        搬运那样静默漏绑。
 
         Args:
-            model_config_service: 模型配置服务（绑定任务/请求各自的新 session）。
-            user_id: 用户 ID（决定 LLM/embedding 连接参数）。
-            agent_id: Agent ID（Mem0 agent_id 命名空间）。
-            memory_store: MySQL 真源读写端口。
-            memory_search: ES hybrid 端口，可空。
-            embedding_factory: embedding 客户端工厂（Mem0 产出索引 ES 用），可空。
+            session: 成员并行 turn 专用的独立 db 会话。
 
         Returns:
-            Mem0Reconciler 实例。
-
-        Raises:
-            Exception: mem0ai 缺失在首次 reconcile 才暴露；模型配置缺失此处即抛。
+            绑定新会话的 AgentChatService 分身。
         """
-        llm_params = await model_config_service.get_model_connection_params(
-            user_id, "llm"
+        from novamind.features.agent.attachments.text_reader import AttachmentTextReader
+        from novamind.features.agent.services.host_knowledge_search import (
+            HostKnowledgeSearchPort,
         )
-        embedding_params = await model_config_service.get_model_connection_params(
-            user_id, "embedding"
+        from novamind.features.agent.services.host_memory_store import HostMemoryStorePort
+
+        fork = AgentChatService.__new__(AgentChatService)
+        fork.db = session
+        fork.agent_service = AgentService(session)
+        fork.model_config_service = ModelConfigService(session)
+        fork.agent_engine = self.agent_engine
+        fork._todo_store = self._todo_store
+        fork._memory_search_repo = self._memory_search_repo
+        fork._minio_client = self._minio_client
+        # db 持有者：重建并绑定到分身 session
+        fork._memory_store_port = HostMemoryStorePort(session)
+        # ES 记忆仓储持进程级 ES 客户端，不绑 db 会话，直接共享
+        fork._memory_search_port = self._memory_search_port
+        fork._knowledge_search_port = (
+            HostKnowledgeSearchPort(session, fork.model_config_service)
+            if self._knowledge_search_port is not None
+            else None
         )
-        # Mem0 只有 openai 兼容 provider；anthropic 等其他协议端点用 OpenAI SDK
-        # 调用会得到包着错误的 200（choices=null）→ 管线全空转。装配期显式拒绝，
-        # 由调用方降级 builtin，不偷换成别的模型
-        for name, params in (("llm", llm_params), ("embedding", embedding_params)):
-            if params.get("protocol") != "openai":
-                raise ModelConfigNotFoundError(
-                    message=(
-                        f"Mem0 调和需要 openai 兼容协议，当前 {name} 模型 "
-                        f"{params.get('model')} 协议为 {params.get('protocol')}"
-                    )
-                )
-        # Mem0 是同步构造/异步调用混合 API，连接参数在构造期解析（当前请求的
-        # 事件循环内完成解密），不跨事件循环传递 coroutine
-        es_cfg = get_config().elasticsearch
-        mem_cfg = get_config().agent.memory
-        # mem0 ES provider 拼 host:port，host 必须不带端口
-        from novamind.engines.agent.memory.mem0_reconciler import Mem0Reconciler, split_es_host
-
-        es_host, es_port = split_es_host(es_cfg.hosts[0] if es_cfg.hosts else "http://localhost")
-
-        return Mem0Reconciler(
-            llm_params={
-                "model": llm_params["model"],
-                "openai_base_url": llm_params["base_url"],
-                "api_key": llm_params["api_key"],
-            },
-            embedding_params={
-                "model": embedding_params["model"],
-                "openai_base_url": embedding_params["base_url"],
-                "api_key": embedding_params["api_key"],
-            },
-            es_params={
-                "host": es_host,
-                "port": es_port,
-                "user": es_cfg.username,
-                "password": es_cfg.password,
-                # Mem0 embedder 用用户配置的 embedding 模型，维度以配置声明为准
-                "embedding_model_dims": es_cfg.default_embedding_dim,
-            },
-            store=memory_store,
-            search=memory_search,
-            embedding_factory=embedding_factory,
-            es_collection=mem_cfg.es_collection,
-            history_size=mem_cfg.history_size,
-            lru_size=mem_cfg.lru_size,
-            owner_user_id=user_id,
-            owner_agent_id=agent_id,
+        fork._attachment_read_port = (
+            AttachmentTextReader(session)
+            if self._attachment_read_port is not None
+            else None
         )
-
-    # ==================== 阶段方法 ====================
+        fork._web_search_port = self._web_search_port
+        fork._prompt_provider = self._prompt_provider
+        fork.msg_repo = MessageRepository(session)
+        fork.tc_repo = ToolCallRepository(session)
+        fork.session_repo = SessionRepository(session)
+        fork.attachment_repo = ChatAttachmentRepository(session)
+        # 与主实例共享（无 db 状态，且避免深访 agent_engine 内部结构）
+        fork._prompt_builder = self._prompt_builder
+        return fork
 
     async def _prepare(
         self,

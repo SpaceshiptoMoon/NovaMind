@@ -392,87 +392,14 @@ class GroupOrchestrator:
     def _fork_runtime(self, session: AsyncSession) -> "GroupOrchestrator":
         """在给定 session 上装配编排器分身（成员并行 turn 专用）。
 
-        AsyncSession 不可并发共享：每成员一条独立 session，其上的全部仓储/
-        服务/端口（db 持有者）逐一新建重绑；引擎与 prompt 构建器等无 db 状态
-        的协作方直接共享。
+        AsyncSession 不可并发共享：chat_service 经 fork_for_session 把全部
+        db 持有者（仓储/端口/模型配置服务）重建绑定到分身 session；引擎与
+        prompt 构建器等无 db 状态的协作方直接共享。
         """
-        src = self.chat_service
-        from novamind.features.agent.attachments.repository import (
-            ChatAttachmentRepository,
+        return GroupOrchestrator(
+            db=session,
+            chat_service=self.chat_service.fork_for_session(session),
         )
-        from novamind.features.agent.attachments.text_reader import AttachmentTextReader
-        from novamind.features.agent.repository.agent_repository import (
-            AgentRepository,
-            McpServerRepository,
-            MessageRepository,
-            SessionRepository,
-            ToolCallRepository,
-        )
-        from novamind.features.agent.repository.context_summary_repository import (
-            ContextSummaryRepository,
-        )
-        from novamind.features.agent.repository.memory_repository import MemoryRepository
-        from novamind.features.agent.services.host_knowledge_search import (
-            HostKnowledgeSearchPort,
-        )
-        from novamind.features.agent.services.host_memory_store import HostMemoryStorePort
-        from novamind.features.user.repository.model_config_repository import (
-            ModelConfigRepository,
-        )
-        from novamind.features.user.services.model_config_service import ModelConfigService
-
-        agent_service = AgentService.__new__(AgentService)
-        agent_service.db = session
-        agent_service.agent_repo = AgentRepository(session)
-        agent_service.session_repo = SessionRepository(session)
-        agent_service.msg_repo = MessageRepository(session)
-        agent_service.tc_repo = ToolCallRepository(session)
-        agent_service.memory_repo = MemoryRepository(session)
-        agent_service.context_summary_repo = ContextSummaryRepository(session)
-        agent_service._mcp_repo = McpServerRepository(session)
-        chat2 = AgentChatService.__new__(AgentChatService)
-        chat2.db = session
-        chat2.agent_service = agent_service
-        chat2.agent_engine = src.agent_engine
-        chat2._todo_store = src._todo_store
-        chat2._memory_search_repo = src._memory_search_repo
-        chat2._minio_client = src._minio_client
-        chat2._web_search_port = src._web_search_port
-        chat2._prompt_provider = src._prompt_provider
-        # db 持有者：按类型重绑到 fork session
-        chat2._memory_store_port = HostMemoryStorePort(session)
-        chat2._knowledge_search_port = (
-            HostKnowledgeSearchPort(session, src.model_config_service)
-            if src._knowledge_search_port is not None else None
-        )
-        chat2._attachment_read_port = (
-            AttachmentTextReader(session)
-            if src._attachment_read_port is not None else None
-        )
-        mcs = ModelConfigService.__new__(ModelConfigService)
-        mcs.db = session
-        mcs.repo = ModelConfigRepository(session)
-        chat2.model_config_service = mcs
-        chat2._memory_search_port = src._memory_search_port
-        chat2._prompt_builder = src._prompt_builder
-        chat2.tc_repo = agent_service.tc_repo
-        chat2.msg_repo = agent_service.msg_repo
-        chat2.session_repo = agent_service.session_repo
-        chat2.attachment_repo = ChatAttachmentRepository(session)
-        for name in (
-            "_build_context", "_resolve_model", "_create_memory_manager",
-            "_compress_messages",
-        ):
-            setattr(chat2, name, getattr(src, name))
-        orch = GroupOrchestrator.__new__(GroupOrchestrator)
-        orch.db = session
-        orch.chat_service = chat2
-        orch.agent_service = agent_service
-        orch.group_repo = GroupRepository(session)
-        orch.run_repo = GroupRunRepository(session)
-        orch.session_repo = agent_service.session_repo
-        orch._consult_events = []
-        return orch
 
     # ==================== 专家咨询 ====================
 

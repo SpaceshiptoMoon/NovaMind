@@ -58,14 +58,12 @@ async def test_get_model_connection_params_includes_protocol():
 @pytest.mark.asyncio
 async def test_anthropic_default_model_rejected_at_assembly():
     """llm 默认模型为 anthropic 协议 → 装配期抛 ModelConfigNotFoundError。"""
-    from novamind.features.agent.services.chat_service import AgentChatService as ChatService
+    from novamind.features.agent.services.memory_assembly import build_memory_reconciler
 
     svc = _service_with({"llm": _params("anthropic"), "embedding": _params("openai")})
-    chat = ChatService.__new__(ChatService)
-    chat.model_config_service = svc
 
     with pytest.raises(ModelConfigNotFoundError, match="anthropic"):
-        await ChatService._build_memory_reconciler(
+        await build_memory_reconciler(
             model_config_service=svc,
             user_id=1, agent_id=11, memory_store=None, memory_search=None,
         )
@@ -74,14 +72,12 @@ async def test_anthropic_default_model_rejected_at_assembly():
 @pytest.mark.asyncio
 async def test_embedding_protocol_mismatch_also_rejected():
     """embedding 协议非 openai 同样拒绝（embedder 也走 mem0 openai provider）。"""
-    from novamind.features.agent.services.chat_service import AgentChatService as ChatService
+    from novamind.features.agent.services.memory_assembly import build_memory_reconciler
 
     svc = _service_with({"llm": _params("openai"), "embedding": _params("ollama")})
-    chat = ChatService.__new__(ChatService)
-    chat.model_config_service = svc
 
     with pytest.raises(ModelConfigNotFoundError, match="embedding"):
-        await ChatService._build_memory_reconciler(
+        await build_memory_reconciler(
             model_config_service=svc,
             user_id=1, agent_id=11, memory_store=None, memory_search=None,
         )
@@ -90,14 +86,12 @@ async def test_embedding_protocol_mismatch_also_rejected():
 @pytest.mark.asyncio
 async def test_openai_compatible_passes_guard_and_builds():
     """双 openai 协议 → 守卫放行，reconciler 正常构造（不实际建 AsyncMemory）。"""
-    from novamind.features.agent.services.chat_service import AgentChatService as ChatService
+    from novamind.features.agent.services.memory_assembly import build_memory_reconciler
 
     svc = _service_with({"llm": _params("openai"), "embedding": _params("openai")})
-    chat = ChatService.__new__(ChatService)
-    chat.model_config_service = svc
 
     store = __import__("types").SimpleNamespace()
-    reconciler = await ChatService._build_memory_reconciler(
+    reconciler = await build_memory_reconciler(
         model_config_service=svc,
         user_id=1, agent_id=11, memory_store=store, memory_search=None,
     )

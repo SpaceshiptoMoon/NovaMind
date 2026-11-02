@@ -409,6 +409,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             on_turn_done=memory.get("on_turn_done", False),
             compaction_async=memory.get("compaction_async", False),
             lru_size=memory.get("lru_size", 16),
+            memory_limit_per_user_agent=memory.get("memory_limit_per_user_agent"),
         ),
     )
 

@@ -179,6 +179,38 @@ def _make_orchestrator(factory, fake_engine):
     chat_service._prompt_builder = SimpleNamespace()
     chat_service.tc_repo = ToolCallRepository(session)
 
+    # fork_for_session 桩：分身复制主实例的桩属性（真 fork 会重建
+    # AgentService/ModelConfigService 查真实表，测试环境无这些表），
+    # 但写路径（agent_service/db/三个仓储）独立绑定 fork session——
+    # 并行成员各自写各自 session，共享主 session 会并发 flush 冲突
+    # （真实 fork_for_session 的语义正是如此）。
+    def fake_fork(fork_session):
+        fork = AgentChatService.__new__(AgentChatService)
+        fork.__dict__.update(chat_service.__dict__)
+        svc = AgentService.__new__(AgentService)
+        svc.__dict__.update(chat_service.agent_service.__dict__)
+        from novamind.features.agent.repository.agent_repository import (
+            MessageRepository as MR,
+        )
+        from novamind.features.agent.repository.agent_repository import (
+            SessionRepository as SR,
+        )
+        from novamind.features.agent.repository.agent_repository import (
+            ToolCallRepository as TR,
+        )
+        svc.db = fork_session
+        svc.session_repo = SR(fork_session)
+        svc.msg_repo = MR(fork_session)
+        svc.tc_repo = TR(fork_session)
+        fork.db = fork_session
+        fork.agent_service = svc
+        fork.session_repo = svc.session_repo
+        fork.msg_repo = svc.msg_repo
+        fork.tc_repo = svc.tc_repo
+        return fork
+
+    chat_service.fork_for_session = fake_fork
+
     return GroupOrchestrator(session, chat_service), session
 
 

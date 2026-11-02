@@ -70,9 +70,11 @@ async def consolidate_memory_task(
         from novamind.setting.yaml_config import get_config
         if get_config().agent.memory.backend == "mem0":
             try:
-                from novamind.features.agent.services.chat_service import AgentChatService
+                from novamind.features.agent.services.memory_assembly import (
+                    build_memory_reconciler,
+                )
 
-                reconciler = await AgentChatService._build_memory_reconciler(
+                reconciler = await build_memory_reconciler(
                     model_config_service=mcs,
                     user_id=user_id,
                     agent_id=agent_id,

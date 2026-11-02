@@ -185,8 +185,8 @@ class _TaskEnv:
         import novamind.core.database.database as db_mod
         import novamind.engines.agent.memory.long_term as lt_mod
         import novamind.features.agent.repository.memory_search_repository as msr_mod
-        import novamind.features.agent.services.chat_service as cs_mod
         import novamind.features.agent.services.host_memory_store as hms_mod
+        import novamind.features.agent.services.memory_assembly as ma_mod
         import novamind.features.user.services.model_config_service as mcs_mod
         import novamind.shared.prompts.prompt_manager as pm_mod
         import novamind.shared.storage.client_factory as cf_mod
@@ -203,7 +203,7 @@ class _TaskEnv:
         stack.enter_context(patch.object(msr_mod, "MemorySearchRepository", MagicMock(return_value=self.search_repo)))
         stack.enter_context(patch.object(cf_mod, "get_elasticsearch_client", es_factory))
         stack.enter_context(patch.object(pm_mod, "PromptManager", MagicMock()))
-        stack.enter_context(patch.object(cs_mod.AgentChatService, "_build_memory_reconciler", reconciler_builder))
+        stack.enter_context(patch.object(ma_mod, "build_memory_reconciler", reconciler_builder))
         stack.enter_context(_cfg_patch(True))
         return stack
 
@@ -297,12 +297,18 @@ async def test_task_failure_does_not_raise():
 # ==================== reconciler staticmethod 回归 ====================
 
 
-def test_build_reconciler_is_staticmethod():
-    """_build_memory_reconciler 转 staticmethod 后可经类直接调用（任务侧复用面）。"""
-    from novamind.features.agent.services.chat_service import AgentChatService
+def test_build_reconciler_importable_as_module_function():
+    """reconciler 构造收口为 memory_assembly 模块级公共函数（任务侧复用面）。
 
-    # staticmethod：类 __dict__ 里是描述符，getattr 后为普通函数
-    fn = AgentChatService._build_memory_reconciler
-    assert callable(fn)
-    assert not hasattr(fn, "__func__"), "应为 staticmethod 而非 bound method"
-    assert "model_config_service" in fn.__code__.co_varnames
+    历史形态是 AgentChatService 私有 staticmethod（任务侧反向 import 类私有，
+    跨层私有依赖）；收口后 chat_service 与 arq 任务共用公共函数。
+    """
+    import inspect
+
+    from novamind.features.agent.services.memory_assembly import build_memory_reconciler
+
+    assert callable(build_memory_reconciler)
+    params = inspect.signature(build_memory_reconciler).parameters
+    assert "model_config_service" in params
+    assert "memory_store" in params
+    assert "memory_search" in params

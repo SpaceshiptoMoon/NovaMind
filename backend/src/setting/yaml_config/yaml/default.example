@@ -250,5 +250,7 @@ agent:
     on_turn_done: false
     # 压缩摘要生成投递 arq 后台任务（true=主循环不等 LLM 摘要走静态占位降级，任务落库后下轮请求生效；false=同步生成）
     compaction_async: false
+    # 单用户单 Agent 的记忆条数上限（memory 工具新增时拦截；不配置走内置默认 50）
+    # memory_limit_per_user_agent: 50
     # AsyncMemory 实例 LRU 缓存数
     lru_size: 16
