@@ -666,13 +666,20 @@ const spaceId = computed(() => Number(route.params.id))
 const kbId = computed(() => Number(route.params.kbId) || 0)
 const kbInvalid = computed(() => kbId.value === 0)
 
-const kbNavItems = computed(() =>
-  buildKbNavItems({
+const kbNavItems = computed(() => {
+  const items = buildKbNavItems({
     spaceId: spaceId.value,
     kbId: kbId.value,
     currentRouteName: route.name,
-  }),
-)
+  })
+  // 导航徽标：Wiki 项带生成中符号 / 待处理问题数（数据到位才显示）
+  const item = items.find((i) => i.route === 'KbWiki')
+  if (item) {
+    if (ingestActive.value) item.badge = '⟳'
+    else if (pendingIssueCount.value > 0) item.badge = pendingIssueCount.value
+  }
+  return items
+})
 
 // ============ 列表 / 索引 ============
 const indexGroups = ref<WikiIndexGroup[]>([])
@@ -899,6 +906,16 @@ const SEVERITY_LABELS: Record<string, string> = {
 }
 function severityLabel(severity: string): string {
   return SEVERITY_LABELS[severity] ?? severity
+}
+
+/** 仅拉 pending 计数供导航徽标（浏览 tab 默认不加载问题列表） */
+async function loadPendingIssueCount() {
+  try {
+    const data = await wikiApi.listIssues(spaceId.value, kbId.value, 'pending')
+    pendingIssueCount.value = data.length
+  } catch {
+    pendingIssueCount.value = 0
+  }
 }
 
 async function loadIssues() {
@@ -1442,6 +1459,7 @@ function formatDate(iso: string | null): string {
 // ============ 初始化 ============
 onMounted(async () => {
   await loadIndex()
+  void loadPendingIssueCount() // 导航徽标数据源（不阻塞首屏）
   // URL ?page=slug 直达
   const initialSlug = route.query.page as string | undefined
   if (initialSlug) {

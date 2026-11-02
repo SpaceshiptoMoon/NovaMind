@@ -167,6 +167,15 @@ export const documentApi = {
     )
   },
 
+  /** 查询文档被哪些 Wiki 页引用（文档详情「已纳入 Wiki」反向条数据源） */
+  getWikiReferences(spaceId: number, kbId: number, docId: number) {
+    return request.get<{
+      document_id: number
+      total: number
+      items: { slug: string; title: string; page_type: string }[]
+    }>(`/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/wiki-references`)
+  },
+
   /** 聚合知识库标签（KB 级作用域，标签云/检索筛选器数据源） */
   getKbTags(spaceId: number, kbId: number) {
     return request.get<{ kb_id: number; total: number; items: { tag: string; count: number }[] }>(

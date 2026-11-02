@@ -8,6 +8,7 @@
       :class="{ active: item.active }"
     >
       <span class="sidebar-label">{{ item.label }}</span>
+      <span v-if="item.badge" class="sidebar-badge">{{ item.badge }}</span>
     </router-link>
     <slot name="bottom" />
   </nav>
@@ -73,5 +74,16 @@ defineProps<{
 
 .sidebar-label {
   white-space: nowrap;
+}
+
+/* 导航徽标：黄点数字（待处理问题）/符号（生成中），跟随主题语义色 */
+.sidebar-badge {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  line-height: 18px;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 </style>

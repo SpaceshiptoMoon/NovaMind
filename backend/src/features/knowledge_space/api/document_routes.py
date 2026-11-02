@@ -44,6 +44,7 @@ from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
 )
+from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 from novamind.features.knowledge_space.schemas.document_schema import (
     ChunkListResponse,
     ChunkResponse,
@@ -330,6 +331,39 @@ async def init_chunk_upload(
         max_total_bytes=max_total_bytes,
     )
     return ChunkUploadInitResponse(**result)
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/wiki-references",
+    summary="查询文档被哪些 Wiki 页引用",
+    description="按来源文档反查引用它的存活 Wiki 页（文档详情页「已纳入 Wiki」反向条数据源）。"
+    "声明在 /{document_id} 系列路由之前，避免路径参数吞噬字面量 tags 类路径。",
+)
+async def list_document_wiki_references(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """按来源文档反查引用它的存活 Wiki 页（复用 retract 的反查，含二次防御）。"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    pages = await WikiPageRepository(db).list_by_source_document(kb_id, document_id)
+    # list_by_source_document 用 JSON cast LIKE 预筛（可能误命中前缀相近的
+    # document_id），沿用 retract 的二次防御：逐页核对 source_refs 精确项
+    prefix = f"{document_id}|"
+    items = [
+        {"slug": p.slug, "title": p.title, "page_type": p.page_type}
+        for p in pages
+        if any(ref.startswith(prefix) for ref in (p.source_refs or []))
+    ]
+    return {"document_id": document_id, "total": len(items), "items": items}
 
 
 @router.get(

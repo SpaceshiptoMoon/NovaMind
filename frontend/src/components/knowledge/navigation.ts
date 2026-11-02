@@ -4,6 +4,8 @@ export interface KbNavItem {
   to: string
   route: string
   active: boolean
+  /** 导航项徽标：数字（如待处理问题数）或符号（如生成中 ⟳）；无则不渲染 */
+  badge?: number | string
 }
 
 /** 按空间/知识库构造知识库详情页顶部导航（文档/任务/Wiki/检索/评估五页签） */

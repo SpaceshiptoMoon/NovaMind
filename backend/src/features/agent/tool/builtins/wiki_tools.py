@@ -366,6 +366,7 @@ class WikiTool(BaseTool):
         from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 
         pages = await WikiPageRepository(db).list_by_slugs(kb_id, slugs)
+        url = f"/home/spaces/{kb.space_id}/knowledge-bases/{kb_id}/wiki?page="
         results = []
         for slug in slugs:
             page = pages.get(slug)
@@ -383,6 +384,7 @@ class WikiTool(BaseTool):
                 "content_truncated": len(page.content) > _MAX_PAGE_CONTENT_CHARS,
                 "out_links": page.out_links or [],
                 "version": page.version,
+                "url": url + page.slug,
             })
         return json.dumps({"pages": results}, ensure_ascii=False)
 
@@ -402,6 +404,8 @@ class WikiTool(BaseTool):
 
         # 排序搜索（对齐 WeKnora）：rank 分级 + snippet + 别名参与匹配
         ranked = await WikiPageRepository(db).search_pages_ranked(kb_id, query, limit=limit)
+        # url：前端可点链接直达 wiki 阅读页（对话工具卡片渲染用；slug 含 / 走 query 传递）
+        url = f"/home/spaces/{kb.space_id}/knowledge-bases/{kb_id}/wiki?page="
         return json.dumps({
             "total": len(ranked),
             "items": [
@@ -413,6 +417,7 @@ class WikiTool(BaseTool):
                     "aliases": r["aliases"],
                     "match_rank": r["rank"],
                     "match_snippet": r["snippet"],
+                    "url": url + r["slug"],
                 }
                 for r in ranked
             ],

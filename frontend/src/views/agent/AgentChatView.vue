@@ -97,17 +97,13 @@
       >
         <div class="ws-dialog-body">
           <p class="ws-dialog-hint">
-            进入工作模式后，智能体将以该文件夹为工作目录，自动获得
-            read / glob / grep / write / edit / bash 六个工具，可读写文件、检索内容、运行命令。
+            进入工作模式后，智能体将以该文件夹为工作目录，自动获得 read / glob / grep / write / edit
+            / bash 六个工具，可读写文件、检索内容、运行命令。
           </p>
           <!-- 目录浏览器：逐层点选，选中层即为工作区根 -->
           <div class="ws-browser">
             <div class="ws-browser-toolbar">
-              <el-button
-                size="small"
-                :disabled="!browseParent"
-                @click="browseEnter(browseParent!)"
-              >
+              <el-button size="small" :disabled="!browseParent" @click="browseEnter(browseParent!)">
                 <el-icon><ArrowLeft /></el-icon>
                 上级
               </el-button>
@@ -235,11 +231,7 @@
                     :class="{ running: turn.isActive }"
                     @click="toggleTurn(turn)"
                   >
-                    <span
-                      v-if="turn.isActive"
-                      class="fold-spinner"
-                      aria-hidden="true"
-                    ></span>
+                    <span v-if="turn.isActive" class="fold-spinner" aria-hidden="true"></span>
                     <span class="fold-status">{{ foldStatusLabel(turn) }}</span>
                     <el-icon
                       :size="12"
@@ -279,11 +271,7 @@
                   />
 
                   <!-- 纠偏警告行（loop_detection）：常显轻量提示，不折叠（用户应看到的异常信号） -->
-                  <div
-                    v-for="n in turn.noticeItems"
-                    :key="`notice-${n.id}`"
-                    class="notice-row"
-                  >
+                  <div v-for="n in turn.noticeItems" :key="`notice-${n.id}`" class="notice-row">
                     <el-icon :size="12" class="notice-icon"><Warning /></el-icon>
                     <span class="notice-text">{{ n.content }}</span>
                   </div>
@@ -300,12 +288,11 @@
                     <template v-for="(step, si) in turn.steps" :key="si">
                       <!-- AI 输出（LLM 一次响应）：摘要行默认收起，展开看完整 reasoning/文本/工具参数 -->
                       <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-step">
-                        <button
-                          class="ai-step-summary"
-                          @click="toggleStep(`${turn.key}:${si}`)"
-                        >
+                        <button class="ai-step-summary" @click="toggleStep(`${turn.key}:${si}`)">
                           <span class="ai-step-kind">{{
-                            toContentBlocks(step.ai).some((b) => b.kind === 'tool_call') ? '调用工具' : '已完成思考'
+                            toContentBlocks(step.ai).some((b) => b.kind === 'tool_call')
+                              ? '调用工具'
+                              : '已完成思考'
                           }}</span>
                           <span class="ai-step-text">{{ stepSummary(step) }}</span>
                           <el-icon
@@ -316,14 +303,8 @@
                             <ArrowDown />
                           </el-icon>
                         </button>
-                        <div
-                          v-if="expandedSteps.has(`${turn.key}:${si}`)"
-                          class="ai-output"
-                        >
-                          <template
-                            v-for="(block, bi) in toContentBlocks(step.ai)"
-                            :key="bi"
-                          >
+                        <div v-if="expandedSteps.has(`${turn.key}:${si}`)" class="ai-output">
+                          <template v-for="(block, bi) in toContentBlocks(step.ai)" :key="bi">
                             <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
                               <MarkdownRenderer :content="block.text" />
                             </div>
@@ -373,6 +354,21 @@
                             </div>
                           </div>
                           <div v-if="expandedTools.has(tool.id)" class="tool-body">
+                            <!-- wiki 工具结果：条目带 url 时渲染可点链接直达阅读页 -->
+                            <div v-if="wikiToolLinks(tool).length > 0" class="tool-section">
+                              <div class="tool-section-label">Wiki 页面</div>
+                              <div class="wiki-tool-links">
+                                <a
+                                  v-for="link in wikiToolLinks(tool)"
+                                  :key="link.url"
+                                  class="wiki-tool-link"
+                                  :href="link.url"
+                                  @click.prevent="openWikiFromChat(link.url)"
+                                >
+                                  {{ link.title }}
+                                </a>
+                              </div>
+                            </div>
                             <div v-if="tool.content" class="tool-section">
                               <div class="tool-section-label">结果</div>
                               <pre class="tool-json">{{ truncateResult(tool.content) }}</pre>
@@ -421,7 +417,9 @@
                   </div>
                   <!-- 流式/加载中且无轨迹：点点占位（有轨迹时由折叠条「思考中」表达，不重复显示） -->
                   <div
-                    v-else-if="turn.isActive && !turn.steps.length && !turn.finalAssistant?.reasoning"
+                    v-else-if="
+                      turn.isActive && !turn.steps.length && !turn.finalAssistant?.reasoning
+                    "
                     class="typing-row"
                   >
                     <div class="message-body">
@@ -444,7 +442,10 @@
         v-if="!isWelcomeMode && viewMode === 'chat' && !stickToBottom"
         class="jump-to-bottom"
         title="回到底部"
-        @click="scrollToBottom(); stickToBottom = true"
+        @click="
+          scrollToBottom()
+          stickToBottom = true
+        "
       >
         <el-icon :size="14"><ArrowDown /></el-icon>
       </button>
@@ -715,12 +716,9 @@ const inputText = ref('')
 // ===================== 本地文件夹工作区（绑定即本地模式） =====================
 const currentSessionId = computed(() => agentStore.currentSessionId)
 const currentConversation = computed(
-  () =>
-    agentStore.conversations.find((c) => c.session_id === currentSessionId.value) || null,
+  () => agentStore.conversations.find((c) => c.session_id === currentSessionId.value) || null,
 )
-const workspaceConfig = computed(
-  () => currentConversation.value?.extra_config?.workspace ?? null,
-)
+const workspaceConfig = computed(() => currentConversation.value?.extra_config?.workspace ?? null)
 const isWorkspaceBound = computed(() => !!workspaceConfig.value)
 const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
 const workspacePillTitle = computed(() =>
@@ -790,7 +788,7 @@ async function handleBindWorkspace() {
     // 回写会话列表里的 workspace 键（不重新拉全量）
     const conv = currentConversation.value
     if (conv) {
-      conv.extra_config = { ...(conv.extra_config || {}), workspace: { mode: 'local', root } }
+      conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
     }
     ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
     workspaceDialogVisible.value = false
@@ -959,7 +957,8 @@ const turns = computed<ChatTurn[]>(() => {
       current = {
         key: `turn-orphan-${msg.id}`,
         userMsg: null,
-        items: msg.role === 'compaction' || msg.role === 'plan' || msg.role === 'notice' ? [] : [msg],
+        items:
+          msg.role === 'compaction' || msg.role === 'plan' || msg.role === 'notice' ? [] : [msg],
         compactionItems: msg.role === 'compaction' ? [msg] : [],
         planItems: msg.role === 'plan' ? [msg] : [],
         noticeItems: msg.role === 'notice' ? [msg] : [],
@@ -1069,7 +1068,11 @@ function toggleTurn(turn: ChatTurn) {
 // 状态差异由 spinner + 主题色 + 「中/完成」一词之差表达，步数明细展开折叠条可见
 function foldStatusLabel(turn: ChatTurn): string {
   const duration = turn.isActive ? activeTurnDuration(turn) : turnDuration(turn)
-  return duration ? `${turn.isActive ? '思考中' : '思考完成'} · ${duration}` : turn.isActive ? '思考中' : '思考完成'
+  return duration
+    ? `${turn.isActive ? '思考中' : '思考完成'} · ${duration}`
+    : turn.isActive
+      ? '思考中'
+      : '思考完成'
 }
 
 // 该轮总耗时（无有效时间区间返回空串，由调用方省略该段）
@@ -1174,9 +1177,7 @@ function getPlanData(msg: AgentMessage): {
   summary?: string
   interrupted?: boolean
 } {
-  const plan = (
-    msg.extra as { plan?: Record<string, unknown> } | null | undefined
-  )?.plan
+  const plan = (msg.extra as { plan?: Record<string, unknown> } | null | undefined)?.plan
   return {
     title: typeof plan?.title === 'string' ? plan.title : undefined,
     steps: Array.isArray(plan?.steps) ? (plan?.steps as string[]) : [],
@@ -1188,9 +1189,7 @@ function getPlanData(msg: AgentMessage): {
 
 /** 研究进度卡的 extra.research 提取（字段缺省安全：历史/异常数据兜底空态） */
 function getResearchData(msg: AgentMessage): ResearchProgressData {
-  const r = (
-    msg.extra as { research?: Record<string, unknown> } | null | undefined
-  )?.research
+  const r = (msg.extra as { research?: Record<string, unknown> } | null | undefined)?.research
   return {
     status: typeof r?.status === 'string' ? r.status : 'analyzing',
     current_step: typeof r?.current_step === 'string' ? r.current_step : undefined,
@@ -1514,11 +1513,17 @@ function stepSummary(step: ReActStep): string {
   if (toolCalls.length) {
     const names = toolCalls.map((b) => (b.kind === 'tool_call' ? b.name : ''))
     parts.push(
-      names.length > 2 ? `调用 ${names.slice(0, 2).join('、')} 等 ${names.length} 个工具` : `调用 ${names.join('、')}`,
+      names.length > 2
+        ? `调用 ${names.slice(0, 2).join('、')} 等 ${names.length} 个工具`
+        : `调用 ${names.join('、')}`,
     )
   }
   const firstLine = (source: string) => {
-    const line = source.trim().split('\n').find((l) => l.trim()) || ''
+    const line =
+      source
+        .trim()
+        .split('\n')
+        .find((l) => l.trim()) || ''
     return line.length > 40 ? line.slice(0, 40) + '…' : line
   }
   if (think) parts.push(firstLine(think.text))
@@ -1573,6 +1578,32 @@ function toggleToolExpand(msgId: number) {
 function truncateResult(text: string): string {
   if (text.length <= 2000) return text
   return text.slice(0, 2000) + '\n... (已截断)'
+}
+
+/** wiki 工具结果解析：items/pages 中带 url+title 的条目（后端 wiki_tools 拼好前端路径） */
+function wikiToolLinks(tool: {
+  tool_name?: string | null
+  content?: string | null
+}): Array<{ url: string; title: string }> {
+  if (!tool.content || !tool.tool_name?.startsWith('wiki_')) return []
+  try {
+    const data = JSON.parse(tool.content) as {
+      items?: Array<{ url?: string; title?: string }>
+      pages?: Array<{ url?: string; title?: string; found?: boolean }>
+    }
+    const entries = [...(data.items ?? []), ...(data.pages ?? [])]
+    return entries.filter(
+      (it): it is { url: string; title: string } =>
+        typeof it?.url === 'string' && typeof it?.title === 'string',
+    )
+  } catch {
+    return []
+  }
+}
+
+/** 对话内跳转 wiki 阅读页（SPA 路由，保留会话状态） */
+function openWikiFromChat(url: string) {
+  void router.push(url)
 }
 
 async function fetchModels() {

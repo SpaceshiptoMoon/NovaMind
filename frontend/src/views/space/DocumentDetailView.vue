@@ -110,6 +110,24 @@
           <span class="meta-label">解析质量</span>
           <span class="meta-value">无警告</span>
         </div>
+        <!-- 已纳入 Wiki 反向条：读完原文一步跳到 AI 综合页（读者自然下一步） -->
+        <div v-if="wikiRefs.length > 0" class="meta-item">
+          <span class="meta-label">Wiki</span>
+          <span class="meta-value wiki-refs-value">
+            <template v-for="(r, i) in wikiRefs.slice(0, 3)" :key="r.slug">
+              <RouterLink
+                class="wiki-ref-link"
+                :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
+                :title="r.title"
+              >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink><span
+                v-if="i < Math.min(wikiRefs.length, 3) - 1"
+              >、</span>
+            </template>
+            <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
+              等 {{ wikiRefs.length }} 页 →
+            </span>
+          </span>
+        </div>
         <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑 -->
         <div class="meta-item">
           <span class="meta-label">标签</span>
@@ -470,6 +488,7 @@ async function fetchDocument() {
     await fetchChunks()
     // 文档类型就绪后才能判定视频文档，再拉叙事状态；已在合成中则续上轮询
     await fetchNarrative()
+    void fetchWikiReferences()
     if (narrative.value?.status === 'running') scheduleNarrativePolling()
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
@@ -537,6 +556,19 @@ const narrativeExpanded = ref(false)
 const narrativeGenerating = ref(false)
 // 轮询句柄：running 状态下 3s 间隔查询直至 completed/failed；卸载时清理
 let narrativePollTimer: ReturnType<typeof setTimeout> | null = null
+
+// 已纳入 Wiki 反向条：按来源文档反查引用它的 wiki 页（失败静默，无引用不显示）
+const wikiRefs = ref<{ slug: string; title: string; page_type: string }[]>([])
+
+async function fetchWikiReferences() {
+  if (kbId.value === 0 || !document.value) return
+  try {
+    const data = await documentApi.getWikiReferences(spaceId.value, kbId.value, document.value.id)
+    wikiRefs.value = data.items || []
+  } catch {
+    wikiRefs.value = []
+  }
+}
 
 // 用户自定义标签：行内编辑状态（保存走 PUT tags，后端规范化并即时同步 ES chunk）
 const tagsEditing = ref(false)
@@ -623,6 +655,7 @@ function scheduleNarrativePolling() {
   const deadline = Date.now() + 15 * 60 * 1000
   const tick = async () => {
     await fetchNarrative()
+    void fetchWikiReferences()
     const status = narrative.value?.status
     if (status === 'completed' || status === 'failed' || Date.now() > deadline) {
       narrativePollTimer = null
@@ -808,6 +841,28 @@ function maybeAutoExpandTimeline() {
 
 .tags-editor {
   min-width: 220px;
+}
+
+/* 已纳入 Wiki 反向条：主色链接，超出 3 页显示等 N 页 */
+.wiki-refs-value {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.wiki-ref-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.wiki-ref-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.wiki-refs-more {
+  color: var(--color-text-muted);
 }
 
 /* ===== Pipeline Timeline Section ===== */
