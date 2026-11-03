@@ -21989,7 +21989,7 @@
             }
           },
           {
-            "description": "处理完成时间范围起点（ISO8601，含边界；从未完成的文档被排除）",
+            "description": "处理完成时间范围起点（ISO8601，含边界；仅含成功完成的文档，失败/取消/未完成被排除）",
             "in": "query",
             "name": "completed_from",
             "required": false,
@@ -22003,12 +22003,12 @@
                   "type": "null"
                 }
               ],
-              "description": "处理完成时间范围起点（ISO8601，含边界；从未完成的文档被排除）",
+              "description": "处理完成时间范围起点（ISO8601，含边界；仅含成功完成的文档，失败/取消/未完成被排除）",
               "title": "Completed From"
             }
           },
           {
-            "description": "处理完成时间范围终点（ISO8601，含边界；从未完成的文档被排除）",
+            "description": "处理完成时间范围终点（ISO8601，含边界；仅含成功完成的文档，失败/取消/未完成被排除）",
             "in": "query",
             "name": "completed_to",
             "required": false,
@@ -22022,7 +22022,7 @@
                   "type": "null"
                 }
               ],
-              "description": "处理完成时间范围终点（ISO8601，含边界；从未完成的文档被排除）",
+              "description": "处理完成时间范围终点（ISO8601，含边界；仅含成功完成的文档，失败/取消/未完成被排除）",
               "title": "Completed To"
             }
           },

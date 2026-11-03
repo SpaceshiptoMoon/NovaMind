@@ -96,7 +96,8 @@ class DocumentQueryService:
             keyword: 可选文件名子串过滤，None 表示不过滤。
             uploaded_from/uploaded_to: 可选上传时间范围（含边界），None 表示不限。
             completed_from/completed_to: 可选处理完成时间范围（含边界，按最新任务
-                的 completed_at），从未完成的文档被排除，None 表示不限。
+                的 completed_at），仅含成功完成的文档（失败/取消/未完成被排除），
+                None 表示不限。
             file_type: 可选文件格式过滤（小写扩展名等值），None 表示不过滤。
 
         Returns:
@@ -369,7 +370,8 @@ class DocumentQueryService:
             keyword: 文件名模糊搜索关键词
             uploaded_from/uploaded_to: 上传时间范围（含边界），None 表示不限
             completed_from/completed_to: 处理完成时间范围（含边界，按最新任务的
-                completed_at），从未完成的文档被排除，None 表示不限
+                completed_at），仅含成功完成的文档（失败/取消/未完成被排除），
+                None 表示不限
             file_type: 文件格式过滤（小写扩展名等值），None 表示不过滤
 
         Returns:

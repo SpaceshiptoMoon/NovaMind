@@ -208,7 +208,8 @@
                 <span class="meta-seg">{{ doc.chunk_count ?? 0 }} 分块</span>
                 <span class="meta-dot">·</span>
                 <span class="meta-seg">{{ formatShortDate(doc.created_at) }}</span>
-                <template v-if="doc.completed_at">
+                <!-- completed_at 列语义是任务终态时间（失败也写值），展示口径限定成功完成 -->
+                <template v-if="doc.completed_at && doc.status === DOC_STATUS.COMPLETED">
                   <span class="meta-dot">·</span>
                   <span class="meta-seg">完成 {{ formatShortDate(doc.completed_at) }}</span>
                 </template>

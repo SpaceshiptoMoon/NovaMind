@@ -170,19 +170,21 @@ def test_completed_time_range_excludes_never_completed():
             _doc(1, "done-old.pdf"),
             _doc(2, "done-new.pdf"),
             _doc(3, "pending.pdf"),   # 最新任务 PENDING，无 completed_at
-            _doc(4, "failed.pdf"),    # 最新任务 FAILED
+            _doc(4, "failed.pdf"),    # 最新任务 FAILED（生产口径：失败也写 completed_at）
             _doc(5, "no-task.pdf"),   # 从未入队
         ]
         tasks_seed = [
             _task(101, 100, 1, TaskStatus.COMPLETED, completed_at=_T0),
             _task(102, 100, 2, TaskStatus.COMPLETED, completed_at=_T2),
             _task(103, 100, 3, TaskStatus.PENDING),
-            _task(104, 100, 4, TaskStatus.FAILED),
+            # 失败任务的 completed_at 列语义是「任务终态时间」，生产会写值——
+            # 完成时间区间必须凭 status=COMPLETED 而非 completed_at 非空判定
+            _task(104, 100, 4, TaskStatus.FAILED, completed_at=_T1),
         ]
         engine, session = await _make_session(docs_seed, tasks_seed)
         try:
             repo = DocumentRepository(session)
-            # 只命中真正完成的文档，未完成（PENDING/FAILED/无任务）全部排除
+            # 只命中真正成功完成的文档；失败（终态时间落区间）与未完成全部排除
             docs = await repo.get_by_kb(kb_id=1, completed_from=_T1)
             assert [d.id for d in docs] == [2]
 

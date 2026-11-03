@@ -645,8 +645,10 @@ class DocumentRepository:
         """列表/计数共用的筛选条件（同源保证分页 total 与列表一致）。
 
         完成时间区间依赖最新任务子查询：与 status 过滤共用同一次 LEFT JOIN，
-        任一需要任务维度过滤时才 join。区间比较在 LEFT JOIN 语义下天然排除
-        从未完成的文档（NULL completed_at 不落区间）。
+        任一需要任务维度过滤时才 join。completed_at 列语义是「任务终态时间」
+        （FAILED 也写值），故完成时间区间隐含限定最新任务 status=COMPLETED，
+        排除失败/取消文档；LEFT JOIN 下 NULL completed_at（无任务/待处理）
+        同样不落区间。
         """
         if keyword:
             # 转义通配符，用户输入的 % _ \ 按字面匹配
@@ -670,10 +672,13 @@ class DocumentRepository:
                     )
                 else:
                     query = query.where(latest.c.task_status == status_value)
-            if completed_from is not None:
-                query = query.where(latest.c.task_completed_at >= completed_from)
-            if completed_to is not None:
-                query = query.where(latest.c.task_completed_at <= completed_to)
+            if completed_from is not None or completed_to is not None:
+                # completed_at 列在失败时也写值：区间语义收紧为「成功完成」
+                query = query.where(latest.c.task_status == int(TaskStatus.COMPLETED))
+                if completed_from is not None:
+                    query = query.where(latest.c.task_completed_at >= completed_from)
+                if completed_to is not None:
+                    query = query.where(latest.c.task_completed_at <= completed_to)
         return query
 
     @staticmethod
