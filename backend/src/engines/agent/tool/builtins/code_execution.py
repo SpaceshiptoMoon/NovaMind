@@ -58,7 +58,10 @@ class CodeExecutionTool(BaseTool):
                         "web_search first, then compute on the returned data)\n\n"
                         "TIPS: include print() statements to see results; write one "
                         "complete script rather than fragments. Default timeout 30s "
-                        "(configurable per call)."
+                        "(configurable per call).\n\n"
+                        "ERRORS: sandbox failure returns {error, error_type}; "
+                        "timeout returns normal JSON with timed_out=true "
+                        "(check stderr and exit_code)."
                     ),
                     "parameters": {
                         "type": "object",

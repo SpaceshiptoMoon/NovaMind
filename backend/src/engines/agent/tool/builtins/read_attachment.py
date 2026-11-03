@@ -54,7 +54,10 @@ class ReadAttachmentTool(BaseTool):
                         "- Web pages or knowledge-base documents (use web_search or "
                         "knowledge_search)\n"
                         "- Workspace files (use local_workspace read)\n\n"
-                        "limit is in characters (default 8000, max 20000)."
+                        "limit is in characters (default 8000, max 20000).\n\n"
+                        "ERRORS: unknown attachment_id, or one not uploaded in "
+                        "THIS conversation, returns {error} - never guess ids, "
+                        "take them from the <system-uploaded-files> manifest."
                     ),
                     "parameters": {
                         "type": "object",

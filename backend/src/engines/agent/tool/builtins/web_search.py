@@ -49,7 +49,10 @@ class WebSearchTool(BaseTool):
                         "TIPS:\n"
                         "- Specific, targeted queries beat broad ones\n"
                         "- Retry with different keywords if results miss; for exhaustive "
-                        "coverage make several differently-worded calls"
+                        "coverage make several differently-worded calls\n\n"
+                        "ERRORS: no hits returns {message: '未找到相关结果'} with "
+                        "the query - rephrase rather than repeat; search failure "
+                        "returns {error}."
                     ),
                     "parameters": {
                         "type": "object",
@@ -85,7 +88,10 @@ class WebSearchTool(BaseTool):
         """
         if tool_name == "web_search":
             return await self._search(arguments, context)
-        return f"未知工具：{tool_name}"
+        return json.dumps(
+            {"error": f"未知工具：{tool_name}，本工具仅支持 web_search"},
+            ensure_ascii=False,
+        )
 
     async def _search(self, args: dict[str, Any], context: ToolContext) -> str:
         """走 ExternalSearchService 联网搜索并格式化结果；未配置 provider 时降级提示。"""

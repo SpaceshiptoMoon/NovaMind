@@ -51,7 +51,9 @@ class TaskTool(BaseTool):
                         "- Quick lookups (one knowledge_search / web_search is cheaper)\n"
                         "- Interactive work: the sub-agent cannot ask the user questions\n"
                         "- Group member consultation (use consult_member in group chat)\n\n"
-                        "The sub-agent cannot delegate further (no recursion)."
+                        "The sub-agent cannot delegate further (no recursion).\n\n"
+                        "ERRORS: sub-agent failure returns {error} (retry with a "
+                        "revised brief); runner not configured returns {error}."
                     ),
                     "parameters": {
                         "type": "object",
@@ -85,7 +87,10 @@ class TaskTool(BaseTool):
             JSON 文本：成功为子 agent 结果；runner 缺失、prompt 为空或失败为 {error}。
         """
         if tool_name != "task":
-            return f"未知工具：{tool_name}"
+            return json.dumps(
+                {"error": f"未知工具：{tool_name}，本工具仅支持 task"},
+                ensure_ascii=False,
+            )
         runner = context.subagent_runner
         if runner is None:
             return json.dumps(

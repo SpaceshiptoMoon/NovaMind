@@ -47,7 +47,10 @@ class PlanOutputTool(BaseTool):
                         "- Reading tool outputs (use read_tool_result when a truncation "
                         "notice references a tool_call_id)\n"
                         "- Speculative re-reads every step: excerpts are sufficient for "
-                        "most steps; calling this per-step wastes context budget"
+                        "most steps; calling this per-step wastes context budget\n\n"
+                        "ERRORS: non-integer or out-of-range step returns {error}; "
+                        "a step with no persisted output (not run or interrupted) "
+                        "returns {error}."
                     ),
                     "parameters": {
                         "type": "object",

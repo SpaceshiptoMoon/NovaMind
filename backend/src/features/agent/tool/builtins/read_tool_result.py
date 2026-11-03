@@ -46,7 +46,9 @@ class ReadToolResultTool(BaseTool):
                         "- Re-reading plan step outputs (use plan_output in plan mode)\n"
                         "- Speculative re-reads: injected excerpts are usually enough\n\n"
                         "Large results support pagination via offset/limit; the response "
-                        "carries has_more so you can continue reading."
+                        "carries has_more so you can continue reading.\n\n"
+                        "ERRORS: unknown tool_call_id returns {error} "
+                        "(not-found and rejected lookups return the same message)."
                     ),
                     "parameters": {
                         "type": "object",

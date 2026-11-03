@@ -129,7 +129,9 @@ class KnowledgeSearchTool(BaseTool):
                         "without an ID; you need a space_id for knowledge_search or "
                         "list_knowledge_bases.\n\n"
                         "NOT FOR: quick full KB listing (list_all_knowledge_bases "
-                        "skips the space hop); web content (web_search)."
+                        "skips the space hop); web content (web_search).\n\n"
+                        "ERRORS: failure returns {error}; no accessible spaces "
+                        "returns an empty list."
                     ),
                     "parameters": {
                         "type": "object",
@@ -150,7 +152,10 @@ class KnowledgeSearchTool(BaseTool):
                         "knowledge_search / document_list.\n\n"
                         "WHEN TO USE: you know the space but not which KB holds the "
                         "answer.\n\n"
-                        "NOT FOR: cross-space overview (use list_all_knowledge_bases)."
+                        "NOT FOR: cross-space overview (use list_all_knowledge_bases).\n\n"
+                        "ERRORS: unknown or unauthorized space_id returns {error} "
+                        "(verify the ID via list_spaces); no KBs returns an "
+                        "empty list."
                     ),
                     "parameters": {
                         "type": "object",
@@ -176,7 +181,9 @@ class KnowledgeSearchTool(BaseTool):
                         "WHEN TO USE: one-shot overview to pick a kb_id without "
                         "browsing space by space.\n\n"
                         "NOT FOR: space-level management context (use list_spaces + "
-                        "list_knowledge_bases when structure matters)."
+                        "list_knowledge_bases when structure matters).\n\n"
+                        "ERRORS: failure returns {error}; no accessible KBs "
+                        "returns an empty list."
                     ),
                     "parameters": {
                         "type": "object",
@@ -214,7 +221,12 @@ class KnowledgeSearchTool(BaseTool):
                         "(deduplicated coherent chapter summaries with time ranges) and "
                         "'video_overviews' holds the whole-video synopsis. When asked "
                         "what a video is about or how it flows, answer from the "
-                        "chapter summary + overview instead of stitching raw fragments."
+                        "chapter summary + overview instead of stitching raw "
+                        "fragments.\n\n"
+                        "ERRORS: space_id outside the knowledge scope bound to "
+                        "this session, unknown or unauthorized space_id returns "
+                        "{error} (no silent fallback - fix the ID or run "
+                        "discovery first); no hits returns an empty results list."
                     ),
                     "parameters": {
                         "type": "object",
@@ -264,7 +276,9 @@ class KnowledgeSearchTool(BaseTool):
                         "WHEN TO USE: checking what content exists before searching, "
                         "or locating a document's ID/name.\n\n"
                         "NOT FOR: content retrieval (use knowledge_search); wiki "
-                        "pages (wiki_search)."
+                        "pages (wiki_search).\n\n"
+                        "ERRORS: unknown or unauthorized space_id/kb_id returns "
+                        "{error}; empty KB returns an empty list."
                     ),
                     "parameters": {
                         "type": "object",
@@ -305,7 +319,7 @@ class KnowledgeSearchTool(BaseTool):
             context: 执行上下文：knowledge_search_port 与 user_id。
 
         Returns:
-            JSON 文本：命中为结果集，无权限或异常为 {error}；未知工具为纯文本提示。
+            JSON 文本：命中为结果集，无权限、异常或未知工具均为含 error 的 JSON。
         """
         port = context.knowledge_search_port
         if port is None:
@@ -324,7 +338,10 @@ class KnowledgeSearchTool(BaseTool):
         handler = dispatch.get(tool_name)
         if handler:
             return await handler()
-        return f"未知工具：{tool_name}"
+        return json.dumps(
+            {"error": f"未知工具：{tool_name}，可用：{", ".join(dispatch)}"},
+            ensure_ascii=False,
+        )
 
     # ==================== 空间与知识库发现 ====================
 

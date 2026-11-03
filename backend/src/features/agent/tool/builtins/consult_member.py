@@ -4,6 +4,7 @@
 名单每次 run 经 context 注入，并以 member_id enum 形式动态覆盖工具 schema
 （LLM 只能看到本群真实成员）。
 """
+import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
@@ -131,20 +132,27 @@ class ConsultMemberTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
-        """经 context 回调拉起成员 turn，答复全文回流（回调缺失/成员非法返回错误文本）。"""
+        """经 context 回调拉起成员 turn，答复全文回流（回调缺失/成员非法返回错误 JSON）。"""
         question = str(arguments.get("question") or "").strip()
         member_id = arguments.get("member_id")
         if not question:
-            return "错误：question 不能为空"
+            return json.dumps({"error": "question 不能为空"}, ensure_ascii=False)
 
         bundle = context.group_consult or {}
         fn = bundle.get(CONSULT_FN_KEY)
         members = bundle.get(CONSULT_MEMBERS_KEY) or []
         member_ids = {m.get("agent_id") for m in members}
         if fn is None:
-            return "错误：本次会话未启用成员咨询（仅专家咨询模式主持人可用）"
+            return json.dumps(
+                {"error": "本次会话未启用成员咨询（仅专家咨询模式主持人可用）"},
+                ensure_ascii=False,
+            )
         if member_id not in member_ids:
-            return f"错误：成员 {member_id} 不在本群可咨询名单内"
+            return json.dumps(
+                {"error": f"成员 {member_id} 不在本群可咨询名单内，"
+                          "仅 schema 中 AVAILABLE MEMBERS 列出的 member_id 可用"},
+                ensure_ascii=False,
+            )
         return await fn(member_id, question)
 
     def get_system_prompt_fragment(self) -> str:

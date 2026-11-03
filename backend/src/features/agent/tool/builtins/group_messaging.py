@@ -79,7 +79,7 @@ class GroupMessagingTool(BaseTool):
         bundle = context.group_messaging or {}
         fn = bundle.get(MESSAGING_FN_KEY)
         if fn is None:
-            return "错误：当前会话未启用群聊通信"
+            return json.dumps({"error": "当前会话未启用群聊通信"}, ensure_ascii=False)
         members = bundle.get(MESSAGING_MEMBERS_KEY) or []
         if arguments.get("to_member") is not None:
             try:

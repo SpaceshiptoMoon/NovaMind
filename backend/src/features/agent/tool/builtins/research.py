@@ -107,7 +107,10 @@ class ResearchTool(BaseTool):
             失败为 {error}。
         """
         if tool_name != "research":
-            return f"未知工具：{tool_name}"
+            return json.dumps(
+                {"error": f"未知工具：{tool_name}，本工具仅支持 research"},
+                ensure_ascii=False,
+            )
 
         factory = context.research_service_factory
         if factory is None:
