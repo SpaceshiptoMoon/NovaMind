@@ -839,7 +839,7 @@ def test_consult_tool_def_enum():
 
 @pytest.mark.asyncio
 async def test_messaging_tool_rejects_non_member():
-    """send_direct_message：收件人非同组成员被工具侧拒绝。"""
+    """send_message 点对点模式：收件人非同组成员被工具侧拒绝。"""
     from novamind.engines.agent.tool.context import ToolContext
     from novamind.features.agent.tool.builtins.group_messaging import (
         GroupMessagingTool,
@@ -860,7 +860,7 @@ async def test_messaging_tool_rejects_non_member():
         },
     )
     bad = await tool.execute_tool(
-        "send_direct_message", {"to_member": 42, "content": "hi"}, ctx
+        "send_message", {"to_member": 42, "content": "hi"}, ctx
     )
     import json as _json
 

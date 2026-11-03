@@ -50,8 +50,6 @@ class DocumentInfo:
 
     id: int
     filename: str
-    status: str = ""
-    chunk_count: int = 0
 
 
 @dataclass

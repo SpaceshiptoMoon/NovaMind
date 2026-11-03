@@ -256,8 +256,8 @@ class KnowledgeSearchTool(BaseTool):
                 "function": {
                     "name": "document_list",
                     "description": (
-                        "List documents in ONE knowledge base: document ID, filename, "
-                        "status, and chunk count.\n\n"
+                        "List documents in ONE knowledge base: document ID and "
+                        "filename.\n\n"
                         "DEPENDS ON:\n"
                         "- space_id AND kb_id (from list_spaces / "
                         "list_knowledge_bases).\n\n"
@@ -613,12 +613,7 @@ class KnowledgeSearchTool(BaseTool):
             )
 
             docs = [
-                {
-                    "id": d.id,
-                    "filename": d.filename,
-                    "status": d.status,
-                    "chunk_count": d.chunk_count,
-                }
+                {"id": d.id, "filename": d.filename}
                 for d in result.documents
             ]
             return json.dumps(

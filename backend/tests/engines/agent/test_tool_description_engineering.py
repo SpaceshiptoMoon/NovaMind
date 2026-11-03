@@ -196,7 +196,7 @@ def test_all_builtin_tools_pass_registration_validation():
 
     registry = build_tool_registry(todo_store=TodoStore(), sandbox=None)
     assert len(registry.list_tool_names()) == 13
-    assert len(registry._tool_name_to_provider) == 30
+    assert len(registry._tool_name_to_provider) == 29  # messaging 合一后 30→29
 
 
 # ----------------------- 3. 执行层失败纠错 -----------------------

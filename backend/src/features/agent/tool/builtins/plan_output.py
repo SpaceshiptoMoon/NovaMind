@@ -10,6 +10,7 @@ from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.paged_read import clamp_page, paged_response
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,8 +88,7 @@ class PlanOutputTool(BaseTool):
             缺参数/越权/无产出（未执行或被中断）返回含 error 的 JSON。
         """
         step = arguments.get("step")
-        offset = arguments.get("offset", 0)
-        limit = arguments.get("limit", 10000)
+        offset, limit = clamp_page(arguments, default_limit=10_000, max_limit=20_000)
 
         if not isinstance(step, int) or step < 1:
             return json.dumps({"error": "step 必须为从 1 开始的整数"})
@@ -123,27 +123,9 @@ class PlanOutputTool(BaseTool):
         for msg in result.scalars():
             if (msg.extra or {}).get("plan_step_index") == step_index:
                 content = msg.content or ""
-                total_length = len(content)
-                if offset > 0 or limit < total_length:
-                    sliced = content[offset : offset + limit]
-                    return json.dumps(
-                        {
-                            "step": step,
-                            "content": sliced,
-                            "offset": offset,
-                            "limit": limit,
-                            "total_length": total_length,
-                            "has_more": offset + limit < total_length,
-                        },
-                        ensure_ascii=False,
-                    )
-                return json.dumps(
-                    {
-                        "step": step,
-                        "content": content,
-                        "total_length": total_length,
-                    },
-                    ensure_ascii=False,
+                # 恒同构响应（历史版本切片/无切片两种 JSON 形态并存）
+                return paged_response(
+                    content, offset, limit, len(content), step=step,
                 )
 
         return json.dumps(

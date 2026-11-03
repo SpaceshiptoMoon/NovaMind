@@ -234,7 +234,7 @@ def test_knowledge_search_tool_document_list_uses_port():
         list_documents=AsyncMock(
             return_value=DocumentListResult(
                 total=1,
-                documents=[DocumentInfo(id=3, filename="a.pdf", status="completed", chunk_count=5)],
+                documents=[DocumentInfo(id=3, filename="a.pdf")],
             )
         ),
     )
@@ -247,7 +247,8 @@ def test_knowledge_search_tool_document_list_uses_port():
     )
     data = json.loads(out)
     assert data["total"] == 1
-    assert data["documents"][0]["chunk_count"] == 5
+    # 虚假契约清理：status/chunk_count 恒空字段已从输出移除（宿主本就只填 id/filename）
+    assert data["documents"][0] == {"id": 3, "filename": "a.pdf"}
 
 
 def test_memory_tool_missing_port_returns_error():

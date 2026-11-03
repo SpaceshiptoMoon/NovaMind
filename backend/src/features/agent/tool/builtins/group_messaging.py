@@ -1,7 +1,8 @@
 """群聊通信工具：头脑风暴模式成员主动发信通道。
 
-send_group_message——公开发言（进群时间线，编排器转投其他成员）；
-send_direct_message——点对点私信（只进收件人私有会话，不进时间线，不触发执行）。
+send_message——统一发信：缺省 to_member 群发全体成员（过程性投递，可被
+提前看到）；指定 to_member 点对点私信（只进收件人私有会话，不进时间线，
+不触发执行）。群时间线由编排器按 turn 最终发言统一落，工具发信不落时间线。
 """
 import json
 from typing import Any
@@ -19,7 +20,7 @@ MESSAGING_MEMBERS_KEY = "members"
 
 
 class GroupMessagingTool(BaseTool):
-    """群聊发信工具（send_group_message / send_direct_message）"""
+    """群聊发信工具（send_message）"""
 
     @property
     def name(self) -> str:
@@ -30,58 +31,42 @@ class GroupMessagingTool(BaseTool):
         return "群聊通信：向全体成员公开发言，或向指定成员发点对点私信"
 
     def get_tools(self) -> list[dict[str, Any]]:
-        """声明两个发信函数的 OpenAI schema。"""
+        """声明 send_message 函数的 OpenAI schema（to_member 可选：缺省群发）。"""
         return [
             {
                 "type": "function",
                 "function": {
-                    "name": "send_group_message",
+                    "name": "send_message",
                     "description": (
-                        "Broadcast a message to the whole group. The message appears on "
-                        "the group timeline and is delivered to every other member.\n\n"
+                        "Send a message to the whole group OR to one specific member.\n\n"
+                        "- WITHOUT to_member: broadcast — delivered to every other "
+                        "member as a group message.\n"
+                        "- WITH to_member: private note — only that member sees it; it "
+                        "does not appear on the group timeline and does NOT wake the "
+                        "recipient; they will read it when next invoked.\n\n"
                         "WHEN TO USE:\n"
-                        "- You want all members (and the user) to see your point\n\n"
+                        "- Group-wide points (omit to_member)\n"
+                        "- Side notes, coordination, or context meant for one member "
+                        "only (set to_member)\n\n"
                         "NOT FOR:\n"
-                        "- Private asides to one member (use send_direct_message)"
+                        "- Your final answer: the turn's closing statement is collected "
+                        "automatically — never send it via this tool"
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "content": {
                                 "type": "string",
-                                "description": "公开发言内容",
+                                "description": "消息内容",
+                            },
+                            "to_member": {
+                                "type": "integer",
+                                "description": (
+                                    "收件成员的 Agent ID（须为同组成员）；缺省=群发全体成员"
+                                ),
                             },
                         },
                         "required": ["content"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "send_direct_message",
-                    "description": (
-                        "Send a private message to ONE specific group member. Only the "
-                        "recipient sees it — it does not appear on the group timeline and "
-                        "does NOT wake the recipient; they will read it when next invoked.\n\n"
-                        "WHEN TO USE:\n"
-                        "- Side notes, coordination, or context meant for one member only\n\n"
-                        "NOT FOR:\n"
-                        "- Group-wide announcements (use send_group_message)"
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "to_member": {
-                                "type": "integer",
-                                "description": "收件成员的 Agent ID（须为同组成员）",
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "私信内容",
-                            },
-                        },
-                        "required": ["to_member", "content"],
                     },
                 },
             },
@@ -96,7 +81,7 @@ class GroupMessagingTool(BaseTool):
         if fn is None:
             return "错误：当前会话未启用群聊通信"
         members = bundle.get(MESSAGING_MEMBERS_KEY) or []
-        if tool_name == "send_direct_message":
+        if arguments.get("to_member") is not None:
             try:
                 to_member = int(arguments.get("to_member"))
             except (TypeError, ValueError):

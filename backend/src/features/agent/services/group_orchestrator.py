@@ -3,7 +3,7 @@
 两种模式：
 - brainstorm：全体成员并行发言 R 轮（默认 1，上限 3）——CC 式多智能体并发，
   每 wave 全员同时拉起（各自独立 AsyncSession），公开发言在 wave 间广播全员，
-  成员间经信箱投递通信（send_group_message/send_direct_message 工具即时投递）。
+  成员间经信箱投递通信（send_message 工具即时投递，可群发或点对点）。
 - consult：主持人（host_agent_id）一次完整 ReAct turn，非主持人成员包装为
   consult_member_{id} 工具按需拉起（串行，非主持人一个接一个经工具拉起）。
 
@@ -69,7 +69,6 @@ GROUP_MEMBER_FLAG = "group_member"
 # 群会话 extra_config 标记键
 GROUP_FLAG = "group"
 # 头脑风暴发信工具名（事件分流用）
-MESSAGING_TOOL_NAMES = ("send_group_message", "send_direct_message")
 # 时间线投影 extra 内工具结果的截断上限（字符）：与前端显示截断同口径，信息零损失；
 # 全文以 AgentToolCall.result 为准。思考流不截断——投影是其唯一持久化副本。
 TIMELINE_TOOL_RESULT_MAX_CHARS = 2000
@@ -793,16 +792,17 @@ class GroupOrchestrator:
     ):
         """构造 group_messaging 工具回调：闭包持有编排上下文，工具执行期直接落投递。
 
-        send_group_message 需要上群时间线（时间线在编排器侧按最终发言统一落，
+        群发（缺省 to_member）需要上群时间线（时间线在编排器侧按最终发言统一落，
         工具侧群发只做投递到其他成员私有会话——时间线以 turn 最终答复为准，
-        工具中途群发文本视为过程性投递，可被收件人提前看到）。
+        工具中途群发文本视为过程性投递，可被收件人提前看到）；指定 to_member
+        为点对点私信（只进收件人私有会话）。
         """
 
         async def fn(tool_name: str, arguments: dict[str, Any]) -> str:
             content = str(arguments.get("content") or "").strip()
             if not content:
                 return json.dumps({"error": "内容不能为空"})
-            if tool_name == "send_group_message":
+            if arguments.get("to_member") is None:
                 for other in members:
                     if other["agent_id"] != member["agent_id"]:
                         await self._deliver(
@@ -811,7 +811,7 @@ class GroupOrchestrator:
                         )
                 await self.db.commit()
                 return json.dumps({"ok": True, "delivered": "group"})
-            # send_direct_message：收件人合法性已由工具侧校验
+            # 点对点私信：收件人合法性已由工具侧校验
             to_member = int(arguments.get("to_member"))
             target = next(
                 (m for m in members if m["agent_id"] == to_member), None
@@ -972,8 +972,8 @@ class GroupOrchestrator:
         else:
             mode_hint = (
                 "头脑风暴模式：全体成员同时发言（并行讨论），不等他人结束；"
-                "想私下交流特定成员用 send_direct_message 工具，"
-                "想中途向全体补充观点用 send_group_message 工具；"
+                "想私下交流特定成员用 send_message 工具并指定 to_member，"
+                "想中途向全体补充观点用 send_message 工具（不指定收件人即群发）；"
                 "其他成员的发言与私信会作为消息送达你（信箱投递），"
                 "当前这轮先独立给出你的观点，后续轮可回应他人"
             )

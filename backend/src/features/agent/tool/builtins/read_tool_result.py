@@ -6,6 +6,7 @@ from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.paged_read import clamp_page, paged_response
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -74,19 +75,19 @@ class ReadToolResultTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: dict[str, Any], context: ToolContext
     ) -> str:
-        """按 tool_call_id 从 agent_tool_calls 表取回原始结果，超长按 offset/limit 切片并附 has_more 标记。
+        """按 tool_call_id 从 agent_tool_calls 表取回原始结果，按 offset/limit 分页返回。
 
         Args:
             tool_name: 工具函数名（恒为 read_tool_result，由执行器透传）。
-            arguments: LLM 传入的参数（tool_call_id 必填，offset/limit 可选）。
+            arguments: LLM 传入的参数（tool_call_id 必填，offset/limit 可选，
+                offset/limit 经 clamp_page 钳制：offset>=0、limit∈[1, 20000]）。
             context: 工具上下文，须含 db_session。
 
         Returns:
-            JSON 字符串：完整正文或切片（content/offset/limit/total_length/has_more）；缺参数或记录不存在返回含 error 的 JSON。
+            恒 JSON：content/offset/limit/total_length/has_more；缺参数或记录不存在返回含 error 的 JSON。
         """
         tc_id = arguments.get("tool_call_id")
-        offset = arguments.get("offset", 0)
-        limit = arguments.get("limit", 10000)
+        offset, limit = clamp_page(arguments, default_limit=10_000, max_limit=20_000)
 
         if tc_id is None:
             return json.dumps({"error": "缺少 tool_call_id 参数"})
@@ -118,22 +119,8 @@ class ReadToolResultTool(BaseTool):
             return json.dumps({"error": f"未找到工具调用记录: {tc_id}"})
 
         content = tc.result or "(空结果)"
-        total_length = len(content)
-
-        if offset > 0 or limit < total_length:
-            sliced = content[offset : offset + limit]
-            return json.dumps(
-                {
-                    "content": sliced,
-                    "offset": offset,
-                    "limit": limit,
-                    "total_length": total_length,
-                    "has_more": offset + limit < total_length,
-                },
-                ensure_ascii=False,
-            )
-
-        return content
+        # 恒 JSON 同构响应（历史版本无切片时返回纯文本，模型消费口径分裂）
+        return paged_response(content, offset, limit, len(content))
 
     def get_system_prompt_fragment(self) -> str:
         """不注入系统提示片段。"""

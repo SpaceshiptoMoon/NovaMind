@@ -9,6 +9,7 @@ from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.engines.agent.tool.context import ToolContext
+from novamind.engines.agent.tool.paged_read import clamp_page
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -51,7 +52,8 @@ class ReadAttachmentTool(BaseTool):
                         "NOT FOR:\n"
                         "- Re-reading previous tool outputs (use read_tool_result)\n"
                         "- Web pages or knowledge-base documents (use web_search or "
-                        "knowledge_search)\n\n"
+                        "knowledge_search)\n"
+                        "- Workspace files (use local_workspace read)\n\n"
                         "limit is in characters (default 8000, max 20000)."
                     ),
                     "parameters": {
@@ -106,15 +108,9 @@ class ReadAttachmentTool(BaseTool):
                 ensure_ascii=False,
             )
 
-        try:
-            offset = max(0, int(arguments.get("offset") or 0))
-        except (TypeError, ValueError):
-            offset = 0
-        try:
-            limit = int(arguments.get("limit") or 8000)
-        except (TypeError, ValueError):
-            limit = 8000
-        limit = min(max(1, limit), MAX_CHUNK_LIMIT)
+        offset, limit = clamp_page(
+            arguments, default_limit=8000, max_limit=MAX_CHUNK_LIMIT,
+        )
 
         user_id = context.user_id
         if user_id is None:

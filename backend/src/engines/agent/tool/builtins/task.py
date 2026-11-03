@@ -49,7 +49,8 @@ class TaskTool(BaseTool):
                         "- Steps that depend on each other's results (run them here "
                         "instead — the sub-agent can't call back)\n"
                         "- Quick lookups (one knowledge_search / web_search is cheaper)\n"
-                        "- Interactive work: the sub-agent cannot ask the user questions\n\n"
+                        "- Interactive work: the sub-agent cannot ask the user questions\n"
+                        "- Group member consultation (use consult_member in group chat)\n\n"
                         "The sub-agent cannot delegate further (no recursion)."
                     ),
                     "parameters": {
@@ -62,11 +63,6 @@ class TaskTool(BaseTool):
                             "prompt": {
                                 "type": "string",
                                 "description": "给子 agent 的详细任务指令",
-                            },
-                            "subagent_type": {
-                                "type": "string",
-                                "description": "子 agent 类型（预留，默认 general）",
-                                "default": "general",
                             },
                         },
                         "required": ["description", "prompt"],
