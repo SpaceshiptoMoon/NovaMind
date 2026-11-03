@@ -5,6 +5,7 @@
 import asyncio
 import mimetypes
 import os
+from datetime import datetime
 from pathlib import Path as FilePath
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -554,29 +555,46 @@ async def get_documents(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     status: Annotated[int | None, Query(ge=0, description="状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消")] = None,
     keyword: Annotated[str | None, Query(max_length=100, description="按文件名模糊搜索（子串匹配，不区分大小写）")] = None,
+    uploaded_from: Annotated[datetime | None, Query(description="上传时间范围起点（ISO8601，含边界）")] = None,
+    uploaded_to: Annotated[datetime | None, Query(description="上传时间范围终点（ISO8601，含边界）")] = None,
+    completed_from: Annotated[datetime | None, Query(description="处理完成时间范围起点（ISO8601，含边界；从未完成的文档被排除）")] = None,
+    completed_to: Annotated[datetime | None, Query(description="处理完成时间范围终点（ISO8601，含边界；从未完成的文档被排除）")] = None,
+    file_type: Annotated[str | None, Query(max_length=50, description="文件格式过滤（扩展名，如 pdf/docx/mp4，不区分大小写）")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
     document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """分页列出知识库内文档，支持按文件名子串模糊搜索。"""
+    """分页列出知识库内文档，支持文件名搜索与状态/时间范围/文件格式过滤。"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
     # 归一化：全空格视为未过滤，避免 ilike '%%' 全表扫
     keyword = (keyword or "").strip() or None
+    # 格式归一：file_type 列存小写扩展名，入参统一小写等值匹配
+    file_type = (file_type or "").strip().lower() or None
 
     documents = await document_query_service.get_kb_documents(
         kb_id=kb_id,
         status=status,
         keyword=keyword,
+        uploaded_from=uploaded_from,
+        uploaded_to=uploaded_to,
+        completed_from=completed_from,
+        completed_to=completed_to,
+        file_type=file_type,
         skip=skip,
         limit=limit,
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_query_service.count_kb_documents(kb_id=kb_id, status=status, keyword=keyword)
+    total = await document_query_service.count_kb_documents(
+        kb_id=kb_id, status=status, keyword=keyword,
+        uploaded_from=uploaded_from, uploaded_to=uploaded_to,
+        completed_from=completed_from, completed_to=completed_to,
+        file_type=file_type,
+    )
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],

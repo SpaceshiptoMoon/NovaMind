@@ -4,6 +4,7 @@
 取最新任务实现。分块数据仅存 ES，不在 MySQL。
 """
 
+from datetime import datetime
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -220,6 +221,11 @@ class DocumentRepository:
         limit: int = 100,
         status: int | None = None,
         keyword: str | None = None,
+        uploaded_from: datetime | None = None,
+        uploaded_to: datetime | None = None,
+        completed_from: datetime | None = None,
+        completed_to: datetime | None = None,
+        file_type: str | None = None,
     ) -> list[Document]:
         """获取知识库内的文档列表（keyword 非空时按文件名子串模糊匹配）。
 
@@ -229,11 +235,21 @@ class DocumentRepository:
             limit: 单页条数上限。
             status: 可选任务状态过滤，None 表示不过滤。
             keyword: 可选文件名子串匹配，None 表示不过滤。
+            uploaded_from/uploaded_to: 可选上传时间范围（含边界），None 表示不限。
+            completed_from/completed_to: 可选处理完成时间范围（含边界，按最新任务
+                的 completed_at），从未完成的文档被排除，None 表示不限。
+            file_type: 可选文件格式过滤（小写扩展名等值），None 表示不过滤。
 
         Returns:
             按创建时间倒序的文档列表，附每文档最新任务。
         """
-        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status, keyword=keyword)
+        return await self._list_by_parent(
+            Document.kb_id, kb_id, skip, limit,
+            status=status, keyword=keyword,
+            uploaded_from=uploaded_from, uploaded_to=uploaded_to,
+            completed_from=completed_from, completed_to=completed_to,
+            file_type=file_type,
+        )
 
     async def get_by_space(
         self,
@@ -427,7 +443,17 @@ class DocumentRepository:
         )
         return result.rowcount
 
-    async def count_by_kb(self, kb_id: int, status: int | None = None, keyword: str | None = None) -> int:
+    async def count_by_kb(
+        self,
+        kb_id: int,
+        status: int | None = None,
+        keyword: str | None = None,
+        uploaded_from: datetime | None = None,
+        uploaded_to: datetime | None = None,
+        completed_from: datetime | None = None,
+        completed_to: datetime | None = None,
+        file_type: str | None = None,
+    ) -> int:
         """
         统计知识库内的文档数量
 
@@ -435,6 +461,9 @@ class DocumentRepository:
             kb_id: 知识库 ID
             status: 状态过滤
             keyword: 文件名模糊搜索关键词
+            uploaded_from/uploaded_to: 可选上传时间范围（含边界），None 表示不限
+            completed_from/completed_to: 可选处理完成时间范围（含边界），从未完成的文档被排除
+            file_type: 可选文件格式过滤（小写扩展名等值），None 表示不过滤
 
         Returns:
             文档数量
@@ -443,21 +472,13 @@ class DocumentRepository:
             Document.kb_id == kb_id,
             Document.deleted_at.is_(None),
         )
-        if keyword:
-            # 与 _list_by_parent 共享同一 keyword 条件，保证 list/count total 一致
-            query = query.where(
-                Document.filename.ilike(f"%{self._escape_ilike(keyword)}%", escape="\\")
-            )
-        if status is not None:
-            latest = self._latest_task_status_subquery()
-            query = query.select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
-            status_value = int(status)
-            if status_value == int(TaskStatus.PENDING):
-                query = query.where(
-                    (latest.c.doc_id.is_(None)) | (latest.c.task_status == status_value)
-                )
-            else:
-                query = query.where(latest.c.task_status == status_value)
+        # 与 _list_by_parent 共享同一套条件，保证 list/count total 一致
+        query = self._apply_document_filters(
+            query, status=status, keyword=keyword,
+            uploaded_from=uploaded_from, uploaded_to=uploaded_to,
+            completed_from=completed_from, completed_to=completed_to,
+            file_type=file_type,
+        )
         result = await self.session.execute(query)
         return result.scalar() or 0
 
@@ -585,27 +606,23 @@ class DocumentRepository:
         limit: int = 100,
         status: int | None = None,
         keyword: str | None = None,
+        uploaded_from: datetime | None = None,
+        uploaded_to: datetime | None = None,
+        completed_from: datetime | None = None,
+        completed_to: datetime | None = None,
+        file_type: str | None = None,
     ) -> list[Document]:
         """按父级字段（kb_id 或 space_id）查询文档列表"""
         query = select(Document).where(
             column == parent_id,
             Document.deleted_at.is_(None),
         )
-        if keyword:
-            # 转义通配符，用户输入的 % _ \ 按字面匹配
-            query = query.where(
-                Document.filename.ilike(f"%{self._escape_ilike(keyword)}%", escape="\\")
-            )
-        if status is not None:
-            latest = self._latest_task_status_subquery()
-            status_value = int(status)
-            query = query.select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
-            if status_value == int(TaskStatus.PENDING):
-                query = query.where(
-                    (latest.c.doc_id.is_(None)) | (latest.c.task_status == status_value)
-                )
-            else:
-                query = query.where(latest.c.task_status == status_value)
+        query = self._apply_document_filters(
+            query, status=status, keyword=keyword,
+            uploaded_from=uploaded_from, uploaded_to=uploaded_to,
+            completed_from=completed_from, completed_to=completed_to,
+            file_type=file_type,
+        )
         # id 作次级键：同刻并列（批量导入/测试同刻插入）时排序仍确定，
         # 分页无全序键会跨页重复/漏行
         query = query.order_by(Document.created_at.desc(), Document.id.desc()).offset(skip).limit(limit)
@@ -614,13 +631,59 @@ class DocumentRepository:
         await self._attach_latest_tasks(documents)
         return documents
 
+    def _apply_document_filters(
+        self,
+        query,
+        status: int | None,
+        keyword: str | None,
+        uploaded_from: datetime | None,
+        uploaded_to: datetime | None,
+        completed_from: datetime | None,
+        completed_to: datetime | None,
+        file_type: str | None,
+    ):
+        """列表/计数共用的筛选条件（同源保证分页 total 与列表一致）。
+
+        完成时间区间依赖最新任务子查询：与 status 过滤共用同一次 LEFT JOIN，
+        任一需要任务维度过滤时才 join。区间比较在 LEFT JOIN 语义下天然排除
+        从未完成的文档（NULL completed_at 不落区间）。
+        """
+        if keyword:
+            # 转义通配符，用户输入的 % _ \ 按字面匹配
+            query = query.where(
+                Document.filename.ilike(f"%{self._escape_ilike(keyword)}%", escape="\\")
+            )
+        if file_type:
+            query = query.where(Document.file_type == file_type)
+        if uploaded_from is not None:
+            query = query.where(Document.created_at >= uploaded_from)
+        if uploaded_to is not None:
+            query = query.where(Document.created_at <= uploaded_to)
+        if status is not None or completed_from is not None or completed_to is not None:
+            latest = self._latest_task_status_subquery()
+            query = query.select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
+            if status is not None:
+                status_value = int(status)
+                if status_value == int(TaskStatus.PENDING):
+                    query = query.where(
+                        (latest.c.doc_id.is_(None)) | (latest.c.task_status == status_value)
+                    )
+                else:
+                    query = query.where(latest.c.task_status == status_value)
+            if completed_from is not None:
+                query = query.where(latest.c.task_completed_at >= completed_from)
+            if completed_to is not None:
+                query = query.where(latest.c.task_completed_at <= completed_to)
+        return query
+
     @staticmethod
     def _latest_task_status_subquery():
-        """构造每文档最新任务状态的子查询（按任务 ID 倒序取第一条）。"""
+        """构造每文档最新任务状态的子查询（按任务 ID 倒序取第一条，带完成时间）。"""
         ranked = (
             select(
                 DocumentTask.document_id,
                 DocumentTask.status,
+                DocumentTask.completed_at,
                 func.row_number().over(
                     partition_by=DocumentTask.document_id,
                     order_by=DocumentTask.id.desc(),
@@ -631,6 +694,7 @@ class DocumentRepository:
             select(
                 ranked.c.document_id.label("doc_id"),
                 ranked.c.status.label("task_status"),
+                ranked.c.completed_at.label("task_completed_at"),
             )
             .where(ranked.c.rn == 1)
             .subquery("latest_task")

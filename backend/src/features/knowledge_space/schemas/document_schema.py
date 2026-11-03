@@ -78,6 +78,14 @@ class DocumentResponse(BaseModel):
 
     @computed_field
     @property
+    def completed_at(self) -> datetime | None:
+        """最近一次处理完成时间，从最近一次 DocumentTask 读取；无任务或未完成为 None"""
+        if self.task:
+            return getattr(self.task, 'completed_at', None)
+        return None
+
+    @computed_field
+    @property
     def error_message(self) -> str | None:
         """错误信息，从最近一次 DocumentTask 读取"""
         if self.task:

@@ -2676,6 +2676,20 @@
             "title": "Chunks",
             "type": "array"
           },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次处理完成时间，从最近一次 DocumentTask 读取；无任务或未完成为 None",
+            "readOnly": true,
+            "title": "Completed At"
+          },
           "created_at": {
             "description": "上传时间",
             "format": "date-time",
@@ -2970,6 +2984,7 @@
           "created_at",
           "status",
           "retry_count",
+          "completed_at",
           "error_message",
           "chunk_count",
           "token_count",
@@ -3109,6 +3124,20 @@
             "readOnly": true,
             "title": "Chunk Type"
           },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次处理完成时间，从最近一次 DocumentTask 读取；无任务或未完成为 None",
+            "readOnly": true,
+            "title": "Completed At"
+          },
           "created_at": {
             "description": "上传时间",
             "format": "date-time",
@@ -3403,6 +3432,7 @@
           "created_at",
           "status",
           "retry_count",
+          "completed_at",
           "error_message",
           "chunk_count",
           "token_count",
@@ -21918,6 +21948,101 @@
               ],
               "description": "按文件名模糊搜索（子串匹配，不区分大小写）",
               "title": "Keyword"
+            }
+          },
+          {
+            "description": "上传时间范围起点（ISO8601，含边界）",
+            "in": "query",
+            "name": "uploaded_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "上传时间范围起点（ISO8601，含边界）",
+              "title": "Uploaded From"
+            }
+          },
+          {
+            "description": "上传时间范围终点（ISO8601，含边界）",
+            "in": "query",
+            "name": "uploaded_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "上传时间范围终点（ISO8601，含边界）",
+              "title": "Uploaded To"
+            }
+          },
+          {
+            "description": "处理完成时间范围起点（ISO8601，含边界；从未完成的文档被排除）",
+            "in": "query",
+            "name": "completed_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "处理完成时间范围起点（ISO8601，含边界；从未完成的文档被排除）",
+              "title": "Completed From"
+            }
+          },
+          {
+            "description": "处理完成时间范围终点（ISO8601，含边界；从未完成的文档被排除）",
+            "in": "query",
+            "name": "completed_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "处理完成时间范围终点（ISO8601，含边界；从未完成的文档被排除）",
+              "title": "Completed To"
+            }
+          },
+          {
+            "description": "文件格式过滤（扩展名，如 pdf/docx/mp4，不区分大小写）",
+            "in": "query",
+            "name": "file_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "文件格式过滤（扩展名，如 pdf/docx/mp4，不区分大小写）",
+              "title": "File Type"
             }
           },
           {

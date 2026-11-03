@@ -5,6 +5,7 @@
 
 import re
 from collections.abc import Iterator
+from datetime import datetime
 from typing import Any
 
 from minio.error import S3Error
@@ -81,6 +82,11 @@ class DocumentQueryService:
         kb_id: int,
         status: int | None = None,
         keyword: str | None = None,
+        uploaded_from: datetime | None = None,
+        uploaded_to: datetime | None = None,
+        completed_from: datetime | None = None,
+        completed_to: datetime | None = None,
+        file_type: str | None = None,
     ) -> int:
         """统计知识库中的文档数量。
 
@@ -88,11 +94,20 @@ class DocumentQueryService:
             kb_id: 知识库 ID。
             status: 可选任务状态过滤，None 表示不过滤。
             keyword: 可选文件名子串过滤，None 表示不过滤。
+            uploaded_from/uploaded_to: 可选上传时间范围（含边界），None 表示不限。
+            completed_from/completed_to: 可选处理完成时间范围（含边界，按最新任务
+                的 completed_at），从未完成的文档被排除，None 表示不限。
+            file_type: 可选文件格式过滤（小写扩展名等值），None 表示不过滤。
 
         Returns:
             满足过滤条件的文档总数（配对 get_kb_documents 做分页 total）。
         """
-        return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status, keyword=keyword)
+        return await self.doc_repo.count_by_kb(
+            kb_id=kb_id, status=status, keyword=keyword,
+            uploaded_from=uploaded_from, uploaded_to=uploaded_to,
+            completed_from=completed_from, completed_to=completed_to,
+            file_type=file_type,
+        )
 
     async def get_filename_map(self, document_ids: list[int]) -> dict[int, str]:
         """按 document_id 批量取 ``Documents.filename``，供任务列表回填真实文件名。
@@ -337,6 +352,11 @@ class DocumentQueryService:
         limit: int = 100,
         status: int | None = None,
         keyword: str | None = None,
+        uploaded_from: datetime | None = None,
+        uploaded_to: datetime | None = None,
+        completed_from: datetime | None = None,
+        completed_to: datetime | None = None,
+        file_type: str | None = None,
     ) -> list[Document]:
         """
         获取知识库的文档列表
@@ -347,6 +367,10 @@ class DocumentQueryService:
             limit: 返回数量
             status: 状态过滤
             keyword: 文件名模糊搜索关键词
+            uploaded_from/uploaded_to: 上传时间范围（含边界），None 表示不限
+            completed_from/completed_to: 处理完成时间范围（含边界，按最新任务的
+                completed_at），从未完成的文档被排除，None 表示不限
+            file_type: 文件格式过滤（小写扩展名等值），None 表示不过滤
 
         Returns:
             文档列表
@@ -357,6 +381,11 @@ class DocumentQueryService:
             limit=limit,
             status=status,
             keyword=keyword,
+            uploaded_from=uploaded_from,
+            uploaded_to=uploaded_to,
+            completed_from=completed_from,
+            completed_to=completed_to,
+            file_type=file_type,
         )
 
     async def get_document_chunks(
