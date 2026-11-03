@@ -279,6 +279,7 @@ class AgentEngine:
         max_tokens: int,
         temperature: float,
         top_p: float,
+        enable_thinking: bool = False,
     ) -> AsyncGenerator[Any, None]:
         """带重试的流式生成：在首个 chunk 到达前重试瞬时错误"""
 
@@ -293,6 +294,7 @@ class AgentEngine:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
+                enable_thinking=enable_thinking,
             )
             first_chunk_received = False
             try:
@@ -358,6 +360,7 @@ class AgentEngine:
         async for chunk in self._retry_generate_stream(
             agent_llm, messages, tools,
             max_tokens, temperature, top_p,
+            enable_thinking=enable_thinking,
         ):
             if chunk.type == "content":
                 content_parts.append(chunk.content)
@@ -500,7 +503,8 @@ class AgentEngine:
         try:
             if stream:
                 async for event in self._generate_without_tools_stream(
-                    llm_client, messages, max_tokens, temperature, top_p
+                    llm_client, messages, max_tokens, temperature, top_p,
+                    enable_thinking=enable_thinking,
                 ):
                     yield event
             else:
@@ -518,6 +522,7 @@ class AgentEngine:
         max_tokens: int,
         temperature: float,
         top_p: float,
+        enable_thinking: bool = False,
     ) -> AsyncGenerator[AgentEvent, None]:
         """无工具流式生成（含重试）"""
         from novamind.engines.agent.llm.agent_llm import AgentLLM
@@ -529,6 +534,7 @@ class AgentEngine:
         async for chunk in self._retry_generate_stream(
             agent_llm, messages, None,
             max_tokens, temperature, top_p,
+            enable_thinking=enable_thinking,
         ):
             if chunk.type == "content":
                 full_response += chunk.content

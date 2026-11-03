@@ -80,6 +80,7 @@ class AgentLLM:
         temperature: float = 0.7,
         top_p: float = 0.8,
         tool_choice: str = "auto",
+        enable_thinking: bool = False,
     ) -> AgentLLMResponse:
         """
         非流式生成
@@ -93,6 +94,7 @@ class AgentLLM:
             temperature=temperature,
             top_p=top_p,
             tool_choice=tool_choice,
+            enable_thinking=enable_thinking,
         )
         return AgentLLMResponse(
             content=response.content or "",
@@ -112,12 +114,15 @@ class AgentLLM:
         temperature: float = 0.7,
         top_p: float = 0.8,
         tool_choice: str = "auto",
+        enable_thinking: bool = False,
     ) -> AsyncGenerator[StreamChunk, None]:
         """
         流式生成
 
         优先委托给 BaseLLM.generate_with_tools_stream（支持原生流式工具调用的后端，
         如 OpenAI 兼容）；后端不支持时抛 NotImplementedError，降级为非流式。
+        enable_thinking 必须透传——历史版本此处丢失该参数，流式（默认）路径下
+        深度思考开关完全失效（非流式路径一直是正确透传的）。
         """
         try:
             async for event in self._llm.generate_with_tools_stream(
@@ -127,11 +132,13 @@ class AgentLLM:
                 temperature=temperature,
                 top_p=top_p,
                 tool_choice=tool_choice,
+                enable_thinking=enable_thinking,
             ):
                 yield self._translate_stream_event(event)
         except NotImplementedError:
             async for chunk in self._stream_fallback(
-                messages, tools, max_tokens, temperature, top_p, tool_choice
+                messages, tools, max_tokens, temperature, top_p, tool_choice,
+                enable_thinking,
             ):
                 yield chunk
 
@@ -156,10 +163,12 @@ class AgentLLM:
         temperature: float,
         top_p: float,
         tool_choice: str,
+        enable_thinking: bool = False,
     ) -> AsyncGenerator[StreamChunk, None]:
         """降级为非流式"""
         response = await self.generate(
-            messages, tools, max_tokens, temperature, top_p, tool_choice
+            messages, tools, max_tokens, temperature, top_p, tool_choice,
+            enable_thinking=enable_thinking,
         )
         if response.content:
             yield StreamChunk(type="content", content=response.content)
