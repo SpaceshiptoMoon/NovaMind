@@ -1989,6 +1989,17 @@ export interface LoopWarningData {
   iteration?: number
 }
 
+// E5 异步审批请求事件数据（WS approval_request）：危险代码执行前需用户决策，
+// 后端 120s 超时按 deny fail-closed 处理；决策经同一 WS 发 {action:'approval'}
+export interface ApprovalRequestData {
+  approval_id: string
+  tool: string
+  /** 危险代码预览（后端截 200 字符） */
+  preview: string
+  /** 命中的危险模式描述 */
+  pattern_key: string
+}
+
 // 上下文用量（WS context_usage 事件 + REST ContextUsageResponse）
 // used = system + tools(schema) + messages，对齐后端 build_context 三项口径
 export interface AgentContextUsageData {

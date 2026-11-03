@@ -434,6 +434,15 @@
               </div>
             </div>
           </template>
+
+          <!-- E5 异步审批卡：危险代码执行前的用户决策（全局单例瞬时态，
+               随消息流滚动展示在流末尾；决策经 WS 回传，120s 后端超时按拒绝兜底） -->
+          <ApprovalCard
+            v-if="!isWelcomeMode && viewMode === 'chat' && agentStore.pendingApproval"
+            :approval="agentStore.pendingApproval"
+            @approve="(id) => handleApproval(id, 'approve')"
+            @deny="(id) => handleApproval(id, 'deny')"
+          />
         </div>
       </div>
 
@@ -688,6 +697,7 @@ import ContextMeter from '@/components/common/ContextMeter.vue'
 import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
 import ResearchProgressCard from '@/components/agent/ResearchProgressCard.vue'
+import ApprovalCard from '@/components/agent/ApprovalCard.vue'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
@@ -856,6 +866,11 @@ function toggleCompaction(id: number) {
 
 // 计划卡就地展开态：按 plan 消息 id 记忆（同 expandedCompactions 模式）
 const expandedPlans = ref(new Set<number>())
+/** E5 审批决策回传（WS send 通道；后端 120s 超时按 deny 兜底） */
+function handleApproval(approvalId: string, decision: 'approve' | 'deny') {
+  agentStore.respondApproval(approvalId, decision)
+}
+
 function togglePlan(id: number) {
   if (expandedPlans.value.has(id)) expandedPlans.value.delete(id)
   else expandedPlans.value.add(id)

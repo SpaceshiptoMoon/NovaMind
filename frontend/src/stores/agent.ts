@@ -23,6 +23,7 @@ import type {
   AgentContextUsageData,
   PlanData,
   ResearchProgressData,
+  ApprovalRequestData,
 } from '@/api/types'
 
 // 后端工具状态归并到前端 ToolCallRecord.status 四态
@@ -164,6 +165,9 @@ export const useAgentStore = defineStore('agent', () => {
   const planMsg = ref<AgentMessage | null>(null)
   // 当前深度研究进度消息引用（批3 research 工具，onResearchProgress 原地推进用）
   const researchMsg = ref<AgentMessage | null>(null)
+  // E5 异步审批请求（危险代码执行前等用户决策）：瞬时态，120s 后端超时按 deny
+  // fail-closed；不入消息流（不落库无回放语义），会话结束/清理时一并置空
+  const pendingApproval = ref<ApprovalRequestData | null>(null)
 
   // MCP & 工具（全局共享）
   const mcpServers = ref<McpServer[]>([])
@@ -545,7 +549,11 @@ export const useAgentStore = defineStore('agent', () => {
               assistantMsg!.content = `[错误] ${err.content}`
             }
           },
-          // 握手完成后保存发送通道，供 steer() 在 agent 运行中插话
+          // E5 审批请求：危险代码执行前等用户决策（卡片由视图层渲染）
+          onApprovalRequest(d) {
+            pendingApproval.value = d
+          },
+          // 握手完成后保存发送通道，供 steer()/respondApproval() 回传决策与插话
           onReady(send) {
             wsSendRef = send
           },
@@ -570,6 +578,7 @@ export const useAgentStore = defineStore('agent', () => {
       streamingSources.value = []
       abortController.value = null
       wsSendRef = null
+      pendingApproval.value = null
     }
   }
 
@@ -582,6 +591,17 @@ export const useAgentStore = defineStore('agent', () => {
     const text = content.trim()
     if (!text || !wsSendRef) return false
     wsSendRef({ action: 'message', content: text })
+    return true
+  }
+
+  /**
+   * E5 审批决策回传：批准/拒绝危险代码执行。仅流式路径可用（wsSendRef 约束同
+   * steer）；决策发出即清卡片（后端 120s 超时按 deny 兜底，无需前端计时清理状态）。
+   */
+  function respondApproval(approvalId: string, decision: 'approve' | 'deny'): boolean {
+    if (!wsSendRef || !pendingApproval.value) return false
+    wsSendRef({ action: 'approval', approval_id: approvalId, decision })
+    pendingApproval.value = null
     return true
   }
 
@@ -837,6 +857,7 @@ export const useAgentStore = defineStore('agent', () => {
     contextUsage.value = null
     planMsg.value = null
     researchMsg.value = null
+    pendingApproval.value = null
   }
 
   // ========== 附件管理 ==========
@@ -972,6 +993,8 @@ export const useAgentStore = defineStore('agent', () => {
     sendMessage,
     sendMessageStream,
     steer,
+    respondApproval,
+    pendingApproval,
     cancelStream,
     clearChat,
     fetchMcpServers,

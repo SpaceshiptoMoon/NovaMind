@@ -9,6 +9,7 @@ import type {
   AgentContextUsageData,
   PlanData,
   LoopWarningData,
+  ApprovalRequestData,
   SystemPromptResponse,
   AgentConversation,
   AgentConversationListResponse,
@@ -119,6 +120,7 @@ export const agentApi = {
       onLoopWarning?: (d: LoopWarningData) => void
       onResearchProgress?: (d: ResearchProgressData) => void
       onSteering?: (d: { content: string; iteration: number }) => void
+      onApprovalRequest?: (d: ApprovalRequestData) => void
       onError?: (err: { content: string }) => void
       signal?: AbortSignal
       /** 握手完成后的发送通道（双向）：store 可发 {action:'message', content} 运行中插话 */
@@ -176,6 +178,9 @@ export const agentApi = {
             break
           case 'steering':
             callbacks.onSteering?.(e.data as { content: string; iteration: number })
+            break
+          case 'approval_request':
+            callbacks.onApprovalRequest?.(e.data as ApprovalRequestData)
             break
           case 'error':
             callbacks.onError?.(e.data as { content: string })
