@@ -88,6 +88,13 @@
                 ><el-icon><Search /></el-icon
               ></template>
             </el-input>
+          </div>
+        </div>
+
+        <!-- 筛选行：状态 + 上传/完成时间范围 + 文件格式，行尾重置（操作行只留动作，筛选全部收拢到本行）。
+            每组「标签+控件」包进 filter-group 整体换行，避免标签与控件被 wrap 边界拆开 -->
+        <div class="filter-row">
+          <div class="filter-group">
             <span class="filter-label">状态</span>
             <el-select
               v-model="statusFilter"
@@ -105,49 +112,54 @@
               />
             </el-select>
           </div>
-        </div>
-
-        <!-- 筛选行：上传/完成时间范围 + 文件格式（与搜索/状态并存，全部可清） -->
-        <div class="filter-row">
-          <span class="filter-label">上传时间</span>
-          <el-date-picker
-            v-model="uploadedRange"
-            type="datetimerange"
-            class="range-picker"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            value-format="YYYY-MM-DDTHH:mm:ss"
-            clearable
-            @change="handleFilterChange"
-          />
-          <span class="filter-label">完成时间</span>
-          <el-date-picker
-            v-model="completedRange"
-            type="datetimerange"
-            class="range-picker"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            value-format="YYYY-MM-DDTHH:mm:ss"
-            clearable
-            @change="handleFilterChange"
-          />
-          <span class="filter-label">格式</span>
-          <el-select
-            v-model="fileTypeFilter"
-            class="file-type-filter"
-            placeholder="全部格式"
-            clearable
-            filterable
-            @change="handleFilterChange"
-            @clear="handleFilterChange"
-          >
-            <el-option
-              v-for="ft in fileTypeOptions"
-              :key="ft"
-              :label="ft.toUpperCase()"
-              :value="ft"
+          <div class="filter-group">
+            <span class="filter-label">上传时间</span>
+            <el-date-picker
+              v-model="uploadedRange"
+              type="datetimerange"
+              class="range-picker"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              clearable
+              @change="handleFilterChange"
             />
-          </el-select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">完成时间</span>
+            <el-date-picker
+              v-model="completedRange"
+              type="datetimerange"
+              class="range-picker"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              clearable
+              @change="handleFilterChange"
+            />
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">格式</span>
+            <el-select
+              v-model="fileTypeFilter"
+              class="file-type-filter"
+              placeholder="全部格式"
+              clearable
+              filterable
+              @change="handleFilterChange"
+              @clear="handleFilterChange"
+            >
+              <el-option
+                v-for="ft in fileTypeOptions"
+                :key="ft"
+                :label="ft.toUpperCase()"
+                :value="ft"
+              />
+            </el-select>
+          </div>
+          <el-button v-if="hasActiveFilters" class="filter-reset" link @click="handleClearFilters">
+            重置筛选
+          </el-button>
         </div>
 
         <!-- 文档卡片网格（类型色块 + 文件名 + 元信息 + hover 操作） -->
@@ -1177,21 +1189,37 @@ onMounted(async () => {
   width: 220px;
 }
 
-/* 筛选行：时间范围 + 文件格式，与工具栏（搜索/状态）分两行排布 */
+/* 筛选行：状态/时间范围/格式收拢一行，与操作行（全选/搜索）语义分组；
+   wrap 兜窄视口（按 filter-group 整组换行），重置按钮行尾收尾 */
 .filter-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: var(--space-4);
 }
 
-.range-picker {
-  width: 340px;
+/* 「标签+控件」不可分单元：wrap 时整组换行，标签不会被留在上一行行尾 */
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* el-date-picker 的 class 落在 tooltip trigger 内层，带不上本组件 scope 属性，
+   必须 :deep() 穿透才能命中；同时显式关掉 EP 给 .el-range-editor 的
+   flex-grow:1（不关会把整行撑满） */
+.filter-row :deep(.range-picker) {
+  width: 300px;
+  flex-grow: 0;
 }
 
 .file-type-filter {
-  width: 140px;
+  width: 130px;
+}
+
+.filter-reset {
+  margin-left: auto;
 }
 
 .text-muted {
@@ -1374,16 +1402,17 @@ onMounted(async () => {
   line-height: 1.45;
 }
 
-/* meta 行：flex 容器内 text-overflow 不生效，省略收敛到文本段自身（.meta-seg）；
-   flex-shrink:0 的 tag 保持完整，文本段收缩出省略号 */
+/* meta 行：flex 容器内 text-overflow 不生效，放不下时整段换行而非截断——
+   单段省略号（"22..."）比换行更难读，wrap 后 grid stretch 保持卡片等高 */
 .doc-card-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 5px;
+  row-gap: 2px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   min-width: 0;
-  overflow: hidden;
 }
 
 /* 状态标签内联在 meta 行首，与文件元信息同排（替代旧右侧独立列） */
@@ -1391,29 +1420,14 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-/* 元信息文本段：允许收缩 + 单行省略（评审 P2：320px 下 flex 容器硬裁剪零可见） */
+/* 元信息文本段：段内不换行，放不下时整段落到下一行（段级完整性） */
 .meta-seg {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .meta-dot {
   color: var(--color-text-faint);
   flex-shrink: 0;
-}
-
-/* 极窄视口：meta 行换行堆叠（tag 行 + 元信息行），日期/大小不再被裁剪归零 */
-@media (max-width: 480px) {
-  .doc-card-meta {
-    flex-wrap: wrap;
-    row-gap: 2px;
-  }
-
-  .meta-seg {
-    overflow: visible;
-    text-overflow: unset;
-  }
 }
 
 /* 操作钮组：hover 时绝对定位浮现右上角（白底背板隔离文字），非 hover 不占视觉；
