@@ -143,7 +143,11 @@ class HostKnowledgeSearchPort:
         ]
 
     async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
-        """遍历用户全部空间汇总 ACTIVE 知识库，附带所属空间名。
+        """遍历用户全部活跃空间汇总 ACTIVE 知识库，附带所属空间名。
+
+        get_user_spaces 过滤口径是「未删除」（含 ARCHIVED）——前端空间列表要
+        展示归档空间故不能改它；本端口是检索消费面，与检索端「归档空间不参与
+        召回」对齐，在此过滤为 ACTIVE（修复归档空间 KB 元数据经本工具外泄）。
 
         Args:
             user_id: 当前用户 ID。
@@ -161,6 +165,8 @@ class HostKnowledgeSearchPort:
         spaces = await space_service.get_user_spaces(user_id)
         result: list[KbInfo] = []
         for space in spaces:
+            if not space.is_active():
+                continue
             kbs = await kb_service.get_space_knowledge_bases(
                 space.id, status=KnowledgeBaseStatus.ACTIVE
             )
