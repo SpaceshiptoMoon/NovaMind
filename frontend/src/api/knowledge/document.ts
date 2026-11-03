@@ -22,11 +22,24 @@ import type {
  * 分块查询、原文/解析产物（Markdown/图片/视频帧）下载与预览。
  */
 export const documentApi = {
-  /** 文档列表（分页；可按解析状态与文件名关键词过滤） */
+  /** 文档列表（分页；可按解析状态、文件名关键词、上传/完成时间范围与文件格式过滤） */
   getDocuments(
     spaceId: number,
     kbId: number,
-    params?: { status?: number; keyword?: string; skip?: number; limit?: number },
+    params?: {
+      status?: number
+      keyword?: string
+      /** 上传时间范围（ISO8601，含边界） */
+      uploaded_from?: string
+      uploaded_to?: string
+      /** 处理完成时间范围（ISO8601，含边界；从未完成的文档被排除） */
+      completed_from?: string
+      completed_to?: string
+      /** 文件格式（小写扩展名，如 pdf/docx） */
+      file_type?: string
+      skip?: number
+      limit?: number
+    },
   ) {
     return request.get<DocumentListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents`,

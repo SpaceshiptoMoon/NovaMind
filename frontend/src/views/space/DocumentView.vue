@@ -107,24 +107,62 @@
           </div>
         </div>
 
+        <!-- 筛选行：上传/完成时间范围 + 文件格式（与搜索/状态并存，全部可清） -->
+        <div class="filter-row">
+          <span class="filter-label">上传时间</span>
+          <el-date-picker
+            v-model="uploadedRange"
+            type="datetimerange"
+            class="range-picker"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            clearable
+            @change="handleFilterChange"
+          />
+          <span class="filter-label">完成时间</span>
+          <el-date-picker
+            v-model="completedRange"
+            type="datetimerange"
+            class="range-picker"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            clearable
+            @change="handleFilterChange"
+          />
+          <span class="filter-label">格式</span>
+          <el-select
+            v-model="fileTypeFilter"
+            class="file-type-filter"
+            placeholder="全部格式"
+            clearable
+            filterable
+            @change="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <el-option
+              v-for="ft in fileTypeOptions"
+              :key="ft"
+              :label="ft.toUpperCase()"
+              :value="ft"
+            />
+          </el-select>
+        </div>
+
         <!-- 文档卡片网格（类型色块 + 文件名 + 元信息 + hover 操作） -->
         <div v-loading="loading" class="doc-grid-wrap">
           <div v-if="documents.length === 0 && !loading" class="doc-grid-empty">
             <EmptyState
-              :variant="searchKeyword || statusFilter !== undefined ? 'search' : 'data'"
-              :headline="
-                searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '还没有文档'
-              "
+              :variant="hasActiveFilters ? 'search' : 'data'"
+              :headline="hasActiveFilters ? '没有符合条件的文档' : '还没有文档'"
               :description="
-                searchKeyword || statusFilter !== undefined
+                hasActiveFilters
                   ? '换个关键词或清除筛选条件再试'
                   : '上传 PDF、Word、Markdown 等文件，处理后即可检索提问'
               "
             >
-              <el-button
-                v-if="searchKeyword || statusFilter !== undefined"
-                @click="handleClearFilters"
-              >
+              <el-button v-if="hasActiveFilters" @click="handleClearFilters">
                 清除筛选条件
               </el-button>
               <el-button v-else type="primary" @click="showUploadDialog">
@@ -170,6 +208,10 @@
                 <span class="meta-seg">{{ doc.chunk_count ?? 0 }} 分块</span>
                 <span class="meta-dot">·</span>
                 <span class="meta-seg">{{ formatShortDate(doc.created_at) }}</span>
+                <template v-if="doc.completed_at">
+                  <span class="meta-dot">·</span>
+                  <span class="meta-seg">完成 {{ formatShortDate(doc.completed_at) }}</span>
+                </template>
               </div>
             </div>
 
@@ -340,6 +382,7 @@ import type { BatchUploadResponse, Document as DocType, KBStats } from '@/api/ty
 import {
   KbSidebar,
   buildKbNavItems,
+  fileTypeStyles,
   getFileMaxSize,
   getFileTypeStyle,
   getUploadAccept,
@@ -418,6 +461,12 @@ const processTargetIds = ref<number[]>([])
 const statusFilter = ref<number | undefined>(undefined)
 // 文件名搜索关键词（回车或清空时提交）
 const searchKeyword = ref('')
+// 上传时间范围 [start, end]（datetimerange，value-format 已是 ISO8601 字符串）
+const uploadedRange = ref<[string, string] | null>(null)
+// 处理完成时间范围（按最新任务 completed_at，从未完成的文档被后端排除）
+const completedRange = ref<[string, string] | null>(null)
+// 文件格式筛选（小写扩展名等值，与后端 file_type 列口径一致）
+const fileTypeFilter = ref<string | undefined>(undefined)
 
 const statusOptions = [
   { label: '待处理', value: 0 },
@@ -426,6 +475,19 @@ const statusOptions = [
   { label: '失败', value: 3 },
   { label: '已取消', value: 4 },
 ]
+
+// 格式筛选项来源：fileTypeStyles 已枚举全部受支持扩展名
+const fileTypeOptions = Object.keys(fileTypeStyles)
+
+/** 是否有任一筛选生效（空态文案与「清除筛选」按钮的判据） */
+const hasActiveFilters = computed(
+  () =>
+    searchKeyword.value.trim() !== '' ||
+    statusFilter.value !== undefined ||
+    !!uploadedRange.value ||
+    !!completedRange.value ||
+    fileTypeFilter.value !== undefined,
+)
 
 const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
 // 文件夹选择不接受 accept 属性，需按扩展名白名单手动过滤
@@ -689,13 +751,18 @@ async function handleProcess() {
   }
 }
 
-/** 分页拉取文档列表（带状态/关键词过滤），并按活跃文档启停状态轮询。 */
+/** 分页拉取文档列表（带状态/关键词/时间范围/格式过滤），并按活跃文档启停状态轮询。 */
 async function fetchDocuments(showLoading = true) {
   if (showLoading) loading.value = true
   try {
     const data = await documentApi.getDocuments(spaceId.value, kbId.value, {
       status: statusFilter.value,
       keyword: searchKeyword.value.trim() || undefined,
+      uploaded_from: uploadedRange.value?.[0],
+      uploaded_to: uploadedRange.value?.[1],
+      completed_from: completedRange.value?.[0],
+      completed_to: completedRange.value?.[1],
+      file_type: fileTypeFilter.value,
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
     })
@@ -748,16 +815,25 @@ function handleStatusFilterChange() {
   fetchDocuments()
 }
 
+// 时间范围/格式筛选变更：回到第 1 页重新拉取
+function handleFilterChange() {
+  currentPage.value = 1
+  fetchDocuments()
+}
+
 // 回车或清空时提交搜索，回到第 1 页
 function handleSearch() {
   currentPage.value = 1
   fetchDocuments()
 }
 
-/** 空态一键清除搜索词与状态筛选（评审 P3：空态须有行动按钮） */
+/** 空态一键清除全部筛选（搜索词/状态/时间范围/格式） */
 function handleClearFilters() {
   searchKeyword.value = ''
   statusFilter.value = undefined
+  uploadedRange.value = null
+  completedRange.value = null
+  fileTypeFilter.value = undefined
   currentPage.value = 1
   fetchDocuments()
 }
@@ -886,7 +962,7 @@ onMounted(async () => {
   try {
     const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
     kbName.value = kbConfig.name || ''
-    kbStats.value = { ...EMPTY_KB_STATS, ...(kbConfig.stats ?? {}) }
+    kbStats.value = { ...EMPTY_KB_STATS, ...kbConfig.stats }
     if (
       kbConfig.config?.space_type &&
       Array.isArray(kbConfig.config.space_type) &&
@@ -1098,6 +1174,23 @@ onMounted(async () => {
 
 .search-input {
   width: 220px;
+}
+
+/* 筛选行：时间范围 + 文件格式，与工具栏（搜索/状态）分两行排布 */
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: var(--space-4);
+}
+
+.range-picker {
+  width: 340px;
+}
+
+.file-type-filter {
+  width: 140px;
 }
 
 .text-muted {

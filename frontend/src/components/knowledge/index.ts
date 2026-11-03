@@ -11,6 +11,7 @@ export { default as KbWikiSection } from './KbWikiSection.vue'
 export {
   chunkTypeLabels,
   docStatusMap,
+  fileTypeStyles,
   getFileMaxSize,
   getFileTypeCategory,
   getFileTypeStyle,
