@@ -43,6 +43,7 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
+from novamind.shared.storage.client_factory import get_minio_client
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -823,6 +824,11 @@ class SearchService:
                     answer_error = str(e)
             elapsed_ms = (time.time() - start_time) * 1000
 
+        # 9. 帧图预签名：video chunk 的 metadata.frame_paths（MinIO 完整路径）
+        # 换成 <img> 可直接渲染的 URL。挂在响应组装最后一步（缓存读写之后）：
+        # 每次请求都重签覆盖写回，缓存里的旧 URL 不会漏出（签名 1h 有效）。
+        await self._presign_frame_urls(result.results)
+
         response = {
             "results": result.results,
             "total": len(result.results),
@@ -841,6 +847,43 @@ class SearchService:
         if answer_error:
             response["answer_error"] = answer_error
         return response
+
+    # 单 hit 预签名帧图上限：正常代表帧为 adaptive 抽帧的组产出（个位数），
+    # 上限防病态数据一次签出几十条 URL
+    _MAX_FRAME_URLS = 9
+
+    async def _presign_frame_urls(self, results: list[Any]) -> None:
+        """为命中 chunk 的 metadata.frame_paths 预签名可渲染 URL。
+
+        写回 metadata.frame_urls（响应层派生字段，不回写 ES）；单条失败静默
+        跳过——帧图缺失属展示层能力缺失，不应让整次检索失败。
+        """
+        frame_hits = [
+            hit for hit in results
+            if isinstance(hit, dict)
+            and isinstance(hit.get("metadata"), dict)
+            and hit["metadata"].get("frame_paths")
+        ]
+        if not frame_hits:
+            return
+        try:
+            minio_client = await get_minio_client()
+        except Exception as e:
+            self.logger.warning("MinIO 客户端获取失败，帧图跳过预签名", error=str(e))
+            return
+        bucket = minio_client.default_bucket
+        for hit in frame_hits:
+            metadata = hit["metadata"]
+            urls: list[str] = []
+            for path in metadata["frame_paths"][: self._MAX_FRAME_URLS]:
+                try:
+                    urls.append(await minio_client.get_file_url(bucket, path, expires=3600))
+                except Exception as e:
+                    self.logger.warning(
+                        "帧图预签名失败，跳过该帧", path=str(path), error=str(e),
+                    )
+            if urls:
+                metadata["frame_urls"] = urls
 
     async def invalidate_kb_search_cache(self, kb_id: int) -> None:
         """

@@ -179,6 +179,20 @@
                     {{ expandedChunks.has(result.chunk_id) ? '收起' : '展开全文' }}
                     <el-icon><ArrowDown /></el-icon>
                   </button>
+                  <!-- 视频帧图缩略图：与正文里的 VLM 描述一一对应，点击放大看原图 -->
+                  <div v-if="frameThumbsOf(result).length" class="result-frames">
+                    <el-image
+                      v-for="(url, fi) in frameThumbsOf(result)"
+                      :key="fi"
+                      :src="url"
+                      :preview-src-list="frameThumbsOf(result)"
+                      :initial-index="fi"
+                      fit="cover"
+                      loading="lazy"
+                      hide-on-click-modal
+                      class="result-frame-thumb"
+                    />
+                  </div>
                   <div class="result-footer">
                     <!-- wiki 命中：来源是 LLM 综合条目（带加权说明），非原文档分块 -->
                     <template v-if="isWikiResult(result)">
@@ -517,6 +531,13 @@ function openWikiResult(result: SearchResultItem) {
     path: `/home/spaces/${spaceId.value}/knowledge-bases/${result.kb_id}/wiki`,
     query: { page: slug },
   })
+}
+
+// ===== 视频帧图缩略图：后端把 metadata.frame_paths（MinIO 路径）预签名成
+// frame_urls（响应层派生字段）；无帧图的 hit 返回空数组不渲染 =====
+function frameThumbsOf(result: SearchResultItem): string[] {
+  const raw = (result.metadata as Record<string, unknown> | null)?.frame_urls
+  return Array.isArray(raw) ? raw.filter((u): u is string => typeof u === 'string') : []
 }
 
 // ===== 批次④：chunk 区间回跳播放（音频片段服务端切片） =====
@@ -1364,6 +1385,22 @@ onMounted(() => {
   margin-top: var(--space-1);
   font-size: 11px;
   color: var(--color-text-faint);
+}
+
+/* 视频帧图缩略图：16:9 小图横排可换行，点击 el-image 放大看原图 */
+.result-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.result-frame-thumb {
+  width: 120px;
+  height: 68px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  cursor: zoom-in;
 }
 
 .clip-play-link {
