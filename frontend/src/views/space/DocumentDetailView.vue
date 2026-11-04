@@ -4,7 +4,13 @@
     <div v-loading="loading" class="info-section">
       <div class="info-header">
         <div class="info-title-row">
-          <div class="file-type-badge" :style="{ background: getFileTypeStyle(document?.file_type || '').bg, color: getFileTypeStyle(document?.file_type || '').color }">
+          <div
+            class="file-type-badge"
+            :style="{
+              background: getFileTypeStyle(document?.file_type || '').bg,
+              color: getFileTypeStyle(document?.file_type || '').color,
+            }"
+          >
             {{ (document?.file_type || 'FILE').toUpperCase() }}
           </div>
           <h3 class="doc-filename" :title="document?.filename">
@@ -55,7 +61,9 @@
         </div>
         <div v-if="document.chunk_type" class="meta-item">
           <span class="meta-label">内容类型</span>
-          <span class="meta-value">{{ chunkTypeLabels[document.chunk_type] || document.chunk_type }}</span>
+          <span class="meta-value">{{
+            chunkTypeLabels[document.chunk_type] || document.chunk_type
+          }}</span>
         </div>
         <div v-if="document.frame_count != null" class="meta-item">
           <span class="meta-label">视频帧数</span>
@@ -91,8 +99,17 @@
         </div>
         <div v-if="document.embedding_model" class="meta-item">
           <span class="meta-label">Embedding</span>
-          <span class="meta-value meta-value-long" :title="document.embedding_model + (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')">
-            {{ document.embedding_model }}<template v-if="document.embedding_dim != null"> · {{ document.embedding_dim }} 维</template>
+          <span
+            class="meta-value meta-value-long"
+            :title="
+              document.embedding_model +
+              (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')
+            "
+          >
+            {{ document.embedding_model
+            }}<template v-if="document.embedding_dim != null">
+              · {{ document.embedding_dim }} 维</template
+            >
           </span>
         </div>
         <div v-if="document.parse_duration_ms != null" class="meta-item">
@@ -101,10 +118,9 @@
         </div>
         <div v-if="parseQualityWarnings.length > 0" class="meta-item">
           <span class="meta-label">解析质量</span>
-          <span
-            class="meta-value quality-warnings"
-            :title="parseQualityWarnings.join('\n')"
-          >⚠ {{ parseQualityWarnings.length }} 条降级警告</span>
+          <span class="meta-value quality-warnings" :title="parseQualityWarnings.join('\n')"
+            >⚠ {{ parseQualityWarnings.length }} 条降级警告</span
+          >
         </div>
         <div v-else-if="document.quality" class="meta-item">
           <span class="meta-label">解析质量</span>
@@ -119,16 +135,16 @@
                 class="wiki-ref-link"
                 :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
                 :title="r.title"
-              >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink><span
-                v-if="i < Math.min(wikiRefs.length, 3) - 1"
-              >、</span>
+                >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink
+              ><span v-if="i < Math.min(wikiRefs.length, 3) - 1">、</span>
             </template>
             <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
               等 {{ wikiRefs.length }} 页 →
             </span>
           </span>
         </div>
-        <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑 -->
+        <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑。
+            空态给「打标签」行动按钮（而非消极的「无」），有标签时编辑入口收成铅笔图标 -->
         <div class="meta-item">
           <span class="meta-label">标签</span>
           <span v-if="!tagsEditing" class="meta-value tags-value">
@@ -138,12 +154,24 @@
                 :key="t"
                 size="small"
                 effect="plain"
+                round
                 class="tag-chip"
-              >{{ t }}</el-tag>
+                >{{ t }}</el-tag
+              >
+              <el-button
+                text
+                size="small"
+                class="tags-edit-btn"
+                aria-label="编辑标签"
+                title="编辑标签"
+                @click="startEditTags"
+              >
+                <el-icon><Edit /></el-icon>
+              </el-button>
             </template>
-            <span v-else class="tags-empty">无</span>
-            <el-button text size="small" class="tags-edit-btn" @click="startEditTags">
-              编辑
+            <el-button v-else text size="small" class="tags-add-btn" @click="startEditTags">
+              <el-icon><Plus /></el-icon>
+              打标签
             </el-button>
           </span>
           <span v-else class="meta-value tags-value">
@@ -214,25 +242,16 @@
             </div>
           </div>
           <p class="narrative-desc">
-            用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 + 章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
+            用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 +
+            章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
           </p>
-          <div
-            v-if="narrativeStatus === 'completed' && narrativeExpanded"
-            class="narrative-body"
-          >
+          <div v-if="narrativeStatus === 'completed' && narrativeExpanded" class="narrative-body">
             <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
-            <div
-              v-for="(ch, i) in narrative?.chapters ?? []"
-              :key="i"
-              class="narrative-chapter"
-            >
+            <div v-for="(ch, i) in narrative?.chapters ?? []" :key="i" class="narrative-chapter">
               <div class="chapter-title">
                 <span class="chapter-index-badge">{{ i + 1 }}</span>
                 <strong>{{ ch.title }}</strong>
-                <span
-                  v-if="ch.start_time != null"
-                  class="meta-tag time-tag"
-                >
+                <span v-if="ch.start_time != null" class="meta-tag time-tag">
                   {{ formatDuration(ch.start_time) }}
                   -
                   {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
@@ -284,24 +303,47 @@
               <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
                 <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
                 <div class="chunk-meta">
-                  <span v-if="(chunk.metadata as Record<string, unknown>)?.chunk_role === 'parent'" class="meta-tag chunk-role-tag parent">父块</span>
-                  <span v-else-if="(chunk.metadata as Record<string, unknown>)?.chunk_role === 'child'" class="meta-tag chunk-role-tag child">子块</span>
-                  <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
-                  <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
-                  <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
-                  <span v-if="(chunk.metadata as Record<string, unknown>)?.start_time != null" class="meta-tag time-tag">
-                    {{ formatDuration((chunk.metadata as Record<string, unknown>).start_time as number) }}
+                  <span
+                    v-if="chunkMetaOf(chunk).chunk_role === 'parent'"
+                    class="meta-tag chunk-role-tag parent"
+                    >父块</span
+                  >
+                  <span
+                    v-else-if="chunkMetaOf(chunk).chunk_role === 'child'"
+                    class="meta-tag chunk-role-tag child"
+                    >子块</span
+                  >
+                  <span
+                    v-if="chunk.chunk_type && chunk.chunk_type !== 'text'"
+                    class="meta-tag chunk-type-tag"
+                    >{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span
+                  >
+                  <span v-if="chunkMetaOf(chunk).page" class="meta-tag"
+                    >第 {{ chunkMetaOf(chunk).page }} 页</span
+                  >
+                  <span v-if="chunkMetaOf(chunk).section_title" class="meta-tag">{{
+                    chunkMetaOf(chunk).section_title
+                  }}</span>
+                  <span v-if="chunkMetaOf(chunk).start_time != null" class="meta-tag time-tag">
+                    {{ formatDuration(chunkMetaOf(chunk).start_time as number) }}
                     -
-                    {{ formatDuration((chunk.metadata as Record<string, unknown>).end_time as number) }}
+                    {{ formatDuration(chunkMetaOf(chunk).end_time as number) }}
                   </span>
                   <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
                 </div>
-                <el-icon class="chunk-toggle" :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }">
+                <el-icon
+                  class="chunk-toggle"
+                  :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }"
+                >
                   <ArrowRight />
                 </el-icon>
               </div>
               <!-- 折叠态：截断预览 -->
-              <div v-if="!expandedChunks[chunk.chunk_index]" class="chunk-preview" @click="toggleChunk(chunk.chunk_index)">
+              <div
+                v-if="!expandedChunks[chunk.chunk_index]"
+                class="chunk-preview"
+                @click="toggleChunk(chunk.chunk_index)"
+              >
                 <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
                 <template v-else>{{ truncateContent(chunk.content) }}</template>
               </div>
@@ -315,25 +357,16 @@
                       :alt="chunk.content"
                       loading="lazy"
                       class="chunk-image"
-                      @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
+                      @click="previewImage(chunk)"
                     />
                     <div class="chunk-image-desc">{{ chunk.content }}</div>
                   </template>
                   <!-- content 里的 figure 短文件名已由后端 chunks 端点换成即时预签名 URL -->
-                  <MarkdownRenderer
-                    v-else-if="document"
-                    :content="chunk.content"
-                  />
+                  <MarkdownRenderer v-else-if="document" :content="chunk.content" />
                   <template v-else>{{ chunk.content }}</template>
                 </div>
                 <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-                  <el-tag
-                    v-for="q in chunk.questions"
-                    :key="q"
-                    size="small"
-                    effect="plain"
-                    round
-                  >
+                  <el-tag v-for="q in chunk.questions" :key="q" size="small" effect="plain" round>
                     {{ q }}
                   </el-tag>
                 </div>
@@ -348,8 +381,19 @@
               :total="totalChunks"
               :page-sizes="[10, 20, 50, 100]"
               layout="total, sizes, prev, pager, next"
-              @update:page="(p: number) => { chunkCurrentPage = p; fetchChunks() }"
-              @update:page-size="(s: number) => { chunkPageSize = s; chunkCurrentPage = 1; fetchChunks() }"
+              @update:page="
+                (p: number) => {
+                  chunkCurrentPage = p
+                  fetchChunks()
+                }
+              "
+              @update:page-size="
+                (s: number) => {
+                  chunkPageSize = s
+                  chunkCurrentPage = 1
+                  fetchChunks()
+                }
+              "
             />
           </div>
         </div>
@@ -363,11 +407,7 @@
             <el-icon><Close /></el-icon>
           </el-button>
         </div>
-        <DocumentOriginalPreview
-          :space-id="spaceId"
-          :kb-id="kbId"
-          :document="document"
-        />
+        <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
       </div>
     </div>
 
@@ -379,7 +419,10 @@
       class="image-preview-dialog"
       destroy-on-close
     >
-      <img :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
+      <img
+        :src="previewUrl"
+        style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto"
+      />
     </el-dialog>
   </div>
 </template>
@@ -396,7 +439,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, ArrowRight, View } from '@element-plus/icons-vue'
+import { Close, ArrowRight, View, Edit, Plus } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
@@ -456,12 +499,15 @@ const parseQualityWarnings = computed(() => document.value?.quality?.warnings ??
 
 // 状态辅助
 const docStatus = computed(() => document.value?.status ?? 0)
-const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
+const currentStatusConfig = computed(
+  () => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const },
+)
 
 /** 分块空态描述：按文档状态区分「还没处理」与「处理失败」两种成因 */
 const emptyChunkDescription = computed(() => {
   if (docStatus.value === 3) return '解析失败，没有产出分块；可在文档列表重试处理'
-  if (docStatus.value === 1 || docStatus.value === 0) return '文档尚未完成解析，处理完成后这里会展示分块'
+  if (docStatus.value === 1 || docStatus.value === 0)
+    return '文档尚未完成解析，处理完成后这里会展示分块'
   return '该文档没有产出任何分块'
 })
 
@@ -501,15 +547,10 @@ async function fetchDocument() {
 async function fetchChunks() {
   if (kbId.value === 0) return
   try {
-    const data = await documentApi.getDocumentChunks(
-      spaceId.value,
-      kbId.value,
-      docId.value,
-      {
-        skip: (chunkCurrentPage.value - 1) * chunkPageSize.value,
-        limit: chunkPageSize.value,
-      }
-    )
+    const data = await documentApi.getDocumentChunks(spaceId.value, kbId.value, docId.value, {
+      skip: (chunkCurrentPage.value - 1) * chunkPageSize.value,
+      limit: chunkPageSize.value,
+    })
     chunks.value = data.items || []
     totalChunks.value = data.total ?? totalChunks.value
   } catch {
@@ -575,6 +616,21 @@ const tagsEditing = ref(false)
 const tagsSaving = ref(false)
 const tagsInput = ref<string[]>([])
 
+/** chunk 元数据读取：模板侧收敛 as 泛型断言（prettier 3.8.1 无法解析
+    mustache 文本里的 `as Record<...>`，属性表达式不受影响） */
+function chunkMetaOf(chunk: Chunk): Record<string, unknown> {
+  return chunk.metadata ?? {}
+}
+
+/** 分块图片点击放大：多语句行内 handler 会被 prettier 重排掉语句分隔符
+    （编译报错），一律走方法 */
+function previewImage(chunk: Chunk) {
+  const url = chunk.media_url || chunk.image_url
+  if (!url) return
+  previewUrl.value = url
+  previewVisible.value = true
+}
+
 function startEditTags() {
   tagsInput.value = [...(document.value?.tags || [])]
   tagsEditing.value = true
@@ -607,20 +663,18 @@ const isVideoDoc = computed(() =>
   VIDEO_FILE_TYPES.has((document.value?.file_type || '').toLowerCase()),
 )
 
-const narrativeStatus = computed(
-  () => narrative.value?.status ?? 'not_generated',
-)
+const narrativeStatus = computed(() => narrative.value?.status ?? 'not_generated')
 
 const narrativeStatusText = computed(
   () =>
     (
-      {
+      ({
         not_generated: '未生成',
         running: '合成中',
         completed: '已完成',
         failed: '失败',
         unknown: '未知',
-      } as Record<string, string>
+      }) as Record<string, string>
     )[narrativeStatus.value] || '未知',
 )
 
@@ -671,11 +725,11 @@ async function handleGenerateNarrative() {
   if (kbId.value === 0) return
   if (narrativeStatus.value === 'completed') {
     try {
-      await ElMessageBox.confirm(
-        '重新生成将覆盖现有章节文档，确定继续？',
-        '重新生成叙事文档',
-        { type: 'warning', confirmButtonText: '重新生成', cancelButtonText: '取消' },
-      )
+      await ElMessageBox.confirm('重新生成将覆盖现有章节文档，确定继续？', '重新生成叙事文档', {
+        type: 'warning',
+        confirmButtonText: '重新生成',
+        cancelButtonText: '取消',
+      })
     } catch {
       return
     }
@@ -683,7 +737,10 @@ async function handleGenerateNarrative() {
   narrativeGenerating.value = true
   try {
     await documentApi.generateNarrative(spaceId.value, kbId.value, docId.value)
-    narrative.value = { ...(narrative.value ?? { document_id: docId.value, exists: true }), status: 'running' }
+    narrative.value = {
+      ...(narrative.value ?? { document_id: docId.value, exists: true }),
+      status: 'running',
+    }
     ElMessage.success('叙事合成已入队')
     scheduleNarrativePolling()
   } catch (error: unknown) {
@@ -824,23 +881,39 @@ function maybeAutoExpandTimeline() {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .tag-chip {
-  margin-right: 2px;
+  margin-right: 0;
 }
 
-.tags-empty {
+/* 空态行动按钮：虚线描边 ghost 风格，明确「可打标」的行动引导 */
+.tags-add-btn {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 2px 10px;
+  height: auto;
   color: var(--color-text-muted);
 }
 
+.tags-add-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* 有标签时的编辑入口：铅笔 icon-only，弱化但可发现（hover 浮现主色） */
 .tags-edit-btn {
-  padding: 0 4px;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+}
+
+.tags-edit-btn:hover {
+  color: var(--color-primary);
 }
 
 .tags-editor {
-  min-width: 220px;
+  min-width: 260px;
 }
 
 /* 已纳入 Wiki 反向条：主色链接，超出 3 页显示等 N 页 */
