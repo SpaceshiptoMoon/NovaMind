@@ -65,7 +65,9 @@
                 <span class="results-meta">
                   共 {{ totalResults }} 条 · {{ elapsedMs }}ms
                   <el-tag v-if="cached" type="success" size="small" effect="plain">缓存</el-tag>
-                  <el-tag v-if="modeFallback" type="warning" size="small" effect="plain">降级: {{ originalMode }}</el-tag>
+                  <el-tag v-if="modeFallback" type="warning" size="small" effect="plain"
+                    >降级: {{ originalMode }}</el-tag
+                  >
                 </span>
               </div>
 
@@ -73,7 +75,11 @@
               <div v-if="rewrittenQueries?.length" class="rewrite-panel">
                 <div class="rewrite-header">
                   <span class="rewrite-label">
-                    {{ rewriteIsDocument ? '查询改写 · 假设文档（HyDE）' : `查询改写 · 子问题（${rewrittenQueries.length}）` }}
+                    {{
+                      rewriteIsDocument
+                        ? '查询改写 · 假设文档（HyDE）'
+                        : `查询改写 · 子问题（${rewrittenQueries.length}）`
+                    }}
                   </span>
                   <button
                     v-if="rewriteTruncated"
@@ -92,7 +98,9 @@
                   ref="rewriteTextEl"
                   class="rewrite-doc"
                   :class="{ 'is-clamped': !rewriteExpanded }"
-                >{{ rewrittenQueries[0] }}</p>
+                >
+                  {{ rewrittenQueries[0] }}
+                </p>
                 <div v-else class="rewrite-queries">
                   <span
                     v-for="(q, i) in rewrittenQueries"
@@ -112,7 +120,9 @@
                   <span>AI 回答</span>
                   <span class="llm-answer-meta">
                     <span v-if="answerModel" class="llm-answer-model">{{ answerModel }}</span>
-                    <span v-if="answerElapsedMs" class="llm-answer-model">{{ answerElapsedMs }}ms</span>
+                    <span v-if="answerElapsedMs" class="llm-answer-model"
+                      >{{ answerElapsedMs }}ms</span
+                    >
                   </span>
                 </div>
                 <div class="llm-answer-content">
@@ -134,27 +144,38 @@
                     <span class="result-index">{{ index + 1 }}</span>
                     <el-tag
                       v-if="result.chunk_type && result.chunk_type !== 'text'"
-                      :type="result.chunk_type === 'video' ? 'primary' : result.chunk_type === 'audio' ? 'danger' : 'warning'"
+                      :type="
+                        result.chunk_type === 'video'
+                          ? 'primary'
+                          : result.chunk_type === 'audio'
+                            ? 'danger'
+                            : 'warning'
+                      "
                       size="small"
                       effect="plain"
-                    >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
+                      >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag
+                    >
                     <el-tag
                       v-if="result.content_type === 'table'"
                       type="warning"
                       size="small"
                       effect="plain"
-                    >表格</el-tag>
+                      >表格</el-tag
+                    >
                     <el-tag
                       v-else-if="result.content_type === 'code'"
                       type="info"
                       size="small"
                       effect="plain"
-                    >代码</el-tag>
+                      >代码</el-tag
+                    >
                     <span v-if="isWikiResult(result)" class="wiki-hit-title">
-                      {{ (result.metadata as Record<string, unknown>)?.wiki_title || 'Wiki 条目' }}
+                      {{ strMetaOf(result, 'wiki_title') || 'Wiki 条目' }}
                     </span>
                     <template v-else>
-                      <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
+                      <span class="result-doc">{{
+                        fileInfoOf(result).filename || `文档 #${result.document_id}`
+                      }}</span>
                       <span class="result-chunk-pos">分块{{ result.chunk_index + 1 }}</span>
                     </template>
                     <span class="result-score" :class="getScoreClass(result.score)">
@@ -200,33 +221,38 @@
                       <span class="wiki-hit-open">点击查看页面 →</span>
                     </template>
                     <template v-else>
-                      <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
-                      <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                        {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                        -
-                        {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                      </span>
-                      <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                        {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                        -
-                        {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                      </span>
+                      <span v-if="numMetaOf(result, 'page') != null"
+                        >第 {{ numMetaOf(result, 'page') }} 页</span
+                      >
+                      <span v-if="clipRangeText(result)">{{ clipRangeText(result) }}</span>
                       <span
-                        v-if="(result.chunk_type === 'audio' || result.chunk_type === 'video') && (result.metadata as Record<string, unknown>)?.start_time != null"
+                        v-if="
+                          (result.chunk_type === 'audio' || result.chunk_type === 'video') &&
+                          numMetaOf(result, 'start_time') != null
+                        "
                         class="clip-play-link"
                         role="button"
                         @click.stop="playClip(result)"
                       >
                         ▶ 播放片段
                       </span>
-                      <span
-                        v-if="(result.metadata as Record<string, unknown>)?.speaker_id"
-                        class="speaker-tag"
-                      >说话人 {{ (result.metadata as Record<string, unknown>).speaker_id }}</span>
+                      <span v-if="strMetaOf(result, 'speaker_id')" class="speaker-tag"
+                        >说话人 {{ strMetaOf(result, 'speaker_id') }}</span
+                      >
                     </template>
                   </div>
+                  <!-- 视频：流式 + #t= 媒体片段（有画面）；音频：服务端切片 blob -->
+                  <video
+                    v-if="playingClipKey === clipKeyOf(result) && playingIsVideo"
+                    :src="playingClipUrl ?? undefined"
+                    controls
+                    autoplay
+                    class="clip-audio clip-video"
+                    @error="stopClip"
+                    @ended="stopClip"
+                  ></video>
                   <audio
-                    v-if="playingClipKey === clipKeyOf(result)"
+                    v-else-if="playingClipKey === clipKeyOf(result)"
                     :src="playingClipUrl ?? undefined"
                     controls
                     autoplay
@@ -262,7 +288,9 @@
             <div v-else class="search-empty">
               <el-icon :size="48" color="var(--color-text-faint)"><Search /></el-icon>
               <p class="search-empty-title">输入查询内容开始检索</p>
-              <p class="search-empty-desc">在上方输入查询内容并选择知识库，按 Enter 或点击检索按钮开始搜索。</p>
+              <p class="search-empty-desc">
+                在上方输入查询内容并选择知识库，按 Enter 或点击检索按钮开始搜索。
+              </p>
             </div>
           </main>
 
@@ -303,7 +331,9 @@
             <div class="param-section">
               <div class="param-row">
                 <span class="param-label">相似度阈值</span>
-                <span class="param-value">{{ (searchForm.score_threshold * 100).toFixed(0) }}%</span>
+                <span class="param-value"
+                  >{{ (searchForm.score_threshold * 100).toFixed(0) }}%</span
+                >
               </div>
               <el-slider
                 v-model="searchForm.score_threshold"
@@ -351,19 +381,47 @@
                   <div class="section-title">检索参数</div>
                   <div class="adv-row">
                     <span class="adv-label">向量权重</span>
-                    <el-slider v-model="searchForm.vector_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.vector_weight"
+                      :min="0"
+                      :max="1"
+                      :step="0.1"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">BM25权重</span>
-                    <el-slider v-model="searchForm.bm25_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.bm25_weight"
+                      :min="0"
+                      :max="1"
+                      :step="0.1"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">内容权重</span>
-                    <el-slider v-model="searchForm.content_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.content_weight"
+                      :min="0"
+                      :max="1"
+                      :step="0.1"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">问题权重</span>
-                    <el-slider v-model="searchForm.question_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.question_weight"
+                      :min="0"
+                      :max="1"
+                      :step="0.1"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">RRF K</span>
@@ -414,12 +472,30 @@
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">数量</span>
-                    <el-input-number v-model="searchForm.rerank_top_k" :min="1" :max="20" :disabled="!searchForm.rerank_enabled" size="small" />
+                    <el-input-number
+                      v-model="searchForm.rerank_top_k"
+                      :min="1"
+                      :max="20"
+                      :disabled="!searchForm.rerank_enabled"
+                      size="small"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">模型</span>
-                    <el-select v-model="searchForm.rerank_model" :disabled="!searchForm.rerank_enabled" placeholder="默认" clearable size="small" style="flex:1">
-                      <el-option v-for="m in availableRerankModels" :key="m" :label="m" :value="m" />
+                    <el-select
+                      v-model="searchForm.rerank_model"
+                      :disabled="!searchForm.rerank_enabled"
+                      placeholder="默认"
+                      clearable
+                      size="small"
+                      style="flex: 1"
+                    >
+                      <el-option
+                        v-for="m in availableRerankModels"
+                        :key="m"
+                        :label="m"
+                        :value="m"
+                      />
                     </el-select>
                   </div>
                 </div>
@@ -429,11 +505,27 @@
                   <div class="section-title">LLM</div>
                   <div class="adv-row">
                     <span class="adv-label">温度</span>
-                    <el-slider v-model="searchForm.llm_temperature" :min="0" :max="2" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.llm_temperature"
+                      :min="0"
+                      :max="2"
+                      :step="0.1"
+                      :disabled="!searchForm.llm_enabled"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                   <div class="adv-row">
                     <span class="adv-label">Top P</span>
-                    <el-slider v-model="searchForm.llm_top_p" :min="0" :max="1" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
+                    <el-slider
+                      v-model="searchForm.llm_top_p"
+                      :min="0"
+                      :max="1"
+                      :step="0.1"
+                      :disabled="!searchForm.llm_enabled"
+                      show-input
+                      :show-input-controls="false"
+                    />
                   </div>
                 </div>
 
@@ -442,7 +534,7 @@
                   <div class="section-title">查询改写</div>
                   <div class="adv-row">
                     <span class="adv-label">策略</span>
-                    <el-select v-model="searchForm.qrw_strategy" size="small" style="flex:1">
+                    <el-select v-model="searchForm.qrw_strategy" size="small" style="flex: 1">
                       <el-option label="不启用" value="" />
                       <el-option label="HyDE" value="hyde" />
                       <el-option label="子问题拆分" value="sub_query" />
@@ -450,18 +542,33 @@
                   </div>
                   <div v-if="searchForm.qrw_strategy" class="adv-row">
                     <span class="adv-label">模型</span>
-                    <el-select v-model="searchForm.qrw_llm_model" placeholder="默认" clearable size="small" style="flex:1">
+                    <el-select
+                      v-model="searchForm.qrw_llm_model"
+                      placeholder="默认"
+                      clearable
+                      size="small"
+                      style="flex: 1"
+                    >
                       <el-option v-for="m in availableLlmModels" :key="m" :label="m" :value="m" />
                     </el-select>
                   </div>
                   <template v-if="searchForm.qrw_strategy === 'sub_query'">
                     <div class="adv-row">
                       <span class="adv-label">子问题数</span>
-                      <el-input-number v-model="searchForm.qrw_sub_query_count" :min="2" :max="5" size="small" />
+                      <el-input-number
+                        v-model="searchForm.qrw_sub_query_count"
+                        :min="2"
+                        :max="5"
+                        size="small"
+                      />
                     </div>
                     <div class="adv-row">
                       <span class="adv-label">合并方式</span>
-                      <el-select v-model="searchForm.qrw_sub_query_merge_mode" size="small" style="flex:1">
+                      <el-select
+                        v-model="searchForm.qrw_sub_query_merge_mode"
+                        size="small"
+                        style="flex: 1"
+                      >
                         <el-option label="RRF 融合" value="rrf" />
                         <el-option label="分数取最大" value="score" />
                       </el-select>
@@ -470,7 +577,9 @@
                   <!-- HyDE 策略提示词暂不支持自定义 -->
                 </div>
 
-                <el-button size="small" @click="handleReset" style="width:100%">重置默认</el-button>
+                <el-button size="small" @click="handleReset" style="width: 100%"
+                  >重置默认</el-button
+                >
               </el-collapse-item>
             </el-collapse>
           </aside>
@@ -507,7 +616,7 @@ const router = useRouter()
 const spaceId = computed(() => Number(route.params.id))
 const currentKbId = computed(() => {
   const raw = route.query.kbId
-  return Array.isArray(raw) ? (raw[0] || '') : (raw || '')
+  return Array.isArray(raw) ? raw[0] || '' : raw || ''
 })
 
 const kbNavItems = computed(() =>
@@ -515,7 +624,7 @@ const kbNavItems = computed(() =>
     spaceId: spaceId.value,
     kbId: currentKbId.value,
     currentRouteName: route.name,
-  })
+  }),
 )
 
 // wiki 命中判断与跳转：chunk_type="wiki_page" 由后端 wiki ES 同步写入，
@@ -524,9 +633,39 @@ function isWikiResult(result: SearchResultItem): boolean {
   return result.chunk_type === 'wiki_page'
 }
 
+// ===== chunk 元数据读取 helper：模板侧收敛 as 泛型断言 =====
+// prettier 3.8.1 的 Vue 解析器无法处理 mustache 文本里的 `as Record<...>`
+// （属性表达式不受影响），断言一律收进 script helper，模板只调函数
+function metaOf(result: SearchResultItem): Record<string, unknown> {
+  return (result.metadata as Record<string, unknown> | null) ?? {}
+}
+
+function fileInfoOf(result: SearchResultItem): Record<string, string> {
+  return (result.file_info as Record<string, string> | null) ?? {}
+}
+
+function numMetaOf(result: SearchResultItem, key: string): number | null {
+  const v = metaOf(result)[key]
+  return typeof v === 'number' ? v : null
+}
+
+function strMetaOf(result: SearchResultItem, key: string): string {
+  const v = metaOf(result)[key]
+  return typeof v === 'string' ? v : ''
+}
+
+/** 音/视频命中的「起 - 止」展示文本；无起始时间返回 null（footer 不渲染） */
+function clipRangeText(result: SearchResultItem): string | null {
+  if (result.chunk_type !== 'audio' && result.chunk_type !== 'video') return null
+  const start = numMetaOf(result, 'start_time')
+  if (start == null) return null
+  const end = numMetaOf(result, 'end_time') ?? start + 30
+  return `${formatDuration(start)} - ${formatDuration(end)}`
+}
+
 function openWikiResult(result: SearchResultItem) {
-  const slug = (result.metadata as Record<string, unknown>)?.wiki_slug
-  if (typeof slug !== 'string' || !slug) return
+  const slug = strMetaOf(result, 'wiki_slug')
+  if (!slug) return
   void router.push({
     path: `/home/spaces/${spaceId.value}/knowledge-bases/${result.kb_id}/wiki`,
     query: { page: slug },
@@ -536,21 +675,24 @@ function openWikiResult(result: SearchResultItem) {
 // ===== 视频帧图缩略图：后端把 metadata.frame_paths（MinIO 路径）预签名成
 // frame_urls（响应层派生字段）；无帧图的 hit 返回空数组不渲染 =====
 function frameThumbsOf(result: SearchResultItem): string[] {
-  const raw = (result.metadata as Record<string, unknown> | null)?.frame_urls
+  const raw = metaOf(result).frame_urls
   return Array.isArray(raw) ? raw.filter((u): u is string => typeof u === 'string') : []
 }
 
-// ===== 批次④：chunk 区间回跳播放（音频片段服务端切片） =====
+// ===== 批次④：chunk 区间回跳播放 =====
+// 音频：服务端切片取 blob；视频：走 /stream Range 流式 + #t= 媒体片段定区间
+// （video 元素同样带不上 Authorization 头，复用 stream 端点的 query token）
 const playingClipKey = ref<string | null>(null)
 const playingClipUrl = ref<string | null>(null)
+const playingIsVideo = ref(false)
 
 function clipKeyOf(result: SearchResultItem): string {
-  return `${result.document_id}:${(result.metadata as Record<string, unknown>)?.start_time}`
+  return `${result.document_id}:${numMetaOf(result, 'start_time')}`
 }
 
 async function playClip(result: SearchResultItem) {
-  const meta = result.metadata as Record<string, unknown> | undefined
-  if (!meta || meta.start_time == null) return
+  const meta = metaOf(result)
+  if (meta.start_time == null) return
   const key = clipKeyOf(result)
   // 已在播放同一段 → 再次点击停止
   if (playingClipKey.value === key) {
@@ -559,6 +701,15 @@ async function playClip(result: SearchResultItem) {
   }
   const start = Number(meta.start_time)
   const end = Number(meta.end_time ?? start + 30)
+  if (result.chunk_type === 'video') {
+    // 视频：不切片（ffmpeg 切视频延迟大），#t= 起止由浏览器在流上 seek
+    if (playingClipUrl.value) window.URL.revokeObjectURL(playingClipUrl.value)
+    const base = documentApi.getVideoStreamUrl(spaceId.value, result.kb_id, result.document_id)
+    playingClipUrl.value = `${base}#t=${start},${end}`
+    playingIsVideo.value = true
+    playingClipKey.value = key
+    return
+  }
   try {
     const url = await documentApi.getAudioClipBlobUrl(
       spaceId.value,
@@ -569,6 +720,7 @@ async function playClip(result: SearchResultItem) {
     )
     if (playingClipUrl.value) window.URL.revokeObjectURL(playingClipUrl.value)
     playingClipUrl.value = url
+    playingIsVideo.value = false
     playingClipKey.value = key
   } catch {
     ElMessage.error('音频片段获取失败')
@@ -685,7 +837,9 @@ function getScoreClass(score: number): string {
 async function fetchKnowledgeBases() {
   try {
     const data = await knowledgeBaseApi.getKnowledgeBases(spaceId.value)
-    knowledgeBases.value = (data.items || []).filter((kb): kb is KnowledgeBase => kb && typeof kb.id !== 'undefined')
+    knowledgeBases.value = (data.items || []).filter(
+      (kb): kb is KnowledgeBase => kb && typeof kb.id !== 'undefined',
+    )
 
     if (knowledgeBases.value.length > 0 && !searchForm.kb_id) {
       searchForm.kb_id = knowledgeBases.value[0]!.id
@@ -1425,6 +1579,14 @@ onMounted(() => {
   width: 100%;
   margin-top: var(--space-2);
   height: 36px;
+}
+
+/* 视频片段播放器：覆盖 audio 的固定行高，16:9 保持画面比例 */
+.clip-video {
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: var(--color-bg-card-elevated);
+  border-radius: var(--radius-md);
 }
 
 .result-questions {
