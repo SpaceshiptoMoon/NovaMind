@@ -203,28 +203,25 @@
               {{ doc.file_type.toUpperCase().slice(0, 3) }}
             </div>
 
-            <!-- 主体：名称 + meta 行（状态标签头随、元信息完整） -->
+            <!-- 主体：名称 + meta 行（纯间距语义分组，不用中点串） -->
             <div class="doc-card-body">
               <div class="doc-card-name" :title="doc.filename">{{ doc.filename }}</div>
               <div class="doc-card-meta">
                 <el-tag :type="getStatusConfig(doc.status).type" effect="plain" size="small">
                   {{ getStatusConfig(doc.status).text }}
                 </el-tag>
-                <span class="meta-dot">·</span>
                 <span class="meta-seg">{{ formatFileSize(doc.file_size) }}</span>
                 <template v-if="doc.duration_seconds">
-                  <span class="meta-dot">·</span>
                   <span class="meta-seg">{{ formatDuration(doc.duration_seconds) }}</span>
                 </template>
-                <span class="meta-dot">·</span>
                 <span class="meta-seg">{{ doc.chunk_count ?? 0 }} 分块</span>
-                <span class="meta-dot">·</span>
-                <span class="meta-seg">{{ formatShortDate(doc.created_at) }}</span>
+                <span class="meta-seg meta-time">{{ formatShortDate(doc.created_at) }} 上传</span>
                 <!-- completed_at 列语义是任务终态时间（失败也写值），展示口径限定成功完成 -->
-                <template v-if="doc.completed_at && doc.status === DOC_STATUS.COMPLETED">
-                  <span class="meta-dot">·</span>
-                  <span class="meta-seg">完成 {{ formatShortDate(doc.completed_at) }}</span>
-                </template>
+                <span
+                  v-if="doc.completed_at && doc.status === DOC_STATUS.COMPLETED"
+                  class="meta-seg meta-time is-done"
+                  >完成 {{ formatShortDate(doc.completed_at) }}</span
+                >
               </div>
             </div>
 
@@ -1425,9 +1422,10 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.meta-dot {
+/* 时间段降一档色阶（faint），与体量信息（muted）形成颜色分层——
+   靠色阶与间距分组，不靠中点分隔符 */
+.meta-time {
   color: var(--color-text-faint);
-  flex-shrink: 0;
 }
 
 /* 操作钮组：hover 时绝对定位浮现右上角（白底背板隔离文字），非 hover 不占视觉；

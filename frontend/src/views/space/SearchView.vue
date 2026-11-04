@@ -219,7 +219,7 @@
                     <!-- wiki 命中：来源是 LLM 综合条目（带加权说明），非原文档分块 -->
                     <template v-if="isWikiResult(result)">
                       <span class="wiki-hit-badge">Wiki 综合条目 · 检索加权中</span>
-                      <span class="wiki-hit-open">点击查看页面 →</span>
+                      <span class="wiki-hit-open">打开页面</span>
                     </template>
                     <template v-else>
                       <span v-if="numMetaOf(result, 'page') != null"
