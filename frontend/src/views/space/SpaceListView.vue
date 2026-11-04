@@ -54,43 +54,15 @@
           <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
-          <!-- 知识运营入口：三页一键直达（洞察/缺口报告/运营管理），不再链式跳转 -->
-          <el-dropdown
+          <!-- 知识运营入口：直达运营区（工作台/缺口/队列/资产健康四页签在区内） -->
+          <el-button
             v-if="selectedSpaceId"
-            trigger="hover"
-            @command="(name: string) => switchTab(name)"
+            size="small"
+            @click="router.push(`/home/spaces/${selectedSpaceId}/ops`)"
           >
-            <el-button size="small">
-              <el-icon><TrendCharts /></el-icon>
-              知识运营
-              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu class="ops-menu">
-                <el-dropdown-item command="insights">
-                  <el-icon class="ops-menu-icon"><DataLine /></el-icon>
-                  <div class="ops-menu-item">
-                    <span class="ops-menu-title">空间洞察</span>
-                    <span class="ops-menu-desc">问答量、点踩与零命中趋势</span>
-                  </div>
-                </el-dropdown-item>
-                <el-dropdown-item command="gap-report">
-                  <el-icon class="ops-menu-icon"><Warning /></el-icon>
-                  <div class="ops-menu-item">
-                    <span class="ops-menu-title">知识缺口报告</span>
-                    <span class="ops-menu-desc">答不上的问题清单，补内容的依据</span>
-                  </div>
-                </el-dropdown-item>
-                <el-dropdown-item command="kb-ops">
-                  <el-icon class="ops-menu-icon"><Operation /></el-icon>
-                  <div class="ops-menu-item">
-                    <span class="ops-menu-title">运营管理</span>
-                    <span class="ops-menu-desc">复审建议、重复内容与文档价值</span>
-                  </div>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+            <el-icon><TrendCharts /></el-icon>
+            知识运营
+          </el-button>
           <el-button
             v-if="selectedSpaceId"
             size="small"
@@ -292,17 +264,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Plus,
-  Setting,
-  Collection,
-  Check,
-  TrendCharts,
-  ArrowDown,
-  DataLine,
-  Warning,
-  Operation,
-} from '@element-plus/icons-vue'
+import { Plus, Setting, Collection, Check, TrendCharts } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'
@@ -457,6 +419,19 @@ const crumbItems = computed(() => {
   if (route.name === 'DocumentTasks') items.push({ label: '任务列表' })
   if (route.name === 'KbConfig') items.push({ label: '配置向导' })
   if (route.name === 'KbWiki') items.push({ label: 'Wiki' })
+
+  // 知识运营区四子页：共用「知识运营」段（可点回区首）+ 当前页名段
+  const opsPageNames: Record<string, string> = {
+    SpaceOpsOverview: '工作台',
+    SpaceOpsGaps: '缺口与失败',
+    SpaceOpsQueue: '待办队列',
+    SpaceOpsHealth: '资产健康',
+  }
+  const opsPage = opsPageNames[String(route.name)]
+  if (opsPage) {
+    items.push({ label: '知识运营', to: `/home/spaces/${sid}/ops` })
+    items.push({ label: opsPage })
+  }
 
   return items
 })
@@ -1085,49 +1060,6 @@ onMounted(() => {
 .header-actions :deep(.el-button.is-text:hover) {
   color: var(--color-text);
   background: var(--color-bg-hover);
-}
-
-/* 知识运营下拉菜单项：图标与标题行首对齐（align-items:center 会让图标垂直
-   悬在两行文字中缝，shadcn 命令菜单同款 align-start）；描述行与图标左缘对齐 */
-.ops-menu :deep(.el-dropdown-menu__item) {
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-}
-
-.ops-menu-icon {
-  /* 与标题行基线平齐：flex-start 下图标补一行高差 */
-  margin-top: 2px;
-  font-size: 15px;
-  color: var(--color-text-secondary);
-}
-
-.ops-menu :deep(.el-dropdown-menu__item:hover) .ops-menu-icon {
-  color: var(--color-text);
-}
-
-.ops-menu-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.ops-menu-title {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.ops-menu-desc {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .content-body {

@@ -188,22 +188,52 @@ const router = createRouter({
               meta: { title: '空间设置' },
             },
             {
+              // 知识运营区：四页一区（工作台/缺口与失败/待办队列/资产健康），
+              // 子导航在壳组件内——旧三页（insights/gap-report/kb-ops）按批次史
+              // 切分的信息架构已废弃，旧路径 redirect 保通知链接与书签兼容
+              path: ':id/ops',
+              name: 'SpaceOps',
+              component: () => import('@/views/space/SpaceOpsView.vue'),
+              meta: { title: '知识运营' },
+              children: [
+                { path: '', redirect: { name: 'SpaceOpsOverview' } },
+                {
+                  path: 'overview',
+                  name: 'SpaceOpsOverview',
+                  component: () => import('@/views/space/SpaceOpsOverviewView.vue'),
+                  meta: { title: '运营工作台' },
+                },
+                {
+                  path: 'gaps',
+                  name: 'SpaceOpsGaps',
+                  component: () => import('@/views/space/SpaceOpsGapsView.vue'),
+                  meta: { title: '缺口与失败' },
+                },
+                {
+                  path: 'queue',
+                  name: 'SpaceOpsQueue',
+                  component: () => import('@/views/space/SpaceOpsQueueView.vue'),
+                  meta: { title: '待办队列' },
+                },
+                {
+                  path: 'health',
+                  name: 'SpaceOpsHealth',
+                  component: () => import('@/views/space/SpaceOpsHealthView.vue'),
+                  meta: { title: '资产健康' },
+                },
+              ],
+            },
+            {
               path: ':id/insights',
-              name: 'SpaceInsights',
-              component: () => import('@/views/space/SpaceInsightView.vue'),
-              meta: { title: '空间洞察' },
+              redirect: (to) => `/home/spaces/${String(to.params.id)}/ops/overview`,
             },
             {
               path: ':id/gap-report',
-              name: 'SpaceGapReport',
-              component: () => import('@/views/space/SpaceGapReportView.vue'),
-              meta: { title: '知识缺口报告' },
+              redirect: (to) => `/home/spaces/${String(to.params.id)}/ops/gaps`,
             },
             {
               path: ':id/kb-ops',
-              name: 'SpaceKbOps',
-              component: () => import('@/views/space/SpaceKbOpsView.vue'),
-              meta: { title: '知识运营' },
+              redirect: (to) => `/home/spaces/${String(to.params.id)}/ops/overview`,
             },
           ],
         },
