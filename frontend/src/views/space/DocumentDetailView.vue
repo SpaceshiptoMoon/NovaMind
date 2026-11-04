@@ -845,6 +845,11 @@ function maybeAutoExpandTimeline() {
   gap: var(--space-2) var(--space-4);
 }
 
+/* Embedding 这类长值项占两个轨道，避免普通轨道宽度下必然省略号截断 */
+.meta-item:has(.meta-value-long) {
+  grid-column: span 2;
+}
+
 .meta-item {
   display: flex;
   align-items: baseline;

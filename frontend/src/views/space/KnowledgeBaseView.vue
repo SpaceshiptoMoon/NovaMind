@@ -566,8 +566,9 @@ onMounted(() => {
   display: grid;
   /* 下限 280px：一行可容 4 卡（1512 视口内容区 ~1140px）；横卡（头像+双行文本+
      hover 操作）低于此宽度会挤压换行；上限用卡片自身 max-width 收，不用轨道 max
-     （auto-repeat 按 max 计数轨道，实测坑） */
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+     （auto-repeat 按 max 计数轨道，实测坑）。auto-fit（非 fill）：卡少时空轨
+     折叠、现有卡摊满整行，不留右侧空白 */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-3);
   min-height: 120px;
 }
