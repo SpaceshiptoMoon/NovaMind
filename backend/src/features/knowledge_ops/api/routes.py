@@ -22,6 +22,7 @@ from novamind.features.knowledge_ops.schemas import (
     GapReportResponse,
     KbEventListResponse,
     KbReviewSuggestionListResponse,
+    SpaceOverviewResponse,
     SuggestionResolveRequest,
     SuggestionResolveResponse,
 )
@@ -72,6 +73,31 @@ async def list_space_events(
     return KbEventListResponse(
         items=items, total=total, limit=limit, offset=offset
     )
+
+
+@router.get(
+    "/spaces/{space_id}/overview",
+    response_model=SpaceOverviewResponse,
+    summary="空间运营概览",
+    description=(
+        "聚合空间资产概览：文档生命周期四态计数、解析失败文档（最新任务行"
+        " FAILED 探针）、待复审文档（next_review_at 提醒窗口内）。工作台首页"
+        "异常区与资产健康页的数据面。空间成员可读。"
+    ),
+)
+async def get_space_overview(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """空间运营概览聚合（kb-ops 工作台）"""
+    from novamind.features.knowledge_ops.services.space_overview_service import (
+        SpaceOverviewService,
+    )
+
+    overview = await SpaceOverviewService(db).get_overview(space_id)
+    return SpaceOverviewResponse(**overview)
 
 
 @router.get(

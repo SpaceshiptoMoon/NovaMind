@@ -98,3 +98,57 @@ class SuggestionResolveResponse(BaseModel):
     superseded_doc_id: int | None = Field(
         default=None, description="accept 且类型为 new_version 时：被下线的旧文档 ID"
     )
+
+
+class LifecycleDocumentCounts(BaseModel):
+    """文档生命周期四态计数（软删排除）"""
+
+    active: int = 0
+    superseded: int = 0
+    archived: int = 0
+    draft: int = 0
+    total: int = Field(default=0, description="四态合计（等于未软删文档总数）")
+
+
+class FailedDocumentItem(BaseModel):
+    """解析失败文档条目（最新任务行判定）"""
+
+    document_id: int
+    kb_id: int
+    filename: str
+    completed_at: datetime | None = Field(default=None, description="任务终态时间（FAILED 也写值）")
+    error_message: str | None = None
+
+
+class FailedDocumentsSummary(BaseModel):
+    """解析失败文档汇总：count 为全量，items 为最近失败采样"""
+
+    count: int
+    items: list[FailedDocumentItem] = Field(default_factory=list)
+
+
+class DueReviewItem(BaseModel):
+    """待复审文档条目"""
+
+    document_id: int
+    kb_id: int
+    filename: str
+    owner_id: int | None = None
+    next_review_at: datetime
+    overdue: bool = Field(default=False, description="是否已过复审期")
+
+
+class DueReviewsSummary(BaseModel):
+    """待复审文档汇总：count 为窗口内全量，items 为最先到期采样"""
+
+    count: int
+    items: list[DueReviewItem] = Field(default_factory=list)
+
+
+class SpaceOverviewResponse(BaseModel):
+    """空间运营概览聚合（工作台异常区与资产健康页数据面）"""
+
+    documents: LifecycleDocumentCounts
+    kb_count: int = Field(default=0, description="未软删知识库数量")
+    failed_documents: FailedDocumentsSummary
+    due_reviews: DueReviewsSummary

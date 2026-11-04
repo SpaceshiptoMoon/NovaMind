@@ -3940,6 +3940,74 @@
         "title": "DocumentUploadResponse",
         "type": "object"
       },
+      "DueReviewItem": {
+        "description": "待复审文档条目",
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "kb_id": {
+            "title": "Kb Id",
+            "type": "integer"
+          },
+          "next_review_at": {
+            "format": "date-time",
+            "title": "Next Review At",
+            "type": "string"
+          },
+          "overdue": {
+            "default": false,
+            "description": "是否已过复审期",
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          }
+        },
+        "required": [
+          "document_id",
+          "kb_id",
+          "filename",
+          "next_review_at"
+        ],
+        "title": "DueReviewItem",
+        "type": "object"
+      },
+      "DueReviewsSummary": {
+        "description": "待复审文档汇总：count 为窗口内全量，items 为最先到期采样",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DueReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "DueReviewsSummary",
+        "type": "object"
+      },
       "EducationExperience": {
         "description": "单段教育经历（学校/专业/学位/GPA/论文/核心课程）。",
         "properties": {
@@ -4500,6 +4568,75 @@
         ],
         "title": "ExternalSearchProvider",
         "type": "string"
+      },
+      "FailedDocumentItem": {
+        "description": "解析失败文档条目（最新任务行判定）",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "任务终态时间（FAILED 也写值）",
+            "title": "Completed At"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "kb_id": {
+            "title": "Kb Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "kb_id",
+          "filename"
+        ],
+        "title": "FailedDocumentItem",
+        "type": "object"
+      },
+      "FailedDocumentsSummary": {
+        "description": "解析失败文档汇总：count 为全量，items 为最近失败采样",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FailedDocumentItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "FailedDocumentsSummary",
+        "type": "object"
       },
       "FailedFileItem": {
         "description": "批量上传失败的文件项",
@@ -5822,6 +5959,39 @@
           }
         },
         "title": "LanguageSkill",
+        "type": "object"
+      },
+      "LifecycleDocumentCounts": {
+        "description": "文档生命周期四态计数（软删排除）",
+        "properties": {
+          "active": {
+            "default": 0,
+            "title": "Active",
+            "type": "integer"
+          },
+          "archived": {
+            "default": 0,
+            "title": "Archived",
+            "type": "integer"
+          },
+          "draft": {
+            "default": 0,
+            "title": "Draft",
+            "type": "integer"
+          },
+          "superseded": {
+            "default": 0,
+            "title": "Superseded",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "description": "四态合计（等于未软删文档总数）",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "LifecycleDocumentCounts",
         "type": "object"
       },
       "LogoutAllSessionsResponse": {
@@ -11579,6 +11749,33 @@
           "limit"
         ],
         "title": "SpaceListResponse",
+        "type": "object"
+      },
+      "SpaceOverviewResponse": {
+        "description": "空间运营概览聚合（工作台异常区与资产健康页数据面）",
+        "properties": {
+          "documents": {
+            "$ref": "#/components/schemas/LifecycleDocumentCounts"
+          },
+          "due_reviews": {
+            "$ref": "#/components/schemas/DueReviewsSummary"
+          },
+          "failed_documents": {
+            "$ref": "#/components/schemas/FailedDocumentsSummary"
+          },
+          "kb_count": {
+            "default": 0,
+            "description": "未软删知识库数量",
+            "title": "Kb Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "documents",
+          "failed_documents",
+          "due_reviews"
+        ],
+        "title": "SpaceOverviewResponse",
         "type": "object"
       },
       "SpaceResponse": {
@@ -18674,6 +18871,55 @@
           }
         ],
         "summary": "gap 条目转测试用例",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/overview": {
+      "get": {
+        "description": "聚合空间资产概览：文档生命周期四态计数、解析失败文档（最新任务行 FAILED 探针）、待复审文档（next_review_at 提醒窗口内）。工作台首页异常区与资产健康页的数据面。空间成员可读。",
+        "operationId": "get_space_overview_api_v1_kb_ops_spaces__space_id__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "空间运营概览",
         "tags": [
           "知识运营",
           "知识运营"

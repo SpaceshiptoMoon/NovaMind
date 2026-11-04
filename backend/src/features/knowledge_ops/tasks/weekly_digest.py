@@ -86,7 +86,7 @@ async def send_weekly_kb_ops_digest(ctx: dict | None = None) -> dict[str, Any]:
                         type=WEEKLY_DIGEST_TYPE,
                         title=f"知识运营周报：上周 {kpi['failure_total']} 个问题未获理想回答",
                         content=content,
-                        link=f"/space/{space_id}/kb-ops/gap-report",
+                        link=f"/home/spaces/{space_id}/ops/gaps",
                     )
                     delivered += 1
                 except Exception as e:

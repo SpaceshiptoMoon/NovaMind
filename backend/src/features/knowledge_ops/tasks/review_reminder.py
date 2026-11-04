@@ -69,7 +69,8 @@ async def send_review_reminders(ctx: dict | None = None) -> dict[str, int]:
     notified: dict[str, int] = {}
     async with get_db_session() as db:
         rows = (await db.execute(
-            select(Document.id, Document.owner_id, Document.filename, Document.next_review_at)
+            select(Document.id, Document.space_id, Document.owner_id, Document.filename,
+                   Document.next_review_at)
             .where(and_(
                 Document.lifecycle_status == DocumentLifecycleStatus.ACTIVE,
                 Document.deleted_at.is_(None),
@@ -97,7 +98,7 @@ async def send_review_reminders(ctx: dict | None = None) -> dict[str, int]:
                     type=REVIEW_REMINDER_TYPE,
                     title=title,
                     content="请在文档详情页确认内容仍然有效，或安排更新。",
-                    link=f"/home/spaces/documents/{row.id}",
+                    link=f"/home/spaces/{row.space_id}/documents/{row.id}",
                     extra_data={"document_id": row.id, "next_review_at": row.next_review_at.isoformat()},
                 )
                 notified[str(row.id)] = row.owner_id

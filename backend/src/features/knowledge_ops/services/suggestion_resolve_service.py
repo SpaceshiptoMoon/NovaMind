@@ -83,7 +83,7 @@ class SuggestionResolveService:
 
         doc_ids = [d for d in (suggestion.old_doc_id, suggestion.new_doc_id) if d]
         owners = (await self.session.execute(
-            select(Document.id, Document.owner_id, Document.filename)
+            select(Document.id, Document.space_id, Document.owner_id, Document.filename)
             .where(Document.id.in_(doc_ids))
         )).all()
         for row in owners:
@@ -98,7 +98,7 @@ class SuggestionResolveService:
                         f"管理员确认了内容矛盾：{suggestion.reason or ''}"
                         f"（建议 #{suggestion.id}），请与相关文档 owner 对齐修正。"
                     ),
-                    link=f"/home/spaces/documents/{row.id}",
+                    link=f"/home/spaces/{row.space_id}/documents/{row.id}",
                 )
             except Exception as e:
                 logger.warning("矛盾通知发送失败（跳过）", document_id=row.id, error=str(e))
