@@ -2,6 +2,8 @@ import { request } from '../index'
 import type {
   KnowledgeGapStatsResponse,
   ActionStatsResponse,
+  KbOpsOverview,
+  KbOpsGapConvertResult,
   KbOpsGapReport,
   KbOpsSuggestionList,
   KbOpsSuggestionResolve,
@@ -40,6 +42,19 @@ export const spaceStatsApi = {
   /** kb-ops 知识缺口报告（归因分布 + 内容缺口清单，A2） */
   getGapReport(spaceId: number, params?: { start?: string; end?: string; gap_limit?: number }) {
     return request.get<KbOpsGapReport>(`/kb-ops/spaces/${spaceId}/gap-report`, params)
+  },
+
+  /** kb-ops 空间运营概览（生命周期计数+解析失败+待复审，工作台数据面） */
+  getOpsOverview(spaceId: number) {
+    return request.get<KbOpsOverview>(`/kb-ops/spaces/${spaceId}/overview`)
+  },
+
+  /** kb-ops gap 清单整体转测试用例（flywheel；testSetId 缺省则创建新集） */
+  convertGapToTestSet(spaceId: number, kbId: number, testSetId?: number) {
+    const query = testSetId ? `?kb_id=${kbId}&test_set_id=${testSetId}` : `?kb_id=${kbId}`
+    return request.post<KbOpsGapConvertResult>(
+      `/kb-ops/spaces/${spaceId}/gap-report/test-set${query}`,
+    )
   },
 
   /** kb-ops 复审建议列表（open 状态，得分降序，B2/D） */

@@ -1291,6 +1291,60 @@ export interface KbOpsContradictionScan {
   }>
 }
 
+/** kb-ops 文档生命周期四态计数（软删排除） */
+export interface KbOpsLifecycleCounts {
+  active: number
+  superseded: number
+  archived: number
+  draft: number
+  total: number
+}
+
+/** kb-ops 解析失败文档条目（每文档最新任务行判定，重试成功不再算失败） */
+export interface KbOpsFailedDocument {
+  document_id: number
+  kb_id: number
+  filename: string
+  completed_at: string | null
+  error_message: string | null
+}
+
+export interface KbOpsFailedDocumentsSummary {
+  count: number
+  items: KbOpsFailedDocument[]
+}
+
+/** kb-ops 待复审文档条目（next_review_at 落在提醒窗口内） */
+export interface KbOpsDueReview {
+  document_id: number
+  kb_id: number
+  filename: string
+  owner_id: number | null
+  next_review_at: string
+  overdue: boolean
+}
+
+export interface KbOpsDueReviewsSummary {
+  count: number
+  items: KbOpsDueReview[]
+}
+
+/** kb-ops 空间运营概览（工作台异常区与资产健康页数据面） */
+export interface KbOpsOverview {
+  documents: KbOpsLifecycleCounts
+  kb_count: number
+  failed_documents: KbOpsFailedDocumentsSummary
+  due_reviews: KbOpsDueReviewsSummary
+}
+
+/** kb-ops gap 转测试集响应（flywheel：生产失败变回归用例） */
+export interface KbOpsGapConvertResult {
+  test_set_id: number
+  total_cases: number
+  added_cases: number
+  message: string
+}
+
 /** 两次测评报告对比（批次 3b） */
 export interface EvaluationComparisonResponse {
   task_id: number
