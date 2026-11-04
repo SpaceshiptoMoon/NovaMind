@@ -893,18 +893,22 @@ function maybeAutoExpandTimeline() {
   margin-right: 0;
 }
 
-/* 空态行动按钮：虚线描边 ghost 风格，明确「可打标」的行动引导 */
+/* 空态行动按钮：做成「空标签占位 chip」——el-tag 同款尺寸的虚线药丸，
+   读作「这里有个空标签位」而非一块矩形按钮，贴行内语境 */
 .tags-add-btn {
+  height: 22px;
+  padding: 0 10px;
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 2px 10px;
-  height: auto;
+  border-radius: 999px;
   color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
 }
 
 .tags-add-btn:hover {
   color: var(--color-primary);
   border-color: var(--color-primary);
+  background: transparent;
 }
 
 /* 有标签时的编辑入口：铅笔 icon-only，弱化但可发现（hover 浮现主色） */
