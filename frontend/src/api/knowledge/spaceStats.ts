@@ -28,10 +28,7 @@ export const spaceStatsApi = {
     low_score_threshold?: number
   }) {
     const { spaceId, ...query } = params || { spaceId: 0 }
-    return request.get<KnowledgeGapStatsResponse>(
-      `/spaces/${spaceId}/stats/knowledge-gap`,
-      query,
-    )
+    return request.get<KnowledgeGapStatsResponse>(`/spaces/${spaceId}/stats/knowledge-gap`, query)
   },
 
   /** 空间操作审计统计 */
