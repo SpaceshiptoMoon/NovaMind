@@ -5,7 +5,7 @@
 
       <!-- 右侧内容 -->
       <div class="kb-content">
-        <!-- 顶部：检索问题栏 -->
+        <!-- 顶部：检索问题栏（标签筛选并入同行，免独立第二行断层） -->
         <div class="search-query-bar">
           <el-input
             v-model="searchForm.query"
@@ -17,6 +17,31 @@
             class="query-input"
             @keydown.enter.exact.prevent="handleSearch"
           />
+          <!-- 标签筛选（KB 级聚合数据源；多选 OR 语义，可手输新标签） -->
+          <el-select
+            v-if="kbTagOptions.length > 0"
+            v-model="searchForm.tags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="按标签过滤"
+            class="tags-filter-select"
+          >
+            <el-option
+              v-for="opt in kbTagOptions"
+              :key="opt.tag"
+              :label="`${opt.tag} (${opt.count})`"
+              :value="opt.tag"
+            >
+              <el-icon class="tags-option-icon"><Collection /></el-icon>
+              {{ opt.tag }}
+              <span class="tags-option-count">({{ opt.count }})</span>
+            </el-option>
+          </el-select>
           <el-button
             type="primary"
             :loading="searching"
@@ -27,30 +52,6 @@
             <el-icon><Search /></el-icon>
             {{ searching ? '检索中...' : '检索' }}
           </el-button>
-        </div>
-
-        <!-- 标签筛选（KB 级聚合数据源；多选 OR 语义，可手输新标签） -->
-        <div v-if="kbTagOptions.length > 0" class="tags-filter-bar">
-          <span class="tags-filter-label">标签</span>
-          <el-select
-            v-model="searchForm.tags"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="按标签过滤（可多选）"
-            class="tags-filter-select"
-          >
-            <el-option
-              v-for="opt in kbTagOptions"
-              :key="opt.tag"
-              :label="`${opt.tag} (${opt.count})`"
-              :value="opt.tag"
-            />
-          </el-select>
         </div>
 
         <!-- 下方：结果 + 参数 -->
@@ -601,7 +602,7 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, ArrowDown } from '@element-plus/icons-vue'
+import { Search, ArrowDown, Collection } from '@element-plus/icons-vue'
 import { knowledgeBaseApi, searchApi, documentApi } from '@/api/knowledge'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
@@ -1022,24 +1023,24 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* 标签筛选条：紧贴检索栏下方，同卡片底色 */
-.tags-filter-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-4) var(--space-3);
-  background: var(--color-bg-card);
-  flex-shrink: 0;
-}
-
-.tags-filter-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
+/* 标签筛选：并入检索行（输入框与检索按钮之间），collapse-tags 保持紧凑 */
 .tags-filter-select {
-  max-width: 420px;
+  width: 220px;
+  flex-shrink: 0;
+}
+
+/* 下拉选项：tag 图标 + 名称 + 计数右对齐（计数弱化） */
+.tags-option-icon {
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--color-text-muted);
+}
+
+.tags-option-count {
+  float: right;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  padding-left: var(--space-3);
 }
 
 .query-input {
