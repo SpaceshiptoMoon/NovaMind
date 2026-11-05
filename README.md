@@ -381,6 +381,8 @@ cd -                                      # 回到仓库根目录
 
    如果你本地已安装这些服务，确保它们的连接信息与 YAML 配置一致即可。
 
+   MinIO 的桶**无需手动创建**——后端首次写对象时自动建桶（本地基线桶名 `novamind-dev`，Docker 形态为 `novamind`）。
+
 3. 启动后端
 
 ```bash
@@ -395,7 +397,7 @@ uv run python main.py --reload
 默认后端地址：`http://localhost:8100`
 
 > [!NOTE]
-> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `backend/.cache/faster-whisper/large-v3` 加载（与 DeepDoc 模型同一仓库根缓存目录；开发机内存有限可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 显式降档为 `small`/`tiny` 并下载对应档位），首次使用前手动下载：
+> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `backend/.cache/faster-whisper/large-v3` 加载（默认档位由引擎代码兜底——YAML 的 `local_whisper_model` 留空即 large-v3；与 DeepDoc 模型同一仓库根缓存目录。开发机内存有限可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 显式降档为 `small`/`tiny` 并下载对应档位），首次使用前手动下载：
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py
@@ -551,7 +553,7 @@ NovaMind/
 | `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
-| `REDIS_ENABLED` | 是否启用 Redis（`true`/`false`，yaml 基线 `true`） | YAML `redis.enabled` |
+| `REDIS_ENABLED` | 是否启用 Redis（`true`/`false`，yaml 基线 `true`；`.env.example` 模板未含此键——Docker 形态由 compose 固定注入 `true`，本地开发默认启用、无需设置） | YAML `redis.enabled` |
 | `DB_HOST` / `REDIS_HOST` / `MINIO_ENDPOINT` / `MINIO_BUCKET` / `ES_HOST` / `ES_USERNAME` | 后端连接参数：本地用 yaml 占位符内基线值（127.0.0.1 系），**Docker 值由 compose `environment` 块注入**（容器名/生产桶名/ES 空串免认证），不进 `.env` | YAML 对应字段 |
 | `HF_ENDPOINT` | 模型下载主源（默认 hf-mirror.com，海外可切官方源） | DeepDoc / faster-whisper 模型下载 |
 | `DEEPDOC_MIRRORS` | DeepDoc 模型降级源清单（可选，JSON 数组，主源失败后按序换源，格式见 `.env.example`） | 模型下载降级 |
