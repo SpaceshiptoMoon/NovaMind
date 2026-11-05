@@ -1,18 +1,20 @@
 <template>
   <section class="ops-entry">
     <div class="entry-head">
-      <div class="ledger-text">
+      <div class="entry-head-text">
         <h3 class="entry-title">知识运营</h3>
-        <p class="ledger-note" :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
+        <p class="entry-note" :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
       </div>
       <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`"
         >进入工作台</router-link
       >
     </div>
-    <div class="entry-numbers">
-      <router-link v-for="tile in tiles" :key="tile.key" class="num-cell" :to="tile.to">
-        <b class="num" :class="{ 'num-bad': (tile.count ?? 0) > 0 }">{{ tile.count ?? '—' }}</b>
-        <span class="num-label">{{ tile.label }}</span>
+    <div class="entry-grid">
+      <router-link v-for="tile in tiles" :key="tile.key" class="stat-card" :to="tile.to">
+        <span class="stat-value" :class="{ 'stat-bad': (tile.count ?? 0) > 0 }">
+          {{ tile.count ?? '—' }}
+        </span>
+        <span class="stat-label">{{ tile.label }}</span>
       </router-link>
     </div>
   </section>
@@ -20,11 +22,12 @@
 
 <script setup lang="ts">
 /**
- * 知识运营大入口卡（空间首页）：标题行 + 待办数字行。
+ * 知识运营大入口卡（空间首页）：标题行 + 四张 stat-card。
  *
- * 全站 Neutral Minimal 语言：白卡 + --color-border + radius-xl，内部数字列
- * 用发丝线分隔（单卡内部分隔属 shadcn 惯例，不产生异质感）。红只给 >0 的
- * 数字本身。数据轻量三接口，失败静默（计数显 —，卡片仍可进入运营区）。
+ * 数字卡完全复用站点 stat-card 语言（KnowledgeBaseView 统计卡条同款：白卡
+ * + --color-border + radius-lg + hover 焦点边），与本页下方统计卡条同屏
+ * 一致。红只给 >0 的数字本身。数据轻量三接口，失败静默（计数显 —，
+ * 卡片仍可进入运营区）。
  */
 import { computed, onMounted, ref } from 'vue'
 import { spaceStatsApi } from '@/api/knowledge'
@@ -94,28 +97,27 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 头部行不带盒子：与 KnowledgeBaseView「页头 → 统计卡条」同一解剖结构 */
 .ops-entry {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .entry-head {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 14px;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border-light);
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
-.ledger-text {
-  flex: 1;
-  min-width: 0;
+.entry-head-text {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .entry-title {
@@ -125,7 +127,7 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
-.ledger-note {
+.entry-note {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
@@ -152,56 +154,55 @@ onMounted(async () => {
   background: var(--color-btn-primary-hover);
 }
 
-.entry-numbers {
+.entry-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
-.num-cell {
+/* 数字卡：与 KnowledgeBaseView .stat-card 同款（白卡 + --color-border +
+   radius-lg + hover 焦点边），保证与本页下方统计卡条同屏一致 */
+.stat-card {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--space-4) var(--space-5);
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   text-decoration: none;
-  transition: background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
-.num-cell + .num-cell {
-  border-left: 1px solid var(--color-border-light);
-}
-
-.num-cell:hover {
+.stat-card:hover {
+  border-color: var(--color-border-focus);
   background: var(--color-bg-hover);
 }
 
-.num {
+.stat-value {
   font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
-  line-height: 1.1;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
-.num-bad {
+/* 待办语义：>0 红数（与站内 danger 数字口径一致），0 保持中性 */
+.stat-value.stat-bad {
   color: var(--color-danger);
 }
 
-.num-label {
+.stat-label {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 @media (max-width: 900px) {
-  .entry-numbers {
+  .entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .num-cell:nth-child(3) {
-    border-left: none;
-  }
-
-  .num-cell:nth-child(n + 3) {
-    border-top: 1px solid var(--color-border-light);
   }
 }
 </style>
