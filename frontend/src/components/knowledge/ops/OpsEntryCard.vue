@@ -1,33 +1,28 @@
 <template>
   <section class="ops-entry">
-    <div class="entry-head">
-      <div class="entry-head-text">
-        <h3 class="entry-title">知识运营</h3>
-        <p class="entry-note" :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
-      </div>
-      <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`"
-        >进入工作台</router-link
-      >
+    <div class="entry-title">
+      <h3>知识运营</h3>
+      <p :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
     </div>
-    <div class="entry-grid">
-      <router-link v-for="tile in tiles" :key="tile.key" class="stat-card" :to="tile.to">
-        <span class="stat-value" :class="{ 'stat-bad': (tile.count ?? 0) > 0 }">
+    <div class="entry-metrics">
+      <router-link v-for="tile in tiles" :key="tile.key" class="metric" :to="tile.to">
+        <b class="metric-num" :class="{ 'num-bad': (tile.count ?? 0) > 0 }">
           {{ tile.count ?? '—' }}
-        </span>
-        <span class="stat-label">{{ tile.label }}</span>
+        </b>
+        <span class="metric-label">{{ tile.label }}</span>
       </router-link>
     </div>
+    <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`">进入工作台</router-link>
   </section>
 </template>
 
 <script setup lang="ts">
 /**
- * 知识运营大入口卡（空间首页）：标题行 + 四张 stat-card。
+ * 知识运营入口条（空间首页）：单卡横向状态条。
  *
- * 数字卡完全复用站点 stat-card 语言（KnowledgeBaseView 统计卡条同款：白卡
- * + --color-border + radius-lg + hover 焦点边），与本页下方统计卡条同屏
- * 一致。红只给 >0 的数字本身。数据轻量三接口，失败静默（计数显 —，
- * 卡片仍可进入运营区）。
+ * 与下方知识库统计卡行在结构上拉开层次——这是一条「状态条」（标题+摘要 |
+ * 内联数字×4 | CTA），不是又一行数字卡，避免同屏八张同款卡的模板感。
+ * 数字可点直达对应运营页（>0 红数），数据轻量三接口，失败静默。
  */
 import { computed, onMounted, ref } from 'vue'
 import { spaceStatsApi } from '@/api/knowledge'
@@ -71,10 +66,10 @@ const totalTodos = computed(() => tiles.value.reduce((sum, t) => sum + (t.count 
 
 const summaryText = computed(() => {
   if (totalTodos.value > 0) {
-    return `${totalTodos.value} 项待办需要处理`
+    return `${totalTodos.value} 项待办`
   }
   if (loading.value) return '加载中…'
-  return '近 7 天无待办异常'
+  return '无待办异常'
 })
 
 onMounted(async () => {
@@ -97,37 +92,33 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* 头部行不带盒子：与 KnowledgeBaseView「页头 → 统计卡条」同一解剖结构 */
+/* 单卡横向状态条：与下方 stat-card 行（盒阵列）结构互异，native token */
 .ops-entry {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.entry-head {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.entry-head-text {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  min-width: 0;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
 .entry-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.entry-title h3 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
-.entry-note {
+.entry-title p {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
@@ -138,71 +129,68 @@ onMounted(async () => {
   font-weight: var(--weight-semibold);
 }
 
+.entry-metrics {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+
+/* 内联数字对：竖发丝线分隔，是「摘要里的计数」不是磁贴 */
+.metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 20px;
+  text-decoration: none;
+  border-left: 1px solid var(--color-border-light);
+}
+
+.metric:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.metric-num {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.metric-num.num-bad {
+  color: var(--color-danger);
+}
+
+.metric-label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  transition: color 0.15s;
+}
+
+.metric:hover .metric-label {
+  color: var(--color-text);
+}
+
 .entry-cta {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--color-btn-primary-text);
   background: var(--color-btn-primary);
   border-radius: var(--radius-md);
-  padding: 7px 16px;
+  padding: 6px 16px;
   text-decoration: none;
   transition: background 0.15s;
   flex-shrink: 0;
-}
-
-.entry-cta:hover {
-  background: var(--color-btn-primary-hover);
-}
-
-.entry-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-/* 数字卡：与 KnowledgeBaseView .stat-card 同款（白卡 + --color-border +
-   radius-lg + hover 焦点边），保证与本页下方统计卡条同屏一致 */
-.stat-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  padding: var(--space-4);
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  text-decoration: none;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.stat-card:hover {
-  border-color: var(--color-border-focus);
-  background: var(--color-bg-hover);
-}
-
-.stat-value {
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-/* 待办语义：>0 红数（与站内 danger 数字口径一致），0 保持中性 */
-.stat-value.stat-bad {
-  color: var(--color-danger);
-}
-
-.stat-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  margin-left: auto;
 }
 
 @media (max-width: 900px) {
-  .entry-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .entry-cta {
+    margin-left: 0;
   }
 }
 </style>
