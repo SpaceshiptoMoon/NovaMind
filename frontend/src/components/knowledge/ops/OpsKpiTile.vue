@@ -103,22 +103,21 @@ const sparkClass = computed(() => (props.valueTone === 'bad' ? 'spark-danger' : 
 </script>
 
 <style scoped>
-/* 「墨水档案」无框磁贴：数字坐在面板上，磁贴之间竖发丝线分隔（容器提供面板
-   底与 8px 圆角），废除 12px 同圆角小盒阵列。红只出现在数字本身。 */
+/* 指标磁贴：与全站 stat-card 同语言（白卡 + --color-border + radius-lg），
+   数字 22px/700 tabular-nums 对齐 stat-value 口径；红只出现在数字本身。 */
 .ops-kpi-tile {
-  padding: 12px 16px 10px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
 }
 
-.ops-kpi-tile + .ops-kpi-tile {
-  border-left: 1px solid var(--ops-line);
-}
-
 .tile-label {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
@@ -130,11 +129,11 @@ const sparkClass = computed(() => (props.valueTone === 'bad' ? 'spark-danger' : 
 }
 
 .tile-value {
-  font-size: 28px;
-  font-weight: 600;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
 .tile-value.tile-bad {

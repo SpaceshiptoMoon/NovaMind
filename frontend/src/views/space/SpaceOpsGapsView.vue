@@ -503,10 +503,7 @@ watch(convertKbId, (kbId) => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 12px;
 }
 
 .attr-row {
@@ -525,8 +522,8 @@ watch(convertKbId, (kbId) => {
 .attr-chip {
   font-size: 12px;
   color: var(--color-text-secondary);
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 3px 10px;
 }
@@ -547,10 +544,10 @@ watch(convertKbId, (kbId) => {
 }
 
 .ops-panel {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
   min-width: 0;
 }
 
@@ -568,10 +565,8 @@ watch(convertKbId, (kbId) => {
 }
 
 .panel-title {
-  font-family: var(--ops-serif);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0.03em;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
@@ -617,7 +612,7 @@ watch(convertKbId, (kbId) => {
   align-items: center;
   gap: 10px;
   padding: 7px 10px;
-  border: 1px solid var(--ops-line);
+  border: 1px solid var(--color-border-light);
   border-radius: 8px;
   min-width: 0;
 }
@@ -728,12 +723,6 @@ watch(convertKbId, (kbId) => {
 @media (max-width: 900px) {
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .kpi-grid :deep(.ops-kpi-tile:nth-child(3)),
-  .kpi-grid :deep(.ops-kpi-tile:nth-child(4)) {
-    border-left: none;
-    border-top: 1px solid var(--ops-line);
   }
 
   .two-col {

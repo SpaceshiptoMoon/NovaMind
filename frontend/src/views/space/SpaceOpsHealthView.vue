@@ -199,10 +199,10 @@ onMounted(async () => {
 }
 
 .ops-panel {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
   min-width: 0;
 }
 
@@ -220,10 +220,8 @@ onMounted(async () => {
 }
 
 .panel-title {
-  font-family: var(--ops-serif);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0.03em;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
   margin-bottom: 4px;
 }
@@ -248,14 +246,11 @@ onMounted(async () => {
 }
 
 .life-block + .life-block {
-  border-left: 1px solid var(--ops-line);
+  border-left: 1px solid var(--color-border-light);
 }
 
 .life-total {
-  background: var(--ops-panel-hover);
-  margin: -4px -14px;
-  padding: 4px 14px;
-  border-left: 1px solid var(--ops-line);
+  background: var(--color-bg-hover);
 }
 
 .life-num {
@@ -277,8 +272,8 @@ onMounted(async () => {
 }
 
 .dup-card {
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -352,7 +347,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px solid var(--ops-line);
+  border-bottom: 1px solid var(--color-border-light);
   font-size: 13px;
 }
 
@@ -395,7 +390,7 @@ onMounted(async () => {
   .life-block:nth-child(3),
   .life-block:nth-child(5) {
     border-left: none;
-    border-top: 1px solid var(--ops-line);
+    border-top: 1px solid var(--color-border-light);
     padding-top: 10px;
   }
 

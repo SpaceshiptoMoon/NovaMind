@@ -307,10 +307,10 @@ onMounted(async () => {
 }
 
 .ops-panel {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
   min-width: 0;
 }
 
@@ -328,10 +328,8 @@ onMounted(async () => {
 }
 
 .panel-title {
-  font-family: var(--ops-serif);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0.03em;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
@@ -357,8 +355,8 @@ onMounted(async () => {
 }
 
 .filter-chip {
-  border: 1px solid var(--ops-line);
-  background: transparent;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
   border-radius: 999px;
   padding: 4px 12px;
   font-size: 12px;
@@ -371,7 +369,7 @@ onMounted(async () => {
 
 .filter-chip:hover {
   color: var(--color-text);
-  border-color: var(--ops-line-hover);
+  border-color: var(--color-border-focus);
 }
 
 .filter-chip--active {
@@ -400,8 +398,8 @@ onMounted(async () => {
 }
 
 .queue-card {
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -410,7 +408,7 @@ onMounted(async () => {
 }
 
 .queue-card:hover {
-  border-color: var(--ops-line-hover);
+  border-color: var(--color-border-focus);
 }
 
 .queue-main {
@@ -473,7 +471,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 8px 4px;
-  border-bottom: 1px solid var(--ops-line);
+  border-bottom: 1px solid var(--color-border-light);
   font-size: 13px;
   cursor: pointer;
 }

@@ -1,9 +1,8 @@
 <template>
   <section class="ops-entry">
-    <div class="entry-ledger">
-      <span class="ink-bar" aria-hidden="true" />
+    <div class="entry-head">
       <div class="ledger-text">
-        <h3 class="ledger-title">知识运营</h3>
+        <h3 class="entry-title">知识运营</h3>
         <p class="ledger-note" :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
       </div>
       <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`"
@@ -21,12 +20,11 @@
 
 <script setup lang="ts">
 /**
- * 知识运营大入口卡（空间首页）：卷宗抬头 + 无框数字行。
+ * 知识运营大入口卡（空间首页）：标题行 + 待办数字行。
  *
- * 「墨水档案」子语言：左缘墨条 + 衬线卷宗抬头承载区名与摘要；四待办维度
- * 是「坐在纸上的数字列」——竖发丝线分隔而非盒子阵列（反同盒切片模板味）。
- * 红 only 给 >0 的数字本身，结构（边框/墨条/标题）永远中性。数据轻量三
- * 接口，失败静默（计数显 —，卡片仍可进入运营区）。
+ * 全站 Neutral Minimal 语言：白卡 + --color-border + radius-xl，内部数字列
+ * 用发丝线分隔（单卡内部分隔属 shadcn 惯例，不产生异质感）。红只给 >0 的
+ * 数字本身。数据轻量三接口，失败静默（计数显 —，卡片仍可进入运营区）。
  */
 import { computed, onMounted, ref } from 'vue'
 import { spaceStatsApi } from '@/api/knowledge'
@@ -97,26 +95,18 @@ onMounted(async () => {
 
 <style scoped>
 .ops-entry {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 
-.entry-ledger {
+.entry-head {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid var(--ops-line);
-}
-
-.ink-bar {
-  width: 3px;
-  align-self: stretch;
-  background: var(--ops-ink-bar);
-  border-radius: 2px;
-  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .ledger-text {
@@ -128,32 +118,30 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
-.ledger-title {
+.entry-title {
   margin: 0;
-  font-family: var(--ops-serif);
-  font-size: 17px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
 .ledger-note {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 .note-bad {
   color: var(--color-danger);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .entry-cta {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
   color: var(--color-btn-primary-text);
   background: var(--color-btn-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 7px 16px;
   text-decoration: none;
   transition: background 0.15s;
@@ -173,23 +161,23 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 14px 18px 12px;
+  padding: var(--space-4) var(--space-5);
   text-decoration: none;
   transition: background 0.15s;
 }
 
 .num-cell + .num-cell {
-  border-left: 1px solid var(--ops-line);
+  border-left: 1px solid var(--color-border-light);
 }
 
 .num-cell:hover {
-  background: var(--ops-panel-hover);
+  background: var(--color-bg-hover);
 }
 
 .num {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.15;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -199,8 +187,8 @@ onMounted(async () => {
 }
 
 .num-label {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 900px) {
@@ -213,7 +201,7 @@ onMounted(async () => {
   }
 
   .num-cell:nth-child(n + 3) {
-    border-top: 1px solid var(--ops-line);
+    border-top: 1px solid var(--color-border-light);
   }
 }
 </style>

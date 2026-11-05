@@ -354,12 +354,11 @@ onMounted(async () => {
 }
 
 .all-clear {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-left: 3px solid var(--ops-ink-bar);
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -370,21 +369,17 @@ onMounted(async () => {
 }
 
 .alert-card {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
 }
 
-/* 异常信号 = 数字红（count-bad）+ 左缘墨条锚点；边框恒发丝线，红不上结构 */
-.alert-card--hot {
-  border-left: 3px solid var(--ops-ink-bar);
-  padding-left: 14px;
-}
+/* 异常信号只用数字红（count-bad）表达，边框结构保持中性 */
 
 .alert-head {
   display: flex;
@@ -481,10 +476,7 @@ onMounted(async () => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 12px;
 }
 
 .two-col {
@@ -494,18 +486,16 @@ onMounted(async () => {
 }
 
 .ops-panel {
-  background: var(--ops-panel);
-  border: 1px solid var(--ops-line);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
   min-width: 0;
 }
 
 .panel-title {
-  font-family: var(--ops-serif);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0.03em;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
   margin-bottom: 10px;
 }
@@ -525,7 +515,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px solid var(--ops-line);
+  border-bottom: 1px solid var(--color-border-light);
   font-size: 13px;
 }
 
@@ -565,13 +555,6 @@ onMounted(async () => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* 两列布局下磁贴自带左线会贴容器左缘：第二行行首去掉左线、补上横线 */
-  .kpi-grid :deep(.ops-kpi-tile:nth-child(3)),
-  .kpi-grid :deep(.ops-kpi-tile:nth-child(4)) {
-    border-left: none;
-    border-top: 1px solid var(--ops-line);
-  }
-
   .two-col {
     grid-template-columns: 1fr;
   }
@@ -581,14 +564,6 @@ onMounted(async () => {
   .alert-grid,
   .kpi-grid {
     grid-template-columns: 1fr;
-  }
-
-  .kpi-grid :deep(.ops-kpi-tile) {
-    border-left: none;
-  }
-
-  .kpi-grid :deep(.ops-kpi-tile + .ops-kpi-tile) {
-    border-top: 1px solid var(--ops-line);
   }
 }
 </style>
