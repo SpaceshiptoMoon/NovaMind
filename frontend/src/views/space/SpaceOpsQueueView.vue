@@ -307,9 +307,9 @@ onMounted(async () => {
 }
 
 .ops-panel {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 14px 16px;
   min-width: 0;
 }
@@ -328,8 +328,10 @@ onMounted(async () => {
 }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--ops-serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
   color: var(--color-text);
 }
 
@@ -355,8 +357,8 @@ onMounted(async () => {
 }
 
 .filter-chip {
-  border: 1px solid var(--color-border-light);
-  background: var(--color-bg-card);
+  border: 1px solid var(--ops-line);
+  background: transparent;
   border-radius: 999px;
   padding: 4px 12px;
   font-size: 12px;
@@ -369,6 +371,7 @@ onMounted(async () => {
 
 .filter-chip:hover {
   color: var(--color-text);
+  border-color: var(--ops-line-hover);
 }
 
 .filter-chip--active {
@@ -397,12 +400,17 @@ onMounted(async () => {
 }
 
 .queue-card {
-  border: 1px solid var(--color-border-light);
-  border-radius: 10px;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: border-color 0.15s;
+}
+
+.queue-card:hover {
+  border-color: var(--ops-line-hover);
 }
 
 .queue-main {
@@ -465,7 +473,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 8px 4px;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--ops-line);
   font-size: 13px;
   cursor: pointer;
 }

@@ -1,39 +1,32 @@
 <template>
-  <div class="ops-entry" v-loading="loading">
-    <div class="entry-head">
-      <div class="entry-title">
-        <span class="entry-name">知识运营</span>
-        <span class="entry-summary" :class="{ 'summary-bad': totalTodos > 0 }">{{
-          summaryText
-        }}</span>
+  <section class="ops-entry">
+    <div class="entry-ledger">
+      <span class="ink-bar" aria-hidden="true" />
+      <div class="ledger-text">
+        <h3 class="ledger-title">知识运营</h3>
+        <p class="ledger-note" :class="{ 'note-bad': totalTodos > 0 }">{{ summaryText }}</p>
       </div>
-      <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`">
-        进入工作台
-        <span class="cta-arrow" aria-hidden="true">→</span>
-      </router-link>
-    </div>
-    <div class="entry-tiles">
-      <router-link
-        v-for="tile in tiles"
-        :key="tile.key"
-        class="entry-tile"
-        :class="{ 'tile-bad': (tile.count ?? 0) > 0 }"
-        :to="tile.to"
+      <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`"
+        >进入工作台</router-link
       >
-        <span class="tile-num">{{ tile.count ?? '—' }}</span>
-        <span class="tile-label">{{ tile.label }}</span>
+    </div>
+    <div class="entry-numbers">
+      <router-link v-for="tile in tiles" :key="tile.key" class="num-cell" :to="tile.to">
+        <b class="num" :class="{ 'num-bad': (tile.count ?? 0) > 0 }">{{ tile.count ?? '—' }}</b>
+        <span class="num-label">{{ tile.label }}</span>
       </router-link>
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
 /**
- * 知识运营大入口卡（空间首页）：健康摘要 + 四待办维度真实计数直链。
+ * 知识运营大入口卡（空间首页）：卷宗抬头 + 无框数字行。
  *
- * 入口即状态：替代原 header 小按钮，进空间首页 5 秒内可见运营待办全景；
- * 任一维度 >0 红显并计入摘要文案。数据轻量三接口，失败静默（计数显 —，
- * 卡片仍可点击进入运营区）。
+ * 「墨水档案」子语言：左缘墨条 + 衬线卷宗抬头承载区名与摘要；四待办维度
+ * 是「坐在纸上的数字列」——竖发丝线分隔而非盒子阵列（反同盒切片模板味）。
+ * 红 only 给 >0 的数字本身，结构（边框/墨条/标题）永远中性。数据轻量三
+ * 接口，失败静默（计数显 —，卡片仍可进入运营区）。
  */
 import { computed, onMounted, ref } from 'vue'
 import { spaceStatsApi } from '@/api/knowledge'
@@ -104,58 +97,64 @@ onMounted(async () => {
 
 <style scoped>
 .ops-entry {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-left: 3px solid var(--color-accent);
-  border-radius: 12px;
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.entry-head {
+.entry-ledger {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--ops-line);
 }
 
-.entry-title {
+.ink-bar {
+  width: 3px;
+  align-self: stretch;
+  background: var(--ops-ink-bar);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.ledger-text {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 12px;
   flex-wrap: wrap;
-  min-width: 0;
 }
 
-.entry-name {
-  font-size: 15px;
-  font-weight: 600;
+.ledger-title {
+  margin: 0;
+  font-family: var(--ops-serif);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
   color: var(--color-text);
 }
 
-.entry-summary {
-  font-size: 12px;
+.ledger-note {
+  margin: 0;
+  font-size: 13px;
   color: var(--color-text-muted);
 }
 
-.summary-bad {
+.note-bad {
   color: var(--color-danger);
   font-weight: 600;
 }
 
 .entry-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-btn-primary-text);
   background: var(--color-btn-primary);
-  border-radius: 8px;
-  padding: 7px 14px;
+  border-radius: 4px;
+  padding: 7px 16px;
   text-decoration: none;
   transition: background 0.15s;
   flex-shrink: 0;
@@ -165,58 +164,56 @@ onMounted(async () => {
   background: var(--color-btn-primary-hover);
 }
 
-.cta-arrow {
-  font-size: 12px;
-}
-
-.entry-tiles {
+.entry-numbers {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
 }
 
-.entry-tile {
+.num-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid var(--color-border-light);
-  border-radius: 10px;
-  padding: 10px 14px;
+  padding: 14px 18px 12px;
   text-decoration: none;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
+  transition: background 0.15s;
 }
 
-.entry-tile:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
+.num-cell + .num-cell {
+  border-left: 1px solid var(--ops-line);
 }
 
-.entry-tile.tile-bad {
-  border-color: var(--color-danger);
+.num-cell:hover {
+  background: var(--ops-panel-hover);
 }
 
-.tile-num {
-  font-size: 22px;
+.num {
+  font-size: 28px;
   font-weight: 600;
+  line-height: 1.15;
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
 }
 
-.tile-bad .tile-num {
+.num-bad {
   color: var(--color-danger);
 }
 
-.tile-label {
+.num-label {
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 @media (max-width: 900px) {
-  .entry-tiles {
+  .entry-numbers {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .num-cell:nth-child(3) {
+    border-left: none;
+  }
+
+  .num-cell:nth-child(n + 3) {
+    border-top: 1px solid var(--ops-line);
   }
 }
 </style>

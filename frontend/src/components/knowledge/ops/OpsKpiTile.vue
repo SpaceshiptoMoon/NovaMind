@@ -103,15 +103,18 @@ const sparkClass = computed(() => (props.valueTone === 'bad' ? 'spark-danger' : 
 </script>
 
 <style scoped>
+/* 「墨水档案」无框磁贴：数字坐在面板上，磁贴之间竖发丝线分隔（容器提供面板
+   底与 8px 圆角），废除 12px 同圆角小盒阵列。红只出现在数字本身。 */
 .ops-kpi-tile {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
-  padding: 14px 16px;
+  padding: 12px 16px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.ops-kpi-tile + .ops-kpi-tile {
+  border-left: 1px solid var(--ops-line);
 }
 
 .tile-label {
@@ -127,11 +130,11 @@ const sparkClass = computed(() => (props.valueTone === 'bad' ? 'spark-danger' : 
 }
 
 .tile-value {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 600;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .tile-value.tile-bad {

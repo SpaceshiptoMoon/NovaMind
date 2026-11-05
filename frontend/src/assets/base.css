@@ -64,6 +64,18 @@
   --color-info: #787672;
   --color-info-subtle: #efeeec;
 
+  /* ===== 运营区「墨水档案」子语言（knowledge ops 专用；light/dark 成对维护） =====
+     卷宗纸底 + 发丝线透明度制 + 衬线卷宗抬头。纪律：红只给数字不给结构（边框恒发丝线），
+     墨条（左缘软黑竖条）做区级视觉锚点；数字 28px+ tabular-nums，衬线只出现在区级标题。 */
+  --ops-canvas: #f7f5ef; /* 微暖纸底（运营区页面画布，非纯白） */
+  --ops-panel: #fffefb; /* 面板微暖白 */
+  --ops-panel-hover: #faf8f2; /* 面板内可点行 hover 底 */
+  --ops-line: rgba(31, 26, 18, 0.1); /* 发丝线常态（暖墨透明度制） */
+  --ops-line-hover: rgba(31, 26, 18, 0.22); /* 发丝线 hover 升档 */
+  --ops-ink-bar: #2e2e2e; /* 墨条：区级左缘锚点（中性软黑，非彩色） */
+  --ops-serif:
+    Georgia, 'Times New Roman', 'Songti SC', 'STSong', 'SimSun', serif; /* 卷宗抬头衬线栈（系统字体零下载） */
+
   /* Typography — Inter Variable（shadcn/Linear/Vercel 参考系标准字），系统栈兜底 */
   --font-display:
     'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
@@ -335,6 +347,14 @@ html[data-theme='dark'] {
   --color-info: #a3a19b;
   --color-info-subtle: rgba(120, 118, 113, 0.2);
 
+  /* ===== 运营区「墨水档案」暗色对（暖黑非蓝黑，与亮色纸底同一暖调翻转） ===== */
+  --ops-canvas: #14120e;
+  --ops-panel: #1c1a15;
+  --ops-panel-hover: #232019;
+  --ops-line: rgba(245, 240, 228, 0.1);
+  --ops-line-hover: rgba(245, 240, 228, 0.24);
+  --ops-ink-bar: #d6d3cb;
+
   /* 媒体文件类型 — 暗色下浅底改透明底、文字提亮 */
   --color-file-image-bg: rgba(245, 158, 11, 0.15);
   --color-file-image: #fbbf24;
@@ -450,7 +470,6 @@ html[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
   border-color: #2e6da0;
 }
 
-
 /* ========================================
    Glass — 磨砂玻璃工具类与全局氛围背景
    （body::before 固定墨水晕层，玻璃面板透出它才有「磨砂」观感）
@@ -491,6 +510,10 @@ html[data-theme='dark'] body::before {
 
 /* 无 backdrop-filter 时退化：提高底不透明度保可读 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-panel { background: var(--color-bg-card); }
-  .glass-panel-strong { background: var(--color-bg-card); }
+  .glass-panel {
+    background: var(--color-bg-card);
+  }
+  .glass-panel-strong {
+    background: var(--color-bg-card);
+  }
 }

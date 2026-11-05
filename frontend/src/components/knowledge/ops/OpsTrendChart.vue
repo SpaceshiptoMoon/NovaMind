@@ -86,13 +86,13 @@ function render(): void {
       type: 'category',
       data: props.labels,
       axisLabel: { color: colorToken('--color-text-muted', '#5f5f5f'), fontSize: 11 },
-      axisLine: { lineStyle: { color: colorToken('--color-border-light', '#e7e7e3') } },
+      axisLine: { lineStyle: { color: colorToken('--ops-line', '#e7e7e3') } },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
       axisLabel: { color: colorToken('--color-text-muted', '#5f5f5f'), fontSize: 11 },
-      splitLine: { lineStyle: { color: colorToken('--color-border-light', '#e7e7e3') } },
+      splitLine: { lineStyle: { color: colorToken('--ops-line', '#e7e7e3') } },
     },
     series: props.series.map((s) => ({
       name: s.name,
@@ -134,9 +134,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ops-trend-chart {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 14px 16px;
   position: relative;
 }
@@ -150,8 +150,10 @@ onBeforeUnmount(() => {
 }
 
 .chart-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--ops-serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
   color: var(--color-text);
 }
 

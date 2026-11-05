@@ -37,10 +37,10 @@ withDefaults(defineProps<{ items: InsightItem[] }>(), { items: () => [] })
 
 <style scoped>
 .ops-insight-bar {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-left: 3px solid var(--color-accent);
-  border-radius: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-left: 3px solid var(--ops-ink-bar);
+  border-radius: 8px;
   padding: 12px 16px;
   display: flex;
   gap: 14px;

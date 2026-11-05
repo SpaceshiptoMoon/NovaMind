@@ -503,7 +503,10 @@ watch(convertKbId, (kbId) => {
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .attr-row {
@@ -522,8 +525,8 @@ watch(convertKbId, (kbId) => {
 .attr-chip {
   font-size: 12px;
   color: var(--color-text-secondary);
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
   border-radius: 999px;
   padding: 3px 10px;
 }
@@ -533,8 +536,8 @@ watch(convertKbId, (kbId) => {
   font-variant-numeric: tabular-nums;
 }
 
-.attr-chip--bad {
-  border-color: var(--color-danger);
+/* 归因分布里只有 content_gap 计数上红字，芯片边框保持发丝线（红不上结构） */
+.attr-chip--bad b {
   color: var(--color-danger);
 }
 
@@ -544,9 +547,9 @@ watch(convertKbId, (kbId) => {
 }
 
 .ops-panel {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 14px 16px;
   min-width: 0;
 }
@@ -565,8 +568,10 @@ watch(convertKbId, (kbId) => {
 }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--ops-serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
   color: var(--color-text);
 }
 
@@ -612,7 +617,7 @@ watch(convertKbId, (kbId) => {
   align-items: center;
   gap: 10px;
   padding: 7px 10px;
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--ops-line);
   border-radius: 8px;
   min-width: 0;
 }
@@ -723,6 +728,12 @@ watch(convertKbId, (kbId) => {
 @media (max-width: 900px) {
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kpi-grid :deep(.ops-kpi-tile:nth-child(3)),
+  .kpi-grid :deep(.ops-kpi-tile:nth-child(4)) {
+    border-left: none;
+    border-top: 1px solid var(--ops-line);
   }
 
   .two-col {

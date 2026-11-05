@@ -50,7 +50,7 @@ function badgeCount(item: { badge?: number }): number {
 .ops-sub-nav {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--ops-line);
 }
 
 .ops-tab {
@@ -61,24 +61,22 @@ function badgeCount(item: { badge?: number }): number {
   font-size: 13px;
   color: var(--color-text-secondary);
   text-decoration: none;
-  border-radius: 8px 8px 0 0;
+  border-radius: 0;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   transition:
     color 0.15s,
-    border-color 0.15s,
-    background 0.15s;
+    border-color 0.15s;
 }
 
 .ops-tab:hover {
   color: var(--color-text);
-  background: var(--color-bg-hover);
 }
 
 .ops-tab--active {
   color: var(--color-text);
   font-weight: 600;
-  border-bottom-color: var(--color-chip-active);
+  border-bottom-color: var(--ops-ink-bar);
 }
 
 .ops-badge {

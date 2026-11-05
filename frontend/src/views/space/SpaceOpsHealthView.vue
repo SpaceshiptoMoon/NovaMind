@@ -199,9 +199,9 @@ onMounted(async () => {
 }
 
 .ops-panel {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 14px 16px;
   min-width: 0;
 }
@@ -220,8 +220,10 @@ onMounted(async () => {
 }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--ops-serif);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
   color: var(--color-text);
   margin-bottom: 4px;
 }
@@ -235,20 +237,25 @@ onMounted(async () => {
 .lifecycle-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
 }
 
+/* 生命周期统计 = 注线式数字列（无框，竖发丝线分隔），与小 KPI 行同语言 */
 .life-block {
-  border: 1px solid var(--color-border-light);
-  border-radius: 10px;
-  padding: 12px 14px;
+  padding: 4px 14px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+.life-block + .life-block {
+  border-left: 1px solid var(--ops-line);
+}
+
 .life-total {
-  background: var(--color-bg-stripe);
+  background: var(--ops-panel-hover);
+  margin: -4px -14px;
+  padding: 4px 14px;
+  border-left: 1px solid var(--ops-line);
 }
 
 .life-num {
@@ -270,8 +277,8 @@ onMounted(async () => {
 }
 
 .dup-card {
-  border: 1px solid var(--color-border-light);
-  border-radius: 10px;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -345,7 +352,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--ops-line);
   font-size: 13px;
 }
 
@@ -382,6 +389,14 @@ onMounted(async () => {
 @media (max-width: 900px) {
   .lifecycle-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 两列下第三格是第二行行首：去左线补横线 */
+  .life-block:nth-child(3),
+  .life-block:nth-child(5) {
+    border-left: none;
+    border-top: 1px solid var(--ops-line);
+    padding-top: 10px;
   }
 
   .value-grid {
