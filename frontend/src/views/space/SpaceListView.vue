@@ -47,22 +47,13 @@
 
     <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 空间首页：面包屑 + 空间设置。新建知识库的主 CTA 由子页面（KnowledgeBaseView）
-           页头承载——父层只留导航与设置，避免同屏双主按钮 -->
+      <!-- 空间首页：面包屑 + 空间设置。新建知识库与知识运营的大入口由子页面
+           （KnowledgeBaseView）页头区承载——父层只留导航与设置 -->
       <div v-if="isSpaceHome" class="content-header content-header--full">
         <div class="header-left">
           <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
-          <!-- 知识运营入口：直达运营区（工作台/缺口/队列/资产健康四页签在区内） -->
-          <el-button
-            v-if="selectedSpaceId"
-            size="small"
-            @click="router.push(`/home/spaces/${selectedSpaceId}/ops`)"
-          >
-            <el-icon><TrendCharts /></el-icon>
-            知识运营
-          </el-button>
           <el-button
             v-if="selectedSpaceId"
             size="small"
@@ -264,7 +255,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Setting, Collection, Check, TrendCharts } from '@element-plus/icons-vue'
+import { Plus, Setting, Collection, Check } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'

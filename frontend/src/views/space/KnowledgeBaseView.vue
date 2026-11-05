@@ -16,6 +16,9 @@
       </div>
     </div>
 
+    <!-- 知识运营大入口：健康摘要 + 四待办维度计数直链（替代原 header 小按钮入口） -->
+    <OpsEntryCard :space-id="spaceId" />
+
     <!-- 统计卡条：点击切换归档筛选（第四卡纯展示：文档总数汇总） -->
     <div class="stat-grid">
       <button
@@ -212,6 +215,7 @@ import {
 } from '@element-plus/icons-vue'
 import { knowledgeBaseApi } from '@/api/knowledge'
 import { useSpaceStore } from '@/stores/space'
+import OpsEntryCard from '@/components/knowledge/ops/OpsEntryCard.vue'
 import type { KnowledgeBase } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 import EmptyState from '@/components/common/EmptyState.vue'
