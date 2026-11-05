@@ -8,7 +8,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.engines.agent.llm.agent_llm import AgentLLM
 
 pytestmark = pytest.mark.unit

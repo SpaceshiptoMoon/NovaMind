@@ -7,7 +7,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.agent.services.host_knowledge_search import HostKnowledgeSearchPort
 
 pytestmark = pytest.mark.unit
@@ -61,8 +60,9 @@ async def test_archived_space_kbs_excluded():
 @pytest.mark.asyncio
 async def test_kb_status_filter_still_active_only():
     """端口仍以 KnowledgeBaseStatus.ACTIVE 拉 KB（kb 级过滤不回退）。"""
-    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
     from unittest.mock import AsyncMock
+
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 
     spaces = [_space(1, "活跃空间", active=True)]
     captured: list = []
