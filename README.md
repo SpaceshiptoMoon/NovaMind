@@ -2,7 +2,7 @@
 
 # 🧠 NovaMind
 
-**一站式智能知识平台：多模态解析 · 知识库 · RAG 问答 · Wiki · Agent**
+**别人把文档变成文本再检索；NovaMind 让视频、音频、图片、扫描件本身成为可检索、可引用、可问答的知识。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml/badge.svg)](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml)
@@ -12,8 +12,6 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](./frontend)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 
-**别人把文档变成文本再检索；NovaMind 让视频、音频、图片、扫描件本身成为可检索、可引用、可问答的知识。**
-
 **PDF / 扫描件 / 图片 / 音频 / 视频进来——带引用的答案、结构化 Wiki 和研究报告出去。一个知识库，装下团队所有的文档形态。**
 
 [English](./README.en.md) | 简体中文
@@ -21,10 +19,8 @@
 </div>
 
 <p align="center">
-  <img src="./assets/home.png" alt="NovaMind" width="800">
+  <img src="./assets/documents.png" alt="NovaMind · 多模态知识库：文本 / 图片 / 音频 / 视频混排" width="800">
 </p>
-
----
 
 <div align="center">
 
@@ -36,31 +32,46 @@
 
 </div>
 
+## 快速体验
+
+```bash
+git clone https://github.com/SpaceshiptoMoon/NovaMind.git
+cd NovaMind
+bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File deploy.ps1
+```
+
+部署完成后打开 `http://localhost`，账号 `admin`，初始密码在根目录 `.env` 的 `ADMIN_PASSWORD`。脚本会自动完成环境检查、密钥生成、DeepDoc / 语音模型下载与健康检查。
+
+> [!TIP]
+> Linux 自托管需先设置 `vm.max_map_count >= 262144`（Elasticsearch 内核要求），详见[完整快速开始](#快速开始)的前置条件。手动 Docker 部署与本地开发方式见同节。
+
+| [📚 文档导航](#文档导航) | [🧭 路线图](./ROADMAP.md) | [🐛 问题反馈](https://github.com/SpaceshiptoMoon/NovaMind/issues) |
+| :---: | :---: | :---: |
+
 <details open>
 <summary><b>📕 目录</b></summary>
 
+- [快速体验](#快速体验)
 - [项目定位](#项目定位)
 - [核心能力](#核心能力)
   - [多模态文档解析](#-多模态文档解析)
   - [知识库引擎](#-知识库引擎)
   - [智能应用](#-智能应用)
   - [平台能力](#-平台能力)
-- [文档处理管道](#文档处理管道)
-- [知识库 Wiki](#知识库-wiki)
+- [快速开始](#快速开始)
+  - [部署后的访问入口](#部署后的访问入口)
 - [适合什么场景](#适合什么场景)
 - [与主流方案对比](#与主流方案对比)
-- [技术栈](#技术栈)
-- [快速开始](#快速开始)
-  - [方式一：一键部署](#方式一一键部署)
-  - [方式二：手动 Docker 部署](#方式二手动-docker-部署)
-  - [方式三：本地开发](#方式三本地开发)
-- [访问入口](#访问入口)
-- [架构概览](#架构概览)
-- [仓库结构](#仓库结构)
-- [主要模块](#主要模块)
+- [文档处理管道](#文档处理管道)
+- [知识库 Wiki](#知识库-wiki)
+- [架构与模块](#架构与模块)
+  - [技术栈](#技术栈)
+  - [架构概览](#架构概览)
+  - [仓库结构](#仓库结构)
+  - [主要模块](#主要模块)
+  - [安全特性](#安全特性)
 - [配置说明](#配置说明)
 - [模型接入建议](#模型接入建议)
-- [安全特性](#安全特性)
 - [测试与质量检查](#测试与质量检查)
 - [常见问题 FAQ](#常见问题-faq)
 - [项目状态](#项目状态)
@@ -110,11 +121,7 @@
 </p>
 
 <p align="center">
-  <img src="./assets/video-detail.png" alt="视频文档详情 · 叙事文档 / 帧描述分块 / 原文播放" width="760">
-</p>
-
-<p align="center">
-  <img src="./assets/tasks.png" alt="任务列表 · 多模态流水线节点级进度（解析/转写/抽帧/画面描述/切分/向量化/索引）" width="760">
+  <img src="./assets/audio-detail.png" alt="音频文档详情 · 本地 whisper 转写与原文播放" width="760">
 </p>
 
 ### 📚 知识库引擎
@@ -123,10 +130,6 @@
 - **混合检索**：向量检索、BM25 全文、混合检索、Rerank 重排、查询改写与多级降级策略，9 种检索模式；支持用户自定义文档标签——文档级打标（KB 级聚合、编辑者权限），标签冗余到分块后检索 pre-filter 即时生效
 - **假设问题增强**：可为分块自动生成假设问题并建立问题向量，提升问答召回
 - **知识库评测**：测试集管理、自动评测、人工打分、报告导出，验证知识库真实效果；QA 问答可一键沉淀进测试集，两次评测报告可对比查看用例级退化
-
-<p align="center">
-  <img src="./assets/documents.png" alt="文档管理 · 多模态文档混排的知识库" width="760">
-</p>
 
 ### 🤖 智能应用
 
@@ -142,101 +145,6 @@
 - **实时通知**：WebSocket 推送 + 轮询兜底，解析完成 / 失败 / 取消即时触达
 - **知识运营**：问答点赞 / 点踩、零命中与低分查询聚合看板，四分归因（内容缺口 / 检索失败 / 内容失效 / 权限边界）与缺口转测试集闭环
 - **多模型接入**：LLM / Embedding / Rerank / VLM / ASR 五类模型，OpenAI 兼容协议即插即用，连接测试与密钥加密存储
-
-## 文档处理管道
-
-所有文档经统一管道处理，四个模态分支共享后置尾（切分 → 向量化 → 假设问题 → ES 索引）：
-
-```text
-上传（MinIO 原件 + 哈希去重）
-  └▶ arq 异步任务
-       ├─ 文本分支   DeepDoc 解析 / 通用 Reader ─┐
-       ├─ 图片分支   VLM 描述 / OCR ──────────────┤
-       ├─ 视频分支   抽帧 → VLM 逐帧描述 ──────────┼─▶ 统一切分 → Embedding
-       │            └▶ 视频叙事合成（可选，章节化连贯文档）
-       └─ 音频分支   本地 faster-whisper / 云端 ASR ┘   → 假设问题（可选）
-                                                       → ES 向量+全文索引
-                                                       → Wiki 生成（KB 开启时）
-```
-
-管道可靠性设计：
-
-- **三级内容指纹**（parse / split / embed）：重试时指纹匹配即复用快照，跳过昂贵的 VLM / OCR / ASR / Embedding 调用；解析或切分配置变更自动级联失效下游
-- **节点级进度**：每个步骤（parsed / split / embedded / indexed…）实时落库，任务列表可视化执行轨迹，失败定位到具体节点
-- **事务安全**：DB 写走 SAVEPOINT，队列任务与任务行原子绑定，进程崩溃后启动期自动恢复孤儿任务
-- **全文留存**：解析全文即时落 MinIO，切块 / 向量化失败也不丢解析结果
-
-## 知识库 Wiki
-
-传统知识库回答“这段内容在哪”，Wiki 回答“这个主题的全貌是什么”。NovaMind 的 Wiki 子系统基于知识库内容自动生成结构化 Wiki（对齐 WeKnora 设计）：
-
-```text
-知识库文档 ──解析完成──▶ Wiki 生成任务（LLM 规划 + 生成）
-                            ├─ index 页：全局导航
-                            ├─ topic 页：主题聚合（多来源合并）
-                            └─ summary 页：单文档摘要
-                                 │
-                                 ├─▶ [[链接]] 自动解析 + 知识图谱构建
-                                 ├─▶ ES 同步（wp-* chunk，检索加权 1.3x）
-                                 └─▶ 质量巡检（六类 lint + 健康分 0-100）
-```
-
-<p align="center">
-  <img src="./assets/wiki-browse.png" alt="Wiki 浏览器 · 页面渲染与反链" width="760">
-</p>
-
-- **前端可视化**：Wiki 浏览器（页面渲染 + 反向链接）、力导向图谱（主题联动、节点高亮）、问题面板（孤儿页 / 死链 / 失效引用 / 空内容等六类问题，逐条修复 / 忽略，健康分 0-100）
-- **生成结果同步写入 ES 检索索引**并参与加权排序，问答可直接命中 Wiki 条目
-- **Agent 联动**：问答 Agent 可将 Wiki 页面作为工具读取，实现“先查全貌再钻细节”
-- **生命周期管理**：文档更新 / 删除时自动对账（reparse 合并更新、来源删除 retract 回收），不留悬空引用
-
-<p align="center">
-  <img src="./assets/wiki-graph.png" alt="Wiki 知识图谱 · 力导向布局" width="760">
-</p>
-
-## 适合什么场景
-
-- 团队或组织内部知识库，文档形态多样：**扫描件 PDF、架构图、会议录音、产品演示视频**需要进同一个检索体系
-- 需要完整的文档处理链路：上传 → 解析 → 切分 → 向量化 → 检索 → 问答，且每一步可观测、可恢复
-- 需要多空间隔离和成员权限管理
-- 需要把 RAG 问答、深度研究、Agent 工具调用串成一条工作流，而不是零散的工具拼凑
-- 需要评测体系（测试集、自动评测、人工打分）来验证知识库效果
-- 愿意投入一些基础设施成本（MySQL、Redis、Elasticsearch、MinIO）来换取能力的完整性和自由度
-
-## 与主流方案对比
-
-下表为 2026-11 基于各项目公开发布能力的对比，这一赛道演进很快，选择时请以各自官方文档为准。
-
-| 对比对象 | 它们的强项 | NovaMind 的差异点 |
-| --- | --- | --- |
-| **RAGFlow** | 文档解析同样强（DeepDoc 同源）、分块模板细、社区大 | 视频 / 音频模态（8 种抽帧策略 + 叙事文档）、评测回归门禁、运营归因闭环 |
-| **Dify** | 插件生态、Workflow 编排、LLMOps、易上手 | 解析深度、Wiki 子系统、评测与运营闭环、视频模态——生态位不同：它是应用编排平台，知识库是配件 |
-| **WeKnora** | Wiki 设计（NovaMind 对齐了它）、大厂生态集成 | 视频深度、四分归因 + 缺口转测试集飞轮、评测回归基线 |
-| **MaxKB / AnythingLLM** | 单容器易部署、开箱即用 | 解析深度、多模态、评测、运营——能力代差，代价是部署更重 |
-| **自建（LangChain / LlamaIndex）** | 灵活、完全贴业务 | 框架不是产品：任务编排、断点续跑、节点级进度、权限、评测都要自己造，NovaMind 开箱即得 |
-
-**可防守的是完整度，不是功能清单。** 抽帧谁都会做，但「8 种抽帧策略 + 自适应代表帧标定 + 音轨转写双轨对齐 + 叙事合成 + 问答自动附章节摘要 + 三级指纹断点续跑」是一条完整工程链；四分归因的判据（降阈值重放区分内容缺口与检索失败）是拿真实失败案例标定出来的——设计可以抄，判据难抄。
-
-**同样诚实地列出边界：**
-
-- **部署重量是真实门槛**：MySQL + Redis + Elasticsearch + MinIO 四件基础设施，对比单容器方案起步慢——代价换来的是视频 / 音频 / 扫描件不吃闭门羹
-- **社区与生态**小于 Dify / RAGFlow：插件、模板、社区沉淀都比不了，差异化打深度不打广度
-- **解析格式广度**不如专职解析服务（数百种格式）：NovaMind 走「常用格式做深」路线
-
-## 技术栈
-
-| 类别 | 技术 |
-| --- | --- |
-| 后端 | FastAPI, Python 3.12, SQLAlchemy, Pydantic |
-| 前端 | Vue 3, TypeScript, Vite, Pinia, Vue Router, Element Plus, ECharts |
-| 数据存储 | MySQL 8.4 |
-| 缓存 / 队列 | Redis 7, ARQ（异步任务） |
-| 检索引擎 | Elasticsearch 9.3（向量 + BM25 混合检索） |
-| 对象存储 | MinIO |
-| 文档解析 | DeepDoc（OCR / 版面分析 / 表格还原 / 公式识别）、pypdf、python-docx 等 |
-| 多模态模型 | VLM（图片 / 视频帧理解）、faster-whisper（本地 ASR）、云端 ASR |
-| 扩展协议 | MCP（Model Context Protocol） |
-| 部署 | Docker Compose, Nginx, Supervisord |
 
 ## 快速开始
 
@@ -428,7 +336,7 @@ npm run dev
 
 默认前端地址：`http://localhost:5173`
 
-## 访问入口
+### 部署后的访问入口
 
 Docker 部署模式：
 
@@ -448,7 +356,118 @@ Docker 部署模式：
 | 后端 API 文档 | `http://localhost:8100/docs` |
 | 后端健康检查 | `http://localhost:8100/health` |
 
-## 架构概览
+## 适合什么场景
+
+- 团队或组织内部知识库，文档形态多样：**扫描件 PDF、架构图、会议录音、产品演示视频**需要进同一个检索体系
+- 需要完整的文档处理链路：上传 → 解析 → 切分 → 向量化 → 检索 → 问答，且每一步可观测、可恢复
+- 需要多空间隔离和成员权限管理
+- 需要把 RAG 问答、深度研究、Agent 工具调用串成一条工作流，而不是零散的工具拼凑
+- 需要评测体系（测试集、自动评测、人工打分）来验证知识库效果
+- 愿意投入一些基础设施成本（MySQL、Redis、Elasticsearch、MinIO）来换取能力的完整性和自由度
+
+## 与主流方案对比
+
+下表为 2026-11 基于各项目公开发布能力的对比，这一赛道演进很快，选择时请以各自官方文档为准。
+
+| 对比对象 | 它们的强项 | NovaMind 的差异点 |
+| --- | --- | --- |
+| **RAGFlow** | 文档解析同样强（DeepDoc 同源）、分块模板细、社区大 | 视频 / 音频模态（8 种抽帧策略 + 叙事文档）、评测回归门禁、运营归因闭环 |
+| **Dify** | 插件生态、Workflow 编排、LLMOps、易上手 | 解析深度、Wiki 子系统、评测与运营闭环、视频模态——生态位不同：它是应用编排平台，知识库是配件 |
+| **WeKnora** | Wiki 设计（NovaMind 对齐了它）、大厂生态集成 | 视频深度、四分归因 + 缺口转测试集飞轮、评测回归基线 |
+| **MaxKB / AnythingLLM** | 单容器易部署、开箱即用 | 解析深度、多模态、评测、运营——能力代差，代价是部署更重 |
+| **自建（LangChain / LlamaIndex）** | 灵活、完全贴业务 | 框架不是产品：任务编排、断点续跑、节点级进度、权限、评测都要自己造，NovaMind 开箱即得 |
+
+**可防守的是完整度，不是功能清单。** 抽帧谁都会做，但「8 种抽帧策略 + 自适应代表帧标定 + 音轨转写双轨对齐 + 叙事合成 + 问答自动附章节摘要 + 三级指纹断点续跑」是一条完整工程链；四分归因的判据（降阈值重放区分内容缺口与检索失败）是拿真实失败案例标定出来的——设计可以抄，判据难抄。
+
+**同样诚实地列出边界：**
+
+- **部署重量是真实门槛**：MySQL + Redis + Elasticsearch + MinIO 四件基础设施，对比单容器方案起步慢——代价换来的是视频 / 音频 / 扫描件不吃闭门羹
+- **社区与生态**小于 Dify / RAGFlow：插件、模板、社区沉淀都比不了，差异化打深度不打广度
+- **解析格式广度**不如专职解析服务（数百种格式）：NovaMind 走「常用格式做深」路线
+
+## 文档处理管道
+
+<details>
+<summary><b>展开：四个模态分支与可靠性设计</b></summary>
+
+所有文档经统一管道处理，四个模态分支共享后置尾（切分 → 向量化 → 假设问题 → ES 索引）：
+
+```text
+上传（MinIO 原件 + 哈希去重）
+  └▶ arq 异步任务
+       ├─ 文本分支   DeepDoc 解析 / 通用 Reader ─┐
+       ├─ 图片分支   VLM 描述 / OCR ──────────────┤
+       ├─ 视频分支   抽帧 → VLM 逐帧描述 ──────────┼─▶ 统一切分 → Embedding
+       │            └▶ 视频叙事合成（可选，章节化连贯文档）
+       └─ 音频分支   本地 faster-whisper / 云端 ASR ┘   → 假设问题（可选）
+                                                       → ES 向量+全文索引
+                                                       → Wiki 生成（KB 开启时）
+```
+
+<p align="center">
+  <img src="./assets/tasks.png" alt="任务列表 · 多模态流水线节点级进度（解析/转写/抽帧/画面描述/切分/向量化/索引）" width="760">
+</p>
+
+管道可靠性设计：
+
+- **三级内容指纹**（parse / split / embed）：重试时指纹匹配即复用快照，跳过昂贵的 VLM / OCR / ASR / Embedding 调用；解析或切分配置变更自动级联失效下游
+- **节点级进度**：每个步骤（parsed / split / embedded / indexed…）实时落库，任务列表可视化执行轨迹，失败定位到具体节点
+- **事务安全**：DB 写走 SAVEPOINT，队列任务与任务行原子绑定，进程崩溃后启动期自动恢复孤儿任务
+- **全文留存**：解析全文即时落 MinIO，切块 / 向量化失败也不丢解析结果
+
+</details>
+
+## 知识库 Wiki
+
+<details>
+<summary><b>展开：自动生成结构化 Wiki、知识图谱与质量巡检</b></summary>
+
+传统知识库回答“这段内容在哪”，Wiki 回答“这个主题的全貌是什么”。NovaMind 的 Wiki 子系统基于知识库内容自动生成结构化 Wiki（对齐 WeKnora 设计）：
+
+```text
+知识库文档 ──解析完成──▶ Wiki 生成任务（LLM 规划 + 生成）
+                            ├─ index 页：全局导航
+                            ├─ topic 页：主题聚合（多来源合并）
+                            └─ summary 页：单文档摘要
+                                 │
+                                 ├─▶ [[链接]] 自动解析 + 知识图谱构建
+                                 ├─▶ ES 同步（wp-* chunk，检索加权 1.3x）
+                                 └─▶ 质量巡检（六类 lint + 健康分 0-100）
+```
+
+<p align="center">
+  <img src="./assets/wiki-browse.png" alt="Wiki 浏览器 · 页面渲染与反链" width="760">
+</p>
+
+- **前端可视化**：Wiki 浏览器（页面渲染 + 反向链接）、力导向图谱（主题联动、节点高亮）、问题面板（孤儿页 / 死链 / 失效引用 / 空内容等六类问题，逐条修复 / 忽略，健康分 0-100）
+- **生成结果同步写入 ES 检索索引**并参与加权排序，问答可直接命中 Wiki 条目
+- **Agent 联动**：问答 Agent 可将 Wiki 页面作为工具读取，实现“先查全貌再钻细节”
+- **生命周期管理**：文档更新 / 删除时自动对账（reparse 合并更新、来源删除 retract 回收），不留悬空引用
+
+<p align="center">
+  <img src="./assets/wiki-graph.png" alt="Wiki 知识图谱 · 力导向布局" width="760">
+</p>
+
+</details>
+
+## 架构与模块
+
+### 技术栈
+
+| 类别 | 技术 |
+| --- | --- |
+| 后端 | FastAPI, Python 3.12, SQLAlchemy, Pydantic |
+| 前端 | Vue 3, TypeScript, Vite, Pinia, Vue Router, Element Plus, ECharts |
+| 数据存储 | MySQL 8.4 |
+| 缓存 / 队列 | Redis 7, ARQ（异步任务） |
+| 检索引擎 | Elasticsearch 9.3（向量 + BM25 混合检索） |
+| 对象存储 | MinIO |
+| 文档解析 | DeepDoc（OCR / 版面分析 / 表格还原 / 公式识别）、pypdf、python-docx 等 |
+| 多模态模型 | VLM（图片 / 视频帧理解）、faster-whisper（本地 ASR）、云端 ASR |
+| 扩展协议 | MCP（Model Context Protocol） |
+| 部署 | Docker Compose, Nginx, Supervisord |
+
+### 架构概览
 
 <p align="center">
   <img src="./assets/architecture.svg" alt="NovaMind 系统架构" width="880">
@@ -475,7 +494,7 @@ src/shared/                      模型客户端工厂 / 存储 / MQ / Prompt �
 src/core/                        应用工厂 / 中间件 / 认证 / 生命周期
 ```
 
-## 仓库结构
+### 仓库结构
 
 ```text
 NovaMind/
@@ -505,7 +524,7 @@ NovaMind/
 `- README.md
 ```
 
-## 主要模块
+### 主要模块
 
 | 模块 | 路由前缀 | 说明 |
 | --- | --- | --- |
@@ -523,20 +542,25 @@ NovaMind/
 | 应用中心 | `/api/v1/apps` | 场景化 AI 应用 |
 | 通知中心 | `/api/v1/notifications` | 站内通知和偏好设置 |
 
+### 安全特性
+
+- **密钥不落盘**：所有模型 API Key 经 `ENCRYPTION_KEY` 加密存储，配置文件只含 `${VAR}` 占位符；`*.yaml` 与 `.env` 均不进 Git
+- **认证与鉴权**：JWT + Redis 黑名单双重管理，登出 / 禁用 / 删除用户即时吊销全部令牌；空间级四层角色权限 + 知识库级细粒度操作校验
+- **上传防护**：文件类型双重校验（python-magic 魔数检测 + 内置签名表兜底，探测失败拒绝而非放行）；防路径遍历的文件名校验；上传大小按模态分治
+- **注入防护**：全量 SQLAlchemy ORM 参数化查询；Pydantic 全量请求校验；模板化 Prompt 注册表管理
+- **密码策略**：异步哈希（不阻塞事件循环），管理员密码强度校验（8-30 位四类字符）
+
 ## 配置说明
 
-配置系统分两层：**YAML 文件**（结构与环境差异）和 **`.env` 文件**（唯一密钥源）。
+配置系统分两层：**YAML 文件**（结构与环境差异）和 **`.env` 文件**（唯一密钥源）。后端启动时只读取一个配置文件：`backend/src/setting/yaml_config/yaml/default.yaml`（Docker 部署时挂载进容器）；`.env` 是唯一密钥源，`docker compose` 与后端 `ConfigLoader` 都消费它。
 
-### YAML 配置（唯一配置文件）
-
-后端启动时只读取一个配置文件：`backend/src/setting/yaml_config/yaml/default.yaml`（Docker 部署时挂载进容器）。
+<details>
+<summary><b>展开完整配置参考（变量表 / Docker 差异 / 本地开发配法）</b></summary>
 
 - **分工**：账户密码/凭据类（`${SECRET_KEY}`、`${MYSQL_ROOT_PASSWORD}` 等纯占位符）只存在 `.env`，缺失解析为 `None` 显性报错；连接参数（host/端点/桶名，`${DB_HOST:127.0.0.1}` 形式）在占位符内带本地基线默认值，本地开发零配置
 - 整串占位符的 `true` / `false` / `null` 会归一为原生 bool / None（如 `redis.enabled: "${REDIS_ENABLED:false}"`），布尔开关也能经环境变量表达
 - YAML 里不写任何真实密钥；历史上的 `<环境>.yaml` / `local.yaml` 覆盖层已于 2026-10 移除
 - 无环境名概念（单一模式）：不存在 development/production 等环境分支，部署差异全部经环境变量占位符表达；内部错误详情永远不写入 HTTP 响应（全量在日志），公网不暴露 Swagger 由 nginx 层保证
-
-### `.env`（密钥与环境值唯一来源）
 
 根目录 `.env` 的消费方：
 
@@ -560,11 +584,7 @@ NovaMind/
 | `DEEPDOC_DISABLE_MIRRORS` | 置 `1` 禁用降级换源 | 模型下载降级 |
 | `CORS_ORIGINS` / `MINIO_SECURE` | 可选调优：跨源 API 消费方存在时收紧 CORS 白名单（默认 `*` 且 credentials 自动禁用）；`MINIO_SECURE=true` 仅 MinIO 经 TLS / 公网可达时需要，compose 内网保持默认 `false` | YAML `cors_origins`、`minio.secure` |
 
-### Docker 部署的差异如何表达
-
-写在 `docker-compose.yml` 的 `app.environment` 块里：`DB_HOST=mysql`、`REDIS_HOST=redis`、`MINIO_ENDPOINT=minio:9005`、`MINIO_BUCKET=novamind`、`ES_HOST=http://elasticsearch:9200`、`ES_USERNAME=""`/`ES_PASSWORD=""`（空串 = ES 客户端 falsy 短路免认证）。compose `environment` 优先级高于 `env_file`，因此 `.env` 只存账户密码也不影响 Docker 取到正确的连接值；`.env` 里若显式写了同名变量则会被 compose 值覆盖。
-
-### 本地开发如何配
+Docker 部署的差异写在 `docker-compose.yml` 的 `app.environment` 块里：`DB_HOST=mysql`、`REDIS_HOST=redis`、`MINIO_ENDPOINT=minio:9005`、`MINIO_BUCKET=novamind`、`ES_HOST=http://elasticsearch:9200`、`ES_USERNAME=""`/`ES_PASSWORD=""`（空串 = ES 客户端 falsy 短路免认证）。compose `environment` 优先级高于 `env_file`，因此 `.env` 只存账户密码也不影响 Docker 取到正确的连接值；`.env` 里若显式写了同名变量则会被 compose 值覆盖。
 
 本地开发时（无 Docker），配置流程：
 
@@ -583,11 +603,11 @@ NovaMind/
 3. 如果使用 Docker Compose 启动基础设施（`docker compose up -d mysql redis minio elasticsearch`），
    容器内服务与 `.env` 密码自动保持一致——`.env` 是唯一密钥源，改密码只改这一处。
 
+</details>
+
 ## 模型接入建议
 
 NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，就可以接入大部分能力链路。在「模型管理」页面添加配置后即可在全部功能中选用，支持连接测试。
-
-建议按用途准备以下模型：
 
 | 模型类型 | 用途 | 必需性 |
 | --- | --- | --- |
@@ -598,24 +618,16 @@ NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，
 | **ASR** | 音频转写 | 可不配（默认走本地 faster-whisper） |
 
 <details>
-<summary><b>关于本地语音转写（ASR）</b></summary>
+<summary><b>关于本地语音转写（ASR）与模型选择</b></summary>
 
 音频文档的 ASR 模型有两条路径，可在知识库解析配置的音频分节中选择：
 
 - **本地 Whisper（默认，免费）**：基于 faster-whisper 的本地 CPU 推理（INT8 量化，专用单进程隔离，不阻塞其它任务），默认生产档 `faster-whisper-large-v3` 在部署期自动预装（低内存机器可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 降档为 `small`/`tiny`），无需任何 API Key。适合对隐私敏感或不希望产生调用费用的场景；追求更高中文准确率可自行换用其他档位（下载后把路径填入 `knowledge_base.parsing.local_whisper_model_dir`）
 - **云端 ASR（可选）**：使用「模型管理」中配置的 OpenAI Whisper 或 DashScope Paraformer，效果通常更好但按量计费；选择云端模型前请先通过连接测试确认凭证可用
 
-</details>
-
 如果你的场景偏中文、多工具调用或长上下文任务，优先选择在这些维度表现稳定的模型。
 
-## 安全特性
-
-- **密钥不落盘**：所有模型 API Key 经 `ENCRYPTION_KEY` 加密存储，配置文件只含 `${VAR}` 占位符；`*.yaml` 与 `.env` 均不进 Git
-- **认证与鉴权**：JWT + Redis 黑名单双重管理，登出 / 禁用 / 删除用户即时吊销全部令牌；空间级四层角色权限 + 知识库级细粒度操作校验
-- **上传防护**：文件类型双重校验（python-magic 魔数检测 + 内置签名表兜底，探测失败拒绝而非放行）；防路径遍历的文件名校验；上传大小按模态分治
-- **注入防护**：全量 SQLAlchemy ORM 参数化查询；Pydantic 全量请求校验；模板化 Prompt 注册表管理
-- **密码策略**：异步哈希（不阻塞事件循环），管理员密码强度校验（8-30 位四类字符）
+</details>
 
 ## 测试与质量检查
 
@@ -693,10 +705,10 @@ Docker 一键部署后，用户名 `admin`，初始密码在根目录 `.env` 的
 
 ## 项目状态
 
-当前仓库已经完成公开开源所需的基础入口整理，后续重点在于：
+项目处于积极开发期：多模态解析、混合检索与 RAG 问答等核心链路已稳定，评测体系与知识运营闭环在持续打磨。近期重点：
 
-- 继续稳定知识库主链路与任务模型
-- 补齐前端真实业务测试，而不是只停留在最小基线
+- 多模态解析深度与常用格式覆盖的持续增强
+- 前端真实业务测试补齐，而不是只停留在最小基线
 - 收敛正式设计文档与历史过程文档的边界
 
 更具体的阶段目标见 [`ROADMAP.md`](./ROADMAP.md)。
