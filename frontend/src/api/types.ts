@@ -2075,6 +2075,11 @@ export interface SystemPromptResponse {
   tokens: number
 }
 
+// 追问建议（每轮回答后生成，无内容/失败时 suggestions 为空数组）
+export interface FollowupSuggestionsData {
+  suggestions: string[]
+}
+
 // ==================== 检索来源引用 ====================
 
 export interface SourceRef {

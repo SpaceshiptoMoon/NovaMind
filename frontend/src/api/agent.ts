@@ -11,6 +11,7 @@ import type {
   LoopWarningData,
   ApprovalRequestData,
   SystemPromptResponse,
+  FollowupSuggestionsData,
   AgentConversation,
   AgentConversationListResponse,
   ResearchProgressData,
@@ -232,6 +233,13 @@ export const agentApi = {
   /** 会话实际生效的 system prompt 全文（含 token 数，调试轨迹用） */
   getSystemPrompt(sessionId: string) {
     return request.get<SystemPromptResponse>(`/agent/sessions/${sessionId}/system-prompt`)
+  },
+
+  /** 追问建议：基于会话最近消息生成最多 3 条（每轮回答后调用；空数组=静默不展示） */
+  suggestFollowups(sessionId: string, llmModel?: string) {
+    return request.post<FollowupSuggestionsData>(`/agent/sessions/${sessionId}/suggestions`, {
+      llm_model: llmModel || undefined,
+    })
   },
 
   /** 删除会话（连同消息历史） */

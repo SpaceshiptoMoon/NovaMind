@@ -402,8 +402,21 @@
 
       <!-- 输入区域（dsh 风格单一浮动卡片：附件栏 → 文本框 → 底部左右工具行） -->
       <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
-        <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式)：功能性提问 + agent 名（克制排版，无 emoji/渐变噱头） -->
+          <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
+            <!-- 追问建议（DeerFlow suggestions 对齐）：每轮回答后静默生成，点选即替换/追加草稿 -->
+            <div v-if="followups.length && !isWelcomeMode" class="followup-bar">
+              <button
+                v-for="(f, i) in followups"
+                :key="f"
+                class="followup-pill"
+                :style="{ animationDelay: `${i * 60}ms` }"
+                @click="handleFollowup(f)"
+              >
+                <el-icon :size="12" class="followup-icon"><ChatDotRound /></el-icon>
+                <span class="followup-text">{{ f }}</span>
+              </button>
+            </div>
+            <!-- 欢迎问候 (仅欢迎模式)：功能性提问 + agent 名（克制排版，无 emoji/渐变噱头） -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
             <h2 class="welcome-title">有什么可以帮你？</h2>
             <p class="welcome-desc">
@@ -653,6 +666,7 @@ import {
   Clock,
   Link,
   Check,
+  ChatDotRound,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -1286,6 +1300,7 @@ async function handleSelectConversation(sessionId: string) {
   await agentStore.fetchMessages(sessionId)
   // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
   workbench.resetSelection()
+  followups.value = []
   scrollToBottom()
   if (isNarrowViewport.value) mobileSidebarOpen.value = false
 }
@@ -1331,6 +1346,7 @@ async function handleSend() {
 
   const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
+  followups.value = [] // 发送即收起上一轮建议，等本轮回答完成后再生成
   // 主动发送 = 意图朝向最新内容：即使此前上拉看历史，也恢复自动跟随并滚到底
   stickToBottom.value = true
   scrollToBottom()
@@ -1352,7 +1368,55 @@ async function handleSend() {
     await agentStore.sendMessageStream(agentId.value, sendContent, opts)
   } catch {
     ElMessage.error('发送失败，请重试')
+    return
   }
+  // 回答完成后台静默生成追问（DeerFlow suggestions 同构）；失败静默不提示
+  void loadFollowups()
+}
+
+// ===================== 追问建议（DeerFlow suggestions 对齐） =====================
+
+const followups = ref<string[]>([])
+
+/** 静默生成追问：失败/空结果都不打扰（增强能力，空态即无 pills） */
+async function loadFollowups() {
+  if (!currentSessionId.value || agentStore.isStreaming) return
+  try {
+    const data = await agentApi.suggestFollowups(
+      currentSessionId.value,
+      selectedModel.value || undefined,
+    )
+    followups.value = (data.suggestions || []).filter((s) => s.trim())
+  } catch {
+    followups.value = []
+  }
+}
+
+/** 点击追问 pill：草稿非空时弹「替换/追加」二选（DeerFlow 同语义），随后收起全部 */
+function handleFollowup(text: string) {
+  const commit = (value: string) => {
+    inputText.value = value
+    followups.value = []
+    nextTick(() => {
+      autoResize()
+      textareaRef.value?.focus()
+    })
+  }
+  const current = inputText.value
+  if (!current.trim()) {
+    commit(text)
+    return
+  }
+  ElMessageBox.confirm('替换当前输入内容，还是追加到末尾？', '插入追问', {
+    distinguishCancelAndClose: true,
+    confirmButtonText: '替换',
+    cancelButtonText: '追加',
+  })
+    .then(() => commit(text))
+    .catch((action) => {
+      // cancel=追加（distinguishCancelAndClose）；close=放弃
+      if (action === 'cancel') commit(`${current}\n${text}`)
+    })
 }
 
 function handleCancelStream() {
@@ -1943,6 +2007,72 @@ onBeforeUnmount(() => {
   border-color: var(--color-primary);
   background: var(--color-primary-muted);
   color: var(--color-text);
+}
+
+/* ========================================
+   Followup Pills (deer-flow suggestions 对齐：每轮回答后输入卡上方胶囊，
+   stagger 浮现；hover 主色描边+上浮，backwards fill 防 hover transform 被锁)
+   ======================================== */
+.followup-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: 0 var(--space-2);
+}
+
+.followup-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+  animation: followup-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.followup-pill:hover {
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-card-elevated);
+  color: var(--color-text);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.followup-pill:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+.followup-icon {
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.followup-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes followup-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 /* ========================================
