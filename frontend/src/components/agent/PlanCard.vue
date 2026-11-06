@@ -47,8 +47,7 @@ const props = defineProps<{
 
 defineEmits<{ toggle: [] }>()
 
-/** 状态判定统一口径（与 TrajectoryList.planStatusGlyph / TrajectoryInspector.planGlyph 互指）：
- * statuses 整体缺失 → 历史数据视为已完成；单步缺失 → 兜底 completed */
+/** 状态判定统一口径：statuses 整体缺失 → 历史数据视为已完成；单步缺失 → 兜底 completed */
 function statusAt(i: number): string {
   if (!props.plan.statuses) return 'completed'
   return props.plan.statuses[i] ?? 'completed'

@@ -1,7 +1,7 @@
 <template>
-  <div class="traj-split">
-    <!-- ===== 左：平铺记录时间线 ===== -->
-    <div class="traj-table-pane" :style="{ flex: '1 1 auto', minWidth: '280px' }">
+  <div class="traj-panel">
+    <!-- ===== 平铺记录时间线（侧车单列版：点击行由宿主推入详情视图） ===== -->
+    <div class="traj-table-pane">
       <!-- toolbar：搜索 + Sessions/Steps 折叠 -->
       <div class="traj-toolbar">
         <button
@@ -34,7 +34,6 @@
         <!-- system 固定顶部行（#0，按需拉全文） -->
         <div
           class="traj-row system"
-          :class="{ selected: selectedRecordId === 'system' }"
           data-record-id="system"
           @click="selectRecord('system')"
         >
@@ -70,13 +69,12 @@
               >
             </span>
           </div>
-          <!-- compaction 行：统一序号 + 徽标 + 摘要文案；详情走右侧 inspector
+          <!-- compaction 行：统一序号 + 徽标 + 摘要文案；详情走宿主推入视图
                （与其他记录行交互一致），行内不再展开——曾做过行内展开体，
                展开态与 flex 头行相互挤压且详情双入口维护成本高 -->
           <div
             v-if="rec.kind === 'compaction'"
             class="traj-row compaction"
-            :class="{ selected: selectedRecordId === rec.recordId }"
             :data-record-id="rec.recordId"
             @click="selectRecord(rec.recordId)"
           >
@@ -94,7 +92,6 @@
             :class="[
               rec.kind,
               {
-                selected: selectedRecordId === rec.recordId,
                 error: isToolFailed(rec),
                 'child-step': !!rec.parentAssistantRecordId,
               },
@@ -147,7 +144,7 @@
                 >
               </template>
 
-              <!-- plan：纯展示行，详情（标题/步数/带状态步骤清单）走右侧 inspector -->
+              <!-- plan：纯展示行，详情（标题/步数/带状态步骤清单）走宿主推入视图 -->
               <template v-else-if="rec.kind === 'plan'">
                 <span class="traj-preview">{{ rec.summary }}</span>
               </template>
@@ -187,48 +184,17 @@
         </template>
       </div>
     </div>
-
-    <!-- ===== 拖拽分隔条 ===== -->
-    <div
-      v-if="selectedRecordId"
-      class="traj-resize-handle"
-      role="separator"
-      aria-orientation="vertical"
-      tabindex="0"
-      title="拖拽改宽（双击重置）"
-      @pointerdown="onResizeStart"
-      @dblclick="resetWidth"
-      @keydown="onResizeKey"
-    ></div>
-
-    <!-- ===== 右：inspector ===== -->
-    <TrajectoryInspector
-      v-if="selectedRecordId"
-      :record="selectedRecord"
-      :session-id="sessionId"
-      :style="{ width: inspectorWidth + 'px', flexShrink: 0 }"
-      @select-record="selectRecord"
-      @select-tool-call="selectToolCall"
-      @close="selectedRecordId = null"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * Agent 轨迹时间线（左列表 + 右 inspector 双栏）：以 Session → Turn → Step 层级平铺展示
- * 消息与工具调用记录，支持搜索过滤、一键折叠、hierarchy 跳转和拖拽调整 inspector 宽度。
+ * Agent 轨迹时间线（右栏侧车单列版）：以 Session → Turn → Step 层级平铺展示
+ * 消息与工具调用记录，支持搜索过滤与一键折叠；点击记录行 emit select-record
+ * 由宿主（工作台右面板）推入详情视图，本组件不持有选中详情态。
  */
-import { onErrorCaptured } from 'vue'
-// inspector 渲染异常此前只以 Vue warn（无堆栈）出现在 console，选中行后面板静默消失
-// 极难定位；在此捕获一次让异常带堆栈落到 console，且不让错误冒泡打断列表渲染。
-onErrorCaptured((err, _inst, info) => {
-  console.error(`[Trajectory] ${info}:`, err)
-  return false
-})
 import { ref, computed, watch, nextTick } from 'vue'
 import type { AgentMessage, ToolCallRecord } from '@/api/types'
-import TrajectoryInspector from './TrajectoryInspector.vue'
 import {
   useTrajectoryRecords,
   formatDurationMs,
@@ -239,7 +205,11 @@ import {
 const props = defineProps<{
   messages: AgentMessage[]
   toolCalls: ToolCallRecord[]
-  sessionId?: string | null
+}>()
+
+const emit = defineEmits<{
+  /** 点击记录行：携带完整记录（system 为伪记录 #0），宿主决定详情呈现方式 */
+  (e: 'select-record', record: TrajectoryRecord): void
 }>()
 
 // ===== record 派生 =====
@@ -248,7 +218,7 @@ const records = useTrajectoryRecords(
   computed(() => props.toolCalls),
 )
 
-// system 伪 record（不在 messages 里，固定 #0）
+// system 伪 record（不在 messages 里，固定 #0；点击由宿主按需解析全文）
 const systemRecord = computed<TrajectoryRecord>(() => ({
   recordId: 'system',
   seq: 0,
@@ -266,13 +236,6 @@ const systemRecord = computed<TrajectoryRecord>(() => ({
   sessionIndex: 0,
   summary: 'Initial System Prompt',
 }))
-// ===== 选中态 =====
-const selectedRecordId = ref<string | null>(null)
-const selectedRecord = computed<TrajectoryRecord | null>(() => {
-  if (!selectedRecordId.value) return null
-  if (selectedRecordId.value === 'system') return systemRecord.value
-  return records.value.find((r) => r.recordId === selectedRecordId.value) ?? null
-})
 
 // ===== 折叠态 =====
 const collapsedSessions = ref(new Set<number>())
@@ -441,7 +404,7 @@ const visibleRecords = computed<TrajectoryRecord[]>(() => {
 })
 
 // ===== hierarchy 跳转 =====
-/** 选中记录：先自动展开目标所在的 Session 与父 assistant steps，再滚动至该行 */
+/** 选中记录：先自动展开目标所在的 Session 与父 assistant steps，再滚动至该行并通知宿主 */
 function selectRecord(recordId: string) {
   // auto un-fold：目标所在 session / 父 assistant steps 折叠则先展开
   const target =
@@ -461,61 +424,12 @@ function selectRecord(recordId: string) {
       collapsedAssistants.value = next
     }
   }
-  selectedRecordId.value = recordId
-  nextTick(() => {
-    const el = document.querySelector(`[data-record-id="${cssEscape(recordId)}"]`)
-    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  })
-}
-
-function selectToolCall(callId: string) {
-  const target = records.value.find((r) => r.msg.tool_call_id === callId && r.kind === 'tool')
-  if (target) selectRecord(target.recordId)
-}
-
-// ===== 拖拽缩放 =====
-const inspectorWidth = ref(420)
-let resizing = false
-let startX = 0
-let startWidth = 0
-let containerWidth = 0
-
-/** 拖拽分隔条起始：记录初值并挂全局 pointermove/pointerup 监听 */
-function onResizeStart(e: PointerEvent) {
-  resizing = true
-  startX = e.clientX
-  startWidth = inspectorWidth.value
-  const container = (e.currentTarget as HTMLElement).parentElement
-  containerWidth = container?.getBoundingClientRect().width ?? 1200
-  window.addEventListener('pointermove', onResizeMove)
-  window.addEventListener('pointerup', onResizeEnd)
-  e.preventDefault()
-}
-function onResizeMove(e: PointerEvent) {
-  if (!resizing) return
-  // 向左拖增大 inspector 宽度
-  const delta = startX - e.clientX
-  let w = startWidth + delta
-  const max = Math.max(320, containerWidth - 280)
-  w = Math.min(720, Math.max(320, w))
-  if (w > max) w = max
-  inspectorWidth.value = Math.round(w)
-}
-function onResizeEnd() {
-  resizing = false
-  window.removeEventListener('pointermove', onResizeMove)
-  window.removeEventListener('pointerup', onResizeEnd)
-}
-function resetWidth() {
-  inspectorWidth.value = 420
-}
-function onResizeKey(e: KeyboardEvent) {
-  if (e.key === 'ArrowLeft') {
-    inspectorWidth.value = Math.min(720, inspectorWidth.value + 16)
-    e.preventDefault()
-  } else if (e.key === 'ArrowRight') {
-    inspectorWidth.value = Math.max(320, inspectorWidth.value - 16)
-    e.preventDefault()
+  if (target) {
+    emit('select-record', target)
+    nextTick(() => {
+      const el = document.querySelector(`[data-record-id="${cssEscape(recordId)}"]`)
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
   }
 }
 
@@ -584,20 +498,22 @@ function cssEscape(s: string): string {
 </script>
 
 <style scoped>
-.traj-split {
+.traj-panel {
   display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   width: 100%;
   background: var(--color-bg-elevated);
 }
 
-/* ===== 左侧 table pane ===== */
+/* ===== 时间线 pane（占满面板宽） ===== */
 .traj-table-pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
   height: 100%;
+  flex: 1;
 }
 
 .traj-toolbar {
@@ -920,18 +836,5 @@ function cssEscape(s: string): string {
 .traj-tool-status.pending {
   background: var(--color-primary-muted);
   color: var(--color-text-muted);
-}
-
-/* ===== 拖拽分隔条 ===== */
-.traj-resize-handle {
-  flex-shrink: 0;
-  width: 5px;
-  cursor: col-resize;
-  background: var(--color-border-light);
-  transition: background var(--transition-fast);
-}
-.traj-resize-handle:hover,
-.traj-resize-handle:active {
-  background: var(--color-border);
 }
 </style>

@@ -3,7 +3,7 @@
  *
  * 管理 Agent CRUD、对话会话与消息流、SSE 流式/非流式发送（正文/思考/来源/工具调用/
  * 上下文用量/计划卡增量渲染）、MCP 服务器与工具注册表、聊天附件待发队列。
- * 消费方：AgentChatView、WorkspaceLayout、TrajectoryInspector、WorkbenchDrawer。
+ * 消费方：AgentChatView、WorkspaceLayout、WorkbenchDrawer。
  */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
