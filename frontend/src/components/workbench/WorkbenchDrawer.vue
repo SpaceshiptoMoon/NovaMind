@@ -1,23 +1,37 @@
 <template>
-  <!-- 抽屉容器：折叠态 width:0、溢出隐藏；展开态 --drawer-width -->
+  <!-- 抽屉容器：折叠态 width:0、溢出隐藏；展开态 --drawer-width（store 可拖拽调宽） -->
   <aside
     class="workbench-drawer"
-    :class="{ open: workbench.drawerOpen }"
+    :class="{ open: workbench.drawerOpen, resizing: isResizing }"
+    :style="{ '--drawer-width': `${workbench.drawerWidth}px` }"
     role="complementary"
-    aria-label="工作台右侧抽屉"
+    aria-label="工作台右侧面板"
   >
+    <!-- 左缘拖拽把手：向左拖增大面板宽度（320–720 钳制），双击重置默认宽 -->
+    <div
+      v-if="workbench.drawerOpen"
+      class="drawer-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      title="拖拽调整面板宽度（双击重置）"
+      @pointerdown="onResizeStart"
+      @dblclick="resetWidth"
+    ></div>
+
     <div v-if="workbench.drawerOpen" class="drawer-inner">
       <!-- 顶部：视图切换 + 收起 -->
       <header class="drawer-header">
         <div class="view-switcher">
           <button
-            v-for="v in views"
+            v-for="v in tabs"
             :key="v.key"
             class="view-pill"
             :class="{ active: workbench.drawerView === v.key }"
+            :title="v.label"
             @click="workbench.setView(v.key)"
           >
-            {{ v.label }}
+            <el-icon :size="12"><component :is="v.icon" /></el-icon>
+            <span>{{ v.label }}</span>
             <span v-if="v.key === 'sources' && sources.length" class="pill-badge">{{
               sources.length
             }}</span>
@@ -159,8 +173,18 @@
         </div>
       </div>
 
-      <!-- 消息全文视图（轨迹视图选中 assistant/user 行，展示 reasoning/content） -->
+      <!-- 消息全文视图（轨迹侧车点入的推入详情，展示 reasoning/content） -->
       <div v-else-if="workbench.drawerView === 'message'" class="drawer-body">
+        <!-- 返回轨迹：消息视图现在只从轨迹列表点入（agent 单聊会话） -->
+        <button
+          v-if="agentStore.currentSessionId"
+          class="drawer-back"
+          title="返回轨迹列表"
+          @click="workbench.setView('trajectory')"
+        >
+          <el-icon :size="12"><ArrowLeft /></el-icon>
+          <span>返回轨迹</span>
+        </button>
         <div v-if="!selectedMessage" class="drawer-empty">未选中消息</div>
         <div v-else class="message-detail">
           <div class="message-detail-header">
@@ -188,24 +212,120 @@
           </div>
         </div>
       </div>
+
+      <!-- 轨迹侧车视图（仅 agent 单聊会话）：时间线列表，点行推入详情 -->
+      <div
+        v-else-if="workbench.drawerView === 'trajectory'"
+        class="drawer-body drawer-body--flush"
+      >
+        <TrajectoryList
+          :messages="agentStore.messages"
+          :tool-calls="agentStore.toolCalls"
+          @select-record="onTrajectorySelect"
+        />
+      </div>
+
+      <!-- 工作目录视图（仅 agent 单聊会话）：目录浏览器 + 绑定/解绑 -->
+      <div v-else-if="workbench.drawerView === 'workspace'" class="drawer-body">
+        <p class="ws-hint">
+          选择本地文件夹作为智能体的工作目录，进入工作模式后启用 read / glob / grep / bash
+          工具。
+        </p>
+
+        <div class="ws-browser">
+          <div class="ws-browser-toolbar">
+            <button
+              class="ws-browser-up"
+              :disabled="browseParent === null || browseLoading"
+              title="上级目录"
+              @click="browseParent && browseEnter(browseParent)"
+            >
+              <el-icon :size="12"><ArrowLeft /></el-icon>
+            </button>
+            <span class="ws-browser-path" :title="browsePath || '此电脑'">
+              {{ browsePath || '此电脑' }}
+            </span>
+          </div>
+          <div v-loading="browseLoading" class="ws-browser-list">
+            <div
+              v-for="d in browseDirs"
+              :key="d.path"
+              class="ws-browser-item"
+              @click="browseEnter(d.path)"
+            >
+              <el-icon :size="14"><FolderOpened /></el-icon>
+              <span class="ws-browser-name">{{ d.name }}</span>
+            </div>
+            <div v-if="!browseLoading && browseDirs.length === 0" class="ws-browser-empty">
+              此层级无子目录
+            </div>
+          </div>
+        </div>
+
+        <div class="ws-selected-row">
+          <span class="ws-selected-label">已选目录：</span>
+          <code class="ws-selected-path" :title="browsePath">{{ browsePath || '（请选择）' }}</code>
+        </div>
+
+        <div v-if="isWorkspaceBound" class="ws-current">
+          当前工作目录：<code :title="workspaceRoot">{{ workspaceRootName }}</code>
+        </div>
+
+        <div class="ws-actions">
+          <button
+            v-if="isWorkspaceBound"
+            class="ws-btn ws-btn--danger"
+            :disabled="workspaceBinding"
+            @click="handleUnbindWorkspace"
+          >
+            退出工作模式
+          </button>
+          <button
+            class="ws-btn ws-btn--primary"
+            :disabled="!browsePath || workspaceBinding"
+            @click="handleBindWorkspace"
+          >
+            {{ isWorkspaceBound ? '更换到此目录' : '进入工作模式' }}
+          </button>
+        </div>
+      </div>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
 /**
- * Agent 工作台右侧抽屉：概览 / 引用来源 / 工具结果 / 消息全文四视图切换。
+ * Agent 工作台右侧面板（DeerFlow 式侧车）：概览 / 引用来源 / 工具结果 / 消息全文 /
+ * 轨迹侧车 / 工作目录六视图切换，左缘拖拽调宽。
  *
  * 数据来源分两路：sources/toolCalls 由父组件 props 传入，
- * 消息全文视图从 agentStore 按 workbench store 的选中 id 查找；
- * 视图切换与抽屉开合状态全部托管在 workbench store。
+ * 消息与轨迹从 agentStore 取；视图切换、开合与宽度全部托管在 workbench store。
+ * 轨迹/工作目录视图仅 agent 单聊会话可用（群聊频道不显示这两个入口）。
  */
-import { ref, computed } from 'vue'
-import { Close, SetUp } from '@element-plus/icons-vue'
+import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import {
+  ArrowLeft,
+  Clock,
+  Close,
+  FolderOpened,
+  Grid,
+  Link,
+  SetUp,
+} from '@element-plus/icons-vue'
+import type { Component } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useAgentStore } from '@/stores/agent'
+import { agentApi } from '@/api/agent'
 import type { SourceRef, ToolCallRecord, AgentMessage } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import TrajectoryList from '@/components/agent/TrajectoryList.vue'
+import type { TrajectoryRecord } from '@/composables/useTrajectoryRecords'
+import {
+  DRAWER_WIDTH_DEFAULT,
+  DRAWER_WIDTH_MAX,
+  DRAWER_WIDTH_MIN,
+} from '@/stores/workbench'
 
 const props = defineProps<{
   sources: SourceRef[]
@@ -213,14 +333,79 @@ const props = defineProps<{
 }>()
 
 const workbench = useWorkbenchStore()
+const agentStore = useAgentStore()
 
-const views = [
-  { key: 'overview' as const, label: '概览' },
-  { key: 'sources' as const, label: '引用来源' },
-  { key: 'tool' as const, label: '工具结果' },
-  { key: 'message' as const, label: '消息' },
-]
+interface DrawerTab {
+  key: 'overview' | 'sources' | 'tool' | 'trajectory' | 'workspace'
+  label: string
+  icon: Component
+}
 
+/** 顶层 tab：概览/引用/工具全频道可用；轨迹/目录仅 agent 单聊会话（有 sessionId）显示 */
+const tabs = computed<DrawerTab[]>(() => {
+  const list: DrawerTab[] = [
+    { key: 'overview', label: '概览', icon: Grid },
+    { key: 'sources', label: '引用', icon: Link },
+    { key: 'tool', label: '工具', icon: SetUp },
+  ]
+  if (agentStore.currentSessionId) {
+    list.push(
+      { key: 'trajectory', label: '轨迹', icon: Clock },
+      { key: 'workspace', label: '目录', icon: FolderOpened },
+    )
+  }
+  return list
+})
+
+// ===================== 拖拽调宽 =====================
+const isResizing = ref(false)
+let resizeStartX = 0
+let resizeStartWidth = 0
+
+/** 拖拽把手起始：记录初值并挂全局 pointer 监听；拖拽中禁用 width 过渡 */
+function onResizeStart(e: PointerEvent) {
+  isResizing.value = true
+  resizeStartX = e.clientX
+  resizeStartWidth = workbench.drawerWidth
+  window.addEventListener('pointermove', onResizeMove)
+  window.addEventListener('pointerup', onResizeEnd)
+  e.preventDefault()
+}
+
+function onResizeMove(e: PointerEvent) {
+  // 向左拖增大面板；上限为视口减去主聊天区保底宽度，避免把聊天区挤没
+  const delta = resizeStartX - e.clientX
+  const viewportMax = Math.max(DRAWER_WIDTH_MIN, window.innerWidth - 560)
+  workbench.setDrawerWidth(Math.min(DRAWER_WIDTH_MAX, resizeStartWidth + delta, viewportMax))
+}
+
+function onResizeEnd() {
+  isResizing.value = false
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd)
+}
+
+function resetWidth() {
+  workbench.setDrawerWidth(DRAWER_WIDTH_DEFAULT)
+}
+
+// ===================== 轨迹侧车：点行推入详情 =====================
+/** 轨迹行点击：tool 行进工具详情，其余消息行进全文视图（system 伪记录按 role 兜底） */
+function onTrajectorySelect(record: TrajectoryRecord) {
+  if (record.kind === 'tool') {
+    const callId = record.toolCall?.callId ?? record.msg.tool_call_id
+    if (callId) workbench.selectToolCall(callId)
+    return
+  }
+  if (record.kind === 'system') {
+    const sysMsg = agentStore.messages.find((m) => m.role === 'system')
+    if (sysMsg) workbench.selectMessage(sysMsg.id)
+    return
+  }
+  if (record.msg.id > 0) workbench.selectMessage(record.msg.id)
+}
+
+// ===================== 引用来源 =====================
 // 引用来源展开集合
 const expandedSources = ref(new Set<number>())
 
@@ -233,7 +418,6 @@ const selectedToolCall = computed(
 )
 
 // 消息全文视图：从 agentStore.messages 按 selectedMessageId 查（message view 仅 agent 频道触发）
-const agentStore = useAgentStore()
 const selectedMessage = computed(
   () => agentStore.messages.find((m) => m.id === workbench.selectedMessageId) ?? null,
 )
@@ -296,10 +480,107 @@ function formatJson(obj: Record<string, unknown>): string {
     return String(obj)
   }
 }
+
+// ===================== 工作目录（迁自 AgentChatView） =====================
+const currentConversation = computed(
+  () => agentStore.conversations.find((c) => c.session_id === agentStore.currentSessionId) || null,
+)
+const workspaceConfig = computed(() => currentConversation.value?.extra_config?.workspace ?? null)
+const isWorkspaceBound = computed(() => !!workspaceConfig.value)
+const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
+
+/** 工作目录 chip 显示名：取末段（长路径截断），title 里看全路径 */
+const workspaceRootName = computed(() => {
+  const p = workspaceRoot.value.replace(/\/+$/, '')
+  const seg = p.split(/[\\/]/).pop() || p
+  return seg.length > 18 ? `${seg.slice(0, 17)}…` : seg
+})
+
+const workspaceBinding = ref(false)
+// 目录浏览态：path 空=此电脑（盘符列表），选中层即绑定目标
+const browsePath = ref('')
+const browseParent = ref<string | null>(null)
+const browseDirs = ref<{ name: string; path: string }[]>([])
+const browseLoading = ref(false)
+
+/** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
+async function browseEnter(path: string) {
+  browseLoading.value = true
+  try {
+    const data = await agentApi.browseWorkspaceDirs(path || undefined)
+    browsePath.value = data.path
+    browseParent.value = data.is_root ? null : (data.parent ?? null)
+    browseDirs.value = data.dirs || []
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
+  } finally {
+    browseLoading.value = false
+  }
+}
+
+// 打开目录视图即从已绑定目录（或根）开始浏览
+watch(
+  () => workbench.drawerView === 'workspace' && workbench.drawerOpen,
+  (active) => {
+    if (active) browseEnter(workspaceRoot.value)
+  },
+)
+
+/** 绑定：选中层即根，写会话 workspace + 自动给 agent 并入 local_workspace 勾选 */
+async function handleBindWorkspace() {
+  const sessionId = agentStore.currentSessionId
+  if (!sessionId || !agentStore.currentAgent || !browsePath.value) return
+  const root = browsePath.value
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(sessionId, { mode: 'local', root })
+    // 工具默认必带：本地模式下 local_workspace 提供者须在 agent.enabled_tools 里
+    // 才会随 resolve_tools 下发 schema；未勾选时静默并入
+    const agent = agentStore.currentAgent
+    const tools = agent.enabled_tools || []
+    if (!tools.includes('local_workspace')) {
+      await agentStore.updateAgent(agent.id, {
+        enabled_tools: [...tools, 'local_workspace'],
+      })
+    }
+    // 回写会话列表里的 workspace 键（不重新拉全量）
+    const conv = currentConversation.value
+    if (conv) {
+      conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
+    }
+    ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '绑定失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
+
+/** 解绑：清会话 workspace；agent 勾选保留（其他会话可能仍在用） */
+async function handleUnbindWorkspace() {
+  const sessionId = agentStore.currentSessionId
+  if (!sessionId) return
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(sessionId, null)
+    const conv = currentConversation.value
+    if (conv && conv.extra_config) {
+      const next = { ...conv.extra_config }
+      delete next.workspace
+      conv.extra_config = next
+    }
+    ElMessage.success('已退出工作模式')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '解绑失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
 </script>
 
 <style scoped>
 .workbench-drawer {
+  position: relative;
   width: 0;
   flex-shrink: 0;
   overflow: hidden;
@@ -316,12 +597,34 @@ function formatJson(obj: Record<string, unknown>): string {
   border-left-color: var(--color-border-light);
 }
 
+/* 拖拽中禁用宽度过渡：逐帧跟手，松手后由 store 落定 */
+.workbench-drawer.resizing {
+  transition: none;
+}
+
 .drawer-inner {
   width: var(--drawer-width, 340px);
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
+}
+
+/* 左缘拖拽把手：贴边 4px 热区，hover/拖拽时显式 */
+.drawer-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.drawer-resize-handle:hover,
+.workbench-drawer.resizing .drawer-resize-handle {
+  background: var(--color-border-focus, var(--color-border));
+  opacity: 0.5;
 }
 
 /* ========================================
@@ -342,14 +645,16 @@ function formatJson(obj: Record<string, unknown>): string {
   gap: var(--space-1);
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .view-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border-light);
+  padding: 4px 8px;
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-text-secondary);
@@ -411,6 +716,35 @@ function formatJson(obj: Record<string, unknown>): string {
   overflow-y: auto;
   padding: var(--space-3);
   min-height: 0;
+}
+
+/* 轨迹侧车：列表自带 toolbar 与滚动，外层不留 padding */
+.drawer-body--flush {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 推入详情返回条（消息全文 ← 轨迹列表） */
+.drawer-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: var(--space-2);
+  padding: 3px 10px 3px 6px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.drawer-back:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .drawer-empty,
@@ -795,5 +1129,199 @@ function formatJson(obj: Record<string, unknown>): string {
 
 .message-detail-md :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+/* 工作目录浏览器（迁自 AgentChatView 弹窗样式） */
+.ws-hint {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.ws-browser {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ws-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 10px;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-elevated);
+}
+
+.ws-browser-up {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.ws-browser-up:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.ws-browser-up:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ws-browser-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  direction: rtl; /* 长路径从左截断，保尾部可见 */
+  text-align: left;
+}
+
+.ws-browser-list {
+  max-height: 320px;
+  overflow-y: auto;
+  min-height: 120px;
+}
+
+.ws-browser-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text);
+  transition: background var(--transition-fast);
+}
+
+.ws-browser-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.ws-browser-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-browser-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ws-selected-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-2);
+  font-size: 12px;
+}
+
+.ws-selected-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.ws-selected-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted, rgba(0, 0, 0, 0.04));
+  font-size: 12px;
+}
+
+.ws-current {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ws-current code {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-muted, rgba(0, 0, 0, 0.04));
+  font-size: 12px;
+}
+
+.ws-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.ws-btn {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  background: transparent;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.ws-btn--primary {
+  background: var(--color-btn-primary);
+  border-color: var(--color-btn-primary);
+  color: var(--color-btn-primary-text);
+}
+
+.ws-btn--primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.ws-btn--primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ws-btn--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.ws-btn--danger:hover:not(:disabled) {
+  background: var(--color-danger-subtle);
+}
+
+.ws-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 窄视口：面板改右侧覆盖层，不再挤压主聊天区（与工作台侧栏浮层断点一致） */
+@media (max-width: 900px) {
+  .workbench-drawer.open {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: var(--z-raised);
+    width: min(var(--drawer-width, 340px), 85vw);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .workbench-drawer.open .drawer-inner {
+    width: min(var(--drawer-width, 340px), 85vw);
+  }
 }
 </style>
