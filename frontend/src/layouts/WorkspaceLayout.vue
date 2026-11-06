@@ -637,11 +637,11 @@
           :sources="drawerSources"
           :tool-calls="drawerToolCalls"
         />
-        <!-- 抽屉展开按钮（抽屉关闭时浮在主区右上角） -->
+        <!-- 面板展开按钮（面板关闭时浮在主区右上角） -->
         <button
           v-if="isWorkspaceRoute && !workbench.drawerOpen"
           class="drawer-toggle"
-          title="打开引用面板"
+          title="打开工作面板"
           @click="workbench.openDrawer('overview')"
         >
           <el-icon :size="14"><Expand /></el-icon>
