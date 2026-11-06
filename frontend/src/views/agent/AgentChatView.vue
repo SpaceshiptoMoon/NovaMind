@@ -488,22 +488,60 @@
                   <span class="workspace-chip-path">{{ workspaceRootName }}</span>
                 </button>
                 <div class="input-modes">
-                  <button
-                    class="mode-chip"
-                    :class="{ active: enableThinking }"
-                    @click="enableThinking = !enableThinking"
+                  <!-- 模式档位（DeerFlow 式单选）：极速=直接作答；深度思考=先推理再作答。
+                       后端 enable_thinking 为布尔、无 effort 档位，故映射两档；
+                       模型字典无思考能力字段，降级锁定暂不做（选不支持模型时由后端表现兜底） -->
+                  <el-popover
+                    v-model:visible="modeMenuOpen"
+                    trigger="click"
+                    placement="top-start"
+                    :width="264"
+                    :popper-style="{ padding: '6px' }"
                   >
-                    <el-icon :size="14" class="mode-chip-icon"><MagicStick /></el-icon>
-                    <span>深度思考</span>
-                  </button>
-                  <button
-                    class="mode-chip"
-                    :class="{ active: useStream }"
-                    @click="useStream = !useStream"
-                  >
-                    <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
-                    <span>流式输出</span>
-                  </button>
+                    <template #reference>
+                      <button
+                        class="mode-chip"
+                        :class="{ active: thinkingLevel === 'deep' }"
+                        title="回答模式"
+                      >
+                        <el-icon :size="14" class="mode-chip-icon">
+                          <MagicStick v-if="thinkingLevel === 'deep'" />
+                          <Lightning v-else />
+                        </el-icon>
+                        <span>{{ thinkingLevel === 'deep' ? '深度思考' : '极速' }}</span>
+                      </button>
+                    </template>
+                    <div class="mode-level-menu">
+                      <button
+                        class="mode-level-item"
+                        :class="{ selected: thinkingLevel === 'flash' }"
+                        @click="setThinkingLevel('flash')"
+                      >
+                        <el-icon :size="14" class="mode-level-icon"><Lightning /></el-icon>
+                        <span class="mode-level-text">
+                          <span class="mode-level-name">
+                            极速
+                            <el-icon v-if="thinkingLevel === 'flash'" :size="12"><Check /></el-icon>
+                          </span>
+                          <span class="mode-level-desc">直接作答，适合简单问题</span>
+                        </span>
+                      </button>
+                      <button
+                        class="mode-level-item"
+                        :class="{ selected: thinkingLevel === 'deep' }"
+                        @click="setThinkingLevel('deep')"
+                      >
+                        <el-icon :size="14" class="mode-level-icon"><MagicStick /></el-icon>
+                        <span class="mode-level-text">
+                          <span class="mode-level-name">
+                            深度思考
+                            <el-icon v-if="thinkingLevel === 'deep'" :size="12"><Check /></el-icon>
+                          </span>
+                          <span class="mode-level-desc">回答前先推理，复杂问题更稳（耗时更长）</span>
+                        </span>
+                      </button>
+                    </div>
+                  </el-popover>
                   <button
                     class="mode-chip"
                     :class="{ active: enableResearch }"
@@ -614,6 +652,7 @@ import {
   FolderOpened,
   Clock,
   Link,
+  Check,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -685,8 +724,16 @@ function togglePanel(view: 'trajectory' | 'sources' | 'tool' | 'workspace') {
   if (isPanelActive(view)) workbench.closeDrawer()
   else workbench.openDrawer(view)
 }
-const useStream = ref(true)
-const enableThinking = ref(false)
+// 回答模式档位（DeerFlow 式）：极速=enable_thinking off；深度思考=on。
+// 后端无 effort 档位，两档为诚实映射；深度研究开关语义独立保留
+const thinkingLevel = ref<'flash' | 'deep'>('flash')
+const modeMenuOpen = ref(false)
+const enableThinking = computed(() => thinkingLevel.value === 'deep')
+
+function setThinkingLevel(level: 'flash' | 'deep') {
+  thinkingLevel.value = level
+  modeMenuOpen.value = false
+}
 // 深度研究开关（请求级）：开启时本轮消息引导模型优先调用 research 工具
 const enableResearch = ref(false)
 
@@ -1301,11 +1348,8 @@ async function handleSend() {
       llm_model: selectedModel.value || undefined,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
-    if (useStream.value) {
-      await agentStore.sendMessageStream(agentId.value, sendContent, opts)
-    } else {
-      await agentStore.sendMessage(agentId.value, sendContent, opts)
-    }
+    // 恒走流式（DeerFlow 同款默认）：非流式分支随开关下线删除
+    await agentStore.sendMessageStream(agentId.value, sendContent, opts)
   } catch {
     ElMessage.error('发送失败，请重试')
   }
@@ -2764,6 +2808,64 @@ onBeforeUnmount(() => {
   gap: 8px;
   /* 极窄视口 chip 群整体放不下时换行（chip 本身 nowrap 不可压缩） */
   flex-wrap: wrap;
+}
+
+/* 模式档位菜单（DeerFlow ModeHoverGuide 式）：档位名+一句描述，选中态勾标 */
+.mode-level-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mode-level-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.mode-level-item:hover,
+.mode-level-item.selected {
+  background: var(--color-bg-hover);
+}
+
+.mode-level-icon {
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.mode-level-item.selected .mode-level-icon {
+  color: var(--color-text);
+}
+
+.mode-level-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mode-level-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.mode-level-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
 }
 
 .input-trailing {
