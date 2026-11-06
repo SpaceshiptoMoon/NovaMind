@@ -2,7 +2,26 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
 // 右抽屉视图类型：overview=概览(产物占位) / sources=引用来源 / tool=工具结果详情 / message=消息全文(轨迹视图)
-export type DrawerView = 'overview' | 'sources' | 'tool' | 'message'
+// trajectory=轨迹侧车（时间线列表） / workspace=工作目录浏览器（仅 agent 单聊会话可用）
+export type DrawerView = 'overview' | 'sources' | 'tool' | 'message' | 'trajectory' | 'workspace'
+
+// 面板宽度钳制区间与默认值；持久化键与主题键同风格（novamind- 前缀）
+export const DRAWER_WIDTH_MIN = 320
+export const DRAWER_WIDTH_MAX = 720
+export const DRAWER_WIDTH_DEFAULT = 340
+const DRAWER_WIDTH_STORAGE_KEY = 'novamind-drawer-width'
+
+function readStoredDrawerWidth(): number {
+  try {
+    const raw = localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)
+    if (!raw) return DRAWER_WIDTH_DEFAULT
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return DRAWER_WIDTH_DEFAULT
+    return Math.min(DRAWER_WIDTH_MAX, Math.max(DRAWER_WIDTH_MIN, Math.round(parsed)))
+  } catch {
+    return DRAWER_WIDTH_DEFAULT
+  }
+}
 
 /**
  * 工作台右抽屉状态
@@ -14,6 +33,8 @@ export type DrawerView = 'overview' | 'sources' | 'tool' | 'message'
 export const useWorkbenchStore = defineStore('workbench', () => {
   const drawerOpen = ref(false)
   const drawerView = ref<DrawerView>('overview')
+  // 面板宽度（px）：拖拽把手实时写入；钳制在 MIN/MAX 区间，localStorage 持久化
+  const drawerWidth = ref(readStoredDrawerWidth())
   // 选中的工具调用 call_id（与消息 tool_call_id / agentStore.toolCalls.callId 对应）
   const selectedToolCallId = ref<string | null>(null)
   // 选中的消息 ID（轨迹视图点击 assistant/user/system 行，inspector 展示 reasoning/content 全文）
@@ -23,6 +44,18 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   function openDrawer(view?: DrawerView) {
     drawerOpen.value = true
     if (view) drawerView.value = view
+  }
+
+  /** 拖拽调宽：钳制区间后写入；合法值同时持久化，刷新后保持用户偏好宽度 */
+  function setDrawerWidth(width: number) {
+    if (!Number.isFinite(width)) return
+    const clamped = Math.min(DRAWER_WIDTH_MAX, Math.max(DRAWER_WIDTH_MIN, Math.round(width)))
+    drawerWidth.value = clamped
+    try {
+      localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, String(clamped))
+    } catch {
+      // 隐私模式等 localStorage 不可用场景：仅内存态，忽略持久化失败
+    }
   }
 
   function closeDrawer() {
@@ -63,11 +96,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   return {
     drawerOpen,
     drawerView,
+    drawerWidth,
     selectedToolCallId,
     selectedMessageId,
     openDrawer,
     closeDrawer,
     toggleDrawer,
+    setDrawerWidth,
     setView,
     selectToolCall,
     selectMessage,
