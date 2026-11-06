@@ -19,6 +19,7 @@ from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
     build_agent_chat_service,
     get_agent_chat_service,
+    get_agent_engine,
     get_agent_engine_ws,
     get_agent_service,
     get_mcp_client_manager,
@@ -26,6 +27,7 @@ from novamind.features.agent.api.dependencies import (
     get_memory_search_repo,
     get_minio_client_for_presign,
     get_model_config_service,
+    get_todo_store,
     get_todo_store_ws,
     get_tool_registry,
 )
@@ -39,6 +41,8 @@ from novamind.features.agent.schemas.agent_schema import (
     AgentSessionListResponse,
     AgentUpdate,
     ContextUsageResponse,
+    FollowupSuggestionsRequest,
+    FollowupSuggestionsResponse,
     McpServerCreate,
     McpServerResponse,
     McpServerUpdate,
@@ -462,6 +466,33 @@ async def get_messages(
         for msg in result.items:
             await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
     return result
+
+
+@router.post(
+    "/sessions/{session_id}/suggestions",
+    response_model=FollowupSuggestionsResponse,
+    summary="生成追问建议",
+    description="基于会话最近消息生成最多 3 条追问建议（每轮回答后调用；无内容/失败返回空数组）",
+)
+async def create_followup_suggestions(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    request: FollowupSuggestionsRequest | None = None,
+    user_id: int = Depends(get_current_user_id),
+    agent_service: AgentService = Depends(get_agent_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
+    agent_engine: AgentEngine = Depends(get_agent_engine),
+    todo_store: TodoStore = Depends(get_todo_store),
+    memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
+    db: AsyncSession = Depends(get_db),
+):
+    service = await build_agent_chat_service(
+        db, user_id, agent_service, model_config_service,
+        agent_engine, todo_store, memory_search_repo, None,
+    )
+    suggestions = await service.generate_followup_suggestions(
+        user_id, session_id, (request.llm_model if request else None)
+    )
+    return FollowupSuggestionsResponse(suggestions=suggestions)
 
 
 @router.put(

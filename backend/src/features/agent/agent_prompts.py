@@ -50,5 +50,20 @@ TEMPLATES = {
         "- Respond in the same language as the user's latest message.\n"
         "</group-context>"
     ),
+    # 对话追问建议（每轮回答后生成 follow-up pills）：conversation_text 由
+    # 调用方拼好「Role: 内容」逐行文本，语言跟随用户最后一条消息。
+    "agent_followup_suggestions": (
+        "Based on the conversation below, generate exactly 3 follow-up questions "
+        "the user would most likely ask next.\n\n"
+        "Rules:\n"
+        "1. Each suggestion is ONE concise question, phrased from the user's perspective\n"
+        "2. Build on the assistant's latest answer — dig deeper, ask for specifics, "
+        "or branch to a closely related angle\n"
+        "3. Do NOT repeat what was already asked or answered\n"
+        "4. Write in the SAME language as the user's latest message\n"
+        "5. Return ONLY a JSON array of 3 strings, no explanations, no markdown fences\n\n"
+        "Conversation:\n{conversation_text}\n\n"
+        'Return format: ["question 1", "question 2", "question 3"]'
+    ),
 }
 

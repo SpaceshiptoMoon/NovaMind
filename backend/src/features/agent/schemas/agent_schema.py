@@ -357,6 +357,20 @@ class MemoryStatsResponse(BaseModel):
     recently_created: list[MemoryResponse] = Field(default_factory=list)
 
 
+class FollowupSuggestionsRequest(BaseModel):
+    """追问建议生成请求"""
+
+    llm_model: str | None = Field(
+        None, description="覆盖 Agent 配置的模型名；缺省跟随 Agent 配置或用户默认"
+    )
+
+
+class FollowupSuggestionsResponse(BaseModel):
+    """追问建议响应（会话无内容或生成失败时为空数组，前端静默处理）"""
+
+    suggestions: list[str] = Field(default_factory=list, description="追问建议（最多 3 条）")
+
+
 @dataclass
 class AgentSummary:
     """Agent 概要（skill 侧安装/卸载/列表所需的最小字段集）。批次 3.6 从 shared/registry_ports.py 迁入。"""
