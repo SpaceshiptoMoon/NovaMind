@@ -250,7 +250,12 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = null
     try {
       const data = await agentApi.getMessages(sessionId)
-      messages.value = data.items || []
+      // extra.sources → sources 展开：落库形态把引用挂在 extra 里，运行中 SSE
+      // 则写顶层 sources（sendMessageStream），两态统一成顶层字段供引用面板聚合
+      messages.value = (data.items || []).map((m) => ({
+        ...m,
+        sources: m.extra?.sources as SourceRef[] | undefined,
+      }))
       currentSessionId.value = sessionId
       // 历史回放：用持久化的工具调用记录重建 toolCalls 状态，
       // 否则历史工具卡片因 getToolRecord 找不到记录而默认显示「执行中」
