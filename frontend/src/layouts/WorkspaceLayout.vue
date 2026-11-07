@@ -639,21 +639,6 @@
             </transition>
           </router-view>
         </div>
-        <!-- 右抽屉：引用来源 / 工具结果（仅工作台路由）。折叠态 width:0 不占位 -->
-        <WorkbenchDrawer
-          v-if="isWorkspaceRoute"
-          :sources="drawerSources"
-          :tool-calls="drawerToolCalls"
-        />
-        <!-- 面板展开按钮（面板关闭时浮在主区右上角） -->
-        <button
-          v-if="isWorkspaceRoute && !workbench.drawerOpen"
-          class="drawer-toggle"
-          title="打开工作面板"
-          @click="workbench.openDrawer('overview')"
-        >
-          <el-icon :size="14"><Expand /></el-icon>
-        </button>
       </main>
     </div>
   </div>
@@ -670,7 +655,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Delete,
-  Expand,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
@@ -681,12 +665,10 @@ import {
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useAgentGroupStore } from '@/stores/agentGroup'
-import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import { agentGroupApi } from '@/api/agentGroup'
 import { spaceApi } from '@/api/space'
 import AppHeader from './AppHeader.vue'
-import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
 import GroupMemberPicker from '@/components/agent/group/GroupMemberPicker.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
@@ -694,8 +676,6 @@ import type {
   Agent,
   AgentGroup,
   GroupMode,
-  SourceRef,
-  ToolCallRecord,
   CreateAgentRequest,
   UpdateAgentRequest,
   Space,
@@ -705,7 +685,6 @@ const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
 const groupStore = useAgentGroupStore()
-const workbench = useWorkbenchStore()
 
 provide('isInWorkspace', true)
 
@@ -722,19 +701,6 @@ const sectionCollapsed = reactive({
 function toggleSection(key: 'chat' | 'group') {
   sectionCollapsed[key] = !sectionCollapsed[key]
 }
-
-// ===================== 右抽屉数据聚合 =====================
-// 统一对话面后所有聊天数据都在 agentStore：来源在 messages[].sources（SourceRef[]），
-// 工具记录在 toolCalls。chat 频道（即 agent 聊天）与 agents 频道共用同一份数据。
-const drawerSources = computed<SourceRef[]>(() => {
-  const out: SourceRef[] = []
-  for (const m of agentStore.messages) {
-    if (m.sources) out.push(...m.sources)
-  }
-  return out
-})
-
-const drawerToolCalls = computed<ToolCallRecord[]>(() => agentStore.toolCalls)
 
 // ===================== Agents =====================
 
@@ -1718,31 +1684,6 @@ onMounted(async () => {
 
 .fade-leave-to {
   opacity: 0;
-}
-
-/* 抽屉折叠时浮在主区右上角的展开按钮 */
-.drawer-toggle {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: var(--z-raised);
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card, #fff);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow-sm);
-}
-
-.drawer-toggle:hover {
-  color: var(--color-primary);
-  border-color: var(--color-border-focus);
 }
 
 /* Skip link */

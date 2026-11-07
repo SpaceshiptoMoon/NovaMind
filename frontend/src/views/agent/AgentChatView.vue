@@ -54,8 +54,7 @@
             <div class="badge-avatar">{{ agentName.charAt(0) }}</div>
             <span class="header-title">{{ agentName }}</span>
           </div>
-          <!-- 对话/轨迹互斥切换 + 引用/工具/目录面板开关：轨迹保持全屏视图（列表+内置详情栏），
-               其余过程信息进右面板 -->
+          <!-- 对话/轨迹互斥切换 + 工作模式入口：轨迹保持全屏视图（列表+内置详情栏） -->
           <div v-if="!isWelcomeMode" class="header-tabs" role="tablist">
             <button
               class="view-pill"
@@ -77,36 +76,87 @@
               轨迹
             </button>
             <button
-              class="view-pill"
-              :class="{ active: isPanelActive('sources') }"
-              title="引用来源"
-              @click="togglePanel('sources')"
-            >
-              <el-icon :size="12"><Link /></el-icon>
-              引用
-            </button>
-            <button
-              class="view-pill"
-              :class="{ active: isPanelActive('tool') }"
-              title="工具结果"
-              @click="togglePanel('tool')"
-            >
-              <el-icon :size="12"><SetUp /></el-icon>
-              工具
-            </button>
-            <button
               v-if="currentSessionId"
-              class="view-pill"
-              :class="{ active: isPanelActive('workspace') }"
+              class="view-pill workspace-pill"
+              :class="{ active: isWorkspaceBound }"
               :title="workspacePillTitle"
-              @click="togglePanel('workspace')"
+              @click="handleWorkTabClick"
             >
               <el-icon :size="12"><FolderOpened /></el-icon>
-              目录
+              工作
             </button>
           </div>
         </div>
       </header>
+
+<!-- 工作目录选择器：选定即进入工作模式（read/glob/grep/bash 默认必带） -->
+      <el-dialog
+        v-model="workspaceDialogVisible"
+        title="选择工作目录"
+        width="560px"
+        :close-on-click-modal="false"
+        append-to-body
+      >
+        <div class="ws-dialog-body">
+          <p class="ws-dialog-hint">
+            进入工作模式后，智能体将以该文件夹为工作目录，自动获得 read / glob / grep / write / edit
+            / bash 六个工具，可读写文件、检索内容、运行命令。
+          </p>
+          <!-- 目录浏览器：逐层点选，选中层即为工作区根 -->
+          <div class="ws-browser">
+            <div class="ws-browser-toolbar">
+              <el-button size="small" :disabled="!browseParent" @click="browseEnter(browseParent!)">
+                <el-icon><ArrowLeft /></el-icon>
+                上级
+              </el-button>
+              <span class="ws-browser-path" :title="browsePath || '此电脑'">
+                {{ browsePath || '此电脑' }}
+              </span>
+            </div>
+            <div v-loading="browseLoading" class="ws-browser-list">
+              <div
+                v-for="d in browseDirs"
+                :key="d.path"
+                class="ws-browser-item"
+                @click="browseEnter(d.path)"
+              >
+                <el-icon :size="14"><FolderOpened /></el-icon>
+                <span class="ws-browser-name">{{ d.name }}</span>
+              </div>
+              <div v-if="!browseLoading && browseDirs.length === 0" class="ws-browser-empty">
+                （无子文件夹）
+              </div>
+            </div>
+          </div>
+          <div class="ws-selected-row">
+            <span class="ws-selected-label">已选目录：</span>
+            <code class="ws-selected-path">{{ browsePath || '（请选择）' }}</code>
+          </div>
+          <div v-if="isWorkspaceBound" class="ws-dialog-current">
+            当前绑定：<code>{{ workspaceRoot }}</code>
+          </div>
+        </div>
+        <template #footer>
+          <el-button
+            v-if="isWorkspaceBound"
+            type="danger"
+            plain
+            :loading="workspaceBinding"
+            @click="handleUnbindWorkspace"
+          >
+            退出工作模式
+          </el-button>
+          <el-button @click="workspaceDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            :loading="workspaceBinding"
+            :disabled="!browsePath"
+            @click="handleBindWorkspace"
+          >
+            进入工作模式
+          </el-button>
+        </template>
+      </el-dialog>
 
       <!-- 消息列表：按轮分组，工作过程折叠 -->
       <div
@@ -289,13 +339,7 @@
                               </span>
                             </div>
                             <div class="tool-header-actions">
-                              <button
-                                class="tool-drawer-btn"
-                                title="在右侧抽屉查看"
-                                @click.stop="openToolInDrawer(tool.tool_call_id)"
-                              >
-                                <el-icon :size="12"><Expand /></el-icon>
-                              </button>
+                              
                               <el-icon
                                 :size="12"
                                 class="expand-icon"
@@ -507,7 +551,7 @@
                   class="input-add-btn"
                   :disabled="agentStore.isStreaming || agentStore.loading"
                   title="添加工作目录（进入工作模式）"
-                  @click="workbench.openDrawer('workspace')"
+                  @click="openWorkspaceDialog()"
                 >
                   <el-icon :size="14"><FolderOpened /></el-icon>
                 </button>
@@ -515,7 +559,7 @@
                   v-if="currentSessionId && isWorkspaceBound"
                   class="mode-chip workspace-chip active"
                   :title="`工作目录：${workspaceRoot}（点击更换 / 退出）`"
-                  @click="workbench.openDrawer('workspace')"
+                  @click="openWorkspaceDialog()"
                 >
                   <el-icon :size="14" class="mode-chip-icon"><FolderOpened /></el-icon>
                   <span class="workspace-chip-path">{{ workspaceRootName }}</span>
@@ -684,12 +728,10 @@ import {
   Warning,
   FolderOpened,
   Clock,
-  Link,
   Check,
   ChatDotRound,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
-import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import type {
   AgentMessage,
@@ -711,7 +753,6 @@ import { copyToClipboard } from '@/utils/clipboard'
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
-const workbench = useWorkbenchStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
@@ -753,16 +794,95 @@ const workspaceRootName = computed(() => {
 // 轨迹保持全屏互斥切换而非侧车——过程时间线在窄面板里展不开
 const viewMode = ref<'chat' | 'trajectory'>('chat')
 
-/** 面板开关按钮 active 态：面板已展开且停在该视图 */
-function isPanelActive(view: 'sources' | 'tool' | 'workspace'): boolean {
-  return workbench.drawerOpen && workbench.drawerView === view
+const workspaceDialogVisible = ref(false)
+const workspaceBinding = ref(false)
+// 目录浏览态：path 空=此电脑（盘符列表），选中层即绑定目标
+const browsePath = ref('')
+const browseParent = ref<string | null>(null)
+const browseDirs = ref<{ name: string; path: string }[]>([])
+const browseLoading = ref(false)
+
+/** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
+async function browseEnter(path: string) {
+  browseLoading.value = true
+  try {
+    const data = await agentApi.browseWorkspaceDirs(path || undefined)
+    browsePath.value = data.path
+    browseParent.value = data.is_root ? null : (data.parent ?? null)
+    browseDirs.value = data.dirs || []
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
+  } finally {
+    browseLoading.value = false
+  }
 }
 
-/** 点击头部按钮：已开在该视图则收起，否则打开并切到该视图 */
-function togglePanel(view: 'sources' | 'tool' | 'workspace') {
-  if (isPanelActive(view)) workbench.closeDrawer()
-  else workbench.openDrawer(view)
+async function openWorkspaceDialog() {
+  workspaceDialogVisible.value = true
+  // 打开即从已绑定目录（或根）开始浏览
+  await browseEnter(workspaceRoot.value)
 }
+
+/** 「工作」tab：未绑定→弹目录选择器（选定即绑定激活）；已绑定→回到对话视图干活 */
+function handleWorkTabClick() {
+  if (isWorkspaceBound.value) {
+    viewMode.value = 'chat'
+  } else {
+    openWorkspaceDialog()
+  }
+}
+
+/** 绑定：选中层即根，写会话 workspace + 自动给 agent 并入 local_workspace 勾选 */
+async function handleBindWorkspace() {
+  if (!currentSessionId.value || !agentStore.currentAgent || !browsePath.value) return
+  const root = browsePath.value
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(currentSessionId.value, { mode: 'local', root })
+    // 工具默认必带：本地模式下 local_workspace 提供者须在 agent.enabled_tools 里
+    // 才会随 resolve_tools 下发 schema；未勾选时静默并入
+    const agent = agentStore.currentAgent
+    const tools = agent.enabled_tools || []
+    if (!tools.includes('local_workspace')) {
+      await agentStore.updateAgent(agent.id, {
+        enabled_tools: [...tools, 'local_workspace'],
+      })
+    }
+    // 回写会话列表里的 workspace 键（不重新拉全量）
+    const conv = currentConversation.value
+    if (conv) {
+      conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
+    }
+    ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
+    workspaceDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '绑定失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
+
+/** 解绑：清会话 workspace；agent 勾选保留（其他会话可能仍在用） */
+async function handleUnbindWorkspace() {
+  if (!currentSessionId.value) return
+  workspaceBinding.value = true
+  try {
+    await agentApi.updateSessionWorkspace(currentSessionId.value, null)
+    const conv = currentConversation.value
+    if (conv && conv.extra_config) {
+      const next = { ...conv.extra_config }
+      delete next.workspace
+      conv.extra_config = next
+    }
+    ElMessage.success('已退出工作模式')
+    workspaceDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '解绑失败')
+  } finally {
+    workspaceBinding.value = false
+  }
+}
+
 // 回答模式档位（DeerFlow 式）：极速=enable_thinking off；深度思考=on。
 // 后端无 effort 档位，两档为诚实映射；深度研究开关语义独立保留
 const thinkingLevel = ref<'flash' | 'deep'>('flash')
@@ -1315,7 +1435,6 @@ function goBack() {
 
 function handleNewChat() {
   agentStore.clearChat()
-  workbench.resetSelection()
 }
 
 async function handleSelectConversation(sessionId: string) {
@@ -1324,17 +1443,12 @@ async function handleSelectConversation(sessionId: string) {
   if (agentStore.isStreaming) agentStore.cancelStream()
   await agentStore.fetchMessages(sessionId)
   // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
-  workbench.resetSelection()
   followups.value = []
   scrollToBottom()
   if (isNarrowViewport.value) mobileSidebarOpen.value = false
 }
 
 // 在右侧抽屉打开该工具调用的结果详情（chat 模式工具卡片用）
-function openToolInDrawer(callId: string | null) {
-  if (!callId) return
-  workbench.selectToolCall(callId)
-}
 
 async function handleDeleteConversation(sessionId: string) {
   try {
