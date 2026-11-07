@@ -133,35 +133,43 @@
           </div>
         </template>
 
-        <!-- 折叠模式：图标栏（新建 + agent 首字头像快捷切换），填满 48px 空白柱 -->
-        <div v-else class="sidebar-rail" role="toolbar" aria-label="智能体快捷操作">
-          <button class="rail-btn rail-new" title="创建智能体" @click="openAgentDialog()">
-            <el-icon :size="16"><Plus /></el-icon>
-          </button>
-          <div class="rail-agents">
-            <button
-              v-for="agent in agentStore.agents"
-              :key="agent.id"
-              class="rail-btn rail-agent"
-              :class="{ active: isAgentChatRoute(agent.id) }"
-              :title="agent.name"
-              @click="handleSelectAgent(agent)"
-            >
-              {{ agent.name.charAt(0) }}
+        <!-- 折叠模式：图标栏（新建 + agent 首字头像快捷切换），填满 48px 空白柱；
+             对话页页内已有会话栏，rail 主体让位只留展开键 -->
+        <div
+          v-else
+          class="sidebar-rail"
+          role="toolbar"
+          :aria-label="inChatRoute ? '侧边栏开关' : '智能体快捷操作'"
+        >
+          <template v-if="!inChatRoute">
+            <button class="rail-btn rail-new" title="创建智能体" @click="openAgentDialog()">
+              <el-icon :size="16"><Plus /></el-icon>
             </button>
-          </div>
-          <div class="rail-groups">
-            <button
-              v-for="group in groupStore.groups"
-              :key="group.id"
-              class="rail-btn rail-group"
-              :class="{ active: isGroupChatRoute(group.id) }"
-              :title="group.name"
-              @click="handleSelectGroup(group)"
-            >
-              <NavIcon name="group" :size="15" />
-            </button>
-          </div>
+            <div class="rail-agents">
+              <button
+                v-for="agent in agentStore.agents"
+                :key="agent.id"
+                class="rail-btn rail-agent"
+                :class="{ active: isAgentChatRoute(agent.id) }"
+                :title="agent.name"
+                @click="handleSelectAgent(agent)"
+              >
+                {{ agent.name.charAt(0) }}
+              </button>
+            </div>
+            <div class="rail-groups">
+              <button
+                v-for="group in groupStore.groups"
+                :key="group.id"
+                class="rail-btn rail-group"
+                :class="{ active: isGroupChatRoute(group.id) }"
+                :title="group.name"
+                @click="handleSelectGroup(group)"
+              >
+                <NavIcon name="group" :size="15" />
+              </button>
+            </div>
+          </template>
           <button
             class="rail-btn rail-expand"
             title="展开侧边栏"
@@ -734,6 +742,12 @@ const drawerToolCalls = computed<ToolCallRecord[]>(() => agentStore.toolCalls)
 function isAgentChatRoute(agentId: number): boolean {
   return route.name === 'WorkspaceAgentChat' && Number(route.params.agentId) === agentId
 }
+
+// 对话页（单聊/群聊）页内自带会话侧栏：折叠态 rail 的 agent/群聊轨道与其重复，
+// 此时 rail 主体不渲染、只留展开键（用户点进对话即已离开「全局切换」场景）
+const inChatRoute = computed(
+  () => route.name === 'WorkspaceAgentChat' || route.name === 'WorkspaceGroupChat',
+)
 
 // 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
 provide('openAgentDialog', openAgentDialog)
