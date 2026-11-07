@@ -339,6 +339,13 @@
                               </span>
                             </div>
                             <div class="tool-header-actions">
+                              <button
+                                class="tool-drawer-btn"
+                                title="在右侧抽屉查看"
+                                @click.stop="openToolInDrawer(tool.tool_call_id)"
+                              >
+                                <el-icon :size="12"><Expand /></el-icon>
+                              </button>
                               
                               <el-icon
                                 :size="12"
@@ -747,12 +754,14 @@ import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
 import ResearchProgressCard from '@/components/agent/ResearchProgressCard.vue'
 import ApprovalCard from '@/components/agent/ApprovalCard.vue'
+import { useWorkbenchStore } from '@/stores/workbench'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
+const workbench = useWorkbenchStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
@@ -1442,6 +1451,7 @@ async function handleSelectConversation(sessionId: string) {
   // 流式进行中先中止：SSE 回调写 store 全局 messages，不中止会把旧会话增量写进新会话
   if (agentStore.isStreaming) agentStore.cancelStream()
   await agentStore.fetchMessages(sessionId)
+  workbench.resetSelection()
   // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
   followups.value = []
   scrollToBottom()
@@ -1449,6 +1459,12 @@ async function handleSelectConversation(sessionId: string) {
 }
 
 // 在右侧抽屉打开该工具调用的结果详情（chat 模式工具卡片用）
+
+/** 在右侧抽屉打开该工具调用的结果详情（面板唯一入口见右上角浮动按钮） */
+function openToolInDrawer(callId: string | null) {
+  if (!callId) return
+  workbench.selectToolCall(callId)
+}
 
 async function handleDeleteConversation(sessionId: string) {
   try {
