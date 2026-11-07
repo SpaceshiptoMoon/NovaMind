@@ -173,58 +173,6 @@
         </div>
       </div>
 
-      <!-- 消息全文视图（轨迹侧车点入的推入详情，展示 reasoning/content） -->
-      <div v-else-if="workbench.drawerView === 'message'" class="drawer-body">
-        <!-- 返回轨迹：消息视图现在只从轨迹列表点入（agent 单聊会话） -->
-        <button
-          v-if="agentStore.currentSessionId"
-          class="drawer-back"
-          title="返回轨迹列表"
-          @click="workbench.setView('trajectory')"
-        >
-          <el-icon :size="12"><ArrowLeft /></el-icon>
-          <span>返回轨迹</span>
-        </button>
-        <div v-if="!selectedMessage" class="drawer-empty">未选中消息</div>
-        <div v-else class="message-detail">
-          <div class="message-detail-header">
-            <span class="message-detail-role" :class="selectedMessage.role">{{
-              roleLabel(selectedMessage.role)
-            }}</span>
-            <span v-if="selectedMessage.iteration != null" class="message-detail-iter"
-              >第 {{ selectedMessage.iteration }} 轮</span
-            >
-          </div>
-          <div v-if="selectedMessage.reasoning" class="message-detail-section">
-            <div class="tool-detail-label">思考过程</div>
-            <div class="message-detail-md">
-              <MarkdownRenderer :content="selectedMessage.reasoning" />
-            </div>
-          </div>
-          <div v-if="selectedMessage.content" class="message-detail-section">
-            <div class="tool-detail-label">内容</div>
-            <div class="message-detail-md">
-              <MarkdownRenderer :content="selectedMessage.content" />
-            </div>
-          </div>
-          <div v-if="!selectedMessage.content && !selectedMessage.reasoning" class="drawer-empty">
-            该消息无文本内容
-          </div>
-        </div>
-      </div>
-
-      <!-- 轨迹侧车视图（仅 agent 单聊会话）：时间线列表，点行推入详情 -->
-      <div
-        v-else-if="workbench.drawerView === 'trajectory'"
-        class="drawer-body drawer-body--flush"
-      >
-        <TrajectoryList
-          :messages="agentStore.messages"
-          :tool-calls="agentStore.toolCalls"
-          @select-record="onTrajectorySelect"
-        />
-      </div>
-
       <!-- 工作目录视图（仅 agent 单聊会话）：目录浏览器 + 绑定/解绑 -->
       <div v-else-if="workbench.drawerView === 'workspace'" class="drawer-body">
         <p class="ws-hint">
@@ -306,7 +254,6 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowLeft,
-  Clock,
   Close,
   FolderOpened,
   Grid,
@@ -317,10 +264,7 @@ import type { Component } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useAgentStore } from '@/stores/agent'
 import { agentApi } from '@/api/agent'
-import type { SourceRef, ToolCallRecord, AgentMessage } from '@/api/types'
-import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import TrajectoryList from '@/components/agent/TrajectoryList.vue'
-import type { TrajectoryRecord } from '@/composables/useTrajectoryRecords'
+import type { SourceRef, ToolCallRecord } from '@/api/types'
 import {
   DRAWER_WIDTH_DEFAULT,
   DRAWER_WIDTH_MAX,
@@ -336,12 +280,13 @@ const workbench = useWorkbenchStore()
 const agentStore = useAgentStore()
 
 interface DrawerTab {
-  key: 'overview' | 'sources' | 'tool' | 'trajectory' | 'workspace'
+  key: 'overview' | 'sources' | 'tool' | 'workspace'
   label: string
   icon: Component
 }
 
-/** 顶层 tab：概览/引用/工具全频道可用；轨迹/目录仅 agent 单聊会话（有 sessionId）显示 */
+/** 顶层 tab：概览/引用/工具全频道可用；目录仅 agent 单聊会话（有 sessionId）显示。
+ *  轨迹不在面板里——它是对话页的全屏互斥视图（TrajectoryList + 内置详情栏） */
 const tabs = computed<DrawerTab[]>(() => {
   const list: DrawerTab[] = [
     { key: 'overview', label: '概览', icon: Grid },
@@ -349,10 +294,7 @@ const tabs = computed<DrawerTab[]>(() => {
     { key: 'tool', label: '工具', icon: SetUp },
   ]
   if (agentStore.currentSessionId) {
-    list.push(
-      { key: 'trajectory', label: '轨迹', icon: Clock },
-      { key: 'workspace', label: '目录', icon: FolderOpened },
-    )
+    list.push({ key: 'workspace', label: '目录', icon: FolderOpened })
   }
   return list
 })
@@ -389,22 +331,6 @@ function resetWidth() {
   workbench.setDrawerWidth(DRAWER_WIDTH_DEFAULT)
 }
 
-// ===================== 轨迹侧车：点行推入详情 =====================
-/** 轨迹行点击：tool 行进工具详情，其余消息行进全文视图（system 伪记录按 role 兜底） */
-function onTrajectorySelect(record: TrajectoryRecord) {
-  if (record.kind === 'tool') {
-    const callId = record.toolCall?.callId ?? record.msg.tool_call_id
-    if (callId) workbench.selectToolCall(callId)
-    return
-  }
-  if (record.kind === 'system') {
-    const sysMsg = agentStore.messages.find((m) => m.role === 'system')
-    if (sysMsg) workbench.selectMessage(sysMsg.id)
-    return
-  }
-  if (record.msg.id > 0) workbench.selectMessage(record.msg.id)
-}
-
 // ===================== 引用来源 =====================
 // 引用来源展开集合
 const expandedSources = ref(new Set<number>())
@@ -416,33 +342,6 @@ const kbSources = computed(() => props.sources.filter((s) => s.kind !== 'web'))
 const selectedToolCall = computed(
   () => props.toolCalls.find((c) => c.callId === workbench.selectedToolCallId) ?? null,
 )
-
-// 消息全文视图：从 agentStore.messages 按 selectedMessageId 查（message view 仅 agent 频道触发）
-const selectedMessage = computed(
-  () => agentStore.messages.find((m) => m.id === workbench.selectedMessageId) ?? null,
-)
-
-/** 消息角色代号转展示标签（tool/compaction/plan 等扩展角色一并覆盖） */
-function roleLabel(role: AgentMessage['role']): string {
-  switch (role) {
-    case 'user':
-      return 'USER'
-    case 'assistant':
-      return 'ASSISTANT'
-    case 'system':
-      return 'SYSTEM'
-    case 'tool':
-      return 'TOOL'
-    case 'compaction':
-      return 'COMPACTED'
-    case 'plan':
-      return 'PLAN'
-    case 'notice':
-      return 'NOTICE'
-    case 'research':
-      return 'RESEARCH'
-  }
-}
 
 /** 折叠的来源摘要卡（点击展开/收起）；重建 Set 触发响应式更新 */
 function toggleSource(index: number) {
@@ -716,35 +615,6 @@ async function handleUnbindWorkspace() {
   overflow-y: auto;
   padding: var(--space-3);
   min-height: 0;
-}
-
-/* 轨迹侧车：列表自带 toolbar 与滚动，外层不留 padding */
-.drawer-body--flush {
-  padding: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* 推入详情返回条（消息全文 ← 轨迹列表） */
-.drawer-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: var(--space-2);
-  padding: 3px 10px 3px 6px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.drawer-back:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
 }
 
 .drawer-empty,
@@ -1060,75 +930,6 @@ async function handleUnbindWorkspace() {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   text-align: center;
-}
-
-/* 消息全文 */
-.message-detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.message-detail-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card, #fff);
-}
-
-.message-detail-role {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
-}
-
-.message-detail-role.assistant {
-  background: rgba(99, 102, 241, 0.12);
-  color: #4338ca;
-}
-
-.message-detail-role.user {
-  background: rgba(17, 24, 39, 0.08);
-  color: var(--color-text);
-}
-
-.message-detail-role.tool {
-  background: rgba(20, 184, 166, 0.12);
-  color: #0f766e;
-}
-
-.message-detail-iter {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.message-detail-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.message-detail-md {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card, #fff);
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
-  color: var(--color-text);
-  max-height: 360px;
-  overflow-y: auto;
-}
-
-.message-detail-md :deep(p:last-child) {
-  margin-bottom: 0;
 }
 
 /* 工作目录浏览器（迁自 AgentChatView 弹窗样式） */

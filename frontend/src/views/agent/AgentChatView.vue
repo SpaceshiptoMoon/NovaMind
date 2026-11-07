@@ -54,13 +54,24 @@
             <div class="badge-avatar">{{ agentName.charAt(0) }}</div>
             <span class="header-title">{{ agentName }}</span>
           </div>
-          <!-- 右面板开关组（DeerFlow 式）：点击开合对应面板视图，active=面板已开且在该视图 -->
-          <div v-if="!isWelcomeMode" class="header-tabs" role="group">
+          <!-- 对话/轨迹互斥切换 + 引用/工具/目录面板开关：轨迹保持全屏视图（列表+内置详情栏），
+               其余过程信息进右面板 -->
+          <div v-if="!isWelcomeMode" class="header-tabs" role="tablist">
             <button
               class="view-pill"
-              :class="{ active: isPanelActive('trajectory') }"
-              title="轨迹侧车：边聊边看执行轨迹"
-              @click="togglePanel('trajectory')"
+              :class="{ active: viewMode === 'chat' }"
+              role="tab"
+              :aria-selected="viewMode === 'chat'"
+              @click="viewMode = 'chat'"
+            >
+              对话
+            </button>
+            <button
+              class="view-pill"
+              :class="{ active: viewMode === 'trajectory' }"
+              role="tab"
+              :aria-selected="viewMode === 'trajectory'"
+              @click="viewMode = 'trajectory'"
             >
               <el-icon :size="12"><Clock /></el-icon>
               轨迹
@@ -99,7 +110,7 @@
 
       <!-- 消息列表：按轮分组，工作过程折叠 -->
       <div
-        v-if="!isWelcomeMode"
+        v-if="!isWelcomeMode && viewMode === 'chat'"
         ref="messagesRef"
         class="messages-container"
         @scroll="handleMessagesScroll"
@@ -389,7 +400,7 @@
 
       <!-- 回到底部：用户上拉离开底部后出现（对话模式） -->
       <button
-        v-if="!isWelcomeMode && !stickToBottom"
+        v-if="!isWelcomeMode && viewMode === 'chat' && !stickToBottom"
         class="jump-to-bottom"
         title="回到底部"
         @click="
@@ -400,8 +411,17 @@
         <el-icon :size="14"><ArrowDown /></el-icon>
       </button>
 
+      <!-- 轨迹视图（调试向消息时间线，平铺每条消息 + 内置 inspector 展开详情）：全屏互斥切换 -->
+      <div v-if="!isWelcomeMode && viewMode === 'trajectory'" class="trajectory-container">
+        <TrajectoryList
+          :messages="agentStore.messages"
+          :tool-calls="agentStore.toolCalls"
+          :session-id="agentStore.currentSessionId"
+        />
+      </div>
+
       <!-- 输入区域（dsh 风格单一浮动卡片：附件栏 → 文本框 → 底部左右工具行） -->
-      <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
+      <div v-if="viewMode === 'chat'" class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
           <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
             <!-- 追问建议（DeerFlow suggestions 对齐）：每轮回答后静默生成，点选即替换/追加草稿 -->
             <div v-if="followups.length && !isWelcomeMode" class="followup-bar">
@@ -685,6 +705,7 @@ import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
 import ResearchProgressCard from '@/components/agent/ResearchProgressCard.vue'
 import ApprovalCard from '@/components/agent/ApprovalCard.vue'
+import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
 const route = useRoute()
@@ -727,14 +748,18 @@ const workspaceRootName = computed(() => {
   return seg.length > 18 ? `${seg.slice(0, 17)}…` : seg
 })
 
-// ===================== 右面板开关（DeerFlow 式头部按钮组） =====================
+// ===================== 视图模式与右面板 =====================
+// 视图模式：对话（产品化气泡）/ 轨迹（调试向全屏时间线，TrajectoryList 自带详情栏）。
+// 轨迹保持全屏互斥切换而非侧车——过程时间线在窄面板里展不开
+const viewMode = ref<'chat' | 'trajectory'>('chat')
+
 /** 面板开关按钮 active 态：面板已展开且停在该视图 */
-function isPanelActive(view: 'trajectory' | 'sources' | 'tool' | 'workspace'): boolean {
+function isPanelActive(view: 'sources' | 'tool' | 'workspace'): boolean {
   return workbench.drawerOpen && workbench.drawerView === view
 }
 
 /** 点击头部按钮：已开在该视图则收起，否则打开并切到该视图 */
-function togglePanel(view: 'trajectory' | 'sources' | 'tool' | 'workspace') {
+function togglePanel(view: 'sources' | 'tool' | 'workspace') {
   if (isPanelActive(view)) workbench.closeDrawer()
   else workbench.openDrawer(view)
 }
@@ -1889,7 +1914,17 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-/* 右面板开关组（轨迹/引用/工具/目录）：分段控件，与左侧助手徽标分组留白 */
+/* 轨迹全屏视图容器（对话/轨迹互斥切换，保持最初全屏形态） */
+.trajectory-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 48px;
+  background: var(--color-bg-elevated);
+}
+
+/* 右面板开关组（引用/工具/目录）：分段控件，与左侧助手徽标分组留白 */
 .header-tabs {
   display: flex;
   gap: 2px;
