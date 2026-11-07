@@ -1504,13 +1504,16 @@ class AgentChatService:
             for i, item in enumerate(items):
                 if not isinstance(item, dict):
                     continue
+                # filename 双形态兼容：扁平顶层（现役 knowledge_search）或
+                # file_info 包装（QA SourceRef 旧协议），缺一取另一
                 fi = item.get("file_info") or {}
+                filename = fi.get("filename") or item.get("filename") or ""
                 metadata = item.get("metadata") or {}
                 collected_sources.append({
                     "index": start_idx + i + 1,
                     "kind": "kb",
                     "document_id": item.get("document_id"),
-                    "document_name": str(fi.get("filename", "") or ""),
+                    "document_name": str(filename),
                     "chunk_id": item.get("chunk_id") or metadata.get("chunk_id"),
                     "score": item.get("score"),
                     "snippet": str(item.get("content", "") or "")[:500],
@@ -1740,6 +1743,10 @@ class AgentChatService:
             done_extra["usage"] = event.data["last_iteration_usage"]
         if event.data.get("last_iteration_duration_ms") is not None:
             done_extra["duration_ms"] = event.data["last_iteration_duration_ms"]
+        # 结构化引用随 assistant 消息落库：否则 sources 只活在 WS 事件里，
+        # 刷新/历史回放后引用面板全空（front 端 fetchMessages 读 extra.sources）
+        if sources:
+            done_extra["sources"] = sources
 
         assistant_msg = await self.agent_service.save_message(
             conversation_id=conv.id,
