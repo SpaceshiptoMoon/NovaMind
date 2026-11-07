@@ -4,6 +4,7 @@
 敏感条目逐一验证，相邻正常场景不误伤。
 """
 import os
+import sys
 
 import pytest
 from novamind.features.agent.services.local_workspace.security import (
@@ -84,3 +85,32 @@ def test_windows_case_insensitive_sensitive_match(workspace_root):
     """Windows 大小写不敏感：大写敏感目录名同样拦截。"""
     with pytest.raises(WorkspaceSecurityError):
         validate_relative_path(".SSH/config", workspace_root)
+
+
+# ==================== 平台判定与遍历过滤 helper（P1/P2 回归） ====================
+
+
+def test_detect_os_type_matches_platform(workspace_root):
+    """缺省口径=部署平台口径：Windows 上 windows、否则 posix（生产 Linux 不再吃硬编码默认）。"""
+    from novamind.features.agent.services.local_workspace.security import detect_os_type
+
+    expected = "windows" if sys.platform.startswith("win") else "posix"
+    assert detect_os_type() == expected
+    # 缺省传参与显式传平台值行为一致（同一路径返回相同归一结果）
+    p_default = validate_relative_path("src/main.py", workspace_root)
+    p_explicit = validate_relative_path("src/main.py", workspace_root, os_type=expected)
+    assert os.path.normcase(p_default) == os.path.normcase(p_explicit)
+
+
+def test_sensitive_helpers_cover_case_variants():
+    """遍历过滤 helper：黑名单目录/凭据类文件名命中，普通条目放行，大小写不敏感。"""
+    from novamind.features.agent.services.local_workspace.security import (
+        is_sensitive_dir_name,
+        is_sensitive_file_name,
+    )
+
+    assert is_sensitive_dir_name(".ssh") and is_sensitive_dir_name(".AWS")
+    assert not is_sensitive_dir_name("src") and not is_sensitive_dir_name("app")
+    assert is_sensitive_file_name(".env") and is_sensitive_file_name(".ENV.local")
+    assert is_sensitive_file_name("SERVER.KEY") and is_sensitive_file_name("id_ed25519")
+    assert not is_sensitive_file_name("main.py") and not is_sensitive_file_name("keys.txt")

@@ -26,6 +26,8 @@ async def build_local_workspace_port(
     if ws_cfg.get("mode") != "local" or not ws_cfg.get("root"):
         return None
     root = str(ws_cfg["root"])
+    # root_checked 当前无写入方（绑定流程不落此键）→ 每次都走运行时目录校验，
+    # 防御行为正确；此标记预留给 P1 runner 绑定流程（设备侧已校验时跳过重查）
     if not ws_cfg.get("root_checked"):
         from pathlib import Path
 

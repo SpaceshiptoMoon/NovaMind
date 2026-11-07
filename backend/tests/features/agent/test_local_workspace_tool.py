@@ -284,3 +284,91 @@ def test_schema_names_match_enabled_tool_dispatch(tool: LocalWorkspaceTool):
     """提供者名 local_workspace 是 enabled_tools 勾选名（resolve_tools 按 get_tool 匹配）。"""
     names = [t["function"]["name"] for t in tool.get_tools()]
     assert names == ["read", "glob", "grep", "write", "edit", "bash"]
+
+
+# ==================== 敏感条目遍历过滤 + read 容错 + 平台判定（P1/P2/P3 回归） ====================
+
+
+@pytest.fixture()
+def ws_with_secrets(tmp_path: Path) -> Path:
+    """带敏感条目的工作区：.env / server.key / .aws/credentials 应对遍历类工具不可见。"""
+    (tmp_path / ".env").write_text("SECRET_KEY=leak\n", encoding="utf-8")
+    (tmp_path / "server.key").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+    aws = tmp_path / ".aws"
+    aws.mkdir()
+    (aws / "credentials").write_text("aws_secret_access_key=leak\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("DB_PASSWORD=normal-value\n", encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_sensitive_files_and_dirs(
+    tool: LocalWorkspaceTool, ws_with_secrets: Path
+):
+    """grep 遍历与 read 同口径：.env/*.key/.aws 下的内容不得进上下文（正则刻意宽匹配）。"""
+    out = json.loads(
+        await tool.execute_tool(
+            "grep",
+            {"pattern": "leak|PASSWORD|=", "output_mode": "content"},
+            _ctx(ws_with_secrets),
+        )
+    )
+    assert out["ok"] is True
+    text = out["result"]
+    assert "app.py" in text  # 相邻正常场景：普通文件命中不误伤
+    assert ".env" not in text and "SECRET_KEY" not in text
+    assert "server.key" not in text
+    assert ".aws" not in text and "aws_secret" not in text
+
+
+@pytest.mark.asyncio
+async def test_grep_files_with_matches_skips_sensitive(
+    tool: LocalWorkspaceTool, ws_with_secrets: Path
+):
+    """files_with_matches 模式同样不泄露敏感文件名清单。"""
+    out = json.loads(
+        await tool.execute_tool(
+            "grep",
+            {"pattern": ".", "output_mode": "files_with_matches"},
+            _ctx(ws_with_secrets),
+        )
+    )
+    names = out["result"]
+    assert ".env" not in names and "server.key" not in names and ".aws" not in names
+
+
+@pytest.mark.asyncio
+async def test_glob_skips_sensitive_file_names(
+    tool: LocalWorkspaceTool, ws_with_secrets: Path
+):
+    """glob 结果不含敏感文件名（文件名清单本身即信息泄露）。"""
+    out = json.loads(await tool.execute_tool("glob", {"pattern": "**/*"}, _ctx(ws_with_secrets)))
+    assert out["ok"] is True
+    assert "app.py" in out["result"]  # 相邻正常场景不误伤
+    assert ".env" not in out["result"]
+    assert "server.key" not in out["result"]
+    assert ".aws" not in out["result"]
+
+
+@pytest.mark.asyncio
+async def test_read_non_int_offset_limit_falls_back_to_defaults(
+    tool: LocalWorkspaceTool, ws_root: Path
+):
+    """模型传非整数 offset/limit 按缺省口径兜底，不再裸抛 ValueError。"""
+    out = json.loads(
+        await tool.execute_tool(
+            "read", {"path": "src/app.py", "offset": "abc", "limit": "xyz"}, _ctx(ws_root)
+        )
+    )
+    assert out["ok"] is True
+    assert out["result"].splitlines()[0].lstrip().startswith("1\t")
+
+
+def test_executor_default_os_type_matches_platform(ws_root: Path):
+    """执行器缺省 os_type=部署平台判定：Linux 生产不再隐式吃 windows 口径（cmd.exe/GBK）。"""
+    from novamind.features.agent.services.local_workspace.port import InProcessExecutor
+
+    expected = "windows" if sys.platform.startswith("win") else "posix"
+    assert InProcessExecutor(root=str(ws_root)).os_type == expected
+    # 显式传参仍优先（runner 侧按设备事实口径传）
+    assert InProcessExecutor(root=str(ws_root), os_type="posix").os_type == "posix"

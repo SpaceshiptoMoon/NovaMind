@@ -22,9 +22,13 @@ class LocalWorkspacePort(ABC):
 class InProcessExecutor(LocalWorkspacePort):
     """进程内执行器（本地部署形态）：直接执行，与 runner 共享安全校验。"""
 
-    def __init__(self, root: str, os_type: str = "windows"):
+    def __init__(self, root: str, os_type: str | None = None):
+        # os_type 缺省按部署平台判定：shell 选择（cmd/sh）与输出编码口径都随它走，
+        # 禁止任何构造点隐式吃硬编码默认（Linux 生产曾因此默认走 cmd.exe 而不可用）
+        from novamind.features.agent.services.local_workspace.security import detect_os_type
+
         self.root = root
-        self.os_type = os_type
+        self.os_type = os_type or detect_os_type()
 
     async def execute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         from novamind.features.agent.services.local_workspace.ops import execute_local

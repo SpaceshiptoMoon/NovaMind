@@ -13,6 +13,8 @@ from typing import Any
 
 from novamind.features.agent.services.local_workspace.security import (
     WorkspaceSecurityError,
+    is_sensitive_dir_name,
+    is_sensitive_file_name,
     validate_relative_path,
 )
 
@@ -205,8 +207,15 @@ def _read_file(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
     with open(path, encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     total = len(lines)
-    offset = max(int(args.get("offset") or 1), 1)
-    limit = _READ_MAX_LINES if args.get("limit") is None else max(int(args["limit"]), 1)
+    # offset/limit 由模型生成，非整数一律按缺省口径兜底而非裸抛
+    try:
+        offset = max(int(args.get("offset") or 1), 1)
+    except (TypeError, ValueError):
+        offset = 1
+    try:
+        limit = _READ_MAX_LINES if args.get("limit") is None else max(int(args["limit"]), 1)
+    except (TypeError, ValueError):
+        limit = _READ_MAX_LINES
     selected = lines[offset - 1 : offset - 1 + limit]
     truncated = offset - 1 + len(selected) < total
     out = []
@@ -228,6 +237,9 @@ def _glob(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
     matches: list[tuple[float, str]] = []
     for p in base_path.glob(pattern):
         if p.is_file():
+            # 敏感文件名过滤与 read 同口径：列出文件名本身也是信息泄露（黑名单意图全覆盖）
+            if is_sensitive_file_name(p.name):
+                continue
             rel = str(p.relative_to(Path(root).resolve())).replace(os.sep, "/")
             try:
                 mtime = p.stat().st_mtime
@@ -264,8 +276,17 @@ def _grep(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
     truncated = False
     root_path = Path(root).resolve()
     for dirpath, dirnames, filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__", "node_modules", ".venv")]
+        # 剪枝含敏感目录：read 单文件有黑名单拦截，遍历类工具必须同口径——
+        # 否则 grep 以根为基时可把 .ssh/.aws 等目录内容扫进上下文
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in (".git", "__pycache__", "node_modules", ".venv")
+            and not is_sensitive_dir_name(d)
+        ]
         for fn in filenames:
+            if is_sensitive_file_name(fn):
+                continue
             if not fnmatch.fnmatch(fn, Path(file_glob).name) and "**" not in file_glob:
                 continue
             fp = Path(dirpath) / fn
