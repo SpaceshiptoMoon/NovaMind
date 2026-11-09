@@ -36,7 +36,7 @@
                     <ArrowDown />
                   </el-icon>
                 </button>
-                <button class="list-section-add" title="创建智能体" @click="openAgentDialog()">
+                <button class="list-section-add" title="新建对话" @click="openUnifiedCreate()">
                   <el-icon :size="12"><Plus /></el-icon>
                 </button>
               </div>
@@ -126,7 +126,7 @@
                     <ArrowDown />
                   </el-icon>
                 </button>
-                <button class="list-section-add" title="创建群聊" @click="openGroupDialog()">
+                <button class="list-section-add" title="新建对话" @click="openUnifiedCreate()">
                   <el-icon :size="12"><Plus /></el-icon>
                 </button>
               </div>
@@ -252,7 +252,8 @@
         </button>
       </aside>
 
-      <!-- Agent 创建/编辑弹窗 + 群聊建/编辑弹窗 + 配置抽屉（表单逻辑收编在 manage 组件；append-to-body 需挂布局层） -->
+      <!-- 统一创建对话弹窗 + Agent 编辑弹窗 + 群聊编辑弹窗 + 配置抽屉（表单逻辑收编在 manage 组件；append-to-body 需挂布局层） -->
+      <UnifiedCreateDialog v-model="unifiedCreateVisible" />
       <AgentFormDialog v-model="agentFormVisible" :agent="agentFormTarget" />
       <GroupFormDialog v-model="groupFormVisible" :group-id="groupFormTarget" />
       <AgentConfigDrawer v-model="configDrawerVisible" :agent="configAgent" />
@@ -314,6 +315,7 @@ import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
 import AgentFormDialog from '@/components/agent/manage/AgentFormDialog.vue'
 import GroupFormDialog from '@/components/agent/manage/GroupFormDialog.vue'
+import UnifiedCreateDialog from '@/components/agent/manage/UnifiedCreateDialog.vue'
 import AgentConfigDrawer from '@/components/agent/manage/AgentConfigDrawer.vue'
 import { formatDate } from '@/utils/format'
 import type { Agent, AgentGroup, SourceRef, ToolCallRecord } from '@/api/types'
@@ -435,6 +437,14 @@ async function handleDeleteGroupSession(sessionId: string) {
     if (e instanceof Error) ElMessage.error(e.message)
     // 取消则静默
   }
+}
+
+// ===================== 统一创建对话弹窗（分区 + 号共用：选 1 人直进单聊，≥2 人转协作配置） =====================
+
+const unifiedCreateVisible = ref(false)
+
+function openUnifiedCreate() {
+  unifiedCreateVisible.value = true
 }
 
 // ===================== Agent 创建/编辑弹窗（原广场页逻辑收编） =====================
