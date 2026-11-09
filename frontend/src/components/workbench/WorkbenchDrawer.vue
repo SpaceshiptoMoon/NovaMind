@@ -47,7 +47,10 @@
         <div v-if="!sources.length" class="drawer-empty">暂无引用来源</div>
         <div v-else class="source-list-wrap">
           <template v-if="webSources.length">
-            <div class="source-group-title web">🌐 联网来源</div>
+            <div class="source-group-title web">
+              <el-icon :size="12"><Link /></el-icon>
+              联网来源
+            </div>
             <div
               v-for="s in webSources"
               :key="s.index"
@@ -80,7 +83,10 @@
             </div>
           </template>
           <template v-if="kbSources.length">
-            <div class="source-group-title kb">📚 知识库来源</div>
+            <div class="source-group-title kb">
+              <el-icon :size="12"><Collection /></el-icon>
+              知识库来源
+            </div>
             <div
               v-for="s in kbSources"
               :key="s.index"
@@ -193,7 +199,7 @@
  * 全部托管在 workbench store。目录视图仅 agent 单聊会话可用（群聊不显示该入口）。
  */
 import { ref, computed, watch } from 'vue'
-import { Close, FolderOpened, Link, SetUp } from '@element-plus/icons-vue'
+import { Close, Collection, FolderOpened, Link, SetUp } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useAgentStore } from '@/stores/agent'
@@ -411,12 +417,16 @@ async function handleUnbindWorkspace() {
   flex-shrink: 0;
 }
 
+/* 视图切换：分段控件（与对话页头部 header-tabs 同款语言） */
 .view-switcher {
   display: flex;
-  gap: var(--space-1);
+  gap: 2px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  padding: 2px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
 }
 
 .view-pill {
@@ -424,11 +434,11 @@ async function handleUnbindWorkspace() {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 4px 8px;
-  border: 1px solid transparent;
+  padding: 3px 10px;
+  border: none;
   border-radius: var(--radius-full);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-xs);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -436,13 +446,12 @@ async function handleUnbindWorkspace() {
 }
 
 .view-pill:hover {
-  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
 .view-pill.active {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-xs);
   color: var(--color-text);
   font-weight: var(--weight-medium, 500);
 }
@@ -453,7 +462,7 @@ async function handleUnbindWorkspace() {
   padding: 0 4px;
   border-radius: var(--radius-full);
   background: var(--color-text-secondary);
-  color: #fff;
+  color: var(--color-bg-card);
   font-size: 10px;
   line-height: 16px;
   text-align: center;
@@ -506,10 +515,17 @@ async function handleUnbindWorkspace() {
 }
 
 .source-group-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   font-weight: 600;
   padding: var(--space-2) var(--space-1) var(--space-1);
   color: var(--color-text-muted);
+}
+
+.source-group-title.web {
+  color: var(--color-text-secondary);
 }
 
 .source-card {
@@ -573,12 +589,12 @@ async function handleUnbindWorkspace() {
 }
 
 .source-kind.web {
-  background: rgba(17, 24, 39, 0.12);
+  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
 .source-kind.kb {
-  background: rgba(17, 24, 39, 0.08);
+  background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
 
@@ -653,18 +669,18 @@ async function handleUnbindWorkspace() {
 }
 
 .tool-detail-status.completed {
-  background: rgba(17, 24, 39, 0.06);
+  background: var(--color-primary-muted);
   color: var(--color-text-secondary);
 }
 
 .tool-detail-status.running {
-  background: #fef9c3;
-  color: #a16207;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 
 .tool-detail-status.failed {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 .tool-detail-duration {

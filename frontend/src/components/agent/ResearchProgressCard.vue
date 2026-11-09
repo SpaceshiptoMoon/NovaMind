@@ -3,7 +3,9 @@
     <button class="research-card-row" @click="$emit('toggle')">
       <span class="research-card-leading" aria-hidden>
         <span class="research-card-spinner" :class="{ done: isDone, failed: isFailed }" />
-        <span class="research-card-disclosure" :class="{ expanded }">▾</span>
+        <el-icon :size="10" class="research-card-disclosure" :class="{ expanded }">
+          <ArrowDown />
+        </el-icon>
       </span>
       <span class="research-card-title">{{ title }}</span>
       <span class="research-card-sep" aria-hidden />
@@ -35,6 +37,7 @@
  * （研究报告正文经 tool 消息留档，进度/计划不可回看——批4 再议持久化）。
  */
 import { computed } from 'vue'
+import { ArrowDown } from '@element-plus/icons-vue'
 import type { ResearchProgressData } from '@/api/types'
 
 const props = defineProps<{
@@ -76,7 +79,7 @@ const progressLabel = computed(() => {
 <style scoped>
 .research-card {
   margin: 6px 0;
-  border: 1px solid var(--border-color, #e4e4e7);
+  border: 1px solid var(--color-border-light);
   border-radius: 8px;
   overflow: hidden;
   max-width: 640px;
@@ -96,7 +99,7 @@ const progressLabel = computed(() => {
 }
 
 .research-card-row:hover {
-  background: var(--hover-bg, rgba(0, 0, 0, 0.03));
+  background: var(--color-bg-hover);
 }
 
 .research-card-leading {
@@ -110,21 +113,21 @@ const progressLabel = computed(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--border-color, #d4d4d8);
-  border-top-color: var(--text-secondary, #52525b);
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-text-secondary);
   animation: research-spin 0.9s linear infinite;
 }
 
 .research-card-spinner.done {
   animation: none;
-  border: 2px solid var(--success-color, #22c55e);
-  background: var(--success-color, #22c55e);
+  border: 2px solid var(--color-success);
+  background: var(--color-success);
 }
 
 .research-card-spinner.failed {
   animation: none;
-  border: 2px solid var(--danger-color, #ef4444);
-  background: var(--danger-color, #ef4444);
+  border: 2px solid var(--color-danger);
+  background: var(--color-danger);
 }
 
 @keyframes research-spin {
@@ -134,8 +137,7 @@ const progressLabel = computed(() => {
 }
 
 .research-card-disclosure {
-  font-size: 10px;
-  color: var(--text-tertiary, #a1a1aa);
+  color: var(--color-text-faint, var(--color-text-muted));
   transition: transform 0.15s;
 }
 
@@ -150,7 +152,7 @@ const progressLabel = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: var(--text-primary, #18181b);
+  color: var(--color-text);
 }
 
 .research-card-sep {
@@ -158,26 +160,26 @@ const progressLabel = computed(() => {
   flex-shrink: 1;
   min-width: 12px;
   height: 1px;
-  background: var(--border-color, #e4e4e7);
+  background: var(--color-border-light);
 }
 
 .research-card-progress {
   flex-shrink: 0;
   font-size: 12px;
-  color: var(--text-tertiary, #a1a1aa);
+  color: var(--color-text-faint, var(--color-text-muted));
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .research-card-body {
   padding: 8px 12px 12px;
-  border-top: 1px solid var(--border-color, #e4e4e7);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .research-card-bar {
   height: 3px;
   border-radius: 2px;
-  background: var(--border-color, #e4e4e7);
+  background: var(--color-border-light);
   overflow: hidden;
   margin-bottom: 8px;
 }
@@ -185,14 +187,14 @@ const progressLabel = computed(() => {
 .research-card-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: var(--text-secondary, #52525b);
+  background: var(--color-text-secondary);
   transition: width 0.4s ease;
 }
 
 .research-card-plan-title {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, #52525b);
+  color: var(--color-text-secondary);
   margin-bottom: 4px;
 }
 
@@ -206,7 +208,7 @@ const progressLabel = computed(() => {
 
 .research-card-plan-step {
   font-size: 12px;
-  color: var(--text-tertiary, #71717a);
+  color: var(--color-text-muted);
   overflow-wrap: anywhere;
 }
 
@@ -218,7 +220,7 @@ const progressLabel = computed(() => {
 .research-card-failed {
   margin-top: 6px;
   font-size: 12px;
-  color: var(--danger-color, #ef4444);
+  color: var(--color-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

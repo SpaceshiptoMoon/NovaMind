@@ -695,32 +695,21 @@ if (!agentStore.tools.length) {
   color: var(--color-text-secondary);
 }
 .inspector-kind.user {
-  background: rgba(17, 24, 39, 0.08);
+  background: var(--color-bg-hover);
   color: var(--color-text);
 }
+/* 配色预算收缩：与 TrajectoryList role 徽章同口径——主角色 primary 弱强调，过程角色中性 */
 .inspector-kind.assistant {
-  background: rgba(99, 102, 241, 0.12);
-  color: #4338ca;
+  background: var(--color-primary-muted);
+  color: var(--color-text);
 }
-.inspector-kind.tool {
-  background: rgba(20, 184, 166, 0.12);
-  color: #0f766e;
-}
-.inspector-kind.system {
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
-}
-.inspector-kind.compaction {
-  background: rgba(107, 114, 128, 0.12);
-  color: #4b5563;
-}
-.inspector-kind.plan {
-  background: rgba(139, 92, 246, 0.12);
-  color: #6d28d9;
-}
+.inspector-kind.tool,
+.inspector-kind.system,
+.inspector-kind.compaction,
+.inspector-kind.plan,
 .inspector-kind.notice {
-  background: rgba(245, 158, 11, 0.12);
-  color: #b45309;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .inspector-loc {
@@ -880,16 +869,16 @@ if (!agentStore.tools.length) {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: var(--radius-full);
-  background: rgba(17, 24, 39, 0.06);
+  background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
 .status-pill.running {
-  background: #fef9c3;
-  color: #a16207;
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 .status-pill.failed {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 /* hierarchy 跳转按钮 */

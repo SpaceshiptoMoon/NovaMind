@@ -11,7 +11,7 @@
           title="折叠/展开所有 Session"
           @click="toggleAllSessions"
         >
-          <span class="traj-tb-glyph">{{ allSessionsCollapsed ? '⊞' : '⊟' }}</span>
+          <el-icon :size="12"><Expand v-if="allSessionsCollapsed" /><Fold v-else /></el-icon>
           <span>Sessions</span>
         </button>
         <button
@@ -21,7 +21,7 @@
           title="折叠/展开所有工具步骤（Step）"
           @click="toggleAllSteps"
         >
-          <span class="traj-tb-glyph">{{ allStepsCollapsed ? '⊞' : '⊟' }}</span>
+          <el-icon :size="12"><Expand v-if="allStepsCollapsed" /><Fold v-else /></el-icon>
           <span>Steps</span>
         </button>
         <input v-model="searchQuery" class="traj-search" placeholder="搜索消息…" type="search" />
@@ -54,11 +54,13 @@
             :title="`Session ${rec.sessionIndex}（点击折叠/展开）`"
             @click="toggleSession(rec.sessionIndex)"
           >
-            <span
+            <el-icon
               class="session-chevron"
+              :size="12"
               :class="{ collapsed: collapsedSessions.has(rec.sessionIndex) }"
-              >▾</span
             >
+              <ArrowDown />
+            </el-icon>
             <span class="session-label">Session {{ rec.sessionIndex }}</span>
             <span class="session-stats">
               <span>{{ sessionStepCount(rec.sessionIndex) }} steps</span>
@@ -164,7 +166,8 @@
                 @click.stop="toggleSteps(rec.recordId)"
                 title="展开工具步骤"
               >
-                ⊞ {{ rec.childToolRecordIds?.length || 0 }} steps
+                <el-icon :size="10"><Expand /></el-icon>
+                {{ rec.childToolRecordIds?.length || 0 }} steps
               </span>
 
               <span v-if="rec.durationMs != null" class="traj-duration">{{
@@ -227,6 +230,7 @@ onErrorCaptured((err, _inst, info) => {
   return false
 })
 import { ref, computed, watch, nextTick } from 'vue'
+import { ArrowDown, Expand, Fold } from '@element-plus/icons-vue'
 import type { AgentMessage, ToolCallRecord } from '@/api/types'
 import TrajectoryInspector from './TrajectoryInspector.vue'
 import {
@@ -638,9 +642,6 @@ function cssEscape(s: string): string {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.traj-tb-glyph {
-  font-size: 11px;
-}
 
 .traj-search {
   flex: 1;
@@ -784,38 +785,24 @@ function cssEscape(s: string): string {
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
-/* role 徽章：文字色取 500 档中间明度，亮/暗卡上都可读 */
+/* role 徽章：配色预算收缩——user/assistant 两个主角色用 primary 弱强调，
+   其余六种过程角色统一中性（role 名文字本身已表达身份，不再一角色一色相） */
 .traj-role.user {
   background: var(--color-primary-muted);
   color: var(--color-text);
 }
 .traj-role.assistant {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
-}
-.traj-role.tool {
-  background: rgba(20, 184, 166, 0.12);
-  color: #14b8a6;
-}
-.traj-role.system {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-}
-.traj-role.compaction {
   background: var(--color-primary-muted);
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
-.traj-role.plan {
-  background: rgba(139, 92, 246, 0.12);
-  color: #8b5cf6;
-}
-.traj-role.notice {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-}
+.traj-role.tool,
+.traj-role.system,
+.traj-role.compaction,
+.traj-role.plan,
+.traj-role.notice,
 .traj-role.research {
-  background: rgba(20, 184, 166, 0.12);
-  color: #14b8a6;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .traj-iter {
