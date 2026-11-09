@@ -14,6 +14,7 @@ import type {
   FollowupSuggestionsData,
   AgentConversation,
   AgentConversationListResponse,
+  RecentSessionListResponse,
   ResearchProgressData,
   AgentMessageListResponse,
   OpenAICompatToolCall,
@@ -201,6 +202,14 @@ export const agentApi = {
     return request.get<AgentConversationListResponse>(
       '/agent/sessions',
       params as Record<string, unknown>,
+    )
+  },
+
+  /** 会话中心：跨单聊/群聊的最近会话混排列表（updated_at 倒序；limit 服务端钳制 1-100） */
+  listRecentSessions(limit?: number) {
+    return request.get<RecentSessionListResponse>(
+      '/agent/sessions/recent',
+      limit !== undefined ? { limit } : undefined,
     )
   },
 

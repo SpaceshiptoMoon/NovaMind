@@ -1953,6 +1953,30 @@ export interface AgentConversationListResponse {
   offset: number
 }
 
+// ===================== 会话中心（GET /agent/sessions/recent：单聊/群聊混排） =====================
+
+/** 会话中心条目：kind=agent → 单聊会话（ref_id=AgentDefinition.id）；kind=group → 群会话（ref_id=AgentGroup.id） */
+export interface RecentSessionItem {
+  session_id: string
+  kind: 'agent' | 'group'
+  /** 会话标题，未生成时为 null（前端以 name 兜底展示） */
+  title: string | null
+  /** 单聊=助手 id；群聊=群 id */
+  ref_id: number
+  /** 单聊=助手名；群聊=群名 */
+  name: string
+  /** 群成员总数（单聊为 null） */
+  member_count: number | null
+  /** 群成员名前 3（按 speak_order，超出截断；单聊为 null） */
+  members: string[] | null
+  /** 中国时区 naive datetime 序列化 */
+  updated_at: string | null
+}
+
+export interface RecentSessionListResponse {
+  items: RecentSessionItem[]
+}
+
 export interface AgentMessage {
   id: number
   conversation_id: number

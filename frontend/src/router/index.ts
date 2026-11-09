@@ -345,7 +345,7 @@ const router = createRouter({
               path: 'groups/:groupId(\\d+)',
               name: 'WorkspaceGroupChat',
               component: () => import('@/views/agent/GroupChatView.vue'),
-              meta: { title: '群聊', requiresApp: 'agent' },
+              meta: { title: '协作对话', requiresApp: 'agent' },
             },
             {
               path: 'research/:spaceId(\\d+)?',

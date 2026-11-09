@@ -21,7 +21,7 @@
           <!-- 单聊/协作分岔提示：满 2 人那一刻出现（行内 hint，不打断） -->
           <div v-if="form.member_ids.length >= 2" class="collab-hint">将开启协作讨论</div>
           <div v-else-if="form.member_ids.length === 1" class="field-hint">
-            只选 1 人：确定后直接进入与该智能体的单聊，不创建群聊
+            只选 1 人：确定后直接进入与该智能体的单聊，不创建协作对话
           </div>
         </div>
 
@@ -52,7 +52,7 @@
           </div>
 
           <div class="form-section">
-            <h4>群聊配置</h4>
+            <h4>协作对话配置</h4>
             <el-form-item v-if="form.mode === 'consult'" label="主持人">
               <el-select
                 v-model="form.host_agent_id"
@@ -78,10 +78,10 @@
               />
               <span class="rounds-hint">成员依次发言的轮数（1~3）</span>
             </el-form-item>
-            <el-form-item label="群名称">
+            <el-form-item label="协作对话名称">
               <el-input
                 v-model="form.name"
-                placeholder="为群聊起个名字"
+                placeholder="为协作对话起个名字"
                 maxlength="50"
                 @input="nameEdited = true"
               />
@@ -118,7 +118,11 @@ import GroupMemberPicker from '@/components/agent/group/GroupMemberPicker.vue'
 import './formDialog.css'
 
 const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: boolean): void
+  /** 协作对话创建成功（已刷新群列表），供宿主刷新会话中心等派生列表 */
+  (e: 'created'): void
+}>()
 
 const router = useRouter()
 const agentStore = useAgentStore()
@@ -203,7 +207,7 @@ async function handleSubmit() {
     return
   }
   if (!form.name.trim()) {
-    ElMessage.error('请输入群名称')
+    ElMessage.error('请输入协作对话名称')
     return
   }
 
@@ -217,9 +221,10 @@ async function handleSubmit() {
       host_agent_id: form.mode === 'consult' ? form.host_agent_id : null,
       rounds_per_turn: form.mode === 'brainstorm' ? form.rounds_per_turn : undefined,
     })
-    ElMessage.success('群聊已创建')
+    ElMessage.success('协作对话已创建')
     // 刷新侧栏列表后建完即进群（与 GroupFormDialog 同体验）
     await groupStore.fetchGroups()
+    emit('created')
     emit('update:modelValue', false)
     router.push({ name: 'WorkspaceGroupChat', params: { groupId: detail.id } })
   } catch {
