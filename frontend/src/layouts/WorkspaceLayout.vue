@@ -331,10 +331,10 @@ const sidebarCollapsed = ref(false)
 
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
 
-// 下方列表的折叠态
+// 下方列表的折叠态（群聊分区默认折叠：单聊是高频主区，群聊按需展开）
 const sectionCollapsed = reactive({
   chat: false,
-  group: false,
+  group: true,
 })
 
 function toggleSection(key: 'chat' | 'group') {
