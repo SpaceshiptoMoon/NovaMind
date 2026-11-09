@@ -326,6 +326,15 @@ const router = createRouter({
               path: 'chat/archive',
               redirect: '/home/workspace/chat',
             },
+            // 占位页已清退（管理动作收编侧栏），旧路径保留重定向
+            {
+              path: 'agents',
+              redirect: '/home/workspace/chat',
+            },
+            {
+              path: 'groups',
+              redirect: '/home/workspace/chat',
+            },
             {
               path: 'agents/:agentId/chat',
               name: 'WorkspaceAgentChat',
