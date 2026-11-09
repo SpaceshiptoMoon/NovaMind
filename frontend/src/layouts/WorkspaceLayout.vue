@@ -45,7 +45,7 @@
                     v-if="item.kind === 'agent'"
                     class="list-item"
                     :class="{ active: isAgentSessionActive(item) }"
-                    @click="handleOpenAgentSession(item)"
+                    @click="handleOpenSession(item)"
                   >
                     <div class="agent-avatar-sm">{{ item.name.charAt(0) }}</div>
                     <div class="item-info">
@@ -58,7 +58,7 @@
                     v-else
                     class="list-item"
                     :class="{ active: isGroupSessionActive(item) }"
-                    @click="handleOpenGroupSession(item)"
+                    @click="handleOpenSession(item)"
                   >
                     <GroupAvatar :members="item.members || []" :title="item.name" />
                     <div class="item-info">
@@ -407,7 +407,7 @@
  *
  * 侧栏仅在工作台路由渲染（上下文列表）；skip-link 供键盘导航。
  */
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -490,44 +490,15 @@ function groupEntryDesc(item: RecentSessionItem): string {
   return item.member_count != null ? `${item.member_count} 人` : ''
 }
 
-/** 单聊条目续聊：设 currentAgent（agents 按 ref_id 找）→ 会话列表 → 进页 → 拉该会话消息 */
-async function handleOpenAgentSession(item: RecentSessionItem) {
-  agentStore.currentAgent = agentStore.agents.find((a) => a.id === item.ref_id) ?? null
-  agentStore.fetchConversations(item.ref_id)
-  // 流式进行中先中止（SSE 回调写全局 messages，不中止会串台）
-  if (agentStore.isStreaming) agentStore.cancelStream()
-  // fetchMessages 必须在 push 之后：AgentChatView onMounted 的 initForAgent 会
-  // clearChat（清 messages/currentSessionId），push 前拉取的历史会被挂载清态冲掉
-  await router.push({ name: 'WorkspaceAgentChat', params: { agentId: item.ref_id } })
-  await agentStore.fetchMessages(item.session_id)
+/**
+ * 会话中心条目统一入口（单聊/协作同路）：跳直达路由 /chat/:sessionId，
+ * 由 SessionEntryView 拉会话详情判 kind 后转跳单聊/群聊页（批3）。
+ */
+function handleOpenSession(item: RecentSessionItem) {
+  // 已在该会话页内（store 当前会话即目标）：不绕行直达入口，避免视图重挂闪烁
+  if (isAgentSessionActive(item) || isGroupSessionActive(item)) return
+  router.push({ name: 'WorkspaceSessionChat', params: { sessionId: item.session_id } })
 }
-
-// 群条目定位：initForGroup 默认回放最新会话，指定会话在其完成后追加 selectSession
-const pendingGroupSession = ref<{ groupId: number; sessionId: string } | null>(null)
-
-async function handleOpenGroupSession(item: RecentSessionItem) {
-  if (isGroupChatRoute(item.ref_id)) {
-    // 已在该群页内：store 上下文即该群，直接切会话
-    await groupStore.selectSession(item.session_id)
-    return
-  }
-  pendingGroupSession.value = { groupId: item.ref_id, sessionId: item.session_id }
-  router.push({ name: 'WorkspaceGroupChat', params: { groupId: item.ref_id } })
-}
-
-// initForGroup 完成（timelineLoading 归 false 且 currentGroup 就位）后定位 pending 会话；
-// 目标即最新会话时跳过（init 已选中）
-watch(
-  () => [groupStore.currentGroup?.id, groupStore.timelineLoading] as const,
-  ([groupId, loading]) => {
-    const pending = pendingGroupSession.value
-    if (!pending || loading || groupId !== pending.groupId) return
-    pendingGroupSession.value = null
-    if (groupStore.currentSessionId !== pending.sessionId) {
-      groupStore.selectSession(pending.sessionId)
-    }
-  },
-)
 
 // ===================== 助手管理抽屉（会话中心头部的「助手」入口） =====================
 
@@ -558,9 +529,13 @@ function isAgentChatRoute(agentId: number): boolean {
 }
 
 // 对话页（单聊/群聊）页内自带会话侧栏：折叠态 rail 的 agent/群聊轨道与其重复，
-// 此时 rail 主体不渲染、只留展开键（用户点进对话即已离开「全局切换」场景）
+// 此时 rail 主体不渲染、只留展开键（用户点进对话即已离开「全局切换」场景）；
+// WorkspaceSessionChat 是会话直达过渡页，同属会话上下文
 const inChatRoute = computed(
-  () => route.name === 'WorkspaceAgentChat' || route.name === 'WorkspaceGroupChat',
+  () =>
+    route.name === 'WorkspaceAgentChat' ||
+    route.name === 'WorkspaceGroupChat' ||
+    route.name === 'WorkspaceSessionChat',
 )
 
 // 单聊路由（WorkspaceAgentChat）：右抽屉与其浮动展开按钮仅在此挂载——

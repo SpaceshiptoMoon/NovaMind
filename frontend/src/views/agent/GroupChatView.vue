@@ -80,8 +80,16 @@ const memberNames = computed(() =>
 )
 const memberCount = computed(() => store.currentGroup?.member_count ?? 0)
 
-function init() {
-  if (groupId.value) store.initForGroup(groupId.value)
+async function init() {
+  if (!groupId.value) return
+  // 会话直达路由（/chat/:sessionId 判为群会话后转跳）以 query.sessionId 指定初始会话；
+  // initForGroup 默认回放最新会话，目标即最新（或已不在会话列表，如刚被删除）时跳过
+  const target = typeof route.query.sessionId === 'string' ? route.query.sessionId : ''
+  await store.initForGroup(groupId.value)
+  const targetExists = store.sessions.some((s) => s.session_id === target)
+  if (target && store.currentSessionId !== target && targetExists) {
+    await store.selectSession(target)
+  }
 }
 
 async function handleSend(content: string) {

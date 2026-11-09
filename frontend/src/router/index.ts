@@ -326,6 +326,15 @@ const router = createRouter({
               path: 'chat/archive',
               redirect: '/home/workspace/chat',
             },
+            // 会话直达入口：薄 view 拉会话详情，按 extra_config.group 判单聊/群聊后转跳
+            // （侧栏会话中心条目统一走此路由；旧直连路由 agents/:agentId/chat、groups/:groupId
+            // 保留——创建流程/编辑跳转仍在用）
+            {
+              path: 'chat/:sessionId',
+              name: 'WorkspaceSessionChat',
+              component: () => import('@/views/chat/SessionEntryView.vue'),
+              meta: { title: '对话' },
+            },
             // 占位页已清退（管理动作收编侧栏），旧路径保留重定向
             {
               path: 'agents',

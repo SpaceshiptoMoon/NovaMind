@@ -1911,6 +1911,8 @@ export interface AgentConversation {
     knowledge_bindings?: KnowledgeBindings | null
     /** 本地文件夹工作区（mode=local）：绑定即注入 read/glob/grep/bash，null 未绑定 */
     workspace?: WorkspaceConfig | null
+    /** 群会话标记（时间线载体）：{group_id}；单聊会话无此键（对齐后端 GROUP_SESSION_FLAG） */
+    group?: { group_id?: number } | null
   } | null
   created_at: string
   updated_at: string
