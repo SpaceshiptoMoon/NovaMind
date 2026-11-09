@@ -1,0 +1,177 @@
+/* Agent/群聊创建·编辑弹窗共享样式（两个弹窗 append-to-body，样式须全局；
+   两组件各自 import 本文件，避免双份漂移） */
+
+/* ===== 弹窗体：双列布局 + 紧凑参数区 ===== */
+.agent-form {
+  padding: 0 var(--space-1);
+}
+
+/* 双列：左列身份设定（占略宽——提示词是核心输入），右列参数与能力 */
+.agent-form-columns {
+  display: grid;
+  grid-template-columns: 11fr 9fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.agent-form-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-form .form-section {
+  margin-bottom: var(--space-5);
+}
+
+.agent-form .form-section:last-child {
+  margin-bottom: 0;
+}
+
+/* 小节标题：弱化为分组标签，不用竖线装饰 */
+.agent-form .form-section h4 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+/* 系统提示词：等宽字体 + 更舒展的行高，暗示「这是给模型读的」 */
+.agent-form .prompt-textarea textarea {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.field-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint, var(--color-text-muted));
+  margin-top: var(--space-1);
+  line-height: 1.4;
+}
+
+/* Temperature / Top P 双列并排，收窄滑杆整体宽度 */
+.param-twin {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4);
+}
+
+/* 滑杆 + 数字框同排：滑杆占满剩余宽度，数字收窄定宽 */
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.param-row .param-slider {
+  flex: 1;
+  min-width: 0;
+  margin: 0 var(--space-1);
+}
+
+/* 紧凑滑杆：跑道更细、按钮更小（覆盖 el-slider 默认的大胖样式） */
+.param-row .param-slider .el-slider__runway {
+  height: 4px;
+}
+
+.param-row .param-slider .el-slider__bar {
+  height: 4px;
+}
+
+.param-row .param-slider .el-slider__button-wrapper {
+  top: -14px;
+}
+
+.param-row .param-slider .el-slider__button {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-primary);
+}
+
+.param-row .param-number {
+  width: 56px;
+  flex-shrink: 0;
+}
+
+/* 数字框文字居中，去步进器后更像「值展示」而非表格控件 */
+.param-row .param-number .el-input__inner {
+  text-align: center;
+}
+
+.param-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+  line-height: 1.4;
+}
+
+/* 数值参数三列网格（token 数/上下文/工具调用），窄屏降两列 */
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 var(--space-3);
+}
+
+.param-grid .param-input-number {
+  width: 100%;
+}
+
+.param-grid .param-input-number .el-input__inner {
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .param-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .param-twin {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== 弹窗体高度约束（custom class 落在 .el-dialog 根元素，须全局直选） ===== */
+.agent-form-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: 94vw;
+  height: auto;
+  max-height: 86vh;
+  margin-bottom: 6vh;
+}
+
+.agent-form-dialog .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-2) var(--space-6) var(--space-4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 原生滚动区：el-scrollbar 在 max-height 弹窗里百分比高度链解析不出，
+   弃用之，body 内直接 overflow-y:auto（滚动条样式全局已有 webkit 定制） */
+.agent-form-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+}
+
+/* 双列以下（<880 视口）纵向堆叠，弹窗回退为可滚动窄形态 */
+@media (max-width: 920px) {
+  .agent-form-dialog {
+    width: 94vw !important;
+  }
+
+  .agent-form-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
