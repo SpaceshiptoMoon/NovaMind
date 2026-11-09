@@ -40,13 +40,13 @@
           </div>
         </div>
 
-        <!-- 文本框区 -->
+            <!-- 文本框区 -->
         <div class="input-scroll">
           <textarea
             ref="textareaRef"
             v-model="inputText"
             class="chat-textarea"
-            placeholder="输入消息..."
+            :placeholder="placeholder"
             :rows="1"
             :disabled="streaming || loading"
             @keydown="handleKeydown"
@@ -57,6 +57,7 @@
         <!-- 底部工具行：左 = + 附件 + 模式 chip 群；右 = 模型 + ContextMeter + 发送/停止 -->
         <div class="input-row">
           <div class="input-tools">
+            <span v-if="modeBadge" class="mode-pill">{{ modeBadge }}</span>
             <button
               v-if="enableAttachments"
               class="input-add-btn"
@@ -257,6 +258,10 @@ const props = withDefaults(
     enableModel?: boolean
     enableContext?: boolean
     showHint?: boolean
+    /** 只读模式徽标（群聊：头脑风暴/专家咨询；建群时定死不可切换） */
+    modeBadge?: string
+    /** 占位文案（群聊 run 进行中换「成员讨论中…」） */
+    placeholder?: string
     /** 工作目录 chip（enableWorkspace 时显示） */
     isWorkspaceBound?: boolean
     workspaceRoot?: string
@@ -284,6 +289,8 @@ const props = withDefaults(
     enableModel: false,
     enableContext: false,
     showHint: true,
+    modeBadge: '',
+    placeholder: '输入消息...',
     isWorkspaceBound: false,
     workspaceRoot: '',
     workspaceRootName: '',
@@ -697,6 +704,18 @@ defineExpose({
 .input-add-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* 只读模式徽标（群聊）：不可点的中性胶囊 */
+.mode-pill {
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
 }
 
 /* 模式 chip：极速/深度思考/深度研究/工作目录 */

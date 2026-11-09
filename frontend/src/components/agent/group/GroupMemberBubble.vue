@@ -71,11 +71,11 @@
           <div v-if="expandedTools.has(tool.callId)" class="tool-body">
             <div v-if="tool.arguments && Object.keys(tool.arguments).length" class="tool-section">
               <div class="tool-section-label">参数</div>
-              <pre class="tool-json">{{ formatJson(tool.arguments) }}</pre>
+              <pre class="tool-json">{{ formatToolArgs(tool.arguments) }}</pre>
             </div>
             <div v-if="tool.result" class="tool-section">
               <div class="tool-section-label">结果</div>
-              <pre class="tool-json">{{ truncate(tool.result, 2000) }}</pre>
+              <pre class="tool-json">{{ truncateResult(tool.result) }}</pre>
             </div>
           </div>
         </div>
@@ -101,6 +101,7 @@ import { computed, ref } from 'vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { GroupTimelineEntry } from '@/api/types'
 import { memberAvatarStyle, memberNameColor } from '@/utils/memberColor'
+import { formatToolArgs, toolStatusLabel, truncateResult } from '@/utils/chatRender'
 
 const props = defineProps<{
   entry: GroupTimelineEntry
@@ -130,24 +131,6 @@ const hasTrail = computed(() => Boolean(props.entry.reasoning?.trim()) || Boolea
 // 折叠条状态标签：定长两段式「思考中/思考完成」（无秒数——群聊条目无单轮耗时数据，
 // 可变数字段禁入折叠除外），状态差异由 spinner+主题色+「中/完成」一词之差表达
 const trailLabel = computed(() => (props.entry.streaming ? '思考中' : '思考完成'))
-
-function toolStatusLabel(status: string) {
-  if (status === 'running') return '执行中'
-  if (status === 'failed') return '失败'
-  return '完成'
-}
-
-function formatJson(v: unknown) {
-  try {
-    return JSON.stringify(v, null, 2)
-  } catch {
-    return String(v)
-  }
-}
-
-function truncate(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max)}\n…（已截断）` : text
-}
 </script>
 
 <style scoped>

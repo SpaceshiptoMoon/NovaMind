@@ -278,9 +278,16 @@ export function stepSummary(step: ReActStep): string {
   return parts.join(' · ') || '思考中'
 }
 
-/** tool_calls.function.arguments 是 JSON 字符串，parse 后格式化展示 */
-export function formatToolArgs(args: string | undefined): string {
+/** 工具参数格式化展示：单聊是 JSON 字符串（parse 后美化），群聊是已解析对象（直接美化） */
+export function formatToolArgs(args: string | Record<string, unknown> | undefined | null): string {
   if (!args) return ''
+  if (typeof args !== 'string') {
+    try {
+      return JSON.stringify(args, null, 2)
+    } catch {
+      return String(args)
+    }
+  }
   try {
     return JSON.stringify(JSON.parse(args), null, 2)
   } catch {
