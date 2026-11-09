@@ -1,21 +1,6 @@
 <template>
   <div class="group-chat-view">
-    <!-- 左侧：群会话列表（与单聊共用 ChatSessionSidebar） -->
-    <ChatSessionSidebar
-      compact
-      new-label="新会话"
-      empty-text="暂无会话"
-      :sessions="sidebarSessions"
-      :current-session-id="store.currentSessionId"
-      :loading="store.sessionsLoading"
-      :mobile-open="mobileSidebarOpen"
-      @update:mobile-open="mobileSidebarOpen = $event"
-      @select="handleSelectSession"
-      @new="handleNewSession"
-      @delete="handleDeleteSession"
-    />
-
-    <!-- 右侧：聊天区 -->
+    <!-- 聊天区（群会话列表已收编布局侧栏单栏） -->
     <div class="chat-main">
       <!-- 加载/错误态 -->
       <div v-if="store.error && !store.currentGroup" class="group-state">
@@ -65,19 +50,16 @@
 /**
  * 群聊主视图（/home/workspace/groups/:groupId）
  *
- * 对应路由 WorkspaceGroupChat：左侧群会话列表 + 右侧时间线/run 状态条/输入区。
- * 一群多会话：会话切换即重放时间线（数据加载与 WS 生命周期收编在
- * agentGroup store），view 层只做路由参数接线与动作转发。
- * 会话栏与输入区与单聊共用组件（ChatSessionSidebar / InputCard 精简模式）。
+ * 对应路由 WorkspaceGroupChat：时间线 + run 状态条 + 输入区。一群多会话：
+ * 会话切换即重放时间线（数据加载与 WS 生命周期收编在 agentGroup store，
+ * 会话子列表在 WorkspaceLayout 侧栏），view 层只做路由参数接线与动作转发。
+ * 输入区与单聊共用 InputCard 精简模式。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import { useAgentGroupStore } from '@/stores/agentGroup'
-import { formatDate } from '@/utils/format'
-import type { GroupSession } from '@/api/types'
-import ChatSessionSidebar from '@/components/agent/chat/ChatSessionSidebar.vue'
 import InputCard from '@/components/agent/chat/InputCard.vue'
 import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
 import GroupTimeline from '@/components/agent/group/GroupTimeline.vue'
@@ -87,7 +69,6 @@ const route = useRoute()
 const router = useRouter()
 const store = useAgentGroupStore()
 const timelineRef = ref<InstanceType<typeof GroupTimeline>>()
-const mobileSidebarOpen = ref(false)
 
 const groupId = computed(() => Number(route.params.groupId))
 
@@ -99,47 +80,12 @@ const memberNames = computed(() =>
 )
 const memberCount = computed(() => store.currentGroup?.member_count ?? 0)
 
-// 会话侧栏数据：列表按时间倒序，用创建时间区分（后端暂无首条消息摘要）
-const sidebarSessions = computed(() =>
-  store.sessions.map((conv: GroupSession, idx: number) => ({
-    id: conv.session_id,
-    title: conv.created_at ? formatDate(conv.created_at) : `会话 ${store.sessions.length - idx}`,
-  })),
-)
-
 function init() {
   if (groupId.value) store.initForGroup(groupId.value)
 }
 
 async function handleSend(content: string) {
   await store.sendGroupMessage(content)
-}
-
-async function handleSelectSession(sessionId: string) {
-  mobileSidebarOpen.value = false
-  if (sessionId !== store.currentSessionId) await store.selectSession(sessionId)
-}
-
-async function handleNewSession() {
-  try {
-    await store.newSession()
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '新建会话失败')
-  }
-}
-
-async function handleDeleteSession(sessionId: string) {
-  try {
-    await ElMessageBox.confirm('删除后该会话的时间线与成员讨论上下文将一并清除，确定删除？', '删除会话', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await store.deleteSession(sessionId)
-  } catch (e) {
-    if (e instanceof Error) ElMessage.error(e.message)
-    // 取消则静默
-  }
 }
 
 async function handleDissolve() {
@@ -153,7 +99,8 @@ async function handleDissolve() {
     })
     await store.deleteGroup(group.id)
     ElMessage.success('群已解散')
-    router.push({ name: 'WorkspaceGroups' })
+    // 群列表占位页已删，回对话入口
+    router.push('/home/workspace/chat')
   } catch {
     // cancelled
   }

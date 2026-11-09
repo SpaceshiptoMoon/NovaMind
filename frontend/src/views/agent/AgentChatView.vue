@@ -1,21 +1,6 @@
 <template>
   <div class="agent-chat-view">
-    <!-- 左侧：会话列表（共享组件，群聊同款交互） -->
-    <ChatSessionSidebar
-      compact
-      show-back
-      :sessions="sidebarSessions"
-      :current-session-id="agentStore.currentSessionId"
-      :loading="agentStore.conversationsLoading"
-      :mobile-open="mobileSidebarOpen"
-      @update:mobile-open="mobileSidebarOpen = $event"
-      @select="handleSelectConversation"
-      @new="handleNewChat"
-      @delete="handleDeleteConversation"
-      @back="goBack"
-    />
-
-    <!-- 右侧：对话区域 -->
+    <!-- 右侧：对话区域（会话列表已收编布局侧栏单栏，本页只留聊天画布） -->
     <div class="chat-main">
       <ChatHeader
         :agent-name="agentName"
@@ -121,14 +106,14 @@
  * 智能体对话页（/home/workspace/agents/:agentId/chat）
  *
  * 对应路由 WorkspaceAgentChat。渲染主体已拆至 components/agent/chat/
- * （会话栏/头部/用户消息/assistant 轮/工作轨迹/输入卡），本壳只保留：
- * 路由接线、按轮分组（groupTurns）、流式滚动跟随、会话切换、发送编排与追问建议。
+ * （消息轮/工作轨迹/输入卡），会话列表收编在 WorkspaceLayout 侧栏单栏；
+ * 本壳只保留：路由接线、按轮分组（groupTurns）、流式滚动跟随、发送编排与追问建议。
  * 关键交互：各轮默认折叠只看最终回复，展开态下沉在 AssistantTurn 组件内自持；
  * 流式自动滚底仅在用户本就位于底部时跟随（stickToBottom），上拉看历史不被拽回。
  */
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { agentApi } from '@/api/agent'
@@ -136,7 +121,6 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceBinding } from '@/composables/useWorkspaceBinding'
 import { groupTurns, type ChatSendPayload, type ChatTurn } from '@/utils/chatRender'
 import { revokeAllAttachmentImages } from '@/utils/attachmentPreview'
-import ChatSessionSidebar from '@/components/agent/chat/ChatSessionSidebar.vue'
 import ChatHeader from '@/components/agent/chat/ChatHeader.vue'
 import UserMessage from '@/components/agent/chat/UserMessage.vue'
 import AssistantTurn from '@/components/agent/chat/AssistantTurn.vue'
@@ -150,16 +134,12 @@ const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
 const workbench = useWorkbenchStore()
-const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
 const agentName = computed(() => agentStore.currentAgent?.name || '智能体')
 const isWelcomeMode = computed(
   () => agentStore.messages.length === 0 && !agentStore.messagesLoading,
 )
-
-// 窄屏悬浮会话栏开合态（窄屏判定与 resize 监听在 ChatSessionSidebar 内）
-const mobileSidebarOpen = ref(false)
 
 // ===================== 本地文件夹工作区（绑定即本地模式） =====================
 // 绑定/解绑动作与右面板共用 useWorkspaceBinding；本页只消费绑定状态（pill 激活态/chip）
@@ -184,49 +164,14 @@ function handleWorkTabClick() {
   }
 }
 
-// ===================== 会话侧栏数据与动作 =====================
-const sidebarSessions = computed(() =>
-  agentStore.conversations.map((c) => ({ id: c.session_id, title: c.title || '新对话' })),
-)
+// ===================== 会话切换响应（切换动作在 WorkspaceLayout 侧栏，页内只做跟随） =====================
 
-function goBack() {
-  // 广场页已删：工作台内返回智能体占位页，否则回首页
-  if (isInWorkspace) {
-    router.push({ name: 'WorkspaceAgents' })
-  } else {
-    router.push('/home')
-  }
-}
-
-function handleNewChat() {
-  agentStore.clearChat()
-}
-
-async function handleSelectConversation(sessionId: string) {
-  if (agentStore.currentSessionId === sessionId) return
-  // 流式进行中先中止：SSE 回调写 store 全局 messages，不中止会把旧会话增量写进新会话
-  if (agentStore.isStreaming) agentStore.cancelStream()
-  await agentStore.fetchMessages(sessionId)
-  workbench.resetSelection()
+// 侧栏切换会话/新建对话/删除当前会话都会改 currentSessionId：清追问建议并回底部
+watch(currentSessionId, () => {
   followups.value = []
+  stickToBottom.value = true
   scrollToBottom()
-  // 窄屏悬浮态选中后收起让位主区（非窄屏时 mobile-open 不生效，无副作用）
-  mobileSidebarOpen.value = false
-}
-
-async function handleDeleteConversation(sessionId: string) {
-  try {
-    await ElMessageBox.confirm('确定删除此对话？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await agentStore.deleteConversation(sessionId)
-    ElMessage.success('对话已删除')
-  } catch {
-    // cancelled
-  }
-}
+})
 
 // ===================== 按轮分组 =====================
 // 分组与 ReAct 步骤归类在 utils/chatRender.groupTurns（纯函数，群聊可复用）

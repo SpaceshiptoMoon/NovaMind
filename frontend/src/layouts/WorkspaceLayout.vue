@@ -9,8 +9,8 @@
     />
 
     <!-- 下方：侧栏（上下文列表，可折叠；仅工作台路由） + 主内容。
-         侧栏在全部工作台路由（含 agent 对话页）常驻文档流：对话页呈
-         「目录 + 会话 + 聊天」三栏 -->
+         侧栏在全部工作台路由（含 agent 对话页）常驻文档流：单栏承担
+         「agent/群目录 + 会话子列表」，对话页主区只留聊天画布 -->
     <div class="workspace-body">
       <aside
         v-if="isWorkspaceRoute"
@@ -21,112 +21,173 @@
       >
         <!-- 展开模式：上下文列表 -->
         <template v-if="!sidebarCollapsed">
-          <!-- Chat(对话): agent list（统一对话面——侧栏承担 agent 切换，页面内承担会话切换） -->
+          <!-- Chat(对话): agent list + 当前 agent 的会话子列表（单栏合并） -->
           <div class="sidebar-body">
             <div class="list-section">
-              <button class="list-section-header" @click="toggleSection('chat')">
-                <span class="list-section-title">我的智能体</span>
-                <span class="list-section-count">{{ agentStore.agents.length }}</span>
-                <el-icon
-                  :size="12"
-                  class="list-section-chevron"
-                  :class="{ collapsed: sectionCollapsed.chat }"
-                >
-                  <ArrowDown />
-                </el-icon>
-              </button>
-              <button class="section-new-btn" @click="openAgentDialog()">
-                <el-icon :size="14"><Plus /></el-icon>
-                <span>创建智能体</span>
-              </button>
+              <div class="list-section-header">
+                <button class="list-section-toggle" @click="toggleSection('chat')">
+                  <span class="list-section-title">我的智能体</span>
+                  <span class="list-section-count">{{ agentStore.agents.length }}</span>
+                  <el-icon
+                    :size="12"
+                    class="list-section-chevron"
+                    :class="{ collapsed: sectionCollapsed.chat }"
+                  >
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+                <button class="list-section-add" title="创建智能体" @click="openAgentDialog()">
+                  <el-icon :size="12"><Plus /></el-icon>
+                </button>
+              </div>
               <div v-show="!sectionCollapsed.chat" class="list-area">
-                <div
-                  v-for="agent in agentStore.agents"
-                  :key="agent.id"
-                  class="list-item"
-                  :class="{ active: isAgentChatRoute(agent.id) }"
-                  @click="handleSelectAgent(agent)"
-                >
-                  <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
-                  <div class="item-info">
-                    <span class="item-title">{{ agent.name }}</span>
-                    <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+                <template v-for="agent in agentStore.agents" :key="agent.id">
+                  <div
+                    class="list-item"
+                    :class="{ active: isAgentChatRoute(agent.id) }"
+                    @click="handleSelectAgent(agent)"
+                  >
+                    <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
+                    <div class="item-info">
+                      <span class="item-title">{{ agent.name }}</span>
+                      <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+                    </div>
+                    <div class="item-actions">
+                      <button
+                        class="item-action-btn"
+                        title="配置"
+                        @click.stop="openAgentConfig(agent)"
+                      >
+                        <el-icon :size="12"><Setting /></el-icon>
+                      </button>
+                      <button
+                        class="item-action-btn"
+                        title="编辑"
+                        @click.stop="openAgentDialog(agent)"
+                      >
+                        <el-icon :size="12"><EditPen /></el-icon>
+                      </button>
+                      <button
+                        class="item-action-btn item-action-btn--danger"
+                        title="删除"
+                        @click.stop="handleDeleteAgent(agent)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
                   </div>
-                  <div class="item-actions">
-                    <button
-                      class="item-action-btn"
-                      title="配置"
-                      @click.stop="openAgentConfig(agent)"
-                    >
-                      <el-icon :size="12"><Setting /></el-icon>
+                  <!-- 当前对话 agent 的会话子列表（仅当前 agent 展开，数据随对话页拉取） -->
+                  <div v-if="isAgentChatRoute(agent.id)" class="session-sub">
+                    <button class="session-new" @click="handleNewChat">
+                      <el-icon :size="12"><Plus /></el-icon>
+                      <span>新对话</span>
                     </button>
-                    <button
-                      class="item-action-btn"
-                      title="编辑"
-                      @click.stop="openAgentDialog(agent)"
+                    <div
+                      v-for="conv in agentStore.conversations"
+                      :key="conv.session_id"
+                      class="session-item"
+                      :class="{ active: agentStore.currentSessionId === conv.session_id }"
+                      @click="handleSelectConversation(conv.session_id)"
                     >
-                      <el-icon :size="12"><EditPen /></el-icon>
-                    </button>
-                    <button
-                      class="item-action-btn item-action-btn--danger"
-                      title="删除"
-                      @click.stop="handleDeleteAgent(agent)"
+                      <span class="session-title">{{ conv.title || '新对话' }}</span>
+                      <button
+                        class="session-delete"
+                        title="删除会话"
+                        @click.stop="handleDeleteConversation(conv.session_id)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
+                    <div
+                      v-if="
+                        agentStore.conversations.length === 0 && !agentStore.conversationsLoading
+                      "
+                      class="session-empty"
                     >
-                      <el-icon :size="12"><Delete /></el-icon>
-                    </button>
+                      暂无对话
+                    </div>
                   </div>
-                </div>
+                </template>
                 <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
               </div>
             </div>
 
             <!-- 群聊分区：多智能体群（成员为既有 agent，brainstorm/consult 两模式） -->
             <div class="list-section list-section--group">
-              <button class="list-section-header" @click="toggleSection('group')">
-                <span class="list-section-title">群聊</span>
-                <span class="list-section-count">{{ groupStore.groups.length }}</span>
-                <el-icon
-                  :size="12"
-                  class="list-section-chevron"
-                  :class="{ collapsed: sectionCollapsed.group }"
-                >
-                  <ArrowDown />
-                </el-icon>
-              </button>
-              <button class="section-new-btn" @click="openGroupDialog()">
-                <el-icon :size="14"><Plus /></el-icon>
-                <span>创建群聊</span>
-              </button>
+              <div class="list-section-header">
+                <button class="list-section-toggle" @click="toggleSection('group')">
+                  <span class="list-section-title">群聊</span>
+                  <span class="list-section-count">{{ groupStore.groups.length }}</span>
+                  <el-icon
+                    :size="12"
+                    class="list-section-chevron"
+                    :class="{ collapsed: sectionCollapsed.group }"
+                  >
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+                <button class="list-section-add" title="创建群聊" @click="openGroupDialog()">
+                  <el-icon :size="12"><Plus /></el-icon>
+                </button>
+              </div>
               <div v-show="!sectionCollapsed.group" class="list-area">
-                <div
-                  v-for="group in groupStore.groups"
-                  :key="group.id"
-                  class="list-item"
-                  :class="{ active: isGroupChatRoute(group.id) }"
-                  @click="handleSelectGroup(group)"
-                >
-                  <GroupAvatar :members="groupMemberNames(group.id)" :title="group.name" />
-                  <div class="item-info">
-                    <span class="item-title">{{ group.name }}</span>
-                    <span class="item-desc">{{ groupModeLabel(group.mode) }} · {{ group.member_count }} 人</span>
+                <template v-for="group in groupStore.groups" :key="group.id">
+                  <div
+                    class="list-item"
+                    :class="{ active: isGroupChatRoute(group.id) }"
+                    @click="handleSelectGroup(group)"
+                  >
+                    <GroupAvatar :members="groupMemberNames(group.id)" :title="group.name" />
+                    <div class="item-info">
+                      <span class="item-title">{{ group.name }}</span>
+                      <span class="item-desc">{{ groupModeLabel(group.mode) }} · {{ group.member_count }} 人</span>
+                    </div>
+                    <div class="item-actions">
+                      <button
+                        class="item-action-btn"
+                        title="编辑"
+                        @click.stop="openGroupDialog(null, group.id)"
+                      >
+                        <el-icon :size="12"><EditPen /></el-icon>
+                      </button>
+                      <button
+                        class="item-action-btn item-action-btn--danger"
+                        title="解散"
+                        @click.stop="handleDissolveGroup(group)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
                   </div>
-                  <div class="item-actions">
-                    <button
-                      class="item-action-btn"
-                      title="编辑"
-                      @click.stop="openGroupDialog(null, group.id)"
-                    >
-                      <el-icon :size="12"><EditPen /></el-icon>
+                  <!-- 当前群的会话子列表（一群多会话） -->
+                  <div v-if="isGroupChatRoute(group.id)" class="session-sub">
+                    <button class="session-new" @click="handleNewGroupSession">
+                      <el-icon :size="12"><Plus /></el-icon>
+                      <span>新会话</span>
                     </button>
-                    <button
-                      class="item-action-btn item-action-btn--danger"
-                      title="解散"
-                      @click.stop="handleDissolveGroup(group)"
+                    <div
+                      v-for="(conv, idx) in groupStore.sessions"
+                      :key="conv.session_id"
+                      class="session-item"
+                      :class="{ active: groupStore.currentSessionId === conv.session_id }"
+                      @click="handleSelectGroupSession(conv.session_id)"
                     >
-                      <el-icon :size="12"><Delete /></el-icon>
-                    </button>
+                      <span class="session-title">
+                        {{ conv.created_at ? formatDate(conv.created_at) : `会话 ${groupStore.sessions.length - idx}` }}
+                      </span>
+                      <button
+                        class="session-delete"
+                        title="删除会话"
+                        @click.stop="handleDeleteGroupSession(conv.session_id)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
+                    <div v-if="groupStore.sessions.length === 0 && !groupStore.sessionsLoading" class="session-empty">
+                      暂无会话
+                    </div>
                   </div>
-                </div>
+                </template>
                 <div v-if="groupStore.groups.length === 0" class="list-empty">暂无群聊</div>
               </div>
             </div>
@@ -231,7 +292,7 @@
  *
  * 侧栏仅在工作台路由渲染（上下文列表）；skip-link 供键盘导航。
  */
-import { ref, reactive, computed, onMounted, provide } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -254,6 +315,7 @@ import NavIcon from '@/components/common/NavIcon.vue'
 import AgentFormDialog from '@/components/agent/manage/AgentFormDialog.vue'
 import GroupFormDialog from '@/components/agent/manage/GroupFormDialog.vue'
 import AgentConfigDrawer from '@/components/agent/manage/AgentConfigDrawer.vue'
+import { formatDate } from '@/utils/format'
 import type { Agent, AgentGroup, SourceRef, ToolCallRecord } from '@/api/types'
 
 const route = useRoute()
@@ -262,7 +324,6 @@ const agentStore = useAgentStore()
 const groupStore = useAgentGroupStore()
 const workbench = useWorkbenchStore()
 
-provide('isInWorkspace', true)
 
 const sidebarCollapsed = ref(false)
 
@@ -309,13 +370,71 @@ const inChatRoute = computed(
 const inAgentChatRoute = computed(() => route.name === 'WorkspaceAgentChat')
 
 // 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
-provide('openAgentDialog', openAgentDialog)
 
 // 点 agent 条目：直接进对话页（广场页已删，对话即详情）
 function handleSelectAgent(agent: Agent) {
   agentStore.currentAgent = agent
   agentStore.fetchConversations(agent.id)
   router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
+}
+
+// ===================== 会话子列表动作（单栏合并：页内会话栏已删，会话切换收编布局层） =====================
+
+/** 新对话：中止流式后清空聊天面（对话页回欢迎态） */
+function handleNewChat() {
+  if (agentStore.isStreaming) agentStore.cancelStream()
+  agentStore.clearChat()
+}
+
+/** 切换会话：流式进行中先中止（SSE 回调写全局 messages，不中止会串台） */
+async function handleSelectConversation(sessionId: string) {
+  if (agentStore.currentSessionId === sessionId) return
+  if (agentStore.isStreaming) agentStore.cancelStream()
+  await agentStore.fetchMessages(sessionId)
+  workbench.resetSelection()
+}
+
+async function handleDeleteConversation(sessionId: string) {
+  try {
+    await ElMessageBox.confirm('确定删除此对话？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await agentStore.deleteConversation(sessionId)
+    // 删的是当前会话则回欢迎态
+    if (agentStore.currentSessionId === sessionId) agentStore.clearChat()
+    ElMessage.success('对话已删除')
+  } catch {
+    // cancelled
+  }
+}
+
+/** 群聊会话子列表：仅当前群条目下展开，store 上下文即该群 */
+async function handleNewGroupSession() {
+  try {
+    await groupStore.newSession()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '新建会话失败')
+  }
+}
+
+async function handleSelectGroupSession(sessionId: string) {
+  if (sessionId !== groupStore.currentSessionId) await groupStore.selectSession(sessionId)
+}
+
+async function handleDeleteGroupSession(sessionId: string) {
+  try {
+    await ElMessageBox.confirm('删除后该会话的时间线与成员讨论上下文将一并清除，确定删除？', '删除会话', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await groupStore.deleteSession(sessionId)
+  } catch (e) {
+    if (e instanceof Error) ElMessage.error(e.message)
+    // 取消则静默
+  }
 }
 
 // ===================== Agent 创建/编辑弹窗（原广场页逻辑收编） =====================
@@ -372,7 +491,6 @@ function handleSelectGroup(group: AgentGroup) {
 }
 
 // 占位页经 inject 调用建群弹窗（与单聊 openAgentDialog 同收编模式）
-provide('openGroupDialog', openGroupDialog)
 
 // 群条目「编辑」与空态页「创建群聊」共用弹窗：groupId 非空 = 编辑（弹窗拉详情回填）
 const groupFormVisible = ref(false)
@@ -391,9 +509,9 @@ async function handleDissolveGroup(group: AgentGroup) {
       type: 'warning',
     })
     await groupStore.deleteGroup(group.id)
-    // 解散的是当前群时退到群空态页
+    // 解散的是当前群时退到对话入口
     if (isGroupChatRoute(group.id)) {
-      router.push({ name: 'WorkspaceGroups' })
+      router.push('/home/workspace/chat')
     }
     ElMessage.success('群已解散')
   } catch {
@@ -536,21 +654,32 @@ onMounted(async () => {
   max-height: 32vh;
 }
 
+/* 分区头：标题（点击折叠）+ 创建 + 号并列——常驻创建动作收进一行 */
 .list-section-header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  flex-shrink: 0;
+}
+
+.list-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1);
+  margin: calc(-1 * var(--space-1));
   border: none;
   background: transparent;
   cursor: pointer;
   user-select: none;
-  flex-shrink: 0;
 }
 
-.list-section-header:hover {
-  background: var(--color-bg-hover);
+.list-section-toggle:hover .list-section-title {
+  color: var(--color-text-secondary);
 }
 
 .list-section-title {
@@ -577,29 +706,121 @@ onMounted(async () => {
   transform: rotate(-90deg);
 }
 
-/* 侧栏分区常驻新建按钮（如「创建智能体」）：虚线框，hover 主色 */
-.section-new-btn {
+/* 分区创建 + 号：小图标钮，hover 主色 */
+.list-section-add {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1, 4px);
-  margin: 2px var(--space-3) 6px;
-  padding: 6px 10px;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-muted);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
   cursor: pointer;
   flex-shrink: 0;
   transition: all var(--transition-fast);
 }
 
-.section-new-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+.list-section-add:hover {
   background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+/* ===================== 会话子列表（单栏合并：收在当前 agent/群条目下方） ===================== */
+.session-sub {
+  margin: 0 0 var(--space-2) var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+}
+
+.session-new {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.session-new:hover {
+  color: var(--color-primary);
+  background: var(--color-bg-hover);
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  position: relative;
+}
+
+.session-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.session-item.active {
+  background: var(--color-bg-hover);
+}
+
+.session-item.active .session-title {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+.session-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: var(--leading-normal);
+}
+
+.session-delete {
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.session-item:hover .session-delete {
+  opacity: 1;
+}
+
+.session-delete:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.session-empty {
+  padding: var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
 }
 
 /* 折叠时 list-area 隐藏，section 收成一条 header */

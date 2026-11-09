@@ -58,15 +58,41 @@
         <div class="input-row">
           <div class="input-tools">
             <span v-if="modeBadge" class="mode-pill">{{ modeBadge }}</span>
-            <button
-              v-if="enableAttachments"
-              class="input-add-btn"
-              :disabled="streaming || loading || uploading"
-              @click="triggerFileSelect"
-              title="上传文档"
+            <!-- + 工具菜单：低频工具（上传/深度研究/工作目录）收进弹出，输入行常驻只留
+                 + / 模式 / 模型 / 发送（DeerFlow 同款收敛）；群聊全关时不渲染 -->
+            <el-popover
+              v-if="hasPlusMenu"
+              v-model:visible="plusMenuOpen"
+              trigger="click"
+              placement="top-start"
+              :width="220"
+              :popper-style="{ padding: '6px' }"
             >
-              <el-icon :size="14"><Plus /></el-icon>
-            </button>
+              <template #reference>
+                <button
+                  class="input-add-btn"
+                  :disabled="streaming || loading || uploading"
+                  title="更多工具"
+                >
+                  <el-icon :size="14"><Plus /></el-icon>
+                </button>
+              </template>
+              <div class="plus-menu">
+                <button v-if="enableAttachments" class="plus-item" @click="pickUpload">
+                  <el-icon :size="14"><Upload /></el-icon>
+                  <span>上传文档</span>
+                </button>
+                <button v-if="enableResearch" class="plus-item" @click="pickResearch">
+                  <el-icon :size="14"><Collection /></el-icon>
+                  <span>深度研究</span>
+                  <el-icon v-if="researchEnabled" :size="12" class="plus-check"><Check /></el-icon>
+                </button>
+                <button v-if="enableWorkspace" class="plus-item" @click="pickWorkspace">
+                  <el-icon :size="14"><FolderOpened /></el-icon>
+                  <span>{{ isWorkspaceBound ? '工作目录设置' : '添加工作目录' }}</span>
+                </button>
+              </div>
+            </el-popover>
             <input
               ref="fileInputRef"
               type="file"
@@ -75,6 +101,16 @@
               style="display: none"
               @change="handleFileSelected"
             />
+            <!-- 深度研究 chip：仅开启时显示（激活状态才占位，点击关闭） -->
+            <button
+              v-if="enableResearch && researchEnabled"
+              class="mode-chip active"
+              title="深度研究开启中（点击关闭）"
+              @click="toggleDeepResearch"
+            >
+              <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
+              <span>深度研究</span>
+            </button>
             <!-- 工作目录 chip（已绑定时）：状态显示，点击上抛打开绑定弹窗 -->
             <button
               v-if="enableWorkspace && isWorkspaceBound"
@@ -85,11 +121,10 @@
               <el-icon :size="14" class="mode-chip-icon"><FolderOpened /></el-icon>
               <span class="workspace-chip-path">{{ workspaceRootName }}</span>
             </button>
-            <div v-if="enableModes || enableResearch" class="input-modes">
+            <div v-if="enableModes" class="input-modes">
               <!-- 模式档位（DeerFlow 式单选）：极速=直接作答；深度思考=先推理再作答。
                    后端 enable_thinking 为布尔、无 effort 档位，故映射两档 -->
               <el-popover
-                v-if="enableModes"
                 v-model:visible="modeMenuOpen"
                 trigger="click"
                 placement="top-start"
@@ -140,16 +175,6 @@
                   </button>
                 </div>
               </el-popover>
-              <button
-                v-if="enableResearch"
-                class="mode-chip"
-                :class="{ active: researchEnabled }"
-                title="复杂课题先调研再作答（耗时数分钟）"
-                @click="toggleDeepResearch"
-              >
-                <el-icon :size="14" class="mode-chip-icon"><Collection /></el-icon>
-                <span>深度研究</span>
-              </button>
             </div>
           </div>
           <div class="input-trailing">
@@ -159,10 +184,11 @@
               :models="models"
               @update:model-value="(v: string) => (selectedModel = v)"
             />
+            <!-- 上下文用量：仅接近窗口上限（>70%）时出现——没到警戒线就是噪音 -->
             <ContextMeter
-              v-if="enableContext && contextUsage"
-              :used="contextUsage.used_tokens"
-              :window="contextUsage.context_window"
+              v-if="showContextMeter"
+              :used="contextUsage?.used_tokens ?? 0"
+              :window="contextUsage?.context_window ?? 0"
               :breakdown="contextUsage"
             />
             <button v-if="streaming" class="send-primary stop-primary" title="停止" @click="emit('stop')">
@@ -201,12 +227,6 @@
           {{ prompt }}
         </button>
       </div>
-
-      <!-- 键盘提示（卡外微 caption，仅非欢迎态显示） -->
-      <div v-if="showHint && !welcome" class="input-hint">
-        <span class="hint-item"><kbd>Enter</kbd> 发送</span>
-        <span class="hint-item"><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
-      </div>
     </div>
   </div>
 </template>
@@ -230,6 +250,7 @@ import {
   Lightning,
   MagicStick,
   Plus,
+  Upload,
 } from '@element-plus/icons-vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
 import ContextMeter from '@/components/common/ContextMeter.vue'
@@ -257,7 +278,6 @@ const props = withDefaults(
     enableWorkspace?: boolean
     enableModel?: boolean
     enableContext?: boolean
-    showHint?: boolean
     /** 只读模式徽标（群聊：头脑风暴/专家咨询；建群时定死不可切换） */
     modeBadge?: string
     /** 占位文案（群聊 run 进行中换「成员讨论中…」） */
@@ -288,7 +308,6 @@ const props = withDefaults(
     enableWorkspace: false,
     enableModel: false,
     enableContext: false,
-    showHint: true,
     modeBadge: '',
     placeholder: '输入消息...',
     isWorkspaceBound: false,
@@ -419,6 +438,34 @@ function setThinkingLevel(level: 'flash' | 'deep') {
   thinkingLevel.value = level
   modeMenuOpen.value = false
 }
+
+// ===================== + 工具菜单 =====================
+
+// 低频工具是否收纳进 + 菜单（三项全关则连 + 钮都不渲染——群聊极简形态）
+const hasPlusMenu = computed(() => props.enableAttachments || props.enableResearch || props.enableWorkspace)
+const plusMenuOpen = ref(false)
+
+function pickUpload() {
+  plusMenuOpen.value = false
+  triggerFileSelect()
+}
+
+function pickResearch() {
+  plusMenuOpen.value = false
+  toggleDeepResearch()
+}
+
+function pickWorkspace() {
+  plusMenuOpen.value = false
+  emit('open-workspace')
+}
+
+// 上下文用量：仅接近窗口上限（>70%）时显示
+const showContextMeter = computed(() => {
+  if (!props.enableContext || !props.contextUsage) return false
+  const { used_tokens, context_window } = props.contextUsage
+  return context_window > 0 && used_tokens / context_window > 0.7
+})
 
 // 深度研究开关（请求级）：开启时本轮消息引导模型优先调用 research 工具。
 // 依赖 Agent 勾选 research 工具；未勾选时的告警在父层（经 research-toggled 事件感知）
@@ -807,36 +854,42 @@ defineExpose({
   background: var(--color-accent);
 }
 
-/* 卡外键盘提示（仅非欢迎态显示） */
-.input-hint {
+/* + 工具菜单（低频工具收纳：上传/深度研究/工作目录） */
+.plus-menu {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plus-item {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin: 6px auto 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
 }
 
-.hint-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.plus-item:hover {
+  background: var(--color-bg-hover);
 }
 
-.hint-item kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  padding: 1px 5px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
-  border-bottom-width: 2px;
-  border-radius: 4px;
+.plus-item span:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+
+.plus-check {
+  color: var(--color-primary);
+  flex-shrink: 0;
 }
 
 /* 欢迎问候（克制排版：纯色标题 + 灰字描述，无动画噱头） */

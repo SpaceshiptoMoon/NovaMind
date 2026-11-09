@@ -327,22 +327,10 @@ const router = createRouter({
               redirect: '/home/workspace/chat',
             },
             {
-              path: 'agents',
-              name: 'WorkspaceAgents',
-              component: () => import('@/views/agent/AgentWorkspaceView.vue'),
-              meta: { title: '智能体', requiresApp: 'agent' },
-            },
-            {
               path: 'agents/:agentId/chat',
               name: 'WorkspaceAgentChat',
               component: () => import('@/views/agent/AgentChatView.vue'),
               meta: { title: '智能体对话' },
-            },
-            {
-              path: 'groups',
-              name: 'WorkspaceGroups',
-              component: () => import('@/views/agent/GroupWorkspaceView.vue'),
-              meta: { title: '群聊', requiresApp: 'agent' },
             },
             {
               path: 'groups/:groupId(\\d+)',
