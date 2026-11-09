@@ -639,18 +639,19 @@
             </transition>
           </router-view>
         </div>
-        <!-- 右抽屉：引用来源 / 工具结果（仅工作台路由）。折叠态 width:0 不占位 -->
+        <!-- 右抽屉：引用来源 / 工具结果 / 工作目录（仅单聊路由——数据源是 agentStore，
+             群聊路由挂载会显示单聊残留数据，故不挂）折叠态 width:0 不占位 -->
         <WorkbenchDrawer
-          v-if="isWorkspaceRoute"
+          v-if="inAgentChatRoute"
           :sources="drawerSources"
           :tool-calls="drawerToolCalls"
         />
-        <!-- 面板展开按钮（面板关闭时浮在主区右上角） -->
+        <!-- 面板展开按钮（面板关闭时浮在主区右上角，仅单聊路由） -->
         <button
-          v-if="isWorkspaceRoute && !workbench.drawerOpen"
+          v-if="inAgentChatRoute && !workbench.drawerOpen"
           class="drawer-toggle"
           title="打开工作面板"
-          @click="workbench.openDrawer('overview')"
+          @click="workbench.openDrawer('sources')"
         >
           <el-icon :size="14"><Expand /></el-icon>
         </button>
@@ -748,6 +749,10 @@ function isAgentChatRoute(agentId: number): boolean {
 const inChatRoute = computed(
   () => route.name === 'WorkspaceAgentChat' || route.name === 'WorkspaceGroupChat',
 )
+
+// 单聊路由（WorkspaceAgentChat）：右抽屉与其浮动展开按钮仅在此挂载——
+// 抽屉数据源是 agentStore（单聊），群聊路由挂载会显示残留数据
+const inAgentChatRoute = computed(() => route.name === 'WorkspaceAgentChat')
 
 // 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
 provide('openAgentDialog', openAgentDialog)

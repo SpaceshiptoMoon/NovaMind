@@ -42,40 +42,8 @@
         </button>
       </header>
 
-      <!-- 概览视图：产物占位 + 引用来源入口 -->
-      <div v-if="workbench.drawerView === 'overview'" class="drawer-body">
-        <section class="overview-section">
-          <div class="section-title">产物</div>
-          <div class="overview-empty">暂无内容</div>
-        </section>
-        <section class="overview-section">
-          <button
-            class="section-title section-title--link"
-            :disabled="!sources.length"
-            @click="workbench.setView('sources')"
-          >
-            <span>引用来源</span>
-            <span class="section-count">{{ sources.length }}</span>
-          </button>
-          <div v-if="sources.length" class="overview-source-preview">
-            <div v-for="s in sources.slice(0, 3)" :key="s.index" class="preview-item">
-              <span class="preview-index">{{ s.index }}</span>
-              <span class="preview-name">{{ displayName(s) }}</span>
-            </div>
-            <button
-              v-if="sources.length > 3"
-              class="preview-more"
-              @click="workbench.setView('sources')"
-            >
-              查看全部 {{ sources.length }} 条
-            </button>
-          </div>
-          <div v-else class="overview-empty">暂无引用</div>
-        </section>
-      </div>
-
       <!-- 引用来源视图 -->
-      <div v-else-if="workbench.drawerView === 'sources'" class="drawer-body">
+      <div v-if="workbench.drawerView === 'sources'" class="drawer-body">
         <div v-if="!sources.length" class="drawer-empty">暂无引用来源</div>
         <div v-else class="source-list-wrap">
           <template v-if="webSources.length">
@@ -180,39 +148,13 @@
           工具。
         </p>
 
-        <div class="ws-browser">
-          <div class="ws-browser-toolbar">
-            <button
-              class="ws-browser-up"
-              :disabled="browseParent === null || browseLoading"
-              title="上级目录"
-              @click="browseParent && browseEnter(browseParent)"
-            >
-              <el-icon :size="12"><ArrowLeft /></el-icon>
-            </button>
-            <span class="ws-browser-path" :title="browsePath || '此电脑'">
-              {{ browsePath || '此电脑' }}
-            </span>
-          </div>
-          <div v-loading="browseLoading" class="ws-browser-list">
-            <div
-              v-for="d in browseDirs"
-              :key="d.path"
-              class="ws-browser-item"
-              @click="browseEnter(d.path)"
-            >
-              <el-icon :size="14"><FolderOpened /></el-icon>
-              <span class="ws-browser-name">{{ d.name }}</span>
-            </div>
-            <div v-if="!browseLoading && browseDirs.length === 0" class="ws-browser-empty">
-              此层级无子目录
-            </div>
-          </div>
-        </div>
+        <WorkspaceBrowser ref="wsBrowserRef" @change="wsSelectedPath = $event" />
 
         <div class="ws-selected-row">
           <span class="ws-selected-label">已选目录：</span>
-          <code class="ws-selected-path" :title="browsePath">{{ browsePath || '（请选择）' }}</code>
+          <code class="ws-selected-path" :title="wsSelectedPath">
+            {{ wsSelectedPath || '（请选择）' }}
+          </code>
         </div>
 
         <div v-if="isWorkspaceBound" class="ws-current">
@@ -223,14 +165,14 @@
           <button
             v-if="isWorkspaceBound"
             class="ws-btn ws-btn--danger"
-            :disabled="workspaceBinding"
+            :disabled="binding"
             @click="handleUnbindWorkspace"
           >
             退出工作模式
           </button>
           <button
             class="ws-btn ws-btn--primary"
-            :disabled="!browsePath || workspaceBinding"
+            :disabled="!wsSelectedPath || binding"
             @click="handleBindWorkspace"
           >
             {{ isWorkspaceBound ? '更换到此目录' : '进入工作模式' }}
@@ -243,27 +185,20 @@
 
 <script setup lang="ts">
 /**
- * Agent 工作台右侧面板（DeerFlow 式侧车）：概览 / 引用来源 / 工具结果 / 消息全文 /
- * 轨迹侧车 / 工作目录六视图切换，左缘拖拽调宽。
+ * Agent 工作台右侧面板（DeerFlow 式侧车）：引用来源 / 工具结果 / 工作目录三视图切换，
+ * 左缘拖拽调宽。
  *
- * 数据来源分两路：sources/toolCalls 由父组件 props 传入，
- * 消息与轨迹从 agentStore 取；视图切换、开合与宽度全部托管在 workbench store。
- * 轨迹/工作目录视图仅 agent 单聊会话可用（群聊频道不显示这两个入口）。
+ * 数据来源分两路：sources/toolCalls 由父组件 props 传入，会话工作目录绑定
+ * 走 useWorkspaceBinding（与绑定弹窗共用同一实现）；视图切换、开合与宽度
+ * 全部托管在 workbench store。目录视图仅 agent 单聊会话可用（群聊不显示该入口）。
  */
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import {
-  ArrowLeft,
-  Close,
-  FolderOpened,
-  Grid,
-  Link,
-  SetUp,
-} from '@element-plus/icons-vue'
+import { Close, FolderOpened, Link, SetUp } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useAgentStore } from '@/stores/agent'
-import { agentApi } from '@/api/agent'
+import { useWorkspaceBinding } from '@/composables/useWorkspaceBinding'
+import WorkspaceBrowser from '@/components/agent/WorkspaceBrowser.vue'
 import type { SourceRef, ToolCallRecord } from '@/api/types'
 import {
   DRAWER_WIDTH_DEFAULT,
@@ -280,16 +215,15 @@ const workbench = useWorkbenchStore()
 const agentStore = useAgentStore()
 
 interface DrawerTab {
-  key: 'overview' | 'sources' | 'tool' | 'workspace'
+  key: 'sources' | 'tool' | 'workspace'
   label: string
   icon: Component
 }
 
-/** 顶层 tab：概览/引用/工具全频道可用；目录仅 agent 单聊会话（有 sessionId）显示。
+/** 顶层 tab：引用/工具全频道可用；目录仅 agent 单聊会话（有 sessionId）显示。
  *  轨迹不在面板里——它是对话页的全屏互斥视图（TrajectoryList + 内置详情栏） */
 const tabs = computed<DrawerTab[]>(() => {
   const list: DrawerTab[] = [
-    { key: 'overview', label: '概览', icon: Grid },
     { key: 'sources', label: '引用', icon: Link },
     { key: 'tool', label: '工具', icon: SetUp },
   ]
@@ -380,100 +314,38 @@ function formatJson(obj: Record<string, unknown>): string {
   }
 }
 
-// ===================== 工作目录（迁自 AgentChatView） =====================
-const currentConversation = computed(
-  () => agentStore.conversations.find((c) => c.session_id === agentStore.currentSessionId) || null,
-)
-const workspaceConfig = computed(() => currentConversation.value?.extra_config?.workspace ?? null)
-const isWorkspaceBound = computed(() => !!workspaceConfig.value)
-const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
+// ===================== 工作目录（绑定动作与弹窗共用 useWorkspaceBinding） =====================
+const {
+  isWorkspaceBound,
+  workspaceRoot,
+  workspaceRootName,
+  binding,
+  bindWorkspace,
+  unbindWorkspace,
+} = useWorkspaceBinding()
 
-/** 工作目录 chip 显示名：取末段（长路径截断），title 里看全路径 */
-const workspaceRootName = computed(() => {
-  const p = workspaceRoot.value.replace(/\/+$/, '')
-  const seg = p.split(/[\\/]/).pop() || p
-  return seg.length > 18 ? `${seg.slice(0, 17)}…` : seg
-})
-
-const workspaceBinding = ref(false)
-// 目录浏览态：path 空=此电脑（盘符列表），选中层即绑定目标
-const browsePath = ref('')
-const browseParent = ref<string | null>(null)
-const browseDirs = ref<{ name: string; path: string }[]>([])
-const browseLoading = ref(false)
-
-/** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
-async function browseEnter(path: string) {
-  browseLoading.value = true
-  try {
-    const data = await agentApi.browseWorkspaceDirs(path || undefined)
-    browsePath.value = data.path
-    browseParent.value = data.is_root ? null : (data.parent ?? null)
-    browseDirs.value = data.dirs || []
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
-  } finally {
-    browseLoading.value = false
-  }
-}
+const wsBrowserRef = ref<InstanceType<typeof WorkspaceBrowser>>()
+const wsSelectedPath = ref('')
 
 // 打开目录视图即从已绑定目录（或根）开始浏览
 watch(
   () => workbench.drawerView === 'workspace' && workbench.drawerOpen,
   (active) => {
-    if (active) browseEnter(workspaceRoot.value)
+    if (active) {
+      wsSelectedPath.value = ''
+      wsBrowserRef.value?.resetTo(workspaceRoot.value)
+    }
   },
 )
 
-/** 绑定：选中层即根，写会话 workspace + 自动给 agent 并入 local_workspace 勾选 */
 async function handleBindWorkspace() {
-  const sessionId = agentStore.currentSessionId
-  if (!sessionId || !agentStore.currentAgent || !browsePath.value) return
-  const root = browsePath.value
-  workspaceBinding.value = true
-  try {
-    await agentApi.updateSessionWorkspace(sessionId, { mode: 'local', root })
-    // 工具默认必带：本地模式下 local_workspace 提供者须在 agent.enabled_tools 里
-    // 才会随 resolve_tools 下发 schema；未勾选时静默并入
-    const agent = agentStore.currentAgent
-    const tools = agent.enabled_tools || []
-    if (!tools.includes('local_workspace')) {
-      await agentStore.updateAgent(agent.id, {
-        enabled_tools: [...tools, 'local_workspace'],
-      })
-    }
-    // 回写会话列表里的 workspace 键（不重新拉全量）
-    const conv = currentConversation.value
-    if (conv) {
-      conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
-    }
-    ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '绑定失败')
-  } finally {
-    workspaceBinding.value = false
+  if (await bindWorkspace(wsSelectedPath.value)) {
+    workbench.closeDrawer()
   }
 }
 
-/** 解绑：清会话 workspace；agent 勾选保留（其他会话可能仍在用） */
 async function handleUnbindWorkspace() {
-  const sessionId = agentStore.currentSessionId
-  if (!sessionId) return
-  workspaceBinding.value = true
-  try {
-    await agentApi.updateSessionWorkspace(sessionId, null)
-    const conv = currentConversation.value
-    if (conv && conv.extra_config) {
-      const next = { ...conv.extra_config }
-      delete next.workspace
-      conv.extra_config = next
-    }
-    ElMessage.success('已退出工作模式')
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '解绑失败')
-  } finally {
-    workspaceBinding.value = false
-  }
+  await unbindWorkspace()
 }
 </script>
 
@@ -617,110 +489,13 @@ async function handleUnbindWorkspace() {
   min-height: 0;
 }
 
-.drawer-empty,
-.overview-empty {
+.drawer-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-8) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-faint, var(--color-text-muted));
-}
-
-/* 概览 */
-.overview-section {
-  margin-bottom: var(--space-4);
-}
-
-.section-title {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold, 600);
-  color: var(--color-text);
-  margin-bottom: var(--space-2);
-}
-
-.section-title--link {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-}
-
-.section-title--link:hover:not(:disabled) {
-  color: var(--color-primary);
-}
-
-.section-title--link:disabled {
-  cursor: default;
-  color: var(--color-text-muted);
-}
-
-.section-count {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-regular, 400);
-  color: var(--color-text-muted);
-}
-
-.overview-source-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.preview-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-}
-
-.preview-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.preview-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.preview-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preview-more {
-  align-self: flex-start;
-  margin-top: var(--space-1);
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-size: var(--text-xs);
-  color: var(--color-primary);
-  cursor: pointer;
-}
-
-.preview-more:hover {
-  text-decoration: underline;
 }
 
 /* 引用来源 */
@@ -932,99 +707,12 @@ async function handleUnbindWorkspace() {
   text-align: center;
 }
 
-/* 工作目录浏览器（迁自 AgentChatView 弹窗样式） */
+/* 工作目录视图（浏览器 UI 在 WorkspaceBrowser 组件内） */
 .ws-hint {
   margin: 0 0 var(--space-2);
   font-size: 13px;
   color: var(--color-text-muted);
   line-height: 1.6;
-}
-
-.ws-browser {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.ws-browser-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) 10px;
-  border-bottom: 1px solid var(--color-border-light);
-  background: var(--color-bg-elevated);
-}
-
-.ws-browser-up {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.ws-browser-up:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-
-.ws-browser-up:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.ws-browser-path {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  direction: rtl; /* 长路径从左截断，保尾部可见 */
-  text-align: left;
-}
-
-.ws-browser-list {
-  max-height: 320px;
-  overflow-y: auto;
-  min-height: 120px;
-}
-
-.ws-browser-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 7px 12px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text);
-  transition: background var(--transition-fast);
-}
-
-.ws-browser-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.ws-browser-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-browser-empty {
-  padding: 24px 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--color-text-muted);
 }
 
 .ws-selected-row {

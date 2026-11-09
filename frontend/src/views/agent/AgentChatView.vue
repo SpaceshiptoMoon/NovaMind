@@ -89,74 +89,8 @@
         </div>
       </header>
 
-<!-- 工作目录选择器：选定即进入工作模式（read/glob/grep/bash 默认必带） -->
-      <el-dialog
-        v-model="workspaceDialogVisible"
-        title="选择工作目录"
-        width="560px"
-        :close-on-click-modal="false"
-        append-to-body
-      >
-        <div class="ws-dialog-body">
-          <p class="ws-dialog-hint">
-            进入工作模式后，智能体将以该文件夹为工作目录，自动获得 read / glob / grep / write / edit
-            / bash 六个工具，可读写文件、检索内容、运行命令。
-          </p>
-          <!-- 目录浏览器：逐层点选，选中层即为工作区根 -->
-          <div class="ws-browser">
-            <div class="ws-browser-toolbar">
-              <el-button size="small" :disabled="!browseParent" @click="browseEnter(browseParent!)">
-                <el-icon><ArrowLeft /></el-icon>
-                上级
-              </el-button>
-              <span class="ws-browser-path" :title="browsePath || '此电脑'">
-                {{ browsePath || '此电脑' }}
-              </span>
-            </div>
-            <div v-loading="browseLoading" class="ws-browser-list">
-              <div
-                v-for="d in browseDirs"
-                :key="d.path"
-                class="ws-browser-item"
-                @click="browseEnter(d.path)"
-              >
-                <el-icon :size="14"><FolderOpened /></el-icon>
-                <span class="ws-browser-name">{{ d.name }}</span>
-              </div>
-              <div v-if="!browseLoading && browseDirs.length === 0" class="ws-browser-empty">
-                （无子文件夹）
-              </div>
-            </div>
-          </div>
-          <div class="ws-selected-row">
-            <span class="ws-selected-label">已选目录：</span>
-            <code class="ws-selected-path">{{ browsePath || '（请选择）' }}</code>
-          </div>
-          <div v-if="isWorkspaceBound" class="ws-dialog-current">
-            当前绑定：<code>{{ workspaceRoot }}</code>
-          </div>
-        </div>
-        <template #footer>
-          <el-button
-            v-if="isWorkspaceBound"
-            type="danger"
-            plain
-            :loading="workspaceBinding"
-            @click="handleUnbindWorkspace"
-          >
-            退出工作模式
-          </el-button>
-          <el-button @click="workspaceDialogVisible = false">取消</el-button>
-          <el-button
-            type="primary"
-            :loading="workspaceBinding"
-            :disabled="!browsePath"
-            @click="handleBindWorkspace"
-          >
-            进入工作模式
-          </el-button>
-        </template>
-      </el-dialog>
+<!-- 工作目录选择器（唯一实现，右面板目录视图共用绑定动作）：选定即进入工作模式 -->
+      <WorkspaceBindDialog v-model="workspaceDialogVisible" />
 
       <!-- 消息列表：按轮分组，工作过程折叠 -->
       <div
@@ -552,21 +486,12 @@
                   style="display: none"
                   @change="handleFileSelected"
                 />
-                <!-- + 工作目录（对齐 dsh Choose workspace）：点选打开右面板目录浏览器，选中即绑定 -->
-                <button
-                  v-if="currentSessionId && !isWorkspaceBound"
-                  class="input-add-btn"
-                  :disabled="agentStore.isStreaming || agentStore.loading"
-                  title="添加工作目录（进入工作模式）"
-                  @click="openWorkspaceDialog()"
-                >
-                  <el-icon :size="14"><FolderOpened /></el-icon>
-                </button>
+                <!-- 工作目录 chip（已绑定时）：状态显示，点击打开绑定弹窗更换/退出；未绑定时入口在头部「工作」pill，不在输入区重复放置 -->
                 <button
                   v-if="currentSessionId && isWorkspaceBound"
                   class="mode-chip workspace-chip active"
                   :title="`工作目录：${workspaceRoot}（点击更换 / 退出）`"
-                  @click="openWorkspaceDialog()"
+                  @click="workspaceDialogVisible = true"
                 >
                   <el-icon :size="14" class="mode-chip-icon"><FolderOpened /></el-icon>
                   <span class="workspace-chip-path">{{ workspaceRootName }}</span>
@@ -754,7 +679,9 @@ import CompactionItem from '@/components/agent/CompactionItem.vue'
 import PlanCard from '@/components/agent/PlanCard.vue'
 import ResearchProgressCard from '@/components/agent/ResearchProgressCard.vue'
 import ApprovalCard from '@/components/agent/ApprovalCard.vue'
+import WorkspaceBindDialog from '@/components/agent/WorkspaceBindDialog.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
+import { useWorkspaceBinding } from '@/composables/useWorkspaceBinding'
 import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 import { copyToClipboard } from '@/utils/clipboard'
 
@@ -781,22 +708,12 @@ window.addEventListener('resize', () => {
 const inputText = ref('')
 
 // ===================== 本地文件夹工作区（绑定即本地模式） =====================
+// 绑定/解绑动作与右面板共用 useWorkspaceBinding；本页只消费绑定状态（pill 激活态/chip）
 const currentSessionId = computed(() => agentStore.currentSessionId)
-const currentConversation = computed(
-  () => agentStore.conversations.find((c) => c.session_id === currentSessionId.value) || null,
-)
-const workspaceConfig = computed(() => currentConversation.value?.extra_config?.workspace ?? null)
-const isWorkspaceBound = computed(() => !!workspaceConfig.value)
-const workspaceRoot = computed(() => workspaceConfig.value?.root || '')
+const { isWorkspaceBound, workspaceRoot, workspaceRootName } = useWorkspaceBinding()
 const workspacePillTitle = computed(() =>
   isWorkspaceBound.value ? `工作目录：${workspaceRoot.value}` : '选择文件夹进入工作模式',
 )
-/** 工作目录 chip 显示名：取末段（长路径截断），title 里看全路径 */
-const workspaceRootName = computed(() => {
-  const p = workspaceRoot.value.replace(/\/+$/, '')
-  const seg = p.split(/[\\/]/).pop() || p
-  return seg.length > 18 ? `${seg.slice(0, 17)}…` : seg
-})
 
 // ===================== 视图模式与右面板 =====================
 // 视图模式：对话（产品化气泡）/ 轨迹（调试向全屏时间线，TrajectoryList 自带详情栏）。
@@ -804,91 +721,13 @@ const workspaceRootName = computed(() => {
 const viewMode = ref<'chat' | 'trajectory'>('chat')
 
 const workspaceDialogVisible = ref(false)
-const workspaceBinding = ref(false)
-// 目录浏览态：path 空=此电脑（盘符列表），选中层即绑定目标
-const browsePath = ref('')
-const browseParent = ref<string | null>(null)
-const browseDirs = ref<{ name: string; path: string }[]>([])
-const browseLoading = ref(false)
-
-/** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
-async function browseEnter(path: string) {
-  browseLoading.value = true
-  try {
-    const data = await agentApi.browseWorkspaceDirs(path || undefined)
-    browsePath.value = data.path
-    browseParent.value = data.is_root ? null : (data.parent ?? null)
-    browseDirs.value = data.dirs || []
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
-  } finally {
-    browseLoading.value = false
-  }
-}
-
-async function openWorkspaceDialog() {
-  workspaceDialogVisible.value = true
-  // 打开即从已绑定目录（或根）开始浏览
-  await browseEnter(workspaceRoot.value)
-}
 
 /** 「工作」tab：未绑定→弹目录选择器（选定即绑定激活）；已绑定→回到对话视图干活 */
 function handleWorkTabClick() {
   if (isWorkspaceBound.value) {
     viewMode.value = 'chat'
   } else {
-    openWorkspaceDialog()
-  }
-}
-
-/** 绑定：选中层即根，写会话 workspace + 自动给 agent 并入 local_workspace 勾选 */
-async function handleBindWorkspace() {
-  if (!currentSessionId.value || !agentStore.currentAgent || !browsePath.value) return
-  const root = browsePath.value
-  workspaceBinding.value = true
-  try {
-    await agentApi.updateSessionWorkspace(currentSessionId.value, { mode: 'local', root })
-    // 工具默认必带：本地模式下 local_workspace 提供者须在 agent.enabled_tools 里
-    // 才会随 resolve_tools 下发 schema；未勾选时静默并入
-    const agent = agentStore.currentAgent
-    const tools = agent.enabled_tools || []
-    if (!tools.includes('local_workspace')) {
-      await agentStore.updateAgent(agent.id, {
-        enabled_tools: [...tools, 'local_workspace'],
-      })
-    }
-    // 回写会话列表里的 workspace 键（不重新拉全量）
-    const conv = currentConversation.value
-    if (conv) {
-      conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
-    }
-    ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
-    workspaceDialogVisible.value = false
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '绑定失败')
-  } finally {
-    workspaceBinding.value = false
-  }
-}
-
-/** 解绑：清会话 workspace；agent 勾选保留（其他会话可能仍在用） */
-async function handleUnbindWorkspace() {
-  if (!currentSessionId.value) return
-  workspaceBinding.value = true
-  try {
-    await agentApi.updateSessionWorkspace(currentSessionId.value, null)
-    const conv = currentConversation.value
-    if (conv && conv.extra_config) {
-      const next = { ...conv.extra_config }
-      delete next.workspace
-      conv.extra_config = next
-    }
-    ElMessage.success('已退出工作模式')
-    workspaceDialogVisible.value = false
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '解绑失败')
-  } finally {
-    workspaceBinding.value = false
+    workspaceDialogVisible.value = true
   }
 }
 

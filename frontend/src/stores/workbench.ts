@@ -1,10 +1,10 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
-// 右面板视图类型：overview=概览(产物占位) / sources=引用来源 / tool=工具结果详情 /
+// 右面板视图类型：sources=引用来源 / tool=工具结果详情 /
 // workspace=工作目录浏览器（仅 agent 单聊会话可用）。
 // 轨迹不在面板——它是对话页的全屏互斥视图（viewMode 切换，TrajectoryList + 内置详情栏）
-export type DrawerView = 'overview' | 'sources' | 'tool' | 'workspace'
+export type DrawerView = 'sources' | 'tool' | 'workspace'
 
 // 面板宽度钳制区间与默认值；持久化键与主题键同风格（novamind- 前缀）
 export const DRAWER_WIDTH_MIN = 320
@@ -33,7 +33,7 @@ function readStoredDrawerWidth(): number {
  */
 export const useWorkbenchStore = defineStore('workbench', () => {
   const drawerOpen = ref(false)
-  const drawerView = ref<DrawerView>('overview')
+  const drawerView = ref<DrawerView>('sources')
   // 面板宽度（px）：拖拽把手实时写入；钳制在 MIN/MAX 区间，localStorage 持久化
   const drawerWidth = ref(readStoredDrawerWidth())
   // 选中的工具调用 call_id（与消息 tool_call_id / agentStore.toolCalls.callId 对应）
@@ -65,7 +65,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     drawerOpen.value = !drawerOpen.value
   }
 
-  /** 切换抽屉视图（overview/sources/tool/message），抽屉随之打开 */
+  /** 切换抽屉视图（sources/tool/workspace），抽屉随之打开 */
   function setView(view: DrawerView) {
     drawerView.value = view
     drawerOpen.value = true
@@ -81,7 +81,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // 切换会话/频道时重置选中态，避免残留上一会话的工具结果
   function resetSelection() {
     selectedToolCallId.value = null
-    drawerView.value = 'overview'
+    drawerView.value = 'sources'
   }
 
   return {
