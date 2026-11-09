@@ -77,6 +77,47 @@ class GroupRepository:
         )
         return list(result.scalars().all()), total
 
+    async def get_names_by_ids(self, group_ids: list[int]) -> dict[int, str]:
+        """批量取群名（会话中心等聚合展示用），返回 {group_id: name}。
+
+        Args:
+            group_ids: 群主键 ID 列表；空列表直接返回空映射不查库。
+
+        Returns:
+            ID 到群名的映射；不存在的 ID（如群已解散）不在映射中。
+        """
+        if not group_ids:
+            return {}
+        result = await self.session.execute(
+            select(AgentGroup.id, AgentGroup.name).where(AgentGroup.id.in_(group_ids))
+        )
+        return {row[0]: row[1] for row in result.all()}
+
+    async def list_members_by_group_ids(
+        self, group_ids: list[int]
+    ) -> dict[int, list[tuple[AgentGroupMember, str]]]:
+        """批量列多个群的成员（联表取 agent 名），返回 {group_id: [(member, agent_name)]}。
+
+        Args:
+            group_ids: 群主键 ID 列表；空列表直接返回空映射不查库。
+
+        Returns:
+            群 ID 到其成员（按 speak_order 升序）与 agent 名的映射；无成员的群不在映射中。
+        """
+        if not group_ids:
+            return {}
+        result = await self.session.execute(
+            select(AgentGroupMember, AgentDefinition.name)
+            .join(AgentDefinition, AgentGroupMember.agent_id == AgentDefinition.id)
+            .where(AgentGroupMember.group_id.in_(group_ids))
+            .order_by(AgentGroupMember.group_id.asc(), AgentGroupMember.speak_order.asc(),
+                      AgentGroupMember.id.asc())
+        )
+        grouped: dict[int, list[tuple[AgentGroupMember, str]]] = {}
+        for member, name in result.all():
+            grouped.setdefault(member.group_id, []).append((member, name))
+        return grouped
+
     async def list_members(self, group_id: int) -> list[tuple[AgentGroupMember, str]]:
         """列群成员（按 speak_order），联表取 agent 名，返回 (member, agent_name) 列表。"""
         result = await self.session.execute(

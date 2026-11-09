@@ -50,6 +50,24 @@ class AgentRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_names_by_ids(self, agent_ids: list[int]) -> dict[int, str]:
+        """批量取 Agent 名（会话中心等聚合展示用），返回 {agent_id: name}。
+
+        Args:
+            agent_ids: Agent 主键 ID 列表；空列表直接返回空映射不查库。
+
+        Returns:
+            ID 到名称的映射；不存在的 ID 不在映射中。
+        """
+        if not agent_ids:
+            return {}
+        result = await self.session.execute(
+            select(AgentDefinition.id, AgentDefinition.name).where(
+                AgentDefinition.id.in_(agent_ids)
+            )
+        )
+        return {row[0]: row[1] for row in result.all()}
+
     async def list_by_user(
         self, user_id: int, limit: int = 20, offset: int = 0
     ) -> tuple[list[AgentDefinition], int]:
@@ -220,6 +238,31 @@ class SessionRepository:
             base.order_by(AgentSession.created_at.desc()).offset(offset).limit(limit)
         )
         return result.scalars().all(), total
+
+    async def list_recent(self, user_id: int, limit: int = 50) -> list[AgentSession]:
+        """会话中心聚合查询：用户未删会话（单聊+群时间线混排），updated_at 倒序。
+
+        与 list_by_user 的差异：群时间线会话（extra_config.group 标记）保留
+        在结果中，由 service 层按 kind 区分；成员私有会话（extra_config.group_member
+        标记）是编排内部载体，仍排除。deleted 之外的状态（active/archived）均入选。
+
+        Args:
+            user_id: 属主用户 ID。
+            limit: 返回条数上限（调用方负责钳制）。
+
+        Returns:
+            按 updated_at 倒序的会话实体列表。
+        """
+        result = await self.session.execute(
+            select(AgentSession).where(
+                AgentSession.user_id == user_id,
+                AgentSession.status != "deleted",
+                # 同 list_by_user：JSON 路径缺失时比较结果为 NULL，IS NULL 放行，
+                # SQLite/MySQL 两方言语义一致
+                AgentSession.extra_config["group_member"].as_integer().is_(None),
+            ).order_by(AgentSession.updated_at.desc()).limit(limit)
+        )
+        return list(result.scalars().all())
 
     async def update(self, conversation_id: int, **kwargs) -> None:
         """按给定键直更会话字段（调用方保证键合法），flush 不 commit。

@@ -28,6 +28,7 @@ from novamind.features.agent.repository.context_summary_repository import (
     ContextSummaryRepository,
 )
 from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.features.agent.repository.group_repository import GroupRepository
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentDetailResponse,
@@ -41,6 +42,8 @@ from novamind.features.agent.schemas.agent_schema import (
     MemoryResponse,
     MemoryStatsResponse,
     MessageListResponse,
+    SessionCenterItem,
+    SessionCenterListResponse,
     SessionResponse,
     ToolCallResponse,
 )
@@ -62,6 +65,14 @@ _DEFAULT_AGENT_TOOLS = [
     "research",
 ]
 
+# 群会话 extra_config 标记键（与 group_service/group_orchestrator 同值约定；
+# 不从对方 import——group_service 反向依赖本模块，互 import 会成环）
+GROUP_SESSION_FLAG = "group"
+GROUP_MEMBER_FLAG = "group_member"
+
+# 会话中心条目的群成员名预览上限（侧栏展示够头像组+溢出角标，不下钻全名单）
+_RECENT_MEMBERS_PREVIEW = 3
+
 
 class AgentService:
     """Agent 管理服务"""
@@ -75,6 +86,7 @@ class AgentService:
         self.memory_repo = MemoryRepository(db)
         self.context_summary_repo = ContextSummaryRepository(db)
         self._mcp_repo = McpServerRepository(db)
+        self.group_repo = GroupRepository(db)
 
     async def _validate_mcp_ids(self, user_id: int, mcp_ids: list[int] | None) -> None:
         """校验 enabled_mcp_servers 只含当前用户可见的服务器 id（自有或系统级）。
@@ -470,6 +482,72 @@ class AgentService:
             limit=limit,
             offset=offset,
         )
+
+    async def list_recent_sessions(
+        self, user_id: int, limit: int = 50
+    ) -> SessionCenterListResponse:
+        """会话中心聚合列表：单聊与群会话混排，updated_at 倒序。
+
+        群会话（extra_config.group 标记）带群名、成员数与前 3 个成员名；
+        单聊带助手名。群已解散但时间线会话残留的悬空条目跳过（delete_group
+        有意保留会话）——展示一个点不开的群是错误结果，宁缺勿错。
+
+        Args:
+            user_id: 当前用户 ID。
+            limit: 返回条数，默认 50，自动钳制 1-100。
+
+        Returns:
+            会话中心聚合列表响应；无会话时 items 为空。
+        """
+        clamped = max(1, min(100, limit))
+        sessions = await self.session_repo.list_recent(user_id, clamped)
+
+        # 按 kind 分桶收集 ref_id，批量取名字与群成员（避免逐条 N+1）
+        agent_ids: list[int] = []
+        group_ids_by_sid: dict[str, int] = {}
+        for conv in sessions:
+            group_flag = (conv.extra_config or {}).get(GROUP_SESSION_FLAG)
+            if isinstance(group_flag, dict) and group_flag.get("group_id") is not None:
+                group_ids_by_sid[conv.session_id] = int(group_flag["group_id"])
+            else:
+                agent_ids.append(conv.agent_id)
+
+        unique_group_ids = sorted(set(group_ids_by_sid.values()))
+        agent_names = await self.agent_repo.get_names_by_ids(sorted(set(agent_ids)))
+        group_names = await self.group_repo.get_names_by_ids(unique_group_ids)
+        members_by_group = await self.group_repo.list_members_by_group_ids(unique_group_ids)
+
+        items: list[SessionCenterItem] = []
+        for conv in sessions:
+            group_id = group_ids_by_sid.get(conv.session_id)
+            if group_id is not None:
+                name = group_names.get(group_id)
+                if name is None:
+                    continue
+                member_rows = members_by_group.get(group_id, [])
+                items.append(SessionCenterItem(
+                    session_id=conv.session_id,
+                    kind="group",
+                    title=conv.title,
+                    ref_id=group_id,
+                    name=name,
+                    member_count=len(member_rows),
+                    members=[m_name for _, m_name in member_rows[:_RECENT_MEMBERS_PREVIEW]],
+                    updated_at=conv.updated_at,
+                ))
+            else:
+                name = agent_names.get(conv.agent_id)
+                if name is None:
+                    continue
+                items.append(SessionCenterItem(
+                    session_id=conv.session_id,
+                    kind="agent",
+                    title=conv.title,
+                    ref_id=conv.agent_id,
+                    name=name,
+                    updated_at=conv.updated_at,
+                ))
+        return SessionCenterListResponse(items=items)
 
     async def get_session(self, user_id: int, session_id: str) -> AgentSession:
         """按 session_id 取会话并校验归属与 active 状态，失败抛 SessionNotFoundError。

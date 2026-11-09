@@ -4659,6 +4659,40 @@
         "title": "FailedFileItem",
         "type": "object"
       },
+      "FollowupSuggestionsRequest": {
+        "description": "追问建议生成请求",
+        "properties": {
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "覆盖 Agent 配置的模型名；缺省跟随 Agent 配置或用户默认",
+            "title": "Llm Model"
+          }
+        },
+        "title": "FollowupSuggestionsRequest",
+        "type": "object"
+      },
+      "FollowupSuggestionsResponse": {
+        "description": "追问建议响应（会话无内容或生成失败时为空数组，前端静默处理）",
+        "properties": {
+          "suggestions": {
+            "description": "追问建议（最多 3 条）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "title": "FollowupSuggestionsResponse",
+        "type": "object"
+      },
       "ForgotPasswordRequest": {
         "description": "忘记密码请求",
         "properties": {
@@ -10230,6 +10264,108 @@
           "message"
         ],
         "title": "SearchTestResponse",
+        "type": "object"
+      },
+      "SessionCenterItem": {
+        "description": "会话中心条目：单聊与群会话混排的统一展示形状。\n\nkind=agent 时 ref_id/name 指向助手（member_count/members 为 null）；\nkind=group 时指向群（带成员数与前 3 个成员名）。",
+        "properties": {
+          "kind": {
+            "description": "会话类型：agent=单聊 / group=群会话",
+            "title": "Kind",
+            "type": "string"
+          },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "群成员数，仅群会话有值",
+            "title": "Member Count"
+          },
+          "members": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "群成员名列表（最多 3 个），仅群会话有值",
+            "title": "Members"
+          },
+          "name": {
+            "description": "单聊=助手名，群会话=群名",
+            "title": "Name",
+            "type": "string"
+          },
+          "ref_id": {
+            "description": "单聊=Agent ID，群会话=群 ID",
+            "title": "Ref Id",
+            "type": "integer"
+          },
+          "session_id": {
+            "description": "会话 UUID",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话标题，未生成时为 null",
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近更新时间",
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "session_id",
+          "kind",
+          "ref_id",
+          "name"
+        ],
+        "title": "SessionCenterItem",
+        "type": "object"
+      },
+      "SessionCenterListResponse": {
+        "description": "会话中心聚合列表响应",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionCenterItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SessionCenterListResponse",
         "type": "object"
       },
       "SessionKnowledgeBindingsUpdate": {
@@ -17365,6 +17501,57 @@
         ]
       }
     },
+    "/api/v1/agent/sessions/recent": {
+      "get": {
+        "description": "当前用户的单聊与群会话混排列表（updated_at 倒序）；limit 默认 50，自动钳制 1-100",
+        "operationId": "list_recent_sessions_api_v1_agent_sessions_recent_get",
+        "parameters": [
+          {
+            "description": "每页数量，默认 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "每页数量，默认 50",
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionCenterListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "会话中心聚合列表",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/sessions/{session_id}": {
       "delete": {
         "description": "删除指定的对话会话及其所有消息",
@@ -17664,6 +17851,74 @@
           }
         ],
         "summary": "获取对话消息",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
+    "/api/v1/agent/sessions/{session_id}/suggestions": {
+      "post": {
+        "description": "基于会话最近消息生成最多 3 条追问建议（每轮回答后调用；无内容/失败返回空数组）",
+        "operationId": "create_followup_suggestions_api_v1_agent_sessions__session_id__suggestions_post",
+        "parameters": [
+          {
+            "description": "会话ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话ID",
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FollowupSuggestionsRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowupSuggestionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "生成追问建议",
         "tags": [
           "Agent 智能体"
         ]

@@ -50,6 +50,7 @@ from novamind.features.agent.schemas.agent_schema import (
     MemoryListResponse,
     MemoryStatsResponse,
     MessageListResponse,
+    SessionCenterListResponse,
     SessionKnowledgeBindingsUpdate,
     SessionResponse,
     SessionWorkspaceBind,
@@ -311,6 +312,21 @@ async def list_sessions(
     service: AgentService = Depends(get_agent_service),
 ):
     return await service.list_sessions(user_id, agent_id, limit, offset)
+
+
+@router.get(
+    "/sessions/recent",
+    response_model=SessionCenterListResponse,
+    summary="会话中心聚合列表",
+    description="当前用户的单聊与群会话混排列表（updated_at 倒序）；limit 默认 50，自动钳制 1-100",
+)
+async def list_recent_sessions(
+    limit: Annotated[int, Query(description="每页数量，默认 50")] = 50,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    # 静态路径须先于 /sessions/{session_id} 注册，否则 "recent" 被吞成 session_id
+    return await service.list_recent_sessions(user_id, limit)
 
 
 @router.get(

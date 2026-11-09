@@ -157,6 +157,29 @@ class AgentSessionListResponse(BaseModel):
     offset: int
 
 
+# ==================== 会话中心 ====================
+
+class SessionCenterItem(BaseModel):
+    """会话中心条目：单聊与群会话混排的统一展示形状。
+
+    kind=agent 时 ref_id/name 指向助手（member_count/members 为 null）；
+    kind=group 时指向群（带成员数与前 3 个成员名）。
+    """
+    session_id: str = Field(..., description="会话 UUID")
+    kind: str = Field(..., description="会话类型：agent=单聊 / group=群会话")
+    title: str | None = Field(None, description="会话标题，未生成时为 null")
+    ref_id: int = Field(..., description="单聊=Agent ID，群会话=群 ID")
+    name: str = Field(..., description="单聊=助手名，群会话=群名")
+    member_count: int | None = Field(None, description="群成员数，仅群会话有值")
+    members: list[str] | None = Field(None, description="群成员名列表（最多 3 个），仅群会话有值")
+    updated_at: datetime | None = Field(None, description="最近更新时间")
+
+
+class SessionCenterListResponse(BaseModel):
+    """会话中心聚合列表响应"""
+    items: list[SessionCenterItem]
+
+
 # ==================== 消息 ====================
 
 class AgentMessageResponse(BaseModel):
