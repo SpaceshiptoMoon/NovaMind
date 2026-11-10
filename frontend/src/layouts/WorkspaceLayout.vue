@@ -97,7 +97,7 @@
                       <button
                         class="session-delete"
                         title="删除会话"
-                        @click="s.kind === 'agent' ? handleDeleteConversation(s.session_id) : handleDeleteGroupSession(s.session_id)"
+                        @click="s.kind === 'agent' ? handleDeleteConversation(s.session_id) : handleDeleteGroupSession(s)"
                       >
                         <el-icon :size="12"><Delete /></el-icon>
                       </button>
@@ -179,7 +179,7 @@
         v-model="unifiedCreateVisible"
         :preset="unifiedCreatePreset"
         :auto-bind="unifiedCreateAutoBind"
-        @created="fetchRecentSessions"
+        @created="fetchRecentSessions()"
       />
       <el-drawer
         v-model="agentDrawerVisible"
@@ -239,7 +239,11 @@
         </div>
       </el-drawer>
       <AgentFormDialog v-model="agentFormVisible" :agent="agentFormTarget" />
-      <GroupFormDialog v-model="groupFormVisible" :group-id="groupFormTarget" />
+      <GroupFormDialog
+        v-model="groupFormVisible"
+        :group-id="groupFormTarget"
+        @updated="fetchRecentSessions()"
+      />
       <AgentConfigDrawer v-model="configDrawerVisible" :agent="configAgent" />
 
       <main class="workspace-main" id="workspace-main" role="main">
@@ -277,7 +281,7 @@
  *
  * 侧栏仅在工作台路由渲染（上下文列表）；skip-link 供键盘导航。
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -294,6 +298,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useAgentGroupStore } from '@/stores/agentGroup'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
+import { agentGroupApi } from '@/api/agentGroup'
 import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
@@ -320,17 +325,36 @@ const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace')
 const recentSessions = ref<RecentSessionItem[]>([])
 const recentSessionsLoading = ref(false)
 
-async function fetchRecentSessions() {
-  recentSessionsLoading.value = true
+/**
+ * 拉取会话中心列表。
+ *
+ * @param silent 静默刷新：不切 loading 态（会话切换/新会话落定等后台刷新用，避免列表闪烁）
+ */
+async function fetchRecentSessions(silent = false) {
+  if (!silent) recentSessionsLoading.value = true
   try {
     const data = await agentApi.listRecentSessions()
     recentSessions.value = data.items || []
   } catch {
     recentSessions.value = []
   } finally {
-    recentSessionsLoading.value = false
+    if (!silent) recentSessionsLoading.value = false
   }
 }
+
+// 会话中心是唯一会话列表，两个时机须静默刷新：
+// ① 首条消息触发后端建会话（onSession 落定 currentSessionId）——新会话即时进列表；
+// ② 一轮回答结束——后端标题落库、updated_at 变化影响排序
+watch(
+  () => [agentStore.currentSessionId, agentStore.isStreaming] as const,
+  ([sessionId, streaming], [prevSessionId, prevStreaming]) => {
+    if (!sessionId) return
+    if (sessionId !== prevSessionId || (prevStreaming && !streaming)) fetchRecentSessions(true)
+  },
+)
+
+// 子页面的会话域动作（如群页头部解散）完成后经此刷新会话中心
+provide('refreshSessionCenter', () => fetchRecentSessions(true))
 
 function isAgentSessionActive(item: RecentSessionItem): boolean {
   return isAgentChatRoute(item.ref_id) && agentStore.currentSessionId === item.session_id
@@ -347,6 +371,8 @@ function isGroupSessionActive(item: RecentSessionItem): boolean {
 function handleOpenSession(item: RecentSessionItem) {
   // 已在该会话页内（store 当前会话即目标）：不绕行直达入口，避免视图重挂闪烁
   if (isAgentSessionActive(item) || isGroupSessionActive(item)) return
+  // 切会话即重置右面板选中态，避免残留上一会话的工具结果
+  workbench.resetSelection()
   router.push({ name: 'WorkspaceSessionChat', params: { sessionId: item.session_id } })
 }
 
@@ -453,6 +479,7 @@ const inAgentChatRoute = computed(() => route.name === 'WorkspaceAgentChat')
 function handleSelectAgent(agent: Agent) {
   agentStore.currentAgent = agent
   agentStore.fetchConversations(agent.id)
+  workbench.resetSelection()
   router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
 }
 
@@ -475,18 +502,25 @@ async function handleDeleteConversation(sessionId: string) {
   }
 }
 
-async function handleDeleteGroupSession(sessionId: string) {
+async function handleDeleteGroupSession(item: RecentSessionItem) {
   try {
     await ElMessageBox.confirm('删除后该会话的时间线与成员讨论上下文将一并清除，确定删除？', '删除会话', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
     })
-    await groupStore.deleteSession(sessionId)
+    // 群 id 取条目自带的 ref_id，不依赖 groupStore.currentGroup——
+    // 没进过群页时它为空（store 内静默返回），进过别的群时它指向错误的群
+    if (isGroupChatRoute(item.ref_id) && groupStore.currentGroup?.id === item.ref_id) {
+      // 正开着该群页：走 store 同步页内会话列表与时间线（删的是当前会话时自动切换）
+      await groupStore.deleteSession(item.session_id)
+    } else {
+      await agentGroupApi.deleteGroupSession(item.ref_id, item.session_id)
+    }
+    ElMessage.success('会话已删除')
     fetchRecentSessions()
-  } catch (e) {
-    if (e instanceof Error) ElMessage.error(e.message)
-    // 取消则静默
+  } catch {
+    // 取消，或删除失败（失败提示由 request 拦截器统一 toast）
   }
 }
 

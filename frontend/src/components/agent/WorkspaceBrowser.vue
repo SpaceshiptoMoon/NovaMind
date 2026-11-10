@@ -45,19 +45,24 @@ const browseParent = ref<string | null>(null)
 const browseDirs = ref<{ name: string; path: string }[]>([])
 const browseLoading = ref(false)
 
+// 导航序号：挂载自列根与宿主 resetTo 会并发发起两次请求，只认最后一次导航的响应
+let browseSeq = 0
+
 /** 进入某层目录（列表项点击/上级按钮）；空串=回到根 */
 async function browseEnter(path: string) {
+  const seq = ++browseSeq
   browseLoading.value = true
   try {
     const data = await agentApi.browseWorkspaceDirs(path || undefined)
+    if (seq !== browseSeq) return
     browsePath.value = data.path
     browseParent.value = data.is_root ? null : (data.parent ?? null)
     browseDirs.value = data.dirs || []
     emit('change', data.path)
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
+    if (seq === browseSeq) ElMessage.error(e instanceof Error ? e.message : '目录读取失败')
   } finally {
-    browseLoading.value = false
+    if (seq === browseSeq) browseLoading.value = false
   }
 }
 

@@ -342,6 +342,9 @@ watch(
       wsBrowserRef.value?.resetTo(workspaceRoot.value)
     }
   },
+  // post：Browser 在 v-if 分支内，默认 pre 时序下回调先于其挂载，ref 为空会被静默跳过，
+  // 已绑定目录的重定位就不生效（只剩 Browser 自列根）
+  { flush: 'post' },
 )
 
 async function handleBindWorkspace() {

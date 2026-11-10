@@ -62,7 +62,7 @@
  * 会话子列表在 WorkspaceLayout 侧栏），view 层只做路由参数接线与动作转发。
  * 输入区与单聊共用 InputCard 精简模式。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Setting } from '@element-plus/icons-vue'
@@ -78,6 +78,9 @@ const route = useRoute()
 const router = useRouter()
 const store = useAgentGroupStore()
 const timelineRef = ref<InstanceType<typeof GroupTimeline>>()
+
+// 布局层提供的会话中心刷新钩子（解散/改群后同步侧栏；测试环境或他处挂载时缺省为空）
+const refreshSessionCenter = inject<(() => void) | null>('refreshSessionCenter', null)
 
 const groupId = computed(() => Number(route.params.groupId))
 
@@ -116,6 +119,9 @@ async function handleDissolve() {
     })
     await store.deleteGroup(group.id)
     ElMessage.success('群已解散')
+    // 后端解散群有意保留时间线会话，会话中心靠「群名查不到则跳过」过滤
+    // 悬空条目——不刷新就会残留点不开的死条目
+    refreshSessionCenter?.()
     // 群列表占位页已删，回对话入口
     router.push('/home/workspace/chat')
   } catch {
@@ -130,6 +136,8 @@ async function refreshCurrentGroup() {
   if (!store.currentGroup) return
   try {
     store.currentGroup = await agentGroupApi.getGroup(store.currentGroup.id)
+    // 群名/成员变化会改变会话中心条目的副标题与归属名，同步刷新
+    refreshSessionCenter?.()
   } catch {
     // 拉取失败保持旧展示；错误 toast 由拦截器统一弹
   }

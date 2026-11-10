@@ -22,7 +22,7 @@
 
     <div v-if="error" class="chat-entry__error">
       <p>{{ error }}</p>
-      <el-button type="primary" size="small" @click="goAgentWorkspace">前往智能体页</el-button>
+      <el-button type="primary" size="small" @click="enterChat">重试</el-button>
     </div>
 
     <div v-if="slow" class="chat-entry__slow-hint">正在进入对话…</div>
@@ -48,11 +48,16 @@ const error = ref('')
 const slow = ref(false)
 let slowTimer: ReturnType<typeof setTimeout> | null = null
 
-function goAgentWorkspace() {
-  router.replace('/home/workspace/agents')
-}
-
-onMounted(async () => {
+/**
+ * 解析默认助手并跳对话页；失败留在本页展示错误态，可原地重试。
+ *
+ * 兜底出口只能是重试：旧的「前往智能体页」指向 /home/workspace/agents，该占位页
+ * 清退后已 redirect 回本页，点击只会原地打转。
+ */
+async function enterChat() {
+  error.value = ''
+  slow.value = false
+  if (slowTimer) clearTimeout(slowTimer)
   slowTimer = setTimeout(() => {
     slow.value = true
   }, 600)
@@ -64,8 +69,11 @@ onMounted(async () => {
     ElMessage.error('进入对话失败')
   } finally {
     if (slowTimer) clearTimeout(slowTimer)
+    slow.value = false
   }
-})
+}
+
+onMounted(enterChat)
 
 onBeforeUnmount(() => {
   if (slowTimer) clearTimeout(slowTimer)
