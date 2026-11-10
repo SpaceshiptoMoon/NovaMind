@@ -4,7 +4,7 @@
 1. _parse_followup_suggestions 纯解析：裸数组 / markdown 围栏包裹 / 前后杂质 /
    非法输出返回空 / 超长条目丢弃 / max_items 截断
 2. generate_followup_suggestions：
-   - 会话不存在 / 他人会话 → AgentError（归属防线与消息读取同口径）
+   - 会话不存在 / 他人会话 → SessionNotFoundError（归属防线与消息读取同口径，HTTP 404）
    - 空会话（message_count=0）→ [] 且不触发 LLM
    - 尾部窗口全是 tool 等过程行 → [] 且不触发 LLM
    - 正常路径：prompt 只含 user/assistant 行且限 6 条窗口、解析出 3 条建议
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from novamind.features.agent.exceptions import AgentError
+from novamind.features.agent.exceptions import AgentError, SessionNotFoundError
 from novamind.features.agent.services.chat_service import AgentChatService
 
 pytestmark = pytest.mark.unit
@@ -87,14 +87,19 @@ def test_parse_drops_overlong_and_caps_items() -> None:
 
 @pytest.mark.asyncio
 async def test_generate_rejects_missing_or_foreign_session() -> None:
-    """会话不存在 / 他人会话 → AgentError（归属防线）"""
+    """会话不存在 / 他人会话 → SessionNotFoundError（AgentError 子类，HTTP 404 与消息读取同口径）"""
     svc = _build_service(conv=None, messages=[])
-    with pytest.raises(AgentError):
+    with pytest.raises(SessionNotFoundError):
         await svc.generate_followup_suggestions(7, "sess-x")
 
     svc = _build_service(conv=_conv(user_id=99), messages=[_msg(1, "user", "hi")])
-    with pytest.raises(AgentError):
+    with pytest.raises(SessionNotFoundError):
         await svc.generate_followup_suggestions(7, "sess-1")
+
+    # SessionNotFoundError 必须仍是 AgentError 子类：兜底 except AgentError 的调用方不被破坏
+    svc = _build_service(conv=None, messages=[])
+    with pytest.raises(AgentError):
+        await svc.generate_followup_suggestions(7, "sess-y")
 
 
 @pytest.mark.asyncio

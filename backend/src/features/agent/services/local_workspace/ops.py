@@ -240,7 +240,12 @@ def _glob(root: str, os_type: str, args: dict[str, Any]) -> dict[str, Any]:
             # 敏感文件名过滤与 read 同口径：列出文件名本身也是信息泄露（黑名单意图全覆盖）
             if is_sensitive_file_name(p.name):
                 continue
-            rel = str(p.relative_to(Path(root).resolve())).replace(os.sep, "/")
+            rel_path = p.relative_to(Path(root).resolve())
+            # 敏感目录剪枝与 grep 同口径：`**` 会递归进 .ssh/.aws 等目录，文件名黑名单
+            # 拦不住其中非敏感命名的文件（如 .aws/config）——按工作区内各级目录名判定
+            if any(is_sensitive_dir_name(part) for part in rel_path.parts[:-1]):
+                continue
+            rel = str(rel_path).replace(os.sep, "/")
             try:
                 mtime = p.stat().st_mtime
             except OSError:

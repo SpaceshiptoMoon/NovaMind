@@ -21,7 +21,11 @@ from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.search.ports import WebSearchPort
 from novamind.features.agent.attachments.repository import ChatAttachmentRepository
-from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
+from novamind.features.agent.exceptions import (
+    AgentError,
+    AgentNotFoundError,
+    SessionNotFoundError,
+)
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.models.session import AgentSession
@@ -579,11 +583,11 @@ class AgentChatService:
             返回空数组——追问是增强能力，空态由前端静默处理不提示错误。
 
         Raises:
-            AgentError: 会话不存在或不属于当前用户（与消息读取同防线）。
+            SessionNotFoundError: 会话不存在或不属于当前用户（与消息读取同防线、同 404 口径）。
         """
         conv = await self.session_repo.get_by_session_id(session_id)
         if conv is None or conv.user_id != user_id:
-            raise AgentError("会话不存在")
+            raise SessionNotFoundError(session_id)
         if conv.message_count <= 0:
             return []
 

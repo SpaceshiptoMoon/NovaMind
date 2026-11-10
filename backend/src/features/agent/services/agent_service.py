@@ -27,8 +27,8 @@ from novamind.features.agent.repository.agent_repository import (
 from novamind.features.agent.repository.context_summary_repository import (
     ContextSummaryRepository,
 )
-from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.repository.group_repository import GroupRepository
+from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentDetailResponse,

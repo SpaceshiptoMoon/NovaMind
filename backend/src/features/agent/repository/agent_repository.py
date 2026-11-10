@@ -176,6 +176,10 @@ class SessionRepository:
         私有会话虽也落在 AgentSession 上，复用会把普通消息混进群载体。有消息即不复用
         （首轮发送中断可能留下有消息但 title 仍空的会话，不能按 title 判空）。
 
+        并发限制：check-then-act 无唯一约束兜底，两个并发创建请求可能各建一条空会话
+        （失败方向安全——不丢数据，仅多一条孤儿空会话）；表无 (user_id, agent_id)
+        唯一索引，根治需行锁或唯一 partial index，当前按已知限制接受。
+
         Args:
             user_id: 属主用户 ID。
             agent_id: Agent 主键 ID。

@@ -351,6 +351,30 @@ async def test_glob_skips_sensitive_file_names(
 
 
 @pytest.mark.asyncio
+async def test_glob_skips_files_inside_sensitive_dirs(
+    tool: LocalWorkspaceTool, tmp_path: Path
+):
+    """`**` 递归进敏感目录时，其中非敏感命名的文件同样不得列出（grep 剪枝同口径）。
+
+    .aws/config 文件名本身不命中文件黑名单，只按目录名剪枝才能拦住；
+    相邻正常场景：普通目录下同名 config 文件不受影响。
+    """
+    aws = tmp_path / ".aws"
+    aws.mkdir()
+    (aws / "config").write_text("region = cn-north-1\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "config").write_text("DEBUG=true\n", encoding="utf-8")
+    (tmp_path / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+    out = json.loads(await tool.execute_tool("glob", {"pattern": "**/*"}, _ctx(tmp_path)))
+    assert out["ok"] is True
+    result = out["result"]
+    assert ".aws" not in result and "aws/config" not in result
+    assert "src/config" in result  # 同名文件在普通目录下不误伤
+    assert "src/main.py" in result
+
+
+@pytest.mark.asyncio
 async def test_read_non_int_offset_limit_falls_back_to_defaults(
     tool: LocalWorkspaceTool, ws_root: Path
 ):
