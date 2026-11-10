@@ -22,9 +22,9 @@
         <!-- 展开模式：上下文列表 -->
         <template v-if="!sidebarCollapsed">
           <div class="sidebar-body">
-            <!-- 会话中心（新默认分支）：单聊/群聊最近会话平铺（GET /agent/sessions/recent）；
+            <!-- 会话中心：按主体分组（助手/协作群作分组头，组内挂各自会话）；
                  头部「新建对话」开统一创建弹窗、「助手」开助手管理抽屉 -->
-            <div v-if="!USE_LEGACY_SIDEBAR" class="list-section">
+            <div class="list-section">
               <div class="list-section-header">
                 <span class="list-section-title">会话</span>
                 <button class="header-action" title="助手管理" @click="openAgentDrawer()">
@@ -39,48 +39,75 @@
                 </button>
               </div>
               <div v-loading="recentSessionsLoading" class="list-area">
-                <template v-for="item in recentSessions" :key="item.session_id">
-                  <!-- 单聊条目：助手首字头像 + 会话 title（未生成以助手名兜底），点击续聊 -->
-                  <div
-                    v-if="item.kind === 'agent'"
-                    class="list-item"
-                    :class="{ active: isAgentSessionActive(item) }"
-                    @click="handleOpenSession(item)"
-                  >
-                    <div class="agent-avatar-sm">{{ item.name.charAt(0) }}</div>
-                    <div class="item-info">
-                      <span class="item-title">{{ item.title || item.name }}</span>
-                      <span v-if="item.title" class="item-desc">{{ item.name }}</span>
+                <template v-for="group in groupedSessions" :key="group.key">
+                  <!-- 主体分组头：纯文字名 + 会话数（点击进该主体最近会话），hover 浮现管理动作 -->
+                  <div class="session-group-head">
+                    <button class="session-group-toggle" @click="openLatestSession(group)">
+                      <span class="session-group-name">{{ group.name }}</span>
+                      <span class="session-group-count">{{ group.sessions.length }}</span>
+                    </button>
+                    <div class="session-group-actions" @click.stop>
+                      <template v-if="group.kind === 'agent' && findAgent(group.refId)">
+                        <button
+                          class="item-action-btn"
+                          title="配置"
+                          @click="openAgentConfig(findAgent(group.refId)!)"
+                        >
+                          <el-icon :size="12"><Setting /></el-icon>
+                        </button>
+                        <button
+                          class="item-action-btn"
+                          title="编辑"
+                          @click="openAgentDialog(findAgent(group.refId)!)"
+                        >
+                          <el-icon :size="12"><EditPen /></el-icon>
+                        </button>
+                        <button
+                          class="item-action-btn item-action-btn--danger"
+                          title="删除助手"
+                          @click="handleDeleteAgent(findAgent(group.refId)!)"
+                        >
+                          <el-icon :size="12"><Delete /></el-icon>
+                        </button>
+                      </template>
+                      <template v-else-if="group.kind === 'group' && findGroup(group.refId)">
+                        <button
+                          class="item-action-btn"
+                          title="编辑"
+                          @click="openGroupDialog(null, group.refId)"
+                        >
+                          <el-icon :size="12"><EditPen /></el-icon>
+                        </button>
+                        <button
+                          class="item-action-btn item-action-btn--danger"
+                          title="解散"
+                          @click="handleDissolveGroup(findGroup(group.refId)!)"
+                        >
+                          <el-icon :size="12"><Delete /></el-icon>
+                        </button>
+                      </template>
                     </div>
                   </div>
-                  <!-- 协作条目：群头像 + 群名 + 成员副标题，点击进群并定位到该会话 -->
+                  <!-- 组内会话条目：纯标题，点击续聊，hover 删除 -->
                   <div
-                    v-else
-                    class="list-item"
-                    :class="{ active: isGroupSessionActive(item) }"
-                    @click="handleOpenSession(item)"
+                    v-for="s in group.sessions"
+                    :key="s.session_id"
+                    class="session-item"
+                    :class="{ active: isAgentSessionActive(s) || isGroupSessionActive(s) }"
+                    @click="handleOpenSession(s)"
                   >
-                    <GroupAvatar :members="item.members || []" :title="item.name" />
-                    <div class="item-info">
-                      <span class="item-title">{{ item.name }}</span>
-                      <span class="item-desc">{{ groupEntryDesc(item) }}</span>
-                    </div>
-                    <div class="item-actions">
-                      <button
-                        class="item-action-btn"
-                        title="编辑"
-                        @click.stop="openGroupDialog(null, item.ref_id)"
-                      >
-                        <el-icon :size="12"><EditPen /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn item-action-btn--danger"
-                        title="解散"
-                        @click.stop="handleDissolveGroup({ id: item.ref_id, name: item.name })"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
+                    <span class="session-title">{{ sessionDisplayTitle(s) }}</span>
+                    <button
+                      class="session-delete"
+                      title="删除会话"
+                      @click.stop="
+                        s.kind === 'agent'
+                          ? handleDeleteConversation(s.session_id)
+                          : handleDeleteGroupSession(s.session_id)
+                      "
+                    >
+                      <el-icon :size="12"><Delete /></el-icon>
+                    </button>
                   </div>
                 </template>
                 <div
@@ -92,177 +119,6 @@
               </div>
             </div>
 
-            <!-- 旧分区结构（legacy 分支：USE_LEGACY_SIDEBAR=true 时渲染，保留可切回，勿删） -->
-            <template v-else>
-            <div class="list-section">
-              <div class="list-section-header">
-                <button class="list-section-toggle" @click="toggleSection('chat')">
-                  <span class="list-section-title">我的智能体</span>
-                  <span class="list-section-count">{{ agentStore.agents.length }}</span>
-                  <el-icon
-                    :size="12"
-                    class="list-section-chevron"
-                    :class="{ collapsed: sectionCollapsed.chat }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-                <button class="list-section-add" title="新建对话" @click="openUnifiedCreate()">
-                  <el-icon :size="12"><Plus /></el-icon>
-                </button>
-              </div>
-              <div v-show="!sectionCollapsed.chat" class="list-area">
-                <template v-for="agent in agentStore.agents" :key="agent.id">
-                  <div
-                    class="list-item"
-                    :class="{ active: isAgentChatRoute(agent.id) }"
-                    @click="handleSelectAgent(agent)"
-                  >
-                    <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
-                    <div class="item-info">
-                      <span class="item-title">{{ agent.name }}</span>
-                      <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
-                    </div>
-                    <div class="item-actions">
-                      <button
-                        class="item-action-btn"
-                        title="配置"
-                        @click.stop="openAgentConfig(agent)"
-                      >
-                        <el-icon :size="12"><Setting /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn"
-                        title="编辑"
-                        @click.stop="openAgentDialog(agent)"
-                      >
-                        <el-icon :size="12"><EditPen /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn item-action-btn--danger"
-                        title="删除"
-                        @click.stop="handleDeleteAgent(agent)"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
-                  </div>
-                  <!-- 当前对话 agent 的会话子列表（仅当前 agent 展开，数据随对话页拉取） -->
-                  <div v-if="isAgentChatRoute(agent.id)" class="session-sub">
-                    <button class="session-new" @click="handleNewChat">
-                      <el-icon :size="12"><Plus /></el-icon>
-                      <span>新对话</span>
-                    </button>
-                    <div
-                      v-for="conv in agentStore.conversations"
-                      :key="conv.session_id"
-                      class="session-item"
-                      :class="{ active: agentStore.currentSessionId === conv.session_id }"
-                      @click="handleSelectConversation(conv.session_id)"
-                    >
-                      <span class="session-title">{{ conv.title || '新对话' }}</span>
-                      <button
-                        class="session-delete"
-                        title="删除会话"
-                        @click.stop="handleDeleteConversation(conv.session_id)"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
-                    <div
-                      v-if="
-                        agentStore.conversations.length === 0 && !agentStore.conversationsLoading
-                      "
-                      class="session-empty"
-                    >
-                      暂无对话
-                    </div>
-                  </div>
-                </template>
-                <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
-              </div>
-            </div>
-
-            <!-- 协作分区：多智能体群（成员为既有 agent，brainstorm/consult 两模式） -->
-            <div class="list-section list-section--group">
-              <div class="list-section-header">
-                <button class="list-section-toggle" @click="toggleSection('group')">
-                  <span class="list-section-title">协作对话</span>
-                  <span class="list-section-count">{{ groupStore.groups.length }}</span>
-                  <el-icon
-                    :size="12"
-                    class="list-section-chevron"
-                    :class="{ collapsed: sectionCollapsed.group }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-                <button class="list-section-add" title="新建对话" @click="openUnifiedCreate()">
-                  <el-icon :size="12"><Plus /></el-icon>
-                </button>
-              </div>
-              <div v-show="!sectionCollapsed.group" class="list-area">
-                <template v-for="group in groupStore.groups" :key="group.id">
-                  <div
-                    class="list-item"
-                    :class="{ active: isGroupChatRoute(group.id) }"
-                    @click="handleSelectGroup(group)"
-                  >
-                    <GroupAvatar :members="groupMemberNames(group.id)" :title="group.name" />
-                    <div class="item-info">
-                      <span class="item-title">{{ group.name }}</span>
-                      <span class="item-desc">{{ groupModeLabel(group.mode) }} · {{ group.member_count }} 人</span>
-                    </div>
-                    <div class="item-actions">
-                      <button
-                        class="item-action-btn"
-                        title="编辑"
-                        @click.stop="openGroupDialog(null, group.id)"
-                      >
-                        <el-icon :size="12"><EditPen /></el-icon>
-                      </button>
-                      <button
-                        class="item-action-btn item-action-btn--danger"
-                        title="解散"
-                        @click.stop="handleDissolveGroup(group)"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
-                  </div>
-                  <!-- 当前群的会话子列表（一群多会话） -->
-                  <div v-if="isGroupChatRoute(group.id)" class="session-sub">
-                    <button class="session-new" @click="handleNewGroupSession">
-                      <el-icon :size="12"><Plus /></el-icon>
-                      <span>新会话</span>
-                    </button>
-                    <div
-                      v-for="(conv, idx) in groupStore.sessions"
-                      :key="conv.session_id"
-                      class="session-item"
-                      :class="{ active: groupStore.currentSessionId === conv.session_id }"
-                      @click="handleSelectGroupSession(conv.session_id)"
-                    >
-                      <span class="session-title">
-                        {{ conv.created_at ? formatDate(conv.created_at) : `会话 ${groupStore.sessions.length - idx}` }}
-                      </span>
-                      <button
-                        class="session-delete"
-                        title="删除会话"
-                        @click.stop="handleDeleteGroupSession(conv.session_id)"
-                      >
-                        <el-icon :size="12"><Delete /></el-icon>
-                      </button>
-                    </div>
-                    <div v-if="groupStore.sessions.length === 0 && !groupStore.sessionsLoading" class="session-empty">
-                      暂无会话
-                    </div>
-                  </div>
-                </template>
-                <div v-if="groupStore.groups.length === 0" class="list-empty">暂无群聊</div>
-              </div>
-            </div>
-            </template>
           </div>
         </template>
 
@@ -407,13 +263,12 @@
  *
  * 侧栏仅在工作台路由渲染（上下文列表）；skip-link 供键盘导航。
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Delete,
   Expand,
-  ArrowDown,
   ArrowLeft,
   ArrowRight,
   Plus,
@@ -426,7 +281,6 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
-import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
 import AgentFormDialog from '@/components/agent/manage/AgentFormDialog.vue'
 import GroupFormDialog from '@/components/agent/manage/GroupFormDialog.vue'
@@ -446,20 +300,7 @@ const sidebarCollapsed = ref(false)
 
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
 
-// 下方列表的折叠态（群聊分区默认折叠：单聊是高频主区，群聊按需展开）
-const sectionCollapsed = reactive({
-  chat: false,
-  group: true,
-})
-
-function toggleSection(key: 'chat' | 'group') {
-  sectionCollapsed[key] = !sectionCollapsed[key]
-}
-
-// ===================== 会话中心（单聊/群聊最近会话平铺；USE_LEGACY_SIDEBAR 切回旧分区） =====================
-
-// legacy 开关：true = 渲染旧的「我的智能体 + 协作对话」两分区结构（保留可切回，勿删）
-const USE_LEGACY_SIDEBAR = false
+// ===================== 会话中心（按主体分组：助手/协作群作分组头，组内挂各自会话） =====================
 
 const recentSessions = ref<RecentSessionItem[]>([])
 const recentSessionsLoading = ref(false)
@@ -484,12 +325,6 @@ function isGroupSessionActive(item: RecentSessionItem): boolean {
   return isGroupChatRoute(item.ref_id) && groupStore.currentSessionId === item.session_id
 }
 
-/** 协作条目副标题：成员名前 3（按 speak_order，超出后端截断），缺员时回退人数 */
-function groupEntryDesc(item: RecentSessionItem): string {
-  if (item.members && item.members.length > 0) return item.members.join('、')
-  return item.member_count != null ? `${item.member_count} 人` : ''
-}
-
 /**
  * 会话中心条目统一入口（单聊/协作同路）：跳直达路由 /chat/:sessionId，
  * 由 SessionEntryView 拉会话详情判 kind 后转跳单聊/群聊页（批3）。
@@ -498,6 +333,53 @@ function handleOpenSession(item: RecentSessionItem) {
   // 已在该会话页内（store 当前会话即目标）：不绕行直达入口，避免视图重挂闪烁
   if (isAgentSessionActive(item) || isGroupSessionActive(item)) return
   router.push({ name: 'WorkspaceSessionChat', params: { sessionId: item.session_id } })
+}
+
+// ===================== 主体分组视图模型（按助手/协作群聚合会话） =====================
+
+interface SessionGroup {
+  /** kind:ref_id，分组的稳定 key */
+  key: string
+  kind: "agent" | "group"
+  refId: number
+  /** 分组头显示名：助手名或群名 */
+  name: string
+  sessions: RecentSessionItem[]
+}
+
+/** 会话按主体分组：端点已按 updated_at 倒序，分组保持首次出现顺序（组间=最近活跃序），组内自然倒序 */
+const groupedSessions = computed<SessionGroup[]>(() => {
+  const map = new Map<string, SessionGroup>()
+  for (const item of recentSessions.value) {
+    const key = `${item.kind}:${item.ref_id}`
+    let g = map.get(key)
+    if (!g) {
+      g = { key, kind: item.kind, refId: item.ref_id, name: item.name, sessions: [] }
+      map.set(key, g)
+    }
+    g.sessions.push(item)
+  }
+  return [...map.values()]
+})
+
+function findAgent(id: number): Agent | undefined {
+  return agentStore.agents.find((a) => a.id === id)
+}
+
+function findGroup(id: number): AgentGroup | undefined {
+  return groupStore.groups.find((g) => g.id === id)
+}
+
+/** 组内会话显示名：单聊未命名回退「新对话」，协作回退更新时间 */
+function sessionDisplayTitle(item: RecentSessionItem): string {
+  if (item.title) return item.title
+  return item.kind === "agent" ? "新对话" : formatDate(item.updated_at)
+}
+
+/** 进该主体最近一次会话 */
+function openLatestSession(group: SessionGroup) {
+  const latest = group.sessions[0]
+  if (latest) handleOpenSession(latest)
 }
 
 // ===================== 助手管理抽屉（会话中心头部的「助手」入口） =====================
@@ -542,9 +424,7 @@ const inChatRoute = computed(
 // 抽屉数据源是 agentStore（单聊），群聊路由挂载会显示残留数据
 const inAgentChatRoute = computed(() => route.name === 'WorkspaceAgentChat')
 
-// 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
-
-// 点 agent 条目：直接进对话页（广场页已删，对话即详情）
+// 点 agent 条目（rail 折叠态快捷轨道）：直接进对话页
 function handleSelectAgent(agent: Agent) {
   agentStore.currentAgent = agent
   agentStore.fetchConversations(agent.id)
@@ -552,20 +432,6 @@ function handleSelectAgent(agent: Agent) {
 }
 
 // ===================== 会话子列表动作（单栏合并：页内会话栏已删，会话切换收编布局层） =====================
-
-/** 新对话：中止流式后清空聊天面（对话页回欢迎态） */
-function handleNewChat() {
-  if (agentStore.isStreaming) agentStore.cancelStream()
-  agentStore.clearChat()
-}
-
-/** 切换会话：流式进行中先中止（SSE 回调写全局 messages，不中止会串台） */
-async function handleSelectConversation(sessionId: string) {
-  if (agentStore.currentSessionId === sessionId) return
-  if (agentStore.isStreaming) agentStore.cancelStream()
-  await agentStore.fetchMessages(sessionId)
-  workbench.resetSelection()
-}
 
 async function handleDeleteConversation(sessionId: string) {
   try {
@@ -582,19 +448,6 @@ async function handleDeleteConversation(sessionId: string) {
   } catch {
     // cancelled
   }
-}
-
-/** 群聊会话子列表：仅当前群条目下展开，store 上下文即该群 */
-async function handleNewGroupSession() {
-  try {
-    await groupStore.newSession()
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '新建会话失败')
-  }
-}
-
-async function handleSelectGroupSession(sessionId: string) {
-  if (sessionId !== groupStore.currentSessionId) await groupStore.selectSession(sessionId)
 }
 
 async function handleDeleteGroupSession(sessionId: string) {
@@ -619,8 +472,6 @@ const unifiedCreateVisible = ref(false)
 function openUnifiedCreate() {
   unifiedCreateVisible.value = true
 }
-
-// ===================== Agent 创建/编辑弹窗（原广场页逻辑收编） =====================
 
 // ===================== Agent 创建/编辑弹窗 + 配置抽屉（表单逻辑在 manage 组件内） =====================
 
@@ -656,18 +507,6 @@ async function handleDeleteAgent(agent: Agent) {
 
 function isGroupChatRoute(groupId: number): boolean {
   return route.name === 'WorkspaceGroupChat' && Number(route.params.groupId) === groupId
-}
-
-function groupModeLabel(mode: string): string {
-  return mode === 'consult' ? '专家咨询' : '头脑风暴'
-}
-
-// 侧栏群条目的成员名：优先取当前群详情（在群内时），否则用首字占位（列表接口不含成员）
-function groupMemberNames(groupId: number): string[] {
-  if (groupStore.currentGroup?.id === groupId) {
-    return groupStore.currentGroup.members.map((m) => m.agent_name)
-  }
-  return []
 }
 
 function handleSelectGroup(group: AgentGroup) {
@@ -851,24 +690,6 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.list-section-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-1);
-  margin: calc(-1 * var(--space-1));
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-}
-
-.list-section-toggle:hover .list-section-title {
-  color: var(--color-text-secondary);
-}
-
 .list-section-title {
   flex: 1;
   text-align: left;
@@ -877,41 +698,6 @@ onMounted(async () => {
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.list-section-count {
-  font-size: var(--text-xs);
-  color: var(--color-text-faint, var(--color-text-muted));
-}
-
-.list-section-chevron {
-  color: var(--color-text-muted);
-  transition: transform var(--transition-fast);
-}
-
-.list-section-chevron.collapsed {
-  transform: rotate(-90deg);
-}
-
-/* 分区创建 + 号：小图标钮，hover 主色 */
-.list-section-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all var(--transition-fast);
-}
-
-.list-section-add:hover {
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
 }
 
 /* 会话中心头部动作钮：文字小钮（「助手」/「新建对话」） */
@@ -955,34 +741,62 @@ onMounted(async () => {
   width: 100%;
 }
 
-/* ===================== 会话子列表（单栏合并：收在当前 agent/群条目下方） ===================== */
-.session-sub {
-  margin: 0 0 var(--space-2) var(--space-4);
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--color-border-light);
-  display: flex;
-  flex-direction: column;
-}
-
-.session-new {
+/* 主体分组头：纯文字名 + 会话数（点击进最近会话），hover 浮现管理动作 */
+.session-group-head {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px var(--space-2);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-1) var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.session-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-muted);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
   cursor: pointer;
   text-align: left;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
-.session-new:hover {
-  color: var(--color-primary);
+.session-group-toggle:hover {
   background: var(--color-bg-hover);
+}
+
+.session-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-secondary);
+}
+
+.session-group-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint, var(--color-text-muted));
+  flex-shrink: 0;
+}
+
+.session-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.session-group-head:hover .session-group-actions {
+  opacity: 1;
 }
 
 .session-item {
