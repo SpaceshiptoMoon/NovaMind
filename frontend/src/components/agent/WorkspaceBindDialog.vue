@@ -51,7 +51,7 @@
  * 绑定动作收口在 useWorkspaceBinding（与右面板目录视图共用），
  * 本组件只负责弹窗壳与「选定即绑定」的接线；浏览起点=已绑定目录或根。
  */
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import WorkspaceBrowser from './WorkspaceBrowser.vue'
 import { useWorkspaceBinding } from '@/composables/useWorkspaceBinding'
 
@@ -64,10 +64,15 @@ const selectedPath = ref('')
 const { isWorkspaceBound, workspaceRoot, binding, bindWorkspace, unbindWorkspace } =
   useWorkspaceBinding()
 
-// 打开即从已绑定目录（或根）开始浏览
-watch(modelValue, (visible) => {
+// 打开即从已绑定目录开始浏览（未绑定时 Browser 自列根）；el-dialog 惰性渲染下
+// 首开时 ref 可能迟到——轮询短暂等待后定位，错过则停留在根列表（可接受降级）
+watch(modelValue, async (visible) => {
   if (visible) {
     selectedPath.value = ''
+    for (let i = 0; i < 10 && !browserRef.value; i++) {
+      await nextTick()
+      await new Promise((r) => setTimeout(r, 50))
+    }
     browserRef.value?.resetTo(workspaceRoot.value)
   }
 })

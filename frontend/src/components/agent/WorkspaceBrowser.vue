@@ -32,7 +32,7 @@
  * 浏览状态（路径栈/子目录列表/加载态）内部自持，宿主（绑定弹窗 / 右面板目录视图）
  * 打开时调 resetTo(startPath) 定位起点，监听 change 拿当前层作为绑定目标。
  */
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, FolderOpened } from '@element-plus/icons-vue'
 import { agentApi } from '@/api/agent'
@@ -65,6 +65,12 @@ async function browseEnter(path: string) {
 function resetTo(path: string) {
   browseEnter(path)
 }
+
+// 挂载即列根（盘符/主目录）——宿主弹窗惰性渲染下 resetTo 可能早于挂载被跳过，
+// 组件自初始化保证打开必有列表；已绑定目录的重定位仍由宿主 resetTo 负责
+onMounted(() => {
+  if (!browsePath.value) browseEnter('')
+})
 
 defineExpose({ resetTo })
 </script>
