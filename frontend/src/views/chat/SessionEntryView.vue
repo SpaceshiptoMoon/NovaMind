@@ -62,7 +62,12 @@ onMounted(async () => {
     agentStore.fetchConversations(detail.agent_id)
     // 流式进行中先中止（SSE 回调写全局 messages，不中止会串台）
     if (agentStore.isStreaming) agentStore.cancelStream()
-    await router.push({ name: 'WorkspaceAgentChat', params: { agentId: detail.agent_id } })
+    await router.push({
+      name: 'WorkspaceAgentChat',
+      params: { agentId: detail.agent_id },
+      // 透传 query（bind=1：本地项目创建流程自动弹目录绑定，由 AgentChatView 消费）
+      query: route.query,
+    })
     // fetchMessages 必须在 push 之后：AgentChatView 挂载的 initForAgent 会 clearChat
     // （清 messages/currentSessionId），push 前拉取的历史会被挂载清态冲掉（批2 同款约束）
     await agentStore.fetchMessages(detail.session_id)
