@@ -18,13 +18,14 @@
               <span class="header-sub">{{ modeLabel }} · {{ memberCount }} 位成员</span>
             </div>
           </div>
-          <button
-            class="header-dissolve"
-            title="解散群聊"
-            @click="handleDissolve"
-          >
-            <el-icon :size="14"><Delete /></el-icon>
-          </button>
+          <div class="header-actions">
+            <button class="header-dissolve" title="协作设置" @click="settingsVisible = true">
+              <el-icon :size="14"><Setting /></el-icon>
+            </button>
+            <button class="header-dissolve" title="解散群聊" @click="handleDissolve">
+              <el-icon :size="14"><Delete /></el-icon>
+            </button>
+          </div>
         </header>
 
         <!-- 时间线 -->
@@ -43,6 +44,12 @@
         />
       </template>
     </div>
+    <!-- 协作设置（后置配置：模式/主持人/轮数/名称/成员），编辑保存后刷新头部展示 -->
+    <GroupFormDialog
+      v-model="settingsVisible"
+      :group-id="store.currentGroup?.id ?? null"
+      @updated="refreshCurrentGroup"
+    />
   </div>
 </template>
 
@@ -58,12 +65,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, Setting } from '@element-plus/icons-vue'
 import { useAgentGroupStore } from '@/stores/agentGroup'
 import InputCard from '@/components/agent/chat/InputCard.vue'
 import GroupAvatar from '@/components/agent/group/GroupAvatar.vue'
 import GroupTimeline from '@/components/agent/group/GroupTimeline.vue'
 import GroupRunStatus from '@/components/agent/group/GroupRunStatus.vue'
+import GroupFormDialog from '@/components/agent/manage/GroupFormDialog.vue'
+import { agentGroupApi } from '@/api/agentGroup'
 
 const route = useRoute()
 const router = useRouter()
@@ -111,6 +120,18 @@ async function handleDissolve() {
     router.push('/home/workspace/chat')
   } catch {
     // cancelled
+  }
+}
+
+// 协作设置：编辑保存后重拉详情刷新头部（群名/模式/成员数即时反映）
+const settingsVisible = ref(false)
+
+async function refreshCurrentGroup() {
+  if (!store.currentGroup) return
+  try {
+    store.currentGroup = await agentGroupApi.getGroup(store.currentGroup.id)
+  } catch {
+    // 拉取失败保持旧展示；错误 toast 由拦截器统一弹
   }
 }
 
@@ -217,6 +238,12 @@ watch(groupId, (v, old) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .header-dissolve {

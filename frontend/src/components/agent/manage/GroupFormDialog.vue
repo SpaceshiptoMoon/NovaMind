@@ -139,7 +139,11 @@ import GroupMemberPicker from '@/components/agent/group/GroupMemberPicker.vue'
 import './formDialog.css'
 
 const props = defineProps<{ modelValue: boolean; groupId: number | null }>()
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: boolean): void
+  /** 编辑保存成功（详情已更新）——宿主（群页）借此刷新 currentGroup 展示 */
+  (e: 'updated'): void
+}>()
 
 const router = useRouter()
 const agentStore = useAgentStore()
@@ -238,6 +242,7 @@ async function handleSubmit() {
         rounds_per_turn: groupForm.mode === 'brainstorm' ? groupForm.rounds_per_turn : undefined,
       })
       ElMessage.success('群聊已更新')
+      emit('updated')
     } else {
       const detail = await agentGroupApi.createGroup({
         name: groupForm.name,
