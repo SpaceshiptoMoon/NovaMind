@@ -221,6 +221,11 @@ export const agentApi = {
     )
   },
 
+  /** 显式创建单聊会话（本地项目 eager 路径）；幂等——已有无消息空会话时后端复用返回该会话 */
+  createSession(agentId: number) {
+    return request.post<AgentConversation>(`/agent/agents/${agentId}/sessions`)
+  },
+
   /** 会话详情（标题/状态/消息数/累计 token） */
   getSession(sessionId: string) {
     return request.get<AgentConversation>(`/agent/sessions/${sessionId}`)

@@ -16056,6 +16056,55 @@
         "tags": [
           "Agent 智能体"
         ]
+      },
+      "post": {
+        "description": "显式创建单聊会话（本地项目等 eager 路径）；幂等——已存在无消息的空会话时直接返回该会话不新建",
+        "operationId": "create_session_api_v1_agent_agents__agent_id__sessions_post",
+        "parameters": [
+          {
+            "description": "Agent ID",
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "description": "Agent ID",
+              "exclusiveMinimum": 0,
+              "title": "Agent Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "新建对话（显式）",
+        "tags": [
+          "Agent 智能体"
+        ]
       }
     },
     "/api/v1/agent/attachments": {
@@ -18215,53 +18264,6 @@
           }
         ],
         "summary": "浏览本机目录",
-        "tags": [
-          "Agent 智能体"
-        ]
-      }
-    },
-    "/api/v1/agent/workspace/validate": {
-      "post": {
-        "description": "本地形态绑定前校验路径存在且为目录（后端与文件同机时可用）",
-        "operationId": "validate_workspace_root_api_v1_agent_workspace_validate_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SessionWorkspaceBind"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentActionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "校验工作区根目录",
         "tags": [
           "Agent 智能体"
         ]

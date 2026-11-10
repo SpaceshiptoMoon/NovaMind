@@ -47,7 +47,11 @@ class GroupService:
     # ==================== 群 CRUD ====================
 
     async def create_group(self, user_id: int, data: AgentGroupCreate) -> AgentGroupDetailResponse:
-        """建群：成员 Agent 逐一归属校验后落群+成员（consult 主持人校验在 schema 层）。"""
+        """建群：成员归属校验后同事务落群+成员+首条时间线会话（consult 主持人校验在 schema 层）。
+
+        首条时间线会话随建群原子创建——会话中心在建群响应后即可见新群条目，
+        免去「前端进群后 get-or-create 晚于列表刷新」的时序缺口（后者保留作兜底）。
+        """
         for agent_id in data.member_ids:
             await self.agent_service.get_agent_or_fail(user_id, agent_id)
         extra_config = {"rounds_per_turn": data.rounds_per_turn}
@@ -62,6 +66,16 @@ class GroupService:
                 {"agent_id": aid, "role_hint": None, "speak_order": idx}
                 for idx, aid in enumerate(data.member_ids)
             ],
+        )
+        # 时间线会话的 agent_id 外键取 host（consult）或首位成员（brainstorm），
+        # 与 create_group_session / get_or_create_group_session 同口径
+        timeline_agent_id = group.host_agent_id
+        if timeline_agent_id is None:
+            timeline_agent_id = await _first_member_agent_id(self.db, group.id)
+        await self.session_repo.create(
+            user_id=user_id,
+            agent_id=timeline_agent_id,
+            extra_config={GROUP_SESSION_FLAG: {"group_id": group.id}},
         )
         await self.db.commit()
         return await self.get_group(user_id, group.id)

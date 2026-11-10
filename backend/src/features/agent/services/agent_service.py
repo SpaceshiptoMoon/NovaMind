@@ -441,6 +441,12 @@ class AgentService:
                 raise SessionNotFoundError(session_id)
             return conv
 
+        # 幂等复用：已有无消息的空会话（如显式创建后未发消息）直接续用，
+        # 不再新建——否则 lazy 发消息路径会给同一位用户留多条空会话
+        reusable = await self.session_repo.find_reusable_empty(user_id, agent_id)
+        if reusable is not None:
+            return reusable
+
         # 新会话 seed Agent 级默认知识范围：extra_config.knowledge_bindings
         # 复制为会话初值（会话内仍可改，改写只影响该会话）。Agent 未配置
         # 范围时会话保持 NULL（不限定），不造空容器。
@@ -454,6 +460,41 @@ class AgentService:
         )
         await self.db.commit()
         return conv
+
+
+    async def create_session_explicit(self, user_id: int, agent_id: int) -> SessionResponse:
+        """显式创建单聊会话（「本地项目」等 eager 创建路径），幂等复用无消息空会话。
+
+        与 lazy 路径（发首条消息时 get_or_create）共用 find_reusable_empty 判据，
+        两条路径互认对方的空会话——用户在 eager 空会话离开后再直接发消息不会
+        产生第二条。
+
+        Args:
+            user_id: 当前用户 ID。
+            agent_id: Agent 主键 ID。
+
+        Returns:
+            会话响应（title 为 None，前端显示「新对话」）。
+
+        Raises:
+            AgentNotFoundError: Agent 不存在或不属于当前用户。
+        """
+        await self.get_agent_or_fail(user_id, agent_id)
+        reusable = await self.session_repo.find_reusable_empty(user_id, agent_id)
+        if reusable is not None:
+            return SessionResponse.model_validate(reusable)
+        async with self.db.begin_nested():
+            agent_row = await self.agent_repo.get_by_id(agent_id)
+            agent_bindings = (
+                (agent_row.extra_config or {}).get("knowledge_bindings")
+                if agent_row else None
+            )
+            conv = await self.session_repo.create(
+                user_id=user_id, agent_id=agent_id,
+                extra_config={"knowledge_bindings": agent_bindings} if agent_bindings else None,
+            )
+        await self.db.commit()
+        return SessionResponse.model_validate(conv)
 
     async def list_sessions(
         self,

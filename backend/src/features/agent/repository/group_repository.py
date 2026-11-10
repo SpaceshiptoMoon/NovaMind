@@ -37,19 +37,21 @@ class GroupRepository:
         Returns:
             已 flush 的群实体。
         """
-        group = AgentGroup(
-            user_id=user_id,
-            name=name,
-            mode=mode,
-            description=description,
-            host_agent_id=host_agent_id,
-            extra_config=extra_config,
-        )
-        self.session.add(group)
-        await self.session.flush()
-        for m in members or []:
-            self.session.add(AgentGroupMember(group_id=group.id, **m))
-        await self.session.flush()
+        # 写操作走 SAVEPOINT（事务边界约定）：失败回滚不留半成品群/成员
+        async with self.session.begin_nested():
+            group = AgentGroup(
+                user_id=user_id,
+                name=name,
+                mode=mode,
+                description=description,
+                host_agent_id=host_agent_id,
+                extra_config=extra_config,
+            )
+            self.session.add(group)
+            await self.session.flush()
+            for m in members or []:
+                self.session.add(AgentGroupMember(group_id=group.id, **m))
+            await self.session.flush()
         return group
 
     async def get_group(self, group_id: int, user_id: int) -> AgentGroup | None:

@@ -314,6 +314,25 @@ async def list_sessions(
     return await service.list_sessions(user_id, agent_id, limit, offset)
 
 
+
+@router.post(
+    "/agents/{agent_id}/sessions",
+    response_model=SessionResponse,
+    status_code=201,
+    summary="新建对话（显式）",
+    description=(
+        "显式创建单聊会话（本地项目等 eager 路径）；幂等——已存在无消息的"
+        "空会话时直接返回该会话不新建"
+    ),
+)
+async def create_session(
+    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.create_session_explicit(user_id, agent_id)
+
+
 @router.get(
     "/sessions/recent",
     response_model=SessionCenterListResponse,
@@ -393,30 +412,6 @@ async def update_session_workspace(
     service: AgentService = Depends(get_agent_service),
 ):
     return await service.update_session_workspace(user_id, session_id, request.workspace)
-
-
-@router.post(
-    "/workspace/validate",
-    response_model=AgentActionResponse,
-    summary="校验工作区根目录",
-    description="本地形态绑定前校验路径存在且为目录（后端与文件同机时可用）",
-)
-async def validate_workspace_root(
-    request: SessionWorkspaceBind,
-    user_id: int = Depends(get_current_user_id),
-):
-    from pathlib import Path
-
-    from novamind.features.agent.exceptions import AgentError
-
-    workspace = request.workspace or {}
-    root = str(workspace.get("root") or "").strip()
-    if not root:
-        raise AgentError("工作区根路径不能为空")
-    p = Path(root)
-    if not p.is_dir():
-        raise AgentError(f"目录不存在: {root}")
-    return {"success": True, "message": "目录有效"}
 
 
 @router.get(

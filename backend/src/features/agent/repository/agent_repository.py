@@ -166,6 +166,56 @@ class SessionRepository:
         await self.session.refresh(conv)
         return conv
 
+
+    async def find_reusable_empty(
+        self, user_id: int, agent_id: int, candidate_limit: int = 10
+    ) -> AgentSession | None:
+        """查该用户+Agent 最新一条可复用的无消息普通会话（显式创建的幂等判据）。
+
+        只复用「active 且无任何消息且 extra_config 无群标记」的会话：群时间线/成员
+        私有会话虽也落在 AgentSession 上，复用会把普通消息混进群载体。有消息即不复用
+        （首轮发送中断可能留下有消息但 title 仍空的会话，不能按 title 判空）。
+
+        Args:
+            user_id: 属主用户 ID。
+            agent_id: Agent 主键 ID。
+            candidate_limit: 候选窗口大小（最新 N 条内找，避免全表聚合）。
+
+        Returns:
+            可复用的会话实体；无候选返回 None。
+        """
+        result = await self.session.execute(
+            select(AgentSession.id)
+            .where(
+                AgentSession.user_id == user_id,
+                AgentSession.agent_id == agent_id,
+                AgentSession.status == "active",
+            )
+            .order_by(AgentSession.id.desc())
+            .limit(candidate_limit)
+        )
+        candidate_ids = [row[0] for row in result.all()]
+        if not candidate_ids:
+            return None
+        msg_counts = await self.session.execute(
+            select(AgentMessage.conversation_id, func.count(AgentMessage.id))
+            .where(AgentMessage.conversation_id.in_(candidate_ids))
+            .group_by(AgentMessage.conversation_id)
+        )
+        counts = dict(msg_counts.all())
+        sessions = await self.session.execute(
+            select(AgentSession).where(AgentSession.id.in_(candidate_ids))
+            .order_by(AgentSession.id.desc())
+        )
+        for conv in sessions.scalars():
+            if counts.get(conv.id, 0) > 0:
+                continue
+            extra = conv.extra_config or {}
+            if "group" in extra or "group_member" in extra:
+                continue
+            return conv
+        return None
+
     async def get_by_id(self, conversation_id: int) -> AgentSession | None:
         """按主键查询会话，已软删（status=deleted）视为不存在返回 None。
 
