@@ -1959,6 +1959,8 @@ export interface AgentConversationListResponse {
 
 /** 会话中心条目：kind=agent → 单聊会话（ref_id=AgentDefinition.id）；kind=group → 群会话（ref_id=AgentGroup.id） */
 export interface RecentSessionItem {
+  /** 单聊是否绑定本地工作目录（进入工作模式）；群会话恒 false */
+  workspace_bound?: boolean
   session_id: string
   kind: 'agent' | 'group'
   /** 会话标题，未生成时为 null（前端以 name 兜底展示） */

@@ -39,75 +39,47 @@
                 </button>
               </div>
               <div v-loading="recentSessionsLoading" class="list-area">
-                <template v-for="group in groupedSessions" :key="group.key">
-                  <!-- 主体分组头：纯文字名 + 会话数（点击进该主体最近会话），hover 浮现管理动作 -->
+                <template v-for="cat in groupedSessions" :key="cat.key">
+                  <!-- 分类头：纯文字类名 + 会话数（点击进该类最近会话）；管理动作收在「助手」抽屉与条目 hover -->
                   <div class="session-group-head">
-                    <button class="session-group-toggle" @click="openLatestSession(group)">
-                      <span class="session-group-name">{{ group.name }}</span>
-                      <span class="session-group-count">{{ group.sessions.length }}</span>
+                    <button class="session-group-toggle" @click="openLatestSession(cat)">
+                      <span class="session-group-name">{{ cat.label }}</span>
+                      <span class="session-group-count">{{ cat.sessions.length }}</span>
                     </button>
-                    <div class="session-group-actions" @click.stop>
-                      <template v-if="group.kind === 'agent' && findAgent(group.refId)">
-                        <button
-                          class="item-action-btn"
-                          title="配置"
-                          @click="openAgentConfig(findAgent(group.refId)!)"
-                        >
-                          <el-icon :size="12"><Setting /></el-icon>
-                        </button>
-                        <button
-                          class="item-action-btn"
-                          title="编辑"
-                          @click="openAgentDialog(findAgent(group.refId)!)"
-                        >
-                          <el-icon :size="12"><EditPen /></el-icon>
-                        </button>
-                        <button
-                          class="item-action-btn item-action-btn--danger"
-                          title="删除助手"
-                          @click="handleDeleteAgent(findAgent(group.refId)!)"
-                        >
-                          <el-icon :size="12"><Delete /></el-icon>
-                        </button>
-                      </template>
-                      <template v-else-if="group.kind === 'group' && findGroup(group.refId)">
-                        <button
-                          class="item-action-btn"
-                          title="编辑"
-                          @click="openGroupDialog(null, group.refId)"
-                        >
-                          <el-icon :size="12"><EditPen /></el-icon>
-                        </button>
-                        <button
-                          class="item-action-btn item-action-btn--danger"
-                          title="解散"
-                          @click="handleDissolveGroup(findGroup(group.refId)!)"
-                        >
-                          <el-icon :size="12"><Delete /></el-icon>
-                        </button>
-                      </template>
-                    </div>
                   </div>
-                  <!-- 组内会话条目：纯标题，点击续聊，hover 删除 -->
+                  <!-- 类内会话条目：标题 + 归属名两行，点击续聊；协作条目 hover 带群管理 -->
                   <div
-                    v-for="s in group.sessions"
+                    v-for="s in cat.sessions"
                     :key="s.session_id"
                     class="session-item"
                     :class="{ active: isAgentSessionActive(s) || isGroupSessionActive(s) }"
                     @click="handleOpenSession(s)"
                   >
-                    <span class="session-title">{{ sessionDisplayTitle(s) }}</span>
-                    <button
-                      class="session-delete"
-                      title="删除会话"
-                      @click.stop="
-                        s.kind === 'agent'
-                          ? handleDeleteConversation(s.session_id)
-                          : handleDeleteGroupSession(s.session_id)
-                      "
-                    >
-                      <el-icon :size="12"><Delete /></el-icon>
-                    </button>
+                    <div class="session-item-info">
+                      <span class="session-title">{{ sessionDisplayTitle(s) }}</span>
+                      <span class="session-item-desc">{{ sessionDesc(s) }}</span>
+                    </div>
+                    <div class="session-item-actions" @click.stop>
+                      <template v-if="s.kind === 'group'">
+                        <button class="session-delete" title="编辑协作对话" @click="openGroupDialog(null, s.ref_id)">
+                          <el-icon :size="12"><EditPen /></el-icon>
+                        </button>
+                        <button
+                          class="session-delete"
+                          title="解散协作对话"
+                          @click="handleDissolveGroup({ id: s.ref_id, name: s.name })"
+                        >
+                          <el-icon :size="12"><Delete /></el-icon>
+                        </button>
+                      </template>
+                      <button
+                        class="session-delete"
+                        title="删除会话"
+                        @click="s.kind === 'agent' ? handleDeleteConversation(s.session_id) : handleDeleteGroupSession(s.session_id)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
                   </div>
                 </template>
                 <div
@@ -337,48 +309,54 @@ function handleOpenSession(item: RecentSessionItem) {
 
 // ===================== 主体分组视图模型（按助手/协作群聚合会话） =====================
 
-interface SessionGroup {
-  /** kind:ref_id，分组的稳定 key */
-  key: string
-  kind: "agent" | "group"
-  refId: number
-  /** 分组头显示名：助手名或群名 */
-  name: string
+/** 会话中心固定三分类：助手对话 / 本地项目（绑定工作目录的单聊）/ 协作对话 */
+type SessionCategoryKey = "agent" | "workspace" | "group"
+
+interface SessionCategory {
+  key: SessionCategoryKey
+  label: string
   sessions: RecentSessionItem[]
 }
 
-/** 会话按主体分组：端点已按 updated_at 倒序，分组保持首次出现顺序（组间=最近活跃序），组内自然倒序 */
-const groupedSessions = computed<SessionGroup[]>(() => {
-  const map = new Map<string, SessionGroup>()
-  for (const item of recentSessions.value) {
-    const key = `${item.kind}:${item.ref_id}`
-    let g = map.get(key)
-    if (!g) {
-      g = { key, kind: item.kind, refId: item.ref_id, name: item.name, sessions: [] }
-      map.set(key, g)
-    }
-    g.sessions.push(item)
+const SESSION_CATEGORY_DEFS: { key: SessionCategoryKey; label: string }[] = [
+  { key: "agent", label: "助手对话" },
+  { key: "workspace", label: "本地项目" },
+  { key: "group", label: "协作对话" },
+]
+
+/** 会话按用途分三类：类间固定顺序，类内沿用端点 updated_at 倒序；空类不占位 */
+const groupedSessions = computed<SessionCategory[]>(() => {
+  const buckets: Record<SessionCategoryKey, RecentSessionItem[]> = {
+    agent: [],
+    workspace: [],
+    group: [],
   }
-  return [...map.values()]
+  for (const item of recentSessions.value) {
+    if (item.kind === "group") buckets.group.push(item)
+    else if (item.workspace_bound) buckets.workspace.push(item)
+    else buckets.agent.push(item)
+  }
+  return SESSION_CATEGORY_DEFS.map((c) => ({ ...c, sessions: buckets[c.key] })).filter(
+    (c) => c.sessions.length > 0,
+  )
 })
 
-function findAgent(id: number): Agent | undefined {
-  return agentStore.agents.find((a) => a.id === id)
-}
-
-function findGroup(id: number): AgentGroup | undefined {
-  return groupStore.groups.find((g) => g.id === id)
-}
-
-/** 组内会话显示名：单聊未命名回退「新对话」，协作回退更新时间 */
+/** 条目主标题：单聊未命名回退「新对话」，协作回退更新时间 */
 function sessionDisplayTitle(item: RecentSessionItem): string {
   if (item.title) return item.title
   return item.kind === "agent" ? "新对话" : formatDate(item.updated_at)
 }
 
-/** 进该主体最近一次会话 */
-function openLatestSession(group: SessionGroup) {
-  const latest = group.sessions[0]
+/** 条目归属副标题：单聊=助手名，协作=成员名（缺员回退人数） */
+function sessionDesc(item: RecentSessionItem): string {
+  if (item.kind === "agent") return item.name
+  if (item.members && item.members.length > 0) return item.members.join("、")
+  return item.member_count != null ? `${item.member_count} 人` : item.name
+}
+
+/** 进该类最近一次会话 */
+function openLatestSession(cat: SessionCategory) {
+  const latest = cat.sessions[0]
   if (latest) handleOpenSession(latest)
 }
 
@@ -796,6 +774,36 @@ onMounted(async () => {
 }
 
 .session-group-head:hover .session-group-actions {
+  opacity: 1;
+}
+
+/* 类内条目两行结构：标题 + 归属名，hover 浮现动作组 */
+.session-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.session-item-desc {
+  font-size: 11px;
+  color: var(--color-text-faint, var(--color-text-muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.session-item:hover .session-item-actions {
   opacity: 1;
 }
 
