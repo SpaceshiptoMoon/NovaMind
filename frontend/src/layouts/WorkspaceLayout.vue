@@ -42,7 +42,18 @@
                 <template v-for="cat in groupedSessions" :key="cat.key">
                   <!-- 分类头：纯文字类名 + 会话数（点击进该类最近会话）；管理动作收在「助手」抽屉与条目 hover -->
                   <div class="session-group-head">
-                    <button class="session-group-toggle" @click="openLatestSession(cat)">
+                    <button
+                      class="session-group-toggle"
+                      :aria-expanded="!collapsedCategories.has(cat.key)"
+                      @click="toggleCategory(cat.key)"
+                    >
+                      <el-icon
+                        :size="12"
+                        class="session-group-chevron"
+                        :class="{ collapsed: collapsedCategories.has(cat.key) }"
+                      >
+                        <ArrowDown />
+                      </el-icon>
                       <span class="session-group-name">{{ cat.label }}</span>
                       <span class="session-group-count">{{ cat.sessions.length }}</span>
                     </button>
@@ -50,6 +61,7 @@
                   <!-- 类内会话条目：标题 + 归属名两行，点击续聊；协作条目 hover 带群管理 -->
                   <div
                     v-for="s in cat.sessions"
+                    v-show="!collapsedCategories.has(cat.key)"
                     :key="s.session_id"
                     class="session-item"
                     :class="{ active: isAgentSessionActive(s) || isGroupSessionActive(s) }"
@@ -241,6 +253,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Delete,
   Expand,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
   Plus,
@@ -354,10 +367,14 @@ function sessionDesc(item: RecentSessionItem): string {
   return item.member_count != null ? `${item.member_count} 人` : item.name
 }
 
-/** 进该类最近一次会话 */
-function openLatestSession(cat: SessionCategory) {
-  const latest = cat.sessions[0]
-  if (latest) handleOpenSession(latest)
+/** 分类折叠态：类头点击切换（会话内存态，默认全展开） */
+const collapsedCategories = ref(new Set<SessionCategoryKey>())
+
+function toggleCategory(key: SessionCategoryKey) {
+  const next = new Set(collapsedCategories.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedCategories.value = next
 }
 
 // ===================== 助手管理抽屉（会话中心头部的「助手」入口） =====================
@@ -762,6 +779,16 @@ onMounted(async () => {
   font-size: var(--text-xs);
   color: var(--color-text-faint, var(--color-text-muted));
   flex-shrink: 0;
+}
+
+.session-group-chevron {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.session-group-chevron.collapsed {
+  transform: rotate(-90deg);
 }
 
 .session-group-actions {
