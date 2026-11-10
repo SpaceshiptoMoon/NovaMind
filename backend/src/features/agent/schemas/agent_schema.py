@@ -164,9 +164,12 @@ class SessionCenterItem(BaseModel):
 
     kind=agent 时 ref_id/name 指向助手（member_count/members 为 null）；
     kind=group 时指向群（带成员数与前 3 个成员名）。
+    workspace_bound 标记单聊是否绑定了本地工作目录（进入工作模式），
+    供会话中心按用途分类（助手对话 / 本地项目 / 协作对话）。
     """
     session_id: str = Field(..., description="会话 UUID")
     kind: str = Field(..., description="会话类型：agent=单聊 / group=群会话")
+    workspace_bound: bool = Field(False, description="单聊是否绑定本地工作目录；群会话恒为 false")
     title: str | None = Field(None, description="会话标题，未生成时为 null")
     ref_id: int = Field(..., description="单聊=Agent ID，群会话=群 ID")
     name: str = Field(..., description="单聊=助手名，群会话=群名")

@@ -542,6 +542,7 @@ class AgentService:
                 items.append(SessionCenterItem(
                     session_id=conv.session_id,
                     kind="agent",
+                    workspace_bound=bool((conv.extra_config or {}).get("workspace")),
                     title=conv.title,
                     ref_id=conv.agent_id,
                     name=name,

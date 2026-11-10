@@ -212,6 +212,28 @@ async def test_recent_dangling_group_session_skipped(center_db):
     await session.close()
 
 
+# ==================== workspace_bound 分类标记 ====================
+
+
+@pytest.mark.asyncio
+async def test_recent_workspace_bound_flags(center_db):
+    """workspace_bound：绑定本地工作目录的单聊为 true、未绑定单聊为 false、群会话恒 false。"""
+    factory, _ = center_db
+    ids = await _seed_agents(factory, 1, ["a0"])
+    gid = await _seed_group(factory, 1, "g", ids)
+    await _seed_session(factory, 1, ids[0], "s-ws", T("2026-01-03 10:00:00"),
+                        extra_config={"workspace": {"mode": "local", "root": "C:/proj"}})
+    await _seed_session(factory, 1, ids[0], "s-plain", T("2026-01-02 10:00:00"))
+    await _seed_session(factory, 1, ids[0], "s-group", T("2026-01-01 10:00:00"),
+                        extra_config={"group": {"group_id": gid}})
+
+    service, session = _make_service(factory)
+    resp = await service.list_recent_sessions(1)
+    flags = {i.session_id: i.workspace_bound for i in resp.items}
+    assert flags == {"s-ws": True, "s-plain": False, "s-group": False}
+    await session.close()
+
+
 # ==================== 软删过滤 ====================
 
 

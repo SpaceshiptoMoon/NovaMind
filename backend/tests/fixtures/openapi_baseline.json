@@ -10267,7 +10267,7 @@
         "type": "object"
       },
       "SessionCenterItem": {
-        "description": "会话中心条目：单聊与群会话混排的统一展示形状。\n\nkind=agent 时 ref_id/name 指向助手（member_count/members 为 null）；\nkind=group 时指向群（带成员数与前 3 个成员名）。",
+        "description": "会话中心条目：单聊与群会话混排的统一展示形状。\n\nkind=agent 时 ref_id/name 指向助手（member_count/members 为 null）；\nkind=group 时指向群（带成员数与前 3 个成员名）。\nworkspace_bound 标记单聊是否绑定了本地工作目录（进入工作模式），\n供会话中心按用途分类（助手对话 / 本地项目 / 协作对话）。",
         "properties": {
           "kind": {
             "description": "会话类型：agent=单聊 / group=群会话",
@@ -10340,6 +10340,12 @@
             ],
             "description": "最近更新时间",
             "title": "Updated At"
+          },
+          "workspace_bound": {
+            "default": false,
+            "description": "单聊是否绑定本地工作目录；群会话恒为 false",
+            "title": "Workspace Bound",
+            "type": "boolean"
           }
         },
         "required": [
