@@ -39,6 +39,9 @@ from novamind.features.knowledge_space.schemas.search_schema import (
     SearchLLMConfig,
     SearchRequest,
 )
+from novamind.features.knowledge_space.services.document_query_service import (
+    DocumentQueryService,
+)
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.embedding import BaseEmbedding
@@ -848,42 +851,34 @@ class SearchService:
             response["answer_error"] = answer_error
         return response
 
-    # 单 hit 预签名帧图上限：正常代表帧为 adaptive 抽帧的组产出（个位数），
-    # 上限防病态数据一次签出几十条 URL
-    _MAX_FRAME_URLS = 9
+    # 单 hit 预签名帧图上限：与文档 chunks 端点取同一来源，两处展示口径不分叉
+    _MAX_FRAME_URLS = DocumentQueryService.MAX_FRAME_URLS
 
     async def _presign_frame_urls(self, results: list[Any]) -> None:
         """为命中 chunk 的 metadata.frame_paths 预签名可渲染 URL。
 
-        写回 metadata.frame_urls（响应层派生字段，不回写 ES）；单条失败静默
-        跳过——帧图缺失属展示层能力缺失，不应让整次检索失败。
+        写回 metadata.frame_urls（响应层派生字段，不回写 ES）。签名循环委托
+        DocumentQueryService.presign_frame_urls（检索端点与文档 chunks 端点
+        共用的唯一实现）；MinIO 客户端获取失败整批跳过——帧图缺失属展示层
+        能力缺失，不应让整次检索失败。
         """
-        frame_hits = [
-            hit for hit in results
+        metadatas = [
+            hit["metadata"]
+            for hit in results
             if isinstance(hit, dict)
             and isinstance(hit.get("metadata"), dict)
             and hit["metadata"].get("frame_paths")
         ]
-        if not frame_hits:
+        if not metadatas:
             return
         try:
             minio_client = await get_minio_client()
         except Exception as e:
             self.logger.warning("MinIO 客户端获取失败，帧图跳过预签名", error=str(e))
             return
-        bucket = minio_client.default_bucket
-        for hit in frame_hits:
-            metadata = hit["metadata"]
-            urls: list[str] = []
-            for path in metadata["frame_paths"][: self._MAX_FRAME_URLS]:
-                try:
-                    urls.append(await minio_client.get_file_url(bucket, path, expires=3600))
-                except Exception as e:
-                    self.logger.warning(
-                        "帧图预签名失败，跳过该帧", path=str(path), error=str(e),
-                    )
-            if urls:
-                metadata["frame_urls"] = urls
+        await DocumentQueryService.presign_frame_urls(
+            metadatas, minio_client=minio_client, max_urls=self._MAX_FRAME_URLS
+        )
 
     async def invalidate_kb_search_cache(self, kb_id: int) -> None:
         """

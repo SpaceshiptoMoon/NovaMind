@@ -267,7 +267,9 @@ class ChunkResponse(BaseModel):
     created_at: str | None = Field(None, description="创建时间")
     chunk_type: str | None = Field(None, description="分块类型: text/image/video/audio")
     image_url: str | None = Field(None, description="图片预览 URL（已废弃，使用 media_url）")
-    media_url: str | None = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
+    media_url: str | None = Field(None, description="媒体文件预签名 URL（图片/视频/音频原件）")
+    # 视频帧图不设专属字段：与检索端点同约定，由 metadata.frame_urls（响应层
+    # 派生的预签名列表）承载，见 DocumentQueryService.presign_frame_urls
 
 
 class ChunkListResponse(BaseModel):

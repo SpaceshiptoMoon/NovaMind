@@ -2195,7 +2195,7 @@
                 "type": "null"
               }
             ],
-            "description": "媒体文件预览 URL（图片/视频/音频）",
+            "description": "媒体文件预签名 URL（图片/视频/音频原件）",
             "title": "Media Url"
           },
           "metadata": {

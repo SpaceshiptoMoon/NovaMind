@@ -361,6 +361,27 @@
                     />
                     <div class="chunk-image-desc">{{ chunk.content }}</div>
                   </template>
+                  <!-- 视频帧图缩略图：后端把 metadata.frame_paths 预签名成 frame_urls（与检索
+                       结果页同约定）；media_url 指向原视频文件，<img> 渲染不了，不能混用。
+                       帧图与正文里的 VLM 描述一一对应，点击放大可翻帧 -->
+                  <template v-else-if="frameThumbsOf(chunk).length">
+                    <div class="chunk-frames">
+                      <el-image
+                        v-for="(url, fi) in frameThumbsOf(chunk)"
+                        :key="fi"
+                        :src="url"
+                        :preview-src-list="frameThumbsOf(chunk)"
+                        :initial-index="fi"
+                        fit="cover"
+                        loading="lazy"
+                        hide-on-click-modal
+                        preview-teleported
+                        class="chunk-frame-thumb"
+                      />
+                    </div>
+                    <MarkdownRenderer v-if="document" :content="chunk.content" />
+                    <template v-else>{{ chunk.content }}</template>
+                  </template>
                   <!-- content 里的 figure 短文件名已由后端 chunks 端点换成即时预签名 URL -->
                   <MarkdownRenderer v-else-if="document" :content="chunk.content" />
                   <template v-else>{{ chunk.content }}</template>
@@ -620,6 +641,13 @@ const tagsInput = ref<string[]>([])
     mustache 文本里的 `as Record<...>`，属性表达式不受影响） */
 function chunkMetaOf(chunk: Chunk): Record<string, unknown> {
   return chunk.metadata ?? {}
+}
+
+/** 视频帧图缩略图：后端把 metadata.frame_paths（MinIO 路径）预签名成 frame_urls
+    （响应层派生字段，与检索结果页同约定）；无帧图返回空数组不渲染 */
+function frameThumbsOf(chunk: Chunk): string[] {
+  const raw = chunkMetaOf(chunk).frame_urls
+  return Array.isArray(raw) ? raw.filter((u): u is string => typeof u === 'string') : []
 }
 
 /** 分块图片点击放大：多语句行内 handler 会被 prettier 重排掉语句分隔符
@@ -1245,6 +1273,22 @@ function maybeAutoExpandTimeline() {
 
 .chunk-image:hover {
   opacity: 0.9;
+}
+
+/* 视频帧图缩略图条：规格同 SearchView .result-frames（16:9 缩略图），置于帧描述正文之上 */
+.chunk-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.chunk-frame-thumb {
+  width: 120px;
+  height: 68px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  cursor: zoom-in;
 }
 
 .chunk-image-desc {

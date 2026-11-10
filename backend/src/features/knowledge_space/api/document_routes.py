@@ -130,7 +130,11 @@ async def get_document_kb_id(
 
 
 async def _build_chunk_response(c: dict) -> ChunkResponse:
-    """从 ES 分块字典构建 ChunkResponse（媒体 presign 委托 query service）。"""
+    """从 ES 分块字典构建 ChunkResponse（媒体 presign 委托 query service）。
+
+    调用前视频帧图应已由 ``presign_frame_urls`` 写回 metadata.frame_urls
+    （本函数对 metadata 原样透传）。
+    """
     media_url = await DocumentQueryService.presign_media_url(
         c.get("chunk_type"), c.get("media_url", "") or c.get("image_url", "")
     )
@@ -659,7 +663,13 @@ async def get_document_chunks(
     data = await document_query_service.get_document_chunks(
         space_id, document_id, skip=skip, limit=limit
     )
-    items = [await _build_chunk_response(c) for c in data.get("items", [])]
+    raw_items = data.get("items", [])
+    # 视频抽帧预签名：metadata.frame_paths（MinIO 未签名路径）批量换签写回
+    # metadata.frame_urls（与检索端点同约定；响应层派生字段，不回写 ES）
+    await DocumentQueryService.presign_frame_urls(
+        [c.get("metadata") for c in raw_items], document_query_service.minio_client
+    )
+    items = [await _build_chunk_response(c) for c in raw_items]
     # chunk content 里的 figure 短文件名 → 即时预签名（与 parsed-text 视图同一策略；
     # <img> 无法带 Authorization 头，必须在已鉴权端点内换好签名）
     for item in items:

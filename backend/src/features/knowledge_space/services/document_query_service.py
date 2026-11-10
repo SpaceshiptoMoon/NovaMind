@@ -29,6 +29,8 @@ from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+logger = get_logger(__name__)
+
 # figure 文件名白名单：上传侧 _upload_figure_images_to_minio 产出
 # figure_{safe_id}_{page}.png（safe_id 已把非 [a-zA-Z0-9_-] 归一为 _）。
 # 代理端点据此拒绝路径穿越（../、反斜杠、%2e 等编码形态在路由参数解码后
@@ -555,6 +557,46 @@ class DocumentQueryService:
             )
         except Exception:
             return None
+
+    # 单分块帧图预签名上限：正常代表帧为 adaptive 抽帧的组产出（个位数），
+    # 上限防病态数据一次签出几十条 URL；SearchService._MAX_FRAME_URLS 取自此处
+    MAX_FRAME_URLS = 9
+
+    @staticmethod
+    async def presign_frame_urls(
+        metadatas: list[Any],
+        minio_client: MinioClient,
+        max_urls: int = MAX_FRAME_URLS,
+    ) -> None:
+        """把视频分块 ``metadata.frame_paths`` 批量预签名写回 ``metadata.frame_urls``。
+
+        检索端点与文档 chunks 端点共用的唯一实现：帧图 URL 统一由响应层派生
+        字段 ``metadata.frame_urls`` 承载，不回写 ES。``<img>`` 带不上
+        Authorization 头，必须在已鉴权端点内换好签名。单帧签名失败只跳过
+        该帧，全部失败不写键——帧图缺失属展示层能力缺失，不阻断响应。
+
+        Args:
+            metadatas: 各分块的 metadata，非 dict 或无 frame_paths 列表的项跳过。
+            minio_client: 调用方已持有的 MinIO 客户端。
+            max_urls: 单分块预签名帧数上限。
+        """
+        targets = [
+            m
+            for m in metadatas
+            if isinstance(m, dict) and isinstance(m.get("frame_paths"), list) and m["frame_paths"]
+        ]
+        if not targets:
+            return
+        bucket = minio_client.default_bucket
+        for metadata in targets:
+            urls: list[str] = []
+            for path in metadata["frame_paths"][:max_urls]:
+                try:
+                    urls.append(await minio_client.get_file_url(bucket, path, expires=3600))
+                except Exception as exc:
+                    logger.warning("帧图预签名失败，跳过该帧", path=str(path), error=str(exc))
+            if urls:
+                metadata["frame_urls"] = urls
 
     async def download_document(
         self,
