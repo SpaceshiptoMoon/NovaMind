@@ -59,6 +59,18 @@ region 基座键集、构造、规范化、占位符兜底读取唯一定义在 
 
 region 契约十键：`artifact_id / placeholder / pages / page_start / bbox / caption / text / member_texts / member_bboxes / image_blobs`。
 
+## 分块配图的读取端三链路
+
+chunk 的配图按来源走三条互不相通的链路，排查「图不显示」先分型：
+
+| 来源 | 载体 | 读取端处理 |
+|---|---|---|
+| 文档 figure（上节） | content 内 `](figure_xxx.png)` 短路径 | `presign_figure_links`（parsed-text / chunks 端点，6 小时时效） |
+| image 分块 | 顶层 `media_url` | `presign_media_url`（预签名原图，`<img>` 可直接渲染） |
+| video 分块抽帧 | `metadata.frame_paths` → `metadata.frame_urls` | `DocumentQueryService.presign_frame_urls`（检索端点与 chunks 端点共用的唯一实现） |
+
+video 分块的 `media_url` 指向**原视频文件**（供播放），不能当图片渲染；帧图只走 `metadata.frame_urls`——响应层派生字段，每次请求即时签发（1 小时时效）、不回写 ES，单分块上限 `MAX_FRAME_URLS`（9）。单帧签名失败跳过该帧、全部失败不写键（展示层能力缺失，不阻断响应）。audio 分块无配图。前端消费点：检索页 `SearchView` 与文档详情页 `DocumentDetailView` 的 `frameThumbsOf`（el-image 缩略条，点击放大可翻帧）。
+
 ## 坏文档防御体系
 
 入口守卫矩阵（解析器层，`engines/document/`）：

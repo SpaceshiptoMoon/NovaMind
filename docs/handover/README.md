@@ -12,7 +12,7 @@
 
 ## 分层入口
 
-- [`historical/`](./historical/)：已归档 handover（`agent-handover-2026-07-09.md`、`agent-handover-deepdoc-2026-07-11.md`、`knowledge-config-handoff.md`）。当前无活跃 handover；新的阶段性交接归档时直接放入 `historical/`。
+- [`historical/`](./historical/)：已归档 handover（`agent-handover-2026-07-09.md`、`agent-handover-deepdoc-2026-07-11.md`、`knowledge-config-handoff.md`、`agent-handover-kb-chunk-frame-thumbs-2026-11-11.md`）。当前无活跃 handover；新的阶段性交接归档时直接放入 `historical/`。
 
 ## 如何使用这些记录
 
