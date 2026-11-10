@@ -183,12 +183,30 @@
       />
       <el-drawer
         v-model="agentDrawerVisible"
-        title="助手管理"
         direction="rtl"
         size="320px"
         :append-to-body="true"
       >
+        <template #header>
+          <div class="drawer-header">
+            <span class="drawer-title">助手管理</span>
+            <el-button type="primary" size="small" @click="openAgentDialog()">
+              <el-icon :size="12"><Plus /></el-icon>
+              <span>创建助手</span>
+            </el-button>
+          </div>
+        </template>
         <div class="drawer-agent-list">
+          <!-- 创建入口常驻列表首位（主按钮形态，不与 hover 动作竞争） -->
+          <button class="drawer-create-entry" @click="openAgentDialog()">
+            <span class="drawer-create-icon">
+              <el-icon :size="16"><Plus /></el-icon>
+            </span>
+            <span class="drawer-create-info">
+              <span class="drawer-create-title">创建助手</span>
+              <span class="drawer-create-desc">定义人设、模型与工具</span>
+            </span>
+          </button>
           <div
             v-for="agent in agentStore.agents"
             :key="agent.id"
@@ -215,13 +233,10 @@
               </button>
             </div>
           </div>
-          <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
+          <div v-if="agentStore.agents.length === 0" class="list-empty">
+            还没有助手——点击上方「创建助手」开始
+          </div>
         </div>
-        <template #footer>
-          <el-button type="primary" class="drawer-create-btn" @click="openAgentDialog()">
-            创建智能体
-          </el-button>
-        </template>
       </el-drawer>
       <AgentFormDialog v-model="agentFormVisible" :agent="agentFormTarget" />
       <GroupFormDialog v-model="groupFormVisible" :group-id="groupFormTarget" />
@@ -751,8 +766,69 @@ onMounted(async () => {
   cursor: default;
 }
 
-.drawer-create-btn {
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawer-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/* 创建条目：常驻列表首位的主入口（与助手条目同构但可点、主色强调） */
+.drawer-create-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  border: 1px dashed var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-muted);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: all var(--transition-fast);
+}
+
+.drawer-create-entry:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+  filter: brightness(0.97);
+}
+
+.drawer-create-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  flex-shrink: 0;
+}
+
+.drawer-create-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.drawer-create-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.drawer-create-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 /* 主体分组头：纯文字名 + 会话数（点击进最近会话），hover 浮现管理动作 */
