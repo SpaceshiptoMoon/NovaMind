@@ -26,16 +26,6 @@
           <el-icon :size="12"><Clock /></el-icon>
           轨迹
         </button>
-        <button
-          v-if="hasSession"
-          class="view-pill workspace-pill"
-          :class="{ active: isWorkspaceBound }"
-          :title="workspacePillTitle"
-          @click="emit('work')"
-        >
-          <el-icon :size="12"><FolderOpened /></el-icon>
-          工作
-        </button>
       </div>
     </div>
   </header>
@@ -43,26 +33,21 @@
 
 <script setup lang="ts">
 /**
- * 单聊对话页浮动头部：agent 徽标 + 「对话/轨迹」互斥切换 + 「工作」模式入口。
+ * 单聊对话页浮动头部：agent 徽标 + 「对话/轨迹」互斥切换。
  *
- * 纯展示件：视图模式经 v-model:viewMode 托管，「工作」点击上抛（未绑定弹
- * WorkspaceBindDialog / 已绑定回对话视图的分流在父层——它持有绑定状态）。
+ * 纯展示件：视图模式经 v-model:viewMode 托管。工作目录绑定入口不在头部
+ * （由会话中心「本地项目」分类的新建流程与右面板目录视图承担）。
  */
-import { Clock, FolderOpened } from '@element-plus/icons-vue'
+import { Clock } from '@element-plus/icons-vue'
 
 defineProps<{
   agentName: string
   isWelcomeMode: boolean
   viewMode: 'chat' | 'trajectory'
-  /** 是否有当前会话（无会话不显示「工作」入口） */
-  hasSession: boolean
-  isWorkspaceBound: boolean
-  workspacePillTitle: string
 }>()
 
 const emit = defineEmits<{
   (e: 'update:viewMode', v: 'chat' | 'trajectory'): void
-  (e: 'work'): void
 }>()
 </script>
 

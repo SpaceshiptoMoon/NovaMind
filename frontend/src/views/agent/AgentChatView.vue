@@ -6,11 +6,7 @@
         :agent-name="agentName"
         :is-welcome-mode="isWelcomeMode"
         :view-mode="viewMode"
-        :has-session="!!currentSessionId"
-        :is-workspace-bound="isWorkspaceBound"
-        :workspace-pill-title="workspacePillTitle"
         @update:view-mode="viewMode = $event"
-        @work="handleWorkTabClick"
       />
 
       <!-- 工作目录选择器（唯一实现，右面板目录视图共用绑定动作）：选定即进入工作模式 -->
@@ -145,9 +141,6 @@ const isWelcomeMode = computed(
 // 绑定/解绑动作与右面板共用 useWorkspaceBinding；本页只消费绑定状态（pill 激活态/chip）
 const currentSessionId = computed(() => agentStore.currentSessionId)
 const { isWorkspaceBound, workspaceRoot, workspaceRootName } = useWorkspaceBinding()
-const workspacePillTitle = computed(() =>
-  isWorkspaceBound.value ? `工作目录：${workspaceRoot.value}` : '选择文件夹进入工作模式',
-)
 
 // ===================== 视图模式 =====================
 // 对话（产品化气泡）/ 轨迹（调试向全屏时间线，TrajectoryList 自带详情栏）。
@@ -155,14 +148,17 @@ const workspacePillTitle = computed(() =>
 const viewMode = ref<'chat' | 'trajectory'>('chat')
 const workspaceDialogVisible = ref(false)
 
-/** 「工作」tab：未绑定→弹目录选择器（选定即绑定激活）；已绑定→回到对话视图干活 */
-function handleWorkTabClick() {
-  if (isWorkspaceBound.value) {
-    viewMode.value = 'chat'
-  } else {
-    workspaceDialogVisible.value = true
-  }
-}
+// 「本地项目」分类新建流程：创建成功后经 query bind=1 回到这里自动弹目录绑定
+watch(
+  () => route.query.bind,
+  (v) => {
+    if (v === '1') {
+      workspaceDialogVisible.value = true
+      router.replace({ query: { ...route.query, bind: undefined } })
+    }
+  },
+  { immediate: true },
+)
 
 // ===================== 会话切换响应（切换动作在 WorkspaceLayout 侧栏，页内只做跟随） =====================
 

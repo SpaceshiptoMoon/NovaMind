@@ -30,13 +30,6 @@
                 <button class="header-action" title="助手管理" @click="openAgentDrawer()">
                   助手
                 </button>
-                <button
-                  class="header-action header-action--primary"
-                  title="新建对话"
-                  @click="openUnifiedCreate()"
-                >
-                  新建对话
-                </button>
               </div>
               <div v-loading="recentSessionsLoading" class="list-area">
                 <template v-for="cat in groupedSessions" :key="cat.key">
@@ -56,6 +49,23 @@
                       </el-icon>
                       <span class="session-group-name">{{ cat.label }}</span>
                       <span class="session-group-count">{{ cat.sessions.length }}</span>
+                    </button>
+                    <!-- 分类级创建入口：协作类直接展开协作配置；本地项目类创建后自动弹目录绑定 -->
+                    <button
+                      v-if="cat.key !== 'group'"
+                      class="session-group-add"
+                      title="新建对话"
+                      @click.stop="openUnifiedCreate('agent', cat.key === 'workspace')"
+                    >
+                      <el-icon :size="12"><Plus /></el-icon>
+                    </button>
+                    <button
+                      v-else
+                      class="session-group-add"
+                      title="新建协作对话"
+                      @click.stop="openUnifiedCreate('group')"
+                    >
+                      <el-icon :size="12"><Plus /></el-icon>
                     </button>
                   </div>
                   <!-- 类内会话条目：标题 + 归属名两行，点击续聊；协作条目 hover 带群管理 -->
@@ -165,7 +175,12 @@
       </aside>
 
       <!-- 统一创建对话弹窗 + 助手管理抽屉 + Agent 编辑弹窗 + 协作编辑弹窗 + 配置抽屉（表单逻辑收编在 manage 组件；append-to-body 需挂布局层） -->
-      <UnifiedCreateDialog v-model="unifiedCreateVisible" @created="fetchRecentSessions" />
+      <UnifiedCreateDialog
+        v-model="unifiedCreateVisible"
+        :preset="unifiedCreatePreset"
+        :auto-bind="unifiedCreateAutoBind"
+        @created="fetchRecentSessions"
+      />
       <el-drawer
         v-model="agentDrawerVisible"
         title="助手管理"
@@ -463,8 +478,12 @@ async function handleDeleteGroupSession(sessionId: string) {
 // ===================== 统一创建对话弹窗（分区 + 号共用：选 1 人直进单聊，≥2 人转协作配置） =====================
 
 const unifiedCreateVisible = ref(false)
+const unifiedCreatePreset = ref<'agent' | 'group'>('agent')
+const unifiedCreateAutoBind = ref(false)
 
-function openUnifiedCreate() {
+function openUnifiedCreate(preset: 'agent' | 'group' = 'agent', autoBind = false) {
+  unifiedCreatePreset.value = preset
+  unifiedCreateAutoBind.value = autoBind
   unifiedCreateVisible.value = true
 }
 
@@ -789,6 +808,33 @@ onMounted(async () => {
 
 .session-group-chevron.collapsed {
   transform: rotate(-90deg);
+}
+
+/* 分类级新建 + 号：hover 类头浮现 */
+.session-group-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+
+.session-group-head:hover .session-group-add,
+.session-group-add:hover {
+  opacity: 1;
+}
+
+.session-group-add:hover {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
 }
 
 .session-group-actions {

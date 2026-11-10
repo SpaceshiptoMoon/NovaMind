@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="新建对话"
+    :title="isGroupPreset ? '新建协作对话' : '新建对话'"
     width="560px"
     top="10vh"
     class="agent-form-dialog"
@@ -19,14 +19,15 @@
             :host-agent-id="form.mode === 'consult' ? form.host_agent_id : null"
           />
           <!-- 单聊/协作分岔提示：满 2 人那一刻出现（行内 hint，不打断） -->
-          <div v-if="form.member_ids.length >= 2" class="collab-hint">将开启协作讨论</div>
+          <div v-if="isGroupPreset" class="collab-hint">协作对话需要至少 2 名成员</div>
+          <div v-else-if="form.member_ids.length >= 2" class="collab-hint">将开启协作讨论</div>
           <div v-else-if="form.member_ids.length === 1" class="field-hint">
             只选 1 人：确定后直接进入与该智能体的单聊，不创建协作对话
           </div>
         </div>
 
-        <!-- 协作配置区：仅 ≥2 人时展开 -->
-        <template v-if="form.member_ids.length >= 2">
+        <!-- 协作配置区：协作预置直接展开；默认形态 ≥2 人时展开 -->
+        <template v-if="isGroupPreset || form.member_ids.length >= 2">
           <div class="form-section">
             <h4>讨论模式</h4>
             <div class="mode-cards">
@@ -117,7 +118,16 @@ import type { GroupMode } from '@/api/types'
 import GroupMemberPicker from '@/components/agent/group/GroupMemberPicker.vue'
 import './formDialog.css'
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    /** 创建形态预置：agent=默认（选人分岔单聊/协作）；group=直接展开协作配置（选人至少 2） */
+    preset?: 'agent' | 'group'
+    /** 单聊创建后经 query bind=1 自动弹工作目录绑定（「本地项目」分类新建流程） */
+    autoBind?: boolean
+  }>(),
+  { preset: 'agent', autoBind: false },
+)
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   /** 协作对话创建成功（已刷新群列表），供宿主刷新会话中心等派生列表 */
@@ -127,6 +137,8 @@ const emit = defineEmits<{
 const router = useRouter()
 const agentStore = useAgentStore()
 const groupStore = useAgentGroupStore()
+
+const isGroupPreset = computed(() => props.preset === 'group')
 
 const submitLoading = ref(false)
 // 用户是否手动改过群名：改过后自动预填不再覆盖（「可改」语义）
@@ -192,11 +204,21 @@ async function handleSubmit() {
     return
   }
 
-  // 单聊分岔：恰好 1 人不创建任何实体，直接进对话页
+  // 协作预置：不足 2 人不创建（协作配置区已展开，此处兜底提示）
+  if (isGroupPreset.value && selected.length < 2) {
+    ElMessage.warning('协作对话需要至少 2 名成员')
+    return
+  }
+
+  // 单聊分岔：恰好 1 人不创建任何实体，直接进对话页（autoBind 时带 bind=1 自动弹目录绑定）
   if (selected.length === 1) {
     const agentId = selected[0]
     if (agentId === undefined) return
-    await router.push({ name: 'WorkspaceAgentChat', params: { agentId } })
+    await router.push({
+      name: 'WorkspaceAgentChat',
+      params: { agentId },
+      query: props.autoBind ? { bind: '1' } : undefined,
+    })
     emit('update:modelValue', false)
     return
   }
