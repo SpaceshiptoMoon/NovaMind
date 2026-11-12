@@ -234,6 +234,15 @@ async def recover_orphan_resume_sessions() -> int:
                 s.error_message = "[恢复重试次数超限，需人工介入]"
                 s.config = {**cfg, "recover_retry_count": retry_count + 1}
                 await session.commit()
+                # 标记失败的同时必须清理 arq 层残留（镜像 document_tasks 的孤儿
+                # 恢复口径）：残留 job 被 worker 消费会复活本已失败的会话重跑。
+                from novamind.features.app.tasks.resume_task_tracking import (
+                    purge_resume_jobs,
+                    unbind_resume_job,
+                )
+
+                await unbind_resume_job(str(s.id))
+                await purge_resume_jobs(str(s.id))
                 logger.warning(
                     "孤儿简历会话恢复次数超限，已标记失败",
                     session_id=s.id,
@@ -254,7 +263,7 @@ async def recover_orphan_resume_sessions() -> int:
                     minio_client.default_bucket, s.resume_file_url
                 )
 
-                await enqueue_process_resume(
+                new_job_id = await enqueue_process_resume(
                     session_id=str(s.id),
                     user_id=s.user_id,
                     llm_model=s.config.get("llm_model", ""),
@@ -263,6 +272,13 @@ async def recover_orphan_resume_sessions() -> int:
                     file_bytes=file_bytes,
                     filename=s.resume_filename or "unknown",
                 )
+                # 清理旧残留 job，防止旧 job 复活会话或与新 job 并发处理同一会话
+                # （镜像 document_tasks.py 的孤儿恢复口径，doc574 同构缺口）
+                from novamind.features.app.tasks.resume_task_tracking import (
+                    purge_resume_jobs,
+                )
+
+                await purge_resume_jobs(str(s.id), exclude_job_id=new_job_id)
                 recovered += 1
                 logger.info(
                     "孤儿简历会话已重新入队",
