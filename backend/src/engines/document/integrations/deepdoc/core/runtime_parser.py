@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import time
 from collections.abc import Sequence
 from functools import cached_property
@@ -794,14 +795,23 @@ class DeepDocParser:
 
     @staticmethod
     def _table_text_to_html(table_text: str) -> str:
-        """「a: b; c: d」行文本转简单 HTML 表格。"""
+        """「a: b; c: d」行文本转简单 HTML 表格。
+
+        单元格文本必须 escape：该 HTML 同时是 chunk 正文、embedding 输入与前端
+        渲染内容，cell 来自 docx 原始解码文本，裸拼可注入任意标签（对齐
+        parsers/html.py、parsers/excel.py 的 cell 级 escape 惯例）。
+        """
         rows = [row.strip() for row in table_text.split("\n") if row.strip()]
         if not rows:
             return ""
         html_rows = []
         for row in rows:
             cells = [cell.strip() for cell in row.split(";") if cell.strip()]
-            html_rows.append("<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>")
+            html_rows.append(
+                "<tr>"
+                + "".join(f"<td>{html.escape(cell)}</td>" for cell in cells)
+                + "</tr>"
+            )
         return "<table>" + "".join(html_rows) + "</table>"
 
     @staticmethod

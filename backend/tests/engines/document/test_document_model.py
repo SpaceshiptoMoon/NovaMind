@@ -103,3 +103,34 @@ def test_parse_result_markdown_exit_docx(tmp_path):
     assert "| --- |" in result.markdown, "表格应转 Markdown 表格"
     kinds = {b["kind"] for b in result.metadata["document_blocks"]}
     assert {KIND_HEADING, KIND_TABLE, KIND_TEXT} <= kinds
+
+
+# ===== _table_text_to_html cell 级转义（docx 残留表格兜底路径） =====
+
+
+def test_table_text_to_html_normal_cells_verbatim():
+    """正常单元格逐字节不变（结构标签 + 原文本）。"""
+    out = DeepDocParser._table_text_to_html("名称: 扳手; 数量: 12")
+    assert out == "<table><tr><td>名称: 扳手</td><td>数量: 12</td></tr></table>"
+
+
+def test_table_text_to_html_escapes_hostile_cells():
+    """含标签/实体的 cell 被转义为字面文本，结构标签数量不变（防注入）。"""
+    out = DeepDocParser._table_text_to_html(
+        "备注: <script>alert(1)</script>; 残片: </td><td>x; 公式: a&b"
+    )
+    assert "<script>" not in out
+    assert "&lt;script&gt;" in out
+    assert "&lt;/td&gt;" in out
+    assert "a&amp;b" in out
+    # 3 个 cell → 恰好 3 对结构 td，结构未被 cell 内容破坏
+    assert out.count("<td>") == 3 and out.count("</td>") == 3
+    assert out.startswith("<table><tr>") and out.endswith("</tr></table>")
+
+
+def test_escaped_table_roundtrips_markdown_outlet():
+    """转义后的表格经 markdown 出口还原：字面文本完整、结构照常成表。"""
+    raw = "备注: <x|y>; 值: 100"
+    html_out = DeepDocParser._table_text_to_html(raw)
+    md = html_table_to_markdown(html_out)
+    assert "| 备注: <x\\|y> | 值: 100 |" in md, "cell 文本应 unescape 还原且竖线转义"
