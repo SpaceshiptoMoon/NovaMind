@@ -2,6 +2,7 @@
 Agent 模块 API 路由
 """
 import asyncio
+import contextlib
 from collections.abc import Callable
 from typing import Annotated, Any
 
@@ -82,6 +83,132 @@ logger = get_logger(__name__)
 # 断连转后台续跑后，审批决策经重连的新连接送达——recv 循环先查本表再落本地
 # registry。条目在决策送达/轮次终态时弹出；进程重启即清空（审批也随之 fail-closed）。
 DETACHED_APPROVAL_ROUTES: dict[str, Callable[[str], None]] = {}
+
+
+async def consume_agent_stream(
+    gen: Any,
+    *,
+    locked_send: Callable[[dict], Any],
+    service: Any,
+    stop_event: asyncio.Event,
+    disconnect_event: asyncio.Event,
+    detach_state: dict,
+    current_session: dict,
+    holder: dict,
+) -> None:
+    """在线推送事件；recv 侧断连信号转后台续跑（feeder 继续），显式 stop 走取消链。
+
+    架构（队列生产者-消费者）：feeder 任务**独占持有生成器**逐事件入队，消费
+    循环出队推送。关键不变量——detach 永不取消 feeder：对外部任务的 cancel 只
+    会打断消费循环的 queue.get，生成器在 feeder 里继续跑到终态自然落库。
+    （初版直接 cancel 消费任务：取消落进生成器内部 await → CancelledError 关闭
+    生成器 → drain 瞬间耗尽、轮次死亡，真机 e2e 揪出后改为本设计。）
+
+    断连检测走 recv 侧：uvicorn 对客户端 RST 的 send 可能挂在流控 drain 上
+    不抛错（实测），而 ``websocket.disconnect`` 消息可靠及时。
+
+    Args:
+        gen: chat_stream 事件生成器。
+        locked_send: 加锁的 WS 推送。
+        service: AgentChatService（detach 时写 running_turn 标记）。
+        stop_event: 显式停止事件（前端 action=stop → cancel feeder → 回滚链）。
+        disconnect_event: recv 侧断连信号（uvicorn websocket.disconnect）。
+        detach_state: ``{"detached": bool}`` 共享状态（审批旁路持久化读此标志）。
+        current_session: ``{"id": session_id}``（session 事件捕获更新）。
+        holder: ``{"drain": Task|None}``——detach 时置为 feeder task，chat_ws
+            挂起等待（保持请求级 db 会话存活）。
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def feeder() -> None:
+        """唯一持有生成器的任务：逐事件入队，None 为结束哨兵。
+
+        显式 stop 的 cancel 落在本任务的 ``queue.put``/``__anext__``——经
+        ``gen.aclose()`` 注入 GeneratorExit 进生成器走回滚链；detach 路径
+        永不取消本任务。
+        """
+        try:
+            async for event in gen:
+                await queue.put(event)
+            await queue.put(None)
+        except (asyncio.CancelledError, GeneratorExit):
+            await gen.aclose()
+            await queue.put(None)
+        except Exception:
+            logger.warning("feeder 消费生成器异常终止", session_id=current_session["id"])
+            await queue.put(None)
+
+    feeder_task = asyncio.create_task(feeder())
+
+    detached = False
+    try:
+        while True:
+            if stop_event.is_set():
+                feeder_task.cancel()
+                break
+            if disconnect_event.is_set():
+                detached = True
+                break
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+            if event is None:
+                break  # 流自然结束
+            if event.get("type") == "session":
+                current_session["id"] = (event.get("data") or {}).get(
+                    "session_id", current_session["id"]
+                )
+            try:
+                await locked_send(event)
+            except (WebSocketDisconnect, OSError):
+                detached = True
+                break
+    except asyncio.CancelledError:
+        # recv 断连触发的取消：转 detach（吞掉取消——handler 侧 suppress 等待
+        # feeder 跑完）；无断连信号的取消（防御路径）按显式停止处理
+        if disconnect_event.is_set():
+            detached = True
+        else:
+            feeder_task.cancel()
+            raise
+
+    if detached:
+        # ---- 异常断连 → detach：后台续跑（feeder 不受影响继续跑到终态）----
+        detach_state["detached"] = True
+        session_id = current_session["id"]
+        if session_id:
+            try:
+                await service.mark_turn_running(session_id)
+            except Exception as e:
+                logger.warning("running_turn 标记写入失败", error=str(e))
+        logger.info("Agent 对话断连转后台续跑", session_id=session_id)
+        holder["drain"] = feeder_task
+        return
+
+    # 正常完成 / 显式 stop：收尾（stop 路径 feeder 的 except 已 aclose 进回滚链；
+    # 完成路径对已耗尽的 generator 是 no-op）
+    await gen.aclose()
+
+
+async def _serve_attach_channel(websocket: WebSocket) -> None:
+    """审批附着通道（action=attach）：不开新轮次，仅路由 detach 轮次的审批决策。
+
+    断连续跑恢复流程：前端查 turn-state 发现 pending_approval → 打开本通道
+    渲染审批卡 → 用户决策经此送达 parked handler 的 registry（进程级路由表）。
+    """
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if not isinstance(msg, dict) or msg.get("action") != "approval":
+                continue
+            approval_id = msg.get("approval_id", "")
+            decision = msg.get("decision", "deny")
+            route = DETACHED_APPROVAL_ROUTES.pop(approval_id, None)
+            if route is not None:
+                route(decision)
+    except (WebSocketDisconnect, OSError):
+        return
 
 
 async def get_current_user_id(current_user: dict = Depends(get_current_user)) -> int:
@@ -221,6 +348,12 @@ async def chat_ws(
         # OSError 兜 TCP 猝死：uvicorn send/receive 抛 ClientDisconnected（OSError 子类）
         return
 
+    if isinstance(msg, dict) and msg.get("action") == "attach":
+        # 附着通道：不开新轮次，仅向 detach 轮次回传审批决策（断连续跑恢复：
+        # 前端查 turn-state 发现 pending_approval → 打开本通道渲染审批卡）
+        await _serve_attach_channel(websocket)
+        return
+
     if not isinstance(msg, dict) or msg.get("action") != "chat":
         await websocket.send_json(
             {"type": "error", "data": {"content": "未知 action，期望 action=chat"}}
@@ -296,12 +429,17 @@ async def chat_ws(
 
     async def recv_client_messages():
         """并发收用户 WS 消息：approval 决策 → 本地 registry 或 detach 路由表；
-        message → steering 队列；stop → 显式取消（走回滚链）。"""
+        message → steering 队列；stop → 显式取消（走回滚链）。
+        断连（uvicorn 投递 websocket.disconnect）：置 disconnect_event 并 cancel
+        消费任务 → 转 detach 后台续跑。send 侧在客户端 RST 后可能挂在流控上
+        不抛错（实测），断连检测必须走 recv 侧。"""
         while True:
             try:
                 msg = await websocket.receive_json()
             except (WebSocketDisconnect, OSError):
-                break
+                disconnect_event.set()
+                consume_task.cancel()
+                return
             if not isinstance(msg, dict):
                 continue
             action = msg.get("action")
@@ -321,70 +459,30 @@ async def chat_ws(
             elif action == "stop":
                 # 用户显式停止：与异常断连区分——走取消链回滚（非 detach 续跑）
                 stop_event.set()
+                consume_task.cancel()
                 return
 
     async def consume_stream(holder: dict) -> None:
-        """在线推送事件；异常断连转后台续跑（drain），显式 stop 走取消链。
-
-        不再用 run_stream_to_ws（其 finally aclose 会把 GeneratorExit 注入
-        generator → 回滚）：断连时 generator 移交后台任务继续消费，轮次自然
-        跑完落库（_handle_done 提交），重连后经消息回放与 turn-state 查询恢复。
-        """
-        detached = False
-        try:
-            async for event in gen:
-                if stop_event.is_set():
-                    break
-                if event.get("type") == "session":
-                    current_session["id"] = (event.get("data") or {}).get(
-                        "session_id", current_session["id"]
-                    )
-                try:
-                    await locked_send(event)
-                except (WebSocketDisconnect, OSError):
-                    detached = True
-                    break
-        except asyncio.CancelledError:
-            # 显式 stop（recv 收到 action=stop 后 cancel 本 task）：走既有取消链
-            # （aclose → GeneratorExit → chat_stream 回滚未提交事务）
-            await gen.aclose()
-            raise
-
-        if not detached:
-            # 正常完成 / stop 中断：收尾关闭（对已耗尽的 generator 是 no-op）
-            await gen.aclose()
-            return
-
-        # ---- 异常断连 → detach：后台续跑 ----
-        detach_state["detached"] = True
-        session_id = current_session["id"]
-        if session_id:
-            try:
-                await service.mark_turn_running(session_id)
-            except Exception as e:
-                logger.warning("running_turn 标记写入失败", error=str(e))
-        logger.info("Agent 对话断连转后台续跑", session_id=session_id)
-
-        async def drain() -> None:
-            """后台消费剩余事件（事件丢弃，结果由 chat_stream 终态自然落库）。"""
-            try:
-                async for _ in gen:
-                    pass
-            except Exception as e:
-                logger.warning("后台续跑异常终止", session_id=session_id, error=str(e))
-            finally:
-                logger.info("后台续跑结束", session_id=session_id)
-
-        holder["drain"] = asyncio.create_task(drain())
+        await consume_agent_stream(
+            gen,
+            locked_send=locked_send,
+            service=service,
+            stop_event=stop_event,
+            disconnect_event=disconnect_event,
+            detach_state=detach_state,
+            current_session=current_session,
+            holder=holder,
+        )
 
     stop_event = asyncio.Event()
+    disconnect_event = asyncio.Event()
     holder: dict[str, asyncio.Task | None] = {"drain": None}
     consume_task = asyncio.create_task(consume_stream(holder))
     recv_task = asyncio.create_task(recv_client_messages())
     try:
-        await consume_task
-    except asyncio.CancelledError:
-        raise
+        with contextlib.suppress(asyncio.CancelledError):
+            # consume 被取消且吞掉取消 = 断连转后台（detached）；正常完成则无异常
+            await consume_task
     finally:
         recv_task.cancel()
         drain_task = holder.get("drain")

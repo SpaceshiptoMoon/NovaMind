@@ -1666,6 +1666,11 @@ class AgentChatService:
                 content=text,
                 extra=extra,
             )
+            # 错误消息是独立终态，立即提交：此前仅 flush 依赖后续 commit——
+            # 断连 detach 模式下轮次结束即无人 commit，错误消息随会话关闭丢失
+            # （真机 e2e 揪出）；连接内正常路径也一并修复（error 后生成器自然
+            # 结束、handler 返回关会话，flush-only 同样丢）。
+            await self.db.commit()
         except Exception as e:
             logger.warning("错误消息落库失败", conversation_id=conv.id, error=str(e))
 
