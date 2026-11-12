@@ -382,6 +382,16 @@ class UpDownConcatMerger:
             merged_positions = list(current.positions or [])
             if box.positions:
                 merged_positions.extend(box.positions)
+            # 同页合并按最终 bbox 重算跨度 tag（对齐 pdf.py _boxes_from_vendored_domain
+            # 的合并后重算先例）：引用溯源高亮覆盖整段而非仅首行。启发式路径
+            # 判据（_should_merge_heuristic）只同页合并，不存在跨页错位问题。
+            merged_tag = "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
+                int(current.page),
+                min(current.x0, box.x0),
+                max(current.x1, box.x1),
+                float(current.top),
+                float(box.bottom),
+            )
             current = box.__class__(
                 page=current.page,
                 x0=min(current.x0, box.x0),
@@ -390,7 +400,7 @@ class UpDownConcatMerger:
                 bottom=box.bottom,
                 text=merged_text,
                 col_id=current.col_id,
-                position_tag=current.position_tag,
+                position_tag=merged_tag,
                 positions=merged_positions,
                 layout_type=current.layout_type or box.layout_type,
             )
@@ -501,4 +511,18 @@ class UpDownConcatMerger:
             if state.get("positions"):
                 merged_positions.extend([list(pos) for pos in state["positions"]])
         merged["positions"] = merged_positions
+        # position_tag 重算（对齐 pdf.py _boxes_from_vendored_domain 合并后重算先例）：
+        # 同页合并按最终 bbox 重算跨度 tag，引用溯源高亮覆盖整段而非仅首行；
+        # 跨页合并保留首片段 tag——坐标是页局部系，跨页造 span 会产生首页上的
+        # 错位巨矩形（此处只放行强续行跨页块，全跨度高亮需导出 positions，另行增强）。
+        if len(block) > 1:
+            pages = {int(state["page_number"]) for state in block}
+            if len(pages) == 1:
+                merged["position_tag"] = "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
+                    int(merged["page_number"]),
+                    float(merged["x0"]),
+                    float(merged["x1"]),
+                    float(merged["top"]),
+                    float(merged["bottom"]),
+                )
         return merged
