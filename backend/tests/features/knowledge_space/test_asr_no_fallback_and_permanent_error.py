@@ -70,6 +70,7 @@ def test_audio_unconfigured_model_defaults_to_local(monkeypatch):
                     local_whisper_vad_enabled=True,
                     local_whisper_min_speech_dbfs=None,
                     local_whisper_empty_result_retry_language=None,
+                    local_whisper_initial_prompt=None,
                 )
             )
         ),
@@ -138,6 +139,7 @@ def test_cloud_model_missing_credentials_still_raises_permanent(monkeypatch):
                     local_whisper_vad_enabled=True,
                     local_whisper_min_speech_dbfs=None,
                     local_whisper_empty_result_retry_language=None,
+                    local_whisper_initial_prompt=None,
                 )
             )
         ),
