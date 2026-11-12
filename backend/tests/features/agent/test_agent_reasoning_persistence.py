@@ -67,7 +67,7 @@ async def test_handle_done_passes_reasoning_to_save_message() -> None:
 
     svc.agent_service.save_message = fake_save_message  # type: ignore[assignment]
 
-    conv = SimpleNamespace(id=7, message_count=1, title=None)
+    conv = SimpleNamespace(id=7, message_count=1, title=None, extra_config={})
     event = AgentEvent("done", {"total_tokens": 123})
 
     await svc._handle_done(event, conv, "用户问题", "助手回答", reasoning="思考链")
@@ -93,7 +93,7 @@ async def test_handle_done_reasoning_none_when_empty() -> None:
 
     svc.agent_service.save_message = fake_save_message  # type: ignore[assignment]
 
-    conv = SimpleNamespace(id=8, message_count=2, title="已设标题")
+    conv = SimpleNamespace(id=8, message_count=2, title="已设标题", extra_config={})
     event = AgentEvent("done", {"total_tokens": 50})
 
     await svc._handle_done(event, conv, "问", "答", reasoning=None)

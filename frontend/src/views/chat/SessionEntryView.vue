@@ -60,8 +60,10 @@ onMounted(async () => {
     agentStore.currentAgent = agentStore.agents.find((a) => a.id === detail.agent_id) ?? null
     if (!agentStore.currentAgent) await agentStore.fetchAgent(detail.agent_id)
     agentStore.fetchConversations(detail.agent_id)
-    // 流式进行中先中止（SSE 回调写全局 messages，不中止会串台）
-    if (agentStore.isStreaming) agentStore.cancelStream()
+    // 流式进行中静默断开（不发 stop）：断连触发后端 detach 转后台续跑，
+    // 轮次继续执行落库，切回会话时经 turn-state 轮询恢复进度（回调写全局
+    // messages 的串台问题由断开本身解决——断开后回调不再触发）
+    if (agentStore.isStreaming) agentStore.abortStreamSilently()
     await router.push({
       name: 'WorkspaceAgentChat',
       params: { agentId: detail.agent_id },

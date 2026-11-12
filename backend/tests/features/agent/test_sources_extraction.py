@@ -95,7 +95,7 @@ def test_extract_web_form_unchanged():
 async def test_handle_done_persists_sources_in_extra():
     """正：sources 非空时写入 assistant extra（刷新/历史回放引用面板的数据源）。"""
     svc = _svc()
-    conv = SimpleNamespace(id=1, user_id=7, title="已有标题", message_count=9)
+    conv = SimpleNamespace(id=1, user_id=7, title="已有标题", message_count=9, extra_config={})
     saved: dict = {}
     svc.agent_service = SimpleNamespace(
         save_message=AsyncMock(side_effect=lambda **kw: saved.update(kw) or SimpleNamespace(id=99)),
@@ -116,7 +116,7 @@ async def test_handle_done_persists_sources_in_extra():
 async def test_handle_done_empty_sources_keeps_extra_clean():
     """反：无引用时 extra 不带空 sources 键（保持 usage/duration 原口径）。"""
     svc = _svc()
-    conv = SimpleNamespace(id=1, user_id=7, title="已有标题", message_count=9)
+    conv = SimpleNamespace(id=1, user_id=7, title="已有标题", message_count=9, extra_config={})
     saved: dict = {}
     svc.agent_service = SimpleNamespace(
         save_message=AsyncMock(side_effect=lambda **kw: saved.update(kw) or SimpleNamespace(id=99)),

@@ -239,6 +239,32 @@ export const agentApi = {
     )
   },
 
+  /** 轮次状态（断连后台续跑恢复用）：running_turn + 待审批请求 */
+  fetchTurnState(sessionId: string) {
+    return request.get<{
+      session_id: string
+      running_turn: boolean
+      pending_approval: ApprovalRequestData | null
+    }>(`/agent/sessions/${sessionId}/turn-state`)
+  },
+
+  /**
+   * 打开审批附着通道（action=attach）：不开新轮次，仅向后台续跑中的轮次
+   * 回传审批决策。返回 close 断开通道；onReady 注入决策发送函数。
+   */
+  openApprovalChannel(agentId: number, onReady: (send: (msg: unknown) => void) => void) {
+    const controller = new AbortController()
+    void createWebSocketStream(
+      `/agent/agents/${agentId}/ws`,
+      null,
+      { onMessage: () => {}, signal: controller.signal, onReady },
+      'attach',
+    ).catch(() => undefined) // 通道异常静默（决策失败由 120s deny 兜底）
+    return {
+      close: () => controller.abort(),
+    }
+  },
+
   /** 会话上下文占用（used/window 分项 token，含是否已压缩） */
   getContextUsage(sessionId: string) {
     return request.get<AgentContextUsageData>(`/agent/sessions/${sessionId}/context-usage`)

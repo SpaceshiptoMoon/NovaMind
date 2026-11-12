@@ -2,6 +2,7 @@
 Agent 模块 API 路由
 """
 import asyncio
+from collections.abc import Callable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
@@ -10,7 +11,8 @@ from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.authorization.dependencies import require_permission
 from novamind.core.authorization.permission_codes import SystemPermission
 from novamind.core.database.database import get_db
-from novamind.core.ws import run_stream_to_ws, send_event
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.core.ws import send_event
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
@@ -73,6 +75,13 @@ from novamind.shared.storage.attachment_presign import enrich_attachments_with_p
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+
+logger = get_logger(__name__)
+
+# 进程级 detach 审批路由表：approval_id → 决策回调（parked handler 的 registry）。
+# 断连转后台续跑后，审批决策经重连的新连接送达——recv 循环先查本表再落本地
+# registry。条目在决策送达/轮次终态时弹出；进程重启即清空（审批也随之 fail-closed）。
+DETACHED_APPROVAL_ROUTES: dict[str, Callable[[str], None]] = {}
 
 
 async def get_current_user_id(current_user: dict = Depends(get_current_user)) -> int:
@@ -189,12 +198,15 @@ async def chat_ws(
     todo_store: TodoStore = Depends(get_todo_store_ws),
     memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
 ):
-    """Agent 对话（WebSocket 流式）。
+    """Agent 对话（WebSocket 流式，断连转后台续跑）。
 
     认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
     客户端连接后发 ``{"action": "chat", "payload": {content, session_id?, ...}}``，
     服务端推送 ``{"type": ..., "data": ...}`` 事件流（session/tool_call/tool_result/
-    reasoning/content/sources/done/error）。客户端 close 触发 service CancelledError 清理。
+    reasoning/content/sources/done/error）。
+
+    断连语义：异常断连 → 轮次转后台续跑（结果落库，重连经 turn-state/消息回放
+    恢复）；用户显式停止 → 前端发 ``{"action": "stop"}`` 走取消回滚链。
     """
     user, close_code = await ws_authenticate(websocket, resolver)
     token = ws_extract_token(websocket)
@@ -235,10 +247,37 @@ async def chat_ws(
     registry = ApprovalRegistry()
     steering_queue = SteeringQueue()
     send_lock = asyncio.Lock()
+    # 断连 detach 状态（send 失败时置位；审批旁路事件据此持久化到会话）
+    detach_state = {"detached": False}
+    # 当前轮次业务会话 ID（session 事件捕获；审批持久化/running 标记用）
+    current_session: dict[str, str | None] = {"id": data.session_id}
 
     async def locked_send(event):
         async with send_lock:
             await send_event(websocket, event)
+
+    async def event_sink_with_approval_persistence(event):
+        """审批旁路事件通道（chat_stream → ToolContext → ApprovalHook）。
+
+        detach 后审批请求持久化到会话 extra_config（重连恢复审批卡的数据源）并
+        登记进程级决策路由；发送失败静默——断连不能中断 registry.wait 的审批链
+        （fail-open 缺口已由「决策必经路由表/本地 registry」封口）。
+        """
+        if event.get("type") == "approval_request":
+            data_approval = event.get("data") or {}
+            approval_id = data_approval.get("approval_id", "")
+            if detach_state["detached"] and current_session["id"] and approval_id:
+                try:
+                    await service.save_pending_approval(current_session["id"], data_approval)
+                except Exception as e:
+                    logger.warning("detach 审批持久化失败", error=str(e))
+                DETACHED_APPROVAL_ROUTES[approval_id] = (
+                    lambda decision: registry.resolve(approval_id, decision)
+                )
+        try:
+            await locked_send(event)
+        except (WebSocketDisconnect, OSError):
+            pass
 
     gen = service.chat_stream(
         user_id=user["id"],
@@ -251,12 +290,13 @@ async def chat_ws(
         stream=data.stream,
         attachment_ids=data.attachment_ids,
         approval_registry=registry,
-        event_sink=locked_send,
+        event_sink=event_sink_with_approval_persistence,
         steering_queue=steering_queue,
     )
 
     async def recv_client_messages():
-        """并发收用户 WS 消息：approval 决策 → registry.resolve；message → steering 队列。"""
+        """并发收用户 WS 消息：approval 决策 → 本地 registry 或 detach 路由表；
+        message → steering 队列；stop → 显式取消（走回滚链）。"""
         while True:
             try:
                 msg = await websocket.receive_json()
@@ -264,23 +304,98 @@ async def chat_ws(
                 break
             if not isinstance(msg, dict):
                 continue
-            if msg.get("action") == "approval":
-                registry.resolve(
-                    msg.get("approval_id", ""), msg.get("decision", "deny")
-                )
-            elif msg.get("action") == "message":
+            action = msg.get("action")
+            if action == "approval":
+                approval_id = msg.get("approval_id", "")
+                decision = msg.get("decision", "deny")
+                detached_route = DETACHED_APPROVAL_ROUTES.pop(approval_id, None)
+                if detached_route is not None:
+                    # detach 轮次的审批：决策送达 parked handler 的 registry
+                    detached_route(decision)
+                else:
+                    registry.resolve(approval_id, decision)
+            elif action == "message":
                 # 运行中插话：排队等引擎轮边界注入（agent 未运行时队列残留无害，
                 # 连接结束即弃）
                 steering_queue.put(str(msg.get("content") or ""))
+            elif action == "stop":
+                # 用户显式停止：与异常断连区分——走取消链回滚（非 detach 续跑）
+                stop_event.set()
+                return
 
-    send_task = asyncio.create_task(
-        run_stream_to_ws(websocket, gen, send_fn=locked_send)
-    )
+    async def consume_stream(holder: dict) -> None:
+        """在线推送事件；异常断连转后台续跑（drain），显式 stop 走取消链。
+
+        不再用 run_stream_to_ws（其 finally aclose 会把 GeneratorExit 注入
+        generator → 回滚）：断连时 generator 移交后台任务继续消费，轮次自然
+        跑完落库（_handle_done 提交），重连后经消息回放与 turn-state 查询恢复。
+        """
+        detached = False
+        try:
+            async for event in gen:
+                if stop_event.is_set():
+                    break
+                if event.get("type") == "session":
+                    current_session["id"] = (event.get("data") or {}).get(
+                        "session_id", current_session["id"]
+                    )
+                try:
+                    await locked_send(event)
+                except (WebSocketDisconnect, OSError):
+                    detached = True
+                    break
+        except asyncio.CancelledError:
+            # 显式 stop（recv 收到 action=stop 后 cancel 本 task）：走既有取消链
+            # （aclose → GeneratorExit → chat_stream 回滚未提交事务）
+            await gen.aclose()
+            raise
+
+        if not detached:
+            # 正常完成 / stop 中断：收尾关闭（对已耗尽的 generator 是 no-op）
+            await gen.aclose()
+            return
+
+        # ---- 异常断连 → detach：后台续跑 ----
+        detach_state["detached"] = True
+        session_id = current_session["id"]
+        if session_id:
+            try:
+                await service.mark_turn_running(session_id)
+            except Exception as e:
+                logger.warning("running_turn 标记写入失败", error=str(e))
+        logger.info("Agent 对话断连转后台续跑", session_id=session_id)
+
+        async def drain() -> None:
+            """后台消费剩余事件（事件丢弃，结果由 chat_stream 终态自然落库）。"""
+            try:
+                async for _ in gen:
+                    pass
+            except Exception as e:
+                logger.warning("后台续跑异常终止", session_id=session_id, error=str(e))
+            finally:
+                logger.info("后台续跑结束", session_id=session_id)
+
+        holder["drain"] = asyncio.create_task(drain())
+
+    stop_event = asyncio.Event()
+    holder: dict[str, asyncio.Task | None] = {"drain": None}
+    consume_task = asyncio.create_task(consume_stream(holder))
     recv_task = asyncio.create_task(recv_client_messages())
     try:
-        await send_task
+        await consume_task
+    except asyncio.CancelledError:
+        raise
     finally:
         recv_task.cancel()
+        drain_task = holder.get("drain")
+        if drain_task is not None:
+            # 后台续跑：handler 挂起等待轮次终态——保持请求级 db 会话存活
+            # （drain 的事件丢弃、_handle_done 经同一会话提交），代价是断连期间
+            # 该请求协程驻留（每 detached 轮一个 parked coroutine）
+            try:
+                await drain_task
+            except Exception as e:
+                logger.warning("后台续跑等待异常", session_id=current_session["id"], error=str(e))
 
 
 @router.get(
@@ -361,6 +476,25 @@ async def get_session(
 ):
     conv = await service.get_session(user_id, session_id)
     return SessionResponse.model_validate(conv)
+
+
+@router.get(
+    "/sessions/{session_id}/turn-state",
+    summary="查询会话轮次状态",
+    description="断连后台续跑恢复用：返回 running_turn（后台运行中）与 pending_approval（待审批请求）。",
+)
+async def get_session_turn_state(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    conv = await service.get_session(user_id, session_id)
+    extra = conv.extra_config or {}
+    return {
+        "session_id": session_id,
+        "running_turn": bool(extra.get("running_turn")),
+        "pending_approval": extra.get("pending_approval"),
+    }
 
 
 @router.delete(

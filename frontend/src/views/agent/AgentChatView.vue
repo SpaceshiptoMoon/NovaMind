@@ -19,6 +19,10 @@
         class="messages-container"
         @scroll="handleMessagesScroll"
       >
+        <!-- 断连后台续跑横幅：切走/断网后轮次在后台继续，终态自动回放 -->
+        <div v-if="agentStore.backgroundRunning" class="background-running-banner">
+          轮次在后台继续执行中，完成后自动刷新…
+        </div>
         <div class="messages-inner">
           <template v-for="turn in turns" :key="turn.key">
             <UserMessage v-if="turn.userMsg" :msg="turn.userMsg" />
@@ -161,11 +165,15 @@ watch(
 
 // ===================== 会话切换响应（切换动作在 WorkspaceLayout 侧栏，页内只做跟随） =====================
 
-// 侧栏切换会话/新建对话/删除当前会话都会改 currentSessionId：清追问建议并回底部
+// 侧栏切换会话/新建对话/删除当前会话都会改 currentSessionId：清追问建议并回底部；
+// 同时查询轮次状态（断连后台续跑恢复：后台运行横幅 + 待审批卡恢复）
 watch(currentSessionId, () => {
   followups.value = []
   stickToBottom.value = true
   scrollToBottom()
+  if (currentSessionId.value) {
+    agentStore.checkTurnState(agentId.value)
+  }
 })
 
 // ===================== 按轮分组 =====================
@@ -359,6 +367,8 @@ let elapsedTimer: number | null = null
 onMounted(async () => {
   await agentStore.initForAgent(agentId.value)
   fetchModels()
+  // 挂载即查轮次状态（刷新/重进恢复断连后台续跑的横幅与待审批卡）
+  if (currentSessionId.value) agentStore.checkTurnState(agentId.value)
   elapsedTimer = window.setInterval(() => {
     elapsedTick.value++
   }, 1000)
@@ -378,6 +388,21 @@ onBeforeUnmount(() => {
   background: var(--color-bg-card);
   overflow: hidden;
   z-index: 1;
+}
+
+/* 断连后台续跑横幅：粘顶常驻，轮次终态后随 backgroundRunning 消失 */
+.background-running-banner {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 16px;
+  margin: 0 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-info-subtle, var(--color-bg-hover));
+  color: var(--color-text-muted);
+  font-size: var(--text-xs, 12px);
+  text-align: center;
 }
 
 .chat-main {

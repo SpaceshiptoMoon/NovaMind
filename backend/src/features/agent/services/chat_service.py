@@ -58,6 +58,7 @@ from novamind.shared.ai_models.base_model import LLMCapabilities, resolve_capabi
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 logger = get_logger(__name__)
 
@@ -200,6 +201,16 @@ class AgentChatService:
             # （阻塞并发改知识绑定等写操作）；此后工具/消息落库各自 flush，
             # 终态仍由 _handle_done 统一 commit。
             await self.db.commit()
+
+            # 新轮次开始即清上一轮 detach 残留标记（running_turn/pending_approval）：
+            # 进程崩溃后台 task 丢失时留下的僵尸标记在此自愈（同会话新轮次取代旧轮次）
+            extra = dict(conv.extra_config or {})
+            if "running_turn" in extra or "pending_approval" in extra:
+                extra.pop("running_turn", None)
+                extra.pop("pending_approval", None)
+                conv.extra_config = extra
+                flag_modified(conv, "extra_config")
+                await self.db.commit()
 
             yield self._emit("session", {
                 "session_id": conv.session_id,
@@ -525,7 +536,8 @@ class AgentChatService:
         except AgentNotFoundError:
             yield self._emit("error", {"content": "Agent 不存在"})
         except (asyncio.CancelledError, GeneratorExit):
-            # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚未提交事务，
+            # 显式 stop（前端 action=stop 后 close）→ consume task cancel → aclose 走到此；
+            # 异常断连已不再走这条链（routes 层转后台续跑）。回滚未提交事务，
             # assistant 消息不落库（user 消息已在 _prepare 后提前 commit，见上）
             conv_id = conv.id if "conv" in locals() else None
             logger.info("Agent 对话被客户端取消", conversation_id=conv_id)
@@ -541,6 +553,34 @@ class AgentChatService:
             except Exception as rollback_err:
                 logger.warning("事务回滚失败", error=str(rollback_err))
             yield self._emit("error", {"content": f"对话失败：{str(e)}"})
+
+    # ==================== 断连后台续跑（turn 状态标记） ====================
+
+    async def mark_turn_running(self, session_id: str) -> None:
+        """标记会话存在后台续跑中的轮次（断连 detach 时由 WS 端点调用）。
+
+        前端重连经 GET /sessions/{id}/turn-state 查询此标记展示「后台运行中」。
+        """
+        await self._mutate_session_extra(session_id, lambda e: e.update({"running_turn": True}))
+
+    async def save_pending_approval(self, session_id: str, data: dict) -> None:
+        """持久化待审批请求（detach 后审批卡的重连恢复数据源）。"""
+        await self._mutate_session_extra(session_id, lambda e: e.update({"pending_approval": data}))
+
+    async def _mutate_session_extra(self, session_id: str, mutate) -> None:
+        """读-改-写会话 extra_config（detach 标记的统一写入通道）；会话不存在静默跳过。"""
+        try:
+            conv = await self.session_repo.get_by_session_id(session_id)
+            if conv is None:
+                return
+            extra = dict(conv.extra_config or {})
+            mutate(extra)
+            conv.extra_config = extra
+            flag_modified(conv, "extra_config")
+            await self.db.commit()
+        except Exception as e:
+            # 标记写失败不影响对话主链路（终态清理与下轮自愈兜底）
+            logger.warning("会话 extra_config 标记写入失败", session_id=session_id, error=str(e))
 
     # ==================== 模型 & MemoryManager ====================
 
@@ -1769,6 +1809,14 @@ class AgentChatService:
         if conv.message_count <= 1 and not conv.title:
             title = user_content[:50] + ("..." if len(user_content) > 50 else "")
             await self.session_repo.update(conv.id, title=title)
+
+        # 轮次终态：清断连续跑标记（running_turn）与待审批（重连恢复用）
+        extra = dict(conv.extra_config or {})
+        if "running_turn" in extra or "pending_approval" in extra:
+            extra.pop("running_turn", None)
+            extra.pop("pending_approval", None)
+            conv.extra_config = extra
+            flag_modified(conv, "extra_config")
 
         await self.db.commit()
 

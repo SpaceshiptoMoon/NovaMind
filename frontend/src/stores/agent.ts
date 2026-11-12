@@ -292,6 +292,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   // 运行中插话发送通道（sendMessageStream 的 onReady 注入；连接结束在 finally 置空）
   let wsSendRef: ((msg: unknown) => void) | null = null
+  // 审批附着通道（action=attach）：无在途流时向后台续跑轮次回传审批决策
+  let attachChannel: { close: () => void } | null = null
+  let attachSendRef: ((msg: unknown) => void) | null = null
+  // 断连后台续跑状态（turn-state 轮询驱动）
+  const backgroundRunning = ref(false)
+  let turnPollTimer: number | null = null
 
   /**
    * 流式发送消息并按事件增量渲染：正文/思考流式累积、工具卡片插到当前决策消息之后、
@@ -582,6 +588,12 @@ export const useAgentStore = defineStore('agent', () => {
       abortController.value = null
       wsSendRef = null
       pendingApproval.value = null
+      // 本轮结束：后台续跑状态与附着通道一并清理（新流自带审批通道）
+      backgroundRunning.value = false
+      stopTurnPoll()
+      attachChannel?.close()
+      attachChannel = null
+      attachSendRef = null
     }
   }
 
@@ -602,22 +614,96 @@ export const useAgentStore = defineStore('agent', () => {
    * steer）；决策发出即清卡片（后端 120s 超时按 deny 兜底，无需前端计时清理状态）。
    */
   function respondApproval(approvalId: string, decision: 'approve' | 'deny'): boolean {
-    if (!wsSendRef || !pendingApproval.value) return false
-    wsSendRef({ action: 'approval', approval_id: approvalId, decision })
+    // 在途流用其发送通道；否则走审批附着通道（detach 轮次的重连恢复场景）
+    const send = wsSendRef || attachSendRef
+    if (!send || !pendingApproval.value) return false
+    send({ action: 'approval', approval_id: approvalId, decision })
     pendingApproval.value = null
     return true
   }
 
-  /** 中止当前流式请求 */
+  /** 中止当前流式请求：显式停止（先发 action=stop，后端按取消回滚而非后台续跑） */
   function cancelStream() {
+    wsSendRef?.({ action: 'stop' })
     abortController.value?.abort()
+  }
+
+  /**
+   * 静默断开（切会话等场景）：不发 stop——异常断连触发后端 detach 转后台续跑，
+   * 轮次继续执行落库，切回会话时经 turn-state 轮询恢复进度。
+   */
+  function abortStreamSilently() {
+    abortController.value?.abort()
+  }
+
+  function stopTurnPoll() {
+    if (turnPollTimer !== null) {
+      window.clearInterval(turnPollTimer)
+      turnPollTimer = null
+    }
+  }
+
+  /** 审批附着通道：无在途流时打开 action=attach 连接，决策经此回传后台轮次 */
+  function openAttachForApproval(agentId: number) {
+    if (attachChannel) return
+    attachChannel = agentApi.openApprovalChannel(agentId, (send) => {
+      attachSendRef = send
+    })
+  }
+
+  /**
+   * 查询当前会话轮次状态（进入会话/切换会话时调用）：后台运行中 → 启动轮询
+   * （3s 周期刷新消息回放直至终态）；待审批 → 恢复审批卡并打开附着通道。
+   */
+  async function checkTurnState(agentId: number) {
+    const sid = currentSessionId.value
+    if (!sid || isStreaming.value) return
+    try {
+      const state = await agentApi.fetchTurnState(sid)
+      backgroundRunning.value = state.running_turn
+      if (state.pending_approval && !pendingApproval.value) {
+        pendingApproval.value = state.pending_approval
+        openAttachForApproval(agentId)
+      }
+      if (state.running_turn) {
+        stopTurnPoll()
+        turnPollTimer = window.setInterval(async () => {
+          const pollSid = currentSessionId.value
+          if (!pollSid) {
+            stopTurnPoll()
+            return
+          }
+          try {
+            const poll = await agentApi.fetchTurnState(pollSid)
+            if (poll.pending_approval && !pendingApproval.value && !isStreaming.value) {
+              pendingApproval.value = poll.pending_approval
+              openAttachForApproval(agentId)
+            }
+            if (!poll.running_turn) {
+              stopTurnPoll()
+              backgroundRunning.value = false
+              await fetchMessages(pollSid)
+            }
+          } catch {
+            /* 网络抖动忽略，下轮再试 */
+          }
+        }, 3000)
+      }
+    } catch {
+      /* 会话不存在/网络失败静默 */
+    }
   }
 
   /** 清空整个聊天状态（会话 ID、消息、工具卡、流式累积、附件、计划卡），切会话/删 Agent 时调用 */
   function clearChat() {
-    // 在途流先中止：流回调写的是 store 级全局 messages，不中止会把旧会话
-    // 增量写进新会话列表，且 onSession 会把旧会话 id 写回 currentSessionId
-    if (isStreaming.value) abortController.value?.abort()
+    // 在途流静默断开（不发 stop）：断连触发后端 detach 转后台续跑；流回调停止
+    // 后旧会话增量不再写进 store（切会话语义），切回时经 turn-state 轮询恢复
+    if (isStreaming.value) abortStreamSilently()
+    stopTurnPoll()
+    backgroundRunning.value = false
+    attachChannel?.close()
+    attachChannel = null
+    attachSendRef = null
     currentSessionId.value = null
     messages.value = []
     toolCalls.value = []
@@ -765,6 +851,9 @@ export const useAgentStore = defineStore('agent', () => {
     steer,
     respondApproval,
     pendingApproval,
+    backgroundRunning,
+    checkTurnState,
+    abortStreamSilently,
     cancelStream,
     clearChat,
     fetchMcpServers,
