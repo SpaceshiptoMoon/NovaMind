@@ -1674,6 +1674,16 @@ onBeforeUnmount(() => {
     background var(--transition-fast);
 }
 
+/* EP 全局按「下划线 tab 相邻贴边」惯例把 nth-child(2) 的 padding-left 与
+   :last-child 的 padding-right 清零；而胶囊形态里 nav 的第一个子元素是
+   active-bar，「浏览」恰好落在 nth-child(2)——首尾两个 tab 文字单侧贴边
+   （观感即「字没居中/穿模」）。此处按同等结构显式恢复对称 padding。 */
+.wiki-view-tabs :deep(.el-tabs__item:first-child),
+.wiki-view-tabs :deep(.el-tabs__item:nth-child(2)),
+.wiki-view-tabs :deep(.el-tabs__item:last-child) {
+  padding: 6px 22px;
+}
+
 .wiki-view-tabs :deep(.el-tabs__item:hover) {
   color: var(--color-text);
 }
