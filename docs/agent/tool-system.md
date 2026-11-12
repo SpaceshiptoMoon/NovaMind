@@ -18,7 +18,7 @@
 ③ HTTP 契约层  GET /agent/tools（前端下拉源）
                GET /agent/tools-runtime（管理员诊断）
                GET /agent/agents（各 agent 的 enabled_tools 实况）
-④ 前端消费层   WorkspaceLayout.vue 工具下拉（PRIORITY_TOOLS 置顶知识库/联网）
+④ 前端消费层   manage/AgentFormDialog.vue 工具下拉（PRIORITY_TOOLS 置顶知识库/联网）
 ```
 
 任何一层口径漂移都会造成「前端能勾/后端不认」或「后端注册/前端看不到」的
@@ -170,8 +170,10 @@ cd backend && .venv/Scripts/python -X utf8 scripts/audit_agent_tools.py
 | `GET /agent/tools/{name}` | 登录用户 | 单工具详情 |
 | `GET /agent/tools-runtime` | AGENT_MANAGE_SYSTEM | 运行时诊断：builtin_tools（含 default_timeout_ms）+ MCP 服务器连接与解析结果 |
 
-前端 `WorkspaceLayout.vue` 的 `PRIORITY_TOOLS = ['knowledge_search', 'web_search']`
-控制下拉置顶。
+前端 `components/agent/manage/AgentFormDialog.vue` 的
+`PRIORITY_TOOLS = ['knowledge_search', 'web_search']` 控制下拉置顶
+（工具下拉已随弹窗拆分迁出 `WorkspaceLayout.vue`，见
+[`workspace-ui-architecture.md`](./workspace-ui-architecture.md)）。
 
 已知遗留（audit 脚本 G 组 WARN）：`plan_output` / `read_attachment` /
 `read_tool_result` 三个注入工具仍出现在 /tools 可勾选集合——勾选无增量

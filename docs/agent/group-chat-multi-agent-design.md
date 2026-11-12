@@ -41,7 +41,7 @@ turn 结束 → 产出落群时间线 + 投递信箱 → 下一个成员
 
 采纳 cc 的成员模型（2026-10-20 修订，替代早版「共享时间线窗口注入」）：
 
-- **一群多会话**（2026-10-20 多会话化）：群聊与单聊 agent 同构——一个群可开多个会话（session），每次 POST /sessions 显式新建（不复用不回退）；GET 列表（id 倒序）、DELETE 软删（连带成员私有会话与 runs 级联清理，讨论中被拒）。时间线按会话隔离，切换会话即重放该会话时间线。
+- **一群多会话**（2026-10-20 多会话化）：群聊与单聊 agent 同构——一个群可开多个会话（session），每次 POST /sessions 显式新建（不复用不回退）；GET 列表（id 倒序）、DELETE 软删（连带成员私有会话与 runs 级联清理，讨论中被拒）。时间线按会话隔离，切换会话即重放该会话时间线。**首条会话随建群原子创建**（2026-11-10）：`create_group` 在同一事务内落群、成员与首条时间线会话，建群响应返回后会话中心即可见新群条目；WS 与消息端点的 get-or-create 保留作兜底。
 - **每个成员在群会话下有自己的私有 AgentSession**（(群会话, 成员) 一条，`extra_config` 标记归属），是它上下文的**唯一事实源**：自己过去的 turn（含完整工具调用与推理）、收到的全部投递（群发言广播、私信、用户消息）都在会话里累积。
 - **通信即投递（唯一规则，两模式共用）**：编排器把消息写进成员会话（user 角色 + `extra.delivery` 标注来源与可见性）。凡上群时间线的公开发言（用户消息、成员答复）→ 广播给其他所有成员会话；私信 → 只投收件人。专家咨询模式同样全员广播——省的是 LLM token（未被 consult 的成员不拉起 turn），DB append 成本可忽略，换来「后来被问到的专家保有完整上下文」。
 - **群时间线降级为投影**：仅存公开发言（成员 turn 的最终答复）与用户消息，供前端渲染与审计；**不参与成员上下文组装**。
@@ -182,7 +182,7 @@ async def run_round(self, run: AgentGroupRun, user_content: str):
 ### REST（features/agent/api/group_routes.py，RouterSpec 声明进 manifest）
 
 ```
-POST   /agent/groups                        建群（name/mode/member_ids/配置）
+POST   /agent/groups                        建群（name/mode/member_ids/配置）；同事务原子创建首条时间线会话
 GET    /agent/groups                        我的群列表
 GET    /agent/groups/{id}                   群详情（含成员）
 PUT    /agent/groups/{id}                   改配置/成员增删
@@ -192,8 +192,10 @@ GET    /agent/groups/{id}/sessions          群会话列表（id 倒序）
 DELETE /agent/groups/{id}/sessions/{sid}    删群会话（连带成员私有会话与 runs 级联清理；讨论中被拒）
 GET    /agent/groups/{id}/sessions/{sid}/messages  时间线消息（该会话投影）
 GET    /agent/groups/{id}/runs              运行历史
-GET    /agent/groups/{id}/members/{mid}/session  调试用：查看某成员私有会话消息（owner）
+GET    /agent/groups/{id}/members/{mid}/session  调试用：查看某成员私有会话消息（owner）——P2 规划，尚未实现
 ```
+
+群会话与单聊会话混排的会话中心列表走 `GET /agent/sessions/recent`（在 `routes.py`，见 [`workspace-ui-architecture.md`](./workspace-ui-architecture.md) 第 8 节）。
 
 ### WS 群对话
 
@@ -255,7 +257,7 @@ system: 成员自己的 system_prompt
 3. group_messaging 工具（send_group_message/send_direct_message）+ consult 成员工具动态包装
 4. 群 WS 端点 + group.speaker/group.run_done 事件
 5. REST CRUD（group_routes + manifest RouterSpec）
-6. 前端：建群弹窗（选成员/模式/主持人）+ 群聊视图（复用聊天渲染，气泡加成员头像）——入口/组件/样式详见 `docs/agent/group-chat-frontend-design.md`
+6. 前端：建群弹窗（选成员/模式/主持人）+ 群聊视图（复用聊天渲染，气泡加成员头像）——当前结构见 `docs/agent/workspace-ui-architecture.md`；首版入口/组件/样式方案 `docs/agent/group-chat-frontend-design.md` 已标注为历史方案
 7. prompt 键：agent_group_identity（覆盖两模式身份段）
 8. 回归测试：编排顺序、投递广播可见性（公开全员/私信仅收件人）、私信不触发执行、consult 工具拉起成员与答复截断、头脑风暴预算截断、单成员失败隔离
 

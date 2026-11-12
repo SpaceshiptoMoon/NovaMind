@@ -1,6 +1,18 @@
 # 群聊前端设计：入口与样式（方案附篇）
 
-> 状态：设计草案。与主文档 `group-chat-multi-agent-design.md`（数据/编排/通信）配套，只覆盖前端入口、路由、组件与样式。
+> **状态：历史方案（2026-11-11 标注）。** 本文是群聊前端首版落地前的设计草案，其中入口、路由与组件布局已被 2026-11 的工作台重构取代，**当前结构以 [`workspace-ui-architecture.md`](./workspace-ui-architecture.md) 为准**。
+>
+> 已失效的部分：
+>
+> - 第 1 节入口与路由：侧栏不再有「我的智能体 / 群聊」两个分区，改为按用途三分类的会话中心；`WorkspaceGroups` 空态占位路由已改为 redirect，`GroupWorkspaceView.vue` 与 `AgentWorkspaceView.vue` 已删除。
+> - 第 2 节文件布局：`GroupComposer.vue` 已删除（输入区复用共享的 `InputCard`）；建群弹窗不再收编在 `WorkspaceLayout` 内联，而是 `components/agent/manage/` 下的 `UnifiedCreateDialog` 与 `GroupFormDialog`。
+> - 第 3.4、3.6、3.7 节：输入区、建群弹窗、空态页的设计均已被替换。
+> - 第 4 节「每群单会话」的 P1 简化已不成立（一群多会话，且建群时原子创建首条会话）。
+> - 用户可见文案「群聊」已改为「协作对话」。
+>
+> 仍有参考价值的部分：第 3.1–3.3、3.5 节的样式原则（成员身份用首字头像与名字头区分、不用颜色编码成员）与时间线气泡制度，以及第 5 节与单聊渲染管线的复用边界思路。
+>
+> 原始说明：与主文档 `group-chat-multi-agent-design.md`（数据/编排/通信）配套，只覆盖前端入口、路由、组件与样式。
 > 遵循：`frontend/CLAUDE.md`（view/component/store 分层、抗压缩布局规范）、Neutral Minimal 设计语言（token 唯一权威 `base.css`）。
 
 ## 1. 入口与信息架构

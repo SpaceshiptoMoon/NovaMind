@@ -111,11 +111,14 @@ schemas/
 | --- | --- |
 | `frontend/src/views/auth/` | 登录、忘记密码、重置密码 |
 | `frontend/src/views/space/` | 空间、知识库、文档和配置流程 |
-| `frontend/src/views/chat/` | 聊天工作区 |
-| `frontend/src/views/agent/` | Agent 列表与聊天 |
+| `frontend/src/views/chat/` | 工作台对话入口薄 view（欢迎页 / 会话直达分流） |
+| `frontend/src/views/agent/` | 工作台对话页（单聊 AgentChatView / 协作对话 GroupChatView） |
 | `frontend/src/views/skill/` | 技能广场和管理审核 |
 | `frontend/src/views/app/` | 应用中心 |
 | `frontend/src/views/user/` | 个人资料、模型、通知、用户管理 |
+
+工作台对话前端（侧栏会话中心、统一创建、共享聊天组件、右面板）的完整结构见
+[`agent/workspace-ui-architecture.md`](./agent/workspace-ui-architecture.md)。
 
 知识库相关 UI 主要集中在：
 

@@ -30,7 +30,7 @@ Agent 的能力（工具 / MCP / 搜索）应当全部**可配置、可插拔**�
 | D1：移除聊天页「联网搜索」开关 | 工具能力只在创建智能体时选择，聊天页不干涉工具可用性；`enable_web_search` 从 `AgentChatRequest` / chat 链路整体移除 | ✅ 已完成（后端 schema/routes/chat_service + 前端 AgentChatView/stores/api 同步移除；OpenAPI baseline 已重新生成） |
 | D2：搜索供应商不做聊天页选择 | 不实现 G3 的供应商下拉；Agent 搜索一律按**用户首选搜索引擎配置**（`ModelConfigView`「设为首选」）→ YAML 兜底 | ✅ 已完成：`_resolve_web_search_port` 去掉「请求显式指定 provider」层，保留用户首选 → YAML 兜底；Agent 勾选 `web_search` 工具即自动启用 |
 
-**当前最终行为**：`web_search` 工具可用性 = 创建 Agent 时是否勾选；供应商 = 用户首选（`is_primary`）→ YAML 兜底。聊天页仅保留「深度思考 / 流式输出」开关。
+**当前最终行为**：`web_search` 工具可用性 = 创建 Agent 时是否勾选；供应商 = 用户首选（`is_primary`）→ YAML 兜底。聊天页无任何工具开关；回答模式为输入卡的单选档位（极速 / 深度思考），流式开关已删除、恒走流式（2026-11）。
 
 因此，本文档中 G2（per-request 工具/MCP 覆盖）、G3（聊天页供应商选择）、4.2.1/4.2.2 的请求覆盖设计、4.3.2 的聊天页升级设计、阶段 4 均**作废**，仅保留参考价值，不再实施。
 
@@ -74,8 +74,8 @@ Agent 的能力（工具 / MCP / 搜索）应当全部**可配置、可插拔**�
 
 | 页面 | 现状 |
 |---|---|
-| `views/agent/AgentView.vue` | 创建/编辑弹窗可多选「启用工具」（来自 `/agent/tools`）+「MCP 服务器」（来自 `/agent/mcp-servers`）；详情页展示已选工具 / MCP |
-| `views/agent/AgentChatView.vue` | 设置栏仅「深度思考 / 流式输出」两个开关（联网搜索开关已按决策 D1 移除）；搜索能力由 Agent 配置决定 |
+| `components/agent/manage/AgentFormDialog.vue` | 创建/编辑弹窗可多选「启用工具」（来自 `/agent/tools`）+「MCP 服务器」（来自 `/agent/mcp-servers`）；只读配置在 `AgentConfigDrawer` 展示已选工具 / MCP |
+| `views/agent/AgentChatView.vue` | 无工具开关（联网搜索开关已按决策 D1 移除，流式开关已删）；输入卡仅「极速 / 深度思考」单选档位；搜索能力由 Agent 配置决定 |
 | `stores/agent.ts` | Agent CRUD、会话、SSE 流式、MCP 管理、工具列表 |
 | `api/agent.ts` | chat-stream 请求体已移除 `enable_web_search` / `search_provider`（决策 D1/D2） |
 
@@ -221,7 +221,7 @@ class SearchProviderInfo(BaseModel):
 
 #### 4.3.2 ~~聊天页升级~~（已作废 · 决策 D1/D2）
 
-> 原设计的聊天页「联网搜索开关 + 供应商下拉 + 工具/MCP chips」全部不做。聊天页设置栏最终只保留「深度思考 / 流式输出」两个开关（已实现：`AgentChatView.vue` 移除联网搜索项）。以下原设计仅存档：
+> 原设计的聊天页「联网搜索开关 + 供应商下拉 + 工具/MCP chips」全部不做。聊天页设置栏曾保留「深度思考 / 流式输出」两个开关；2026-11 起进一步收敛为输入卡「极速 / 深度思考」单选档位，流式开关删除、恒走流式。以下原设计仅存档：
 
 设置栏（`settings-bar`）扩展为：
 
@@ -335,6 +335,6 @@ AgentChatRequest
 - [ ] 创建页可选中：内置工具（分组）、MCP 服务器（名称/状态/工具数）
 - [ ] Agent 勾选 `web_search` → 对话时模型可见 web_search 工具且按用户首选搜索引擎执行（首选失败 → YAML 兜底）
 - [ ] Agent 未勾选 `web_search` → 对话时模型不可见该工具，无搜索描述提示词
-- [ ] 聊天页设置栏仅「深度思考 / 流式输出」；请求体不含 `enable_web_search` / `search_provider`
+- [ ] 聊天页无工具开关（回答模式仅「极速 / 深度思考」单选档位，恒走流式）；请求体不含 `enable_web_search` / `search_provider`
 - [ ] MCP 服务器未连接时发起对话，自动懒连接成功则工具可用；失败不阻断对话且有日志（G5 待办）
 - [ ] MCP 管理面板可用：新建（stdio 含 args）/ 测试连接 / 连接 / 断开 / 刷新工具 / 编辑 / 删除（G4 待办）

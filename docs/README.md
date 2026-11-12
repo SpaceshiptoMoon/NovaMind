@@ -50,6 +50,7 @@
 
 ### Agent / Deep Research 子系统
 
+- [`agent/workspace-ui-architecture.md`](./agent/workspace-ui-architecture.md)：工作台对话前端架构（侧栏会话中心、统一创建入口、共享聊天组件、右面板与配套后端端点）
 - [`agent/tool-system.md`](./agent/tool-system.md)：Agent 工具体系（四层架构、工具清单与描述规范、注册/执行链路、条件注入、对账脚本）
 - [`agent/plan-and-execute-flow.md`](./agent/plan-and-execute-flow.md)：Plan-and-Execute 计划模式执行流（planning_flow + 前端事件协议）
 - [`deep-research/deep-research-deerflow-alignment.md`](./deep-research/deep-research-deerflow-alignment.md)：Deep Research 引擎与 deer-flow 的对齐说明（SearchSourcePort、计划反馈、引文抽取）
