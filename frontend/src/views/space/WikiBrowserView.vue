@@ -19,7 +19,23 @@
           </div>
           <div v-else-if="ingestStatus?.status === 'failed'" class="ingest-banner is-failed">
             <el-icon><WarningFilled /></el-icon>
-            <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
+            <div class="banner-body">
+              <span class="banner-summary">最近一次 Wiki 生成失败：{{ ingestErrorSummary }}</span>
+              <button
+                type="button"
+                class="banner-detail-toggle"
+                @click="errorDetailExpanded = !errorDetailExpanded"
+              >
+                {{ errorDetailExpanded ? '收起详情' : '展开详情' }}
+                <el-icon class="detail-caret" :class="{ 'is-open': errorDetailExpanded }">
+                  <ArrowRight />
+                </el-icon>
+              </button>
+              <!-- 完整原始报错（含服务商 JSON 报文），默认折叠不平铺 -->
+              <pre v-if="errorDetailExpanded" class="banner-error-detail">{{
+                ingestStatus.error_message || '未知原因'
+              }}</pre>
+            </div>
             <el-button
               class="banner-retry-btn"
               size="small"
@@ -826,6 +842,21 @@ const ingestStatusText = computed(() => {
   }
   return '处理中'
 })
+// 失败横幅：摘要取第一句（完整原始报文含服务商 JSON，默认折叠不平铺）
+const errorDetailExpanded = ref(false)
+const ingestErrorSummary = computed(() => {
+  const raw = ingestStatus.value?.error_message || '未知原因'
+  const firstSentence = raw.split('。')[0]
+  // 无句号的报错按 120 字符截断兜底
+  const summary = firstSentence === raw ? raw.slice(0, 120) : `${firstSentence}。`
+  return summary.length > 120 ? `${summary.slice(0, 120)}…` : summary
+})
+watch(
+  () => ingestStatus.value?.status,
+  () => {
+    errorDetailExpanded.value = false
+  },
+)
 let pollTimer: number | null = null
 
 function startPolling() {
@@ -1729,11 +1760,56 @@ onBeforeUnmount(() => {
   border-color: var(--color-danger-subtle);
 }
 
-/* 失败横幅内的重试按钮：固定在行尾不被长错误文本挤压；文本列允许换行不截断 */
-.ingest-banner.is-failed > span {
+/* 失败横幅正文：摘要行 + 可折叠完整报错；摘要允许换行不截断 */
+.banner-body {
   flex: 1;
   min-width: 0;
+}
+
+.banner-summary {
   word-break: break-word;
+}
+
+.banner-detail-toggle {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 0;
+  margin-left: 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+
+.banner-detail-toggle:hover {
+  text-decoration: underline;
+}
+
+.detail-caret {
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+
+.detail-caret.is-open {
+  transform: rotate(90deg);
+}
+
+/* 完整报错块：白卡内嵌 + 等宽字体，限高内部滚动 */
+.banner-error-detail {
+  margin: 8px 0 0;
+  padding: var(--space-2) var(--space-3);
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .banner-retry-btn {
