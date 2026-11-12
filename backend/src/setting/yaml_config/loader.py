@@ -307,6 +307,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             local_whisper_empty_result_retry_language=parsing.get(
                 "local_whisper_empty_result_retry_language", None
             ),
+            local_whisper_initial_prompt=parsing.get("local_whisper_initial_prompt", None),
             video_vlm_concurrency=parsing.get("video_vlm_concurrency", 4),
             max_upload_size_mb=parsing.get("max_upload_size_mb", 2048),
             download_tmp_dir=parsing.get("download_tmp_dir", None),

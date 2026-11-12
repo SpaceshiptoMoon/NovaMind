@@ -119,6 +119,11 @@ class ParsingConfig:
     # 空结果重试语言：首跑结果为空且语言置信度 <0.5 时按此语言重试一次。
     # None = 不重试；tiny/small 档短中文音频易误判语言，可配 "zh"。
     local_whisper_empty_result_retry_language: str | None = None
+    # 本地转写解码引导 prompt（faster-whisper initial_prompt）。三态语义（解析
+    # 见引擎侧 resolve_initial_prompt）：None = 引擎默认（language 显式 zh 时注入
+    # 简体中文引导句抑制繁体输出；auto 检测不注入）；非空字符串完全覆盖；
+    # 空字符串显式禁用注入。
+    local_whisper_initial_prompt: str | None = None
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
     # 耗时可逼近 arq job_timeout（默认 7200s），有界并发降时延；过高可能触发 VLM
     # 配额限流，配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。

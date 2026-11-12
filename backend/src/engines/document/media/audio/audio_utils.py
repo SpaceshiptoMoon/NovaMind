@@ -456,6 +456,36 @@ def _precheck_hotwords(model: Any, hotwords: str | None) -> str | None:
     return hotwords
 
 
+# zh 引导句缺省值：Whisper 的 zh 不分简繁，解码文字体系强烈跟随 prompt——注入
+# 简体引导句是抑制繁体输出的主手段（OpenAI 官方示例同款用法）。
+DEFAULT_ZH_INITIAL_PROMPT = "以下是普通话的句子。"
+
+
+def resolve_initial_prompt(audio_config: AudioConfig | None, language: str | None) -> str | None:
+    """三态解析解码引导 prompt（宿主指纹侧与转写侧共用的单一事实源）。
+
+    Args:
+        audio_config: 引擎音频配置，读 ``local_whisper_initial_prompt``。
+        language: 本次转写语言提示（None = 自动检测）。重试路径以重试语言
+            重新解析，zh 重试同样享受默认注入。
+
+    Returns:
+        实际注入 faster-whisper 的 prompt；None 表示不注入。
+
+    语义（与 YAML 模板注释一致）：
+        - 配置 None（默认）→ 引擎默认：language 显式 "zh" 注入简体引导句；
+          auto 检测不注入（语言未知，中文 prompt 会污染其他语种）；
+        - 配置非空字符串 → 完全覆盖（任何语言都注入）；
+        - 配置空字符串 "" → 显式禁用注入。
+    """
+    configured = (
+        getattr(audio_config, "local_whisper_initial_prompt", None) if audio_config else None
+    )
+    if configured is None:
+        return DEFAULT_ZH_INITIAL_PROMPT if language == "zh" else None
+    return configured or None
+
+
 def _transcribe_in_subprocess(
     tmp_path: str,
     language: str | None,
@@ -468,6 +498,7 @@ def _transcribe_in_subprocess(
     vad_enabled: bool = True,
     hotwords: str | None = None,
     min_speech_dbfs: float | None = -40.0,
+    initial_prompt: str | None = None,
 ) -> dict[str, Any]:
     """子进程内执行：加载模型（子进程键控缓存）+ transcribe + 返回可 pickle 结果。
 
@@ -493,6 +524,8 @@ def _transcribe_in_subprocess(
         hotwords: 热词串（空格分隔），None 表示不注入
         min_speech_dbfs: 段级声学能量下限（RMS dBFS），低于该值的短文本段判为
             幻觉丢弃；None 表示禁用能量交叉验证
+        initial_prompt: 解码引导 prompt（faster-whisper 原生参数，每个解码窗口
+            重放，不受 condition_on_previous_text=False 影响），None 表示不注入
 
     Returns:
         {"segments": [{"text","start","end","avg_logprob","no_speech_prob"},...],
@@ -543,6 +576,7 @@ def _transcribe_in_subprocess(
         vad_filter=vad_enabled,
         condition_on_previous_text=False,
         hotwords=hotwords,
+        initial_prompt=initial_prompt,
     )
     logger.info(
         "子进程 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
@@ -888,6 +922,7 @@ async def transcribe_audio_local(
             用 partial + 关键字传参：``_transcribe_in_subprocess`` 在
             ``cpu_threads`` 之后是 keyword-only 签名，位置实参传 dict 会
             TypeError（且 spawn 子进程经 pickle 引用 partial，仍需模块级函数）。
+            initial_prompt 按本次语言解析：zh 重试路径同样享受默认注入。
             """
             return loop.run_in_executor(
                 _asr_executor,
@@ -903,6 +938,7 @@ async def transcribe_audio_local(
                     vad_enabled=vad_enabled,
                     hotwords=hotwords_str,
                     min_speech_dbfs=min_speech_dbfs,
+                    initial_prompt=resolve_initial_prompt(audio_config, lang),
                 ),
             )
 

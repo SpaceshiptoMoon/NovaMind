@@ -14,6 +14,7 @@ from novamind.engines.document.media.audio import (
     AsrCredentialsMissingError,
     AsrRoute,
     AudioFileInvalidError,
+    resolve_initial_prompt,
 )
 from novamind.engines.document.media.chunk_time_alignment import (
     build_frame_timeline_map,
@@ -225,6 +226,7 @@ def _build_engine_audio_config() -> AudioConfig:
         local_whisper_vad_enabled=parsing.local_whisper_vad_enabled,
         local_whisper_min_speech_dbfs=parsing.local_whisper_min_speech_dbfs,
         local_whisper_empty_result_retry_language=parsing.local_whisper_empty_result_retry_language,
+        local_whisper_initial_prompt=parsing.local_whisper_initial_prompt,
     )
 
 
@@ -1559,11 +1561,14 @@ def _audio_asr_fingerprint_params(
     hotwords: list[str] | None,
     diarization_enabled: bool = False,
     speaker_count: int | None = None,
+    initial_prompt: str | None = None,
 ) -> dict[str, Any]:
     """音频 ASR 快照指纹的引擎参数块（命中检查与保存侧共用的单一事实源）。
 
     影响转写产物的所有引擎参数必须进指纹：任一变化 → 指纹变化 → 快照失效
-    → RETRY 正确重转写（不会复用旧配置的旧转写产物）。
+    → RETRY 正确重转写（不会复用旧配置的旧转写产物）。``initial_prompt`` 传
+    解析后的实际注入值（``resolve_initial_prompt`` 输出）——配置值、解析规则
+    或 language 任一变化都会反映到注入值上。
 
     Returns:
         并入解析指纹 computing dict 的 ``asr_engine`` 键值。
@@ -1582,6 +1587,7 @@ def _audio_asr_fingerprint_params(
         "empty_result_retry_language": getattr(
             engine_audio_config, "local_whisper_empty_result_retry_language", None
         ),
+        "initial_prompt": initial_prompt,
         "hotwords": sorted(hotwords or []),
         "diarization_enabled": diarization_enabled,
         "speaker_count": speaker_count,
@@ -1693,6 +1699,7 @@ async def process_audio_document(
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
             asr_protocol, asr_model, engine_audio_config, asr_hotwords,
             diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
+            initial_prompt=resolve_initial_prompt(engine_audio_config, language),
         )
         audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:
@@ -1949,6 +1956,7 @@ async def process_audio_document(
         audio_runtime_parsing["asr_engine"] = _audio_asr_fingerprint_params(
             asr_protocol, asr_model, engine_audio_config, asr_hotwords,
             diarization_enabled=asr_diarization, speaker_count=asr_speaker_count,
+            initial_prompt=resolve_initial_prompt(engine_audio_config, language),
         )
         audio_runtime_parsing["asr_clean"] = _audio_clean_fingerprint_params(audio_config)
         try:

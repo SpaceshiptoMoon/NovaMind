@@ -157,6 +157,12 @@ knowledge_base:
     # 空结果重试语言：转写结果为空且首跑语言置信度 <0.5 时按此语言重试一次。
     # 空则不重试。tiny/small 档对短中文音频常误判语言导致空结果，可配 zh。
     local_whisper_empty_result_retry_language:
+    # 本地转写解码引导 prompt（faster-whisper initial_prompt）：三态语义——
+    # 空（None，默认）= 引擎默认（KB 音频 language 显式配 zh 时自动注入简体
+    # 中文引导句「以下是普通话的句子。」抑制繁体输出；language 留空自动检测
+    # 时不注入）；配非空字符串则完全覆盖默认值（任何语言都注入）；配 ""
+    # 显式禁用注入。改变本值会使既有音频解析快照失效（RETRY 重转写）。
+    local_whisper_initial_prompt:
     # 上传流式读取的全局字节硬顶（MB）：流式 sha256+计数边读边检，超限即断流拒收。
     # 须 >= 各模态上限（video 默认 2000MB）；与 nginx NGINX_MAX_BODY_SIZE 联动
     # （nginx 值应为本值 + multipart 头部裕量）。

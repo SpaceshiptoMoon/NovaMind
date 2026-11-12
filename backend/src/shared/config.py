@@ -53,6 +53,11 @@ class AudioConfig:
     # 与上游 faster-whisper 一致）；典型配置 "zh"——tiny/small 档对短中文音频
     # 常误判语言导致空结果，按此语言重试一次。
     local_whisper_empty_result_retry_language: str | None = None
+    # 解码引导 prompt（faster-whisper initial_prompt，每个解码窗口重放）。None =
+    # 注入引擎默认值（见 audio_utils._resolve_initial_prompt：zh 显式指定时注入
+    # 简体中文引导句，抑制繁体输出；auto 检测不注入以免污染其他语种）；配置为
+    # 非空字符串时完全覆盖默认值；空字符串"" 显式表示不注入。
+    local_whisper_initial_prompt: str | None = None
 
 
 # ==================== 外部搜索（联网搜索）====================
