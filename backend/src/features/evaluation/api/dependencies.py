@@ -32,13 +32,16 @@ async def get_evaluation_service(
     # 请求级检索端口（fallback 用）
     retrieval_port = search_service
 
-    # 后台任务检索工厂：用独立 session 构造 SearchService（封装 ES + ModelConfigService）
+    # 后台任务检索工厂：用独立 session 经 search_factory 构造（instrumented=False
+    # 不进运营账本——后台重放非用户交互场景）
     es_client = await get_elasticsearch_client()
 
-    def retrieval_factory(session: AsyncSession):
-        bg_model_config_service = ModelConfigService(session)
-        bg_search_service = SearchService(session, es_client, bg_model_config_service)
-        return bg_search_service
+    async def retrieval_factory(session: AsyncSession):
+        from novamind.features.knowledge_space.services.search_factory import (
+            build_search_service,
+        )
+
+        return await build_search_service(session, es_client=es_client, instrumented=False)
 
     return EvaluationService(
         db=db,

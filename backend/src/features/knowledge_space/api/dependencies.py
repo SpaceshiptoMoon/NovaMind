@@ -194,7 +194,7 @@ async def get_redis_cache():
 
 
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
-    """获取检索服务（单例客户端，注入模型配置服务与检索引擎）。
+    """获取检索服务（装配单一入口，注入检索引擎与 Redis 缓存）。
 
     返回带运营埋点的子类：检索页是用户触发的检索消费方，
     query 事件进 kb-ops 事件账本（返回类型仍是父类，调用方无感）。
@@ -205,22 +205,21 @@ async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchServic
     Returns:
         装配完成的 InstrumentedSearchService；Redis 未装配时缓存降级 no-op。
     """
-    from novamind.features.knowledge_space.services.instrumented_search_service import (
-        InstrumentedSearchService,
+    from novamind.features.knowledge_space.services.search_factory import (
+        build_search_service,
     )
 
     es_client = await get_elasticsearch_client()
-    model_config_service = ModelConfigService(db)
     # 装配点构造 RetrievalEngine + RedisCache 注入（惰性单例，未装配时 None 降级）
     retrieval_engine = RetrievalEngine(
         es_client,
         get_logger("novamind.features.knowledge_space.services.search_service"),
         cache_port=await get_redis_cache(),
     )
-    return InstrumentedSearchService(
-        session=db,
+    return await build_search_service(
+        db,
         es_client=es_client,
-        model_config_service=model_config_service,
+        instrumented=True,
         retrieval_engine=retrieval_engine,
     )
 

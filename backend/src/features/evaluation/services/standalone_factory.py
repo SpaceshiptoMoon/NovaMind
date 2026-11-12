@@ -33,15 +33,12 @@ async def build_standalone_evaluation_service() -> Any:
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
 
-    def retrieval_factory(session):
-        from novamind.features.knowledge_space.services.search_service import SearchService
-        from novamind.features.user.services.model_config_service import ModelConfigService
-
-        return SearchService(
-            session,
-            es_client,
-            ModelConfigService(session),
+    async def retrieval_factory(session):
+        from novamind.features.knowledge_space.services.search_factory import (
+            build_search_service,
         )
+
+        return await build_search_service(session, es_client=es_client, instrumented=False)
 
     return EvaluationService(
         db=None,  # 后台场景无请求级会话；公开方法均走 _session_factory 短会话

@@ -320,7 +320,7 @@ def test_search_depth_passthrough_in_config():
 # ---- 装配点 binding top_k 语义 ----
 
 
-def test_build_source_bindings_extra_source_independent_top_k():
+async def test_build_source_bindings_extra_source_independent_top_k():
     """扩展源 top_k 优先取 extra 配置内独立值，缺省回落内部检索 top_k。"""
     from novamind.features.deep_research.services.deep_research_service import (
         DeepResearchService,
@@ -369,7 +369,7 @@ def test_build_source_bindings_extra_source_independent_top_k():
         ctx.user_id = 1
         ctx.params = params
 
-        bindings = service._build_source_bindings(ctx)
+        bindings = await service._build_source_bindings(ctx)
         assert len(bindings) == 1
         assert bindings[0].source_type == "stubsrc"
         # 独立 top_k 生效（extra 配置内 top_k=3 覆盖 internal 的 10）
@@ -378,5 +378,5 @@ def test_build_source_bindings_extra_source_independent_top_k():
 
         # 缺省回落：extra 配置无 top_k → 用 internal top_k=10
         params.extra_source_configs = {"stubsrc": {}}
-        bindings2 = service._build_source_bindings(ctx)
+        bindings2 = await service._build_source_bindings(ctx)
         assert bindings2[0].top_k == 10

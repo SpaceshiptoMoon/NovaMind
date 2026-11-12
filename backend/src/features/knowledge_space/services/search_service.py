@@ -27,7 +27,6 @@ from novamind.features.knowledge_space.exceptions import (
     SearchError,
     SpaceAccessDeniedError,
 )
-from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
@@ -43,6 +42,7 @@ from novamind.features.knowledge_space.schemas.search_schema import (
 from novamind.features.knowledge_space.services.document_query_service import (
     DocumentQueryService,
 )
+from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.embedding import BaseEmbedding

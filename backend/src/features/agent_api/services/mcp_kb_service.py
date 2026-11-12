@@ -57,10 +57,9 @@ class McpKbService:
             SearchRequest,
             WeightConfig,
         )
-        from novamind.features.knowledge_space.services.instrumented_search_service import (
-            InstrumentedSearchService,
+        from novamind.features.knowledge_space.services.search_factory import (
+            build_search_service,
         )
-        from novamind.features.user.services.model_config_service import ModelConfigService
 
         try:
             mode = SearchMode(search_mode)
@@ -83,10 +82,9 @@ class McpKbService:
         if score_threshold is not None:
             search_request_kwargs["score_threshold"] = score_threshold
         search_request = SearchRequest(**search_request_kwargs)
-        search_service = InstrumentedSearchService(
-            session=self.session,
+        search_service = await build_search_service(
+            self.session,
             es_client=await self._get_es_client(),
-            model_config_service=ModelConfigService(self.session),
         )
         result = await search_service.search(
             space_id=space_id, kb_id=kb_id, user_id=user_id, request=search_request,

@@ -42,12 +42,15 @@ class HostKnowledgeSearchPort:
         Agent 知识工具是用户触发的检索消费方，用 InstrumentedSearchService
         让 query 进 kb-ops 事件账本。
         """
-        from novamind.features.knowledge_space.services.instrumented_search_service import (
-            InstrumentedSearchService,
+        from novamind.features.knowledge_space.services.search_factory import (
+            build_search_service,
         )
 
-        es_client = await self._get_es_client()
-        return InstrumentedSearchService(self._db, es_client, self._mcs)
+        return await build_search_service(
+            self._db,
+            es_client=await self._get_es_client(),
+            model_config_service=self._mcs,
+        )
 
     def _space_service(self) -> Any:
         """构造 SpaceService（跨 feature 只走公共面，函数内懒 import 防环）。"""

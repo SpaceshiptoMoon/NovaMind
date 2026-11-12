@@ -6,7 +6,7 @@ import hashlib
 import json
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -280,7 +280,7 @@ class EvaluationService:
         retrieval_port: SearchService,
         model_config_service: ModelConfigService,
         minio_client: MinioClient,
-        retrieval_factory: Callable[[AsyncSession], SearchService],
+        retrieval_factory: Callable[[AsyncSession], Awaitable[SearchService]],
         session_factory: Callable[[], Any],
     ):
         """注入请求级会话与检索/模型配置/MinIO 依赖；session_factory 与 retrieval_factory 供后台评估任务用独立会话装配检索服务。"""
@@ -1174,7 +1174,7 @@ class EvaluationService:
                         # 会话，跨协程零共享，aiomysql 连接竞争消失。
                         try:
                             async with self._session_factory() as case_session:
-                                case_retrieval = self._retrieval_factory(case_session)
+                                case_retrieval = await self._retrieval_factory(case_session)
                                 detail = await self._evaluate_single_case(
                                     index=i, question=case["question"],
                                     expected_answer=case["expected_answer"],
