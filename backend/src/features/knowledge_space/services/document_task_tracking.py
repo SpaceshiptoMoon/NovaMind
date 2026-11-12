@@ -113,10 +113,10 @@ async def purge_document_jobs(document_id: int, *, exclude_job_id: str | None = 
     import time
 
     import arq.constants as arq_constants
-    from novamind.shared.mq import get_arq_pool
+    from novamind.shared.mq import get_arq_pool, get_queue_name
 
     pool = await get_arq_pool()
-    queue_name = getattr(pool, "queue_name", "arq:queue")
+    queue_name = get_queue_name(pool)
 
     # 候选集 = tracker 当前绑定的 job（可能已不在队列、仅键残留）
     #         ∪ 队列中指向该文档的 process_document_task job

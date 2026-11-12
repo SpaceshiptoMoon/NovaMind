@@ -294,10 +294,10 @@ async def purge_wiki_ingest_jobs(document_id: int) -> list:
     import time
 
     import arq.constants as arq_constants
-    from novamind.shared.mq import get_arq_pool
+    from novamind.shared.mq import get_arq_pool, get_queue_name
 
     pool = await get_arq_pool()
-    queue_name = getattr(pool, "queue_name", "arq:queue")
+    queue_name = get_queue_name(pool)
 
     purged: list = []
     now_ms = int(time.time() * 1000)

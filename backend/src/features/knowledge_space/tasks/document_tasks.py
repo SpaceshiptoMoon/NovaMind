@@ -977,10 +977,10 @@ async def _job_still_alive(job_id: str | None) -> bool:
         return False
     try:
         import arq.constants as arq_constants
-        from novamind.shared.mq import get_arq_pool
+        from novamind.shared.mq import get_arq_pool, get_queue_name
 
         pool = await get_arq_pool()
-        queue_name = getattr(pool, "queue_name", "arq:queue")
+        queue_name = get_queue_name(pool)
         if await pool.zscore(queue_name, job_id) is not None:
             return True
         key_exists = await pool.exists(

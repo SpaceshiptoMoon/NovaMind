@@ -83,7 +83,8 @@ def _job_def_bytes(document_id: int, function: str = "process_document_task") ->
 class _FakeArqPool:
     """覆盖 purge_document_jobs 所需的池接口，记录全部写操作。"""
 
-    queue_name = "arq:queue"
+    # arq 0.28 ArqRedis 真实属性名（get_queue_name 经它取队列名）
+    default_queue_name = "arq:queue"
 
     def __init__(self, queue_members, job_defs):
         self.queue = set(queue_members)  # 队列 zset 成员（job_id）
