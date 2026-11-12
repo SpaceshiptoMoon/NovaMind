@@ -60,6 +60,7 @@ from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -461,14 +462,11 @@ class DeepResearchService:
         user_id: int,
         llm_model: str | None
     ):
-        """
-        获取 LLM 客户端
-
-        通过 ModelConfigService 从数据库解析凭证，无配置时抛异常
+        """获取 LLM 客户端（委托 ModelConfigService 统一解析）。
 
         Args:
             user_id: 用户 ID
-            llm_model: 模型名称（可选）
+            llm_model: 模型名称（可选，空值回退用户默认模型）
 
         Returns:
             LLM 客户端
@@ -476,17 +474,14 @@ class DeepResearchService:
         Raises:
             ResearchFailedError: 未配置模型
         """
-        if self._model_config_service:
-            # 如果没有指定模型，获取用户配置的默认
-            if not llm_model:
-                llm_model = await self._model_config_service.get_user_default_model_name(user_id, "llm")
-
-            if llm_model:
-                return await self._model_config_service.get_llm_client_by_model(
-                    user_id, llm_model
-                )
-
-        raise ResearchFailedError("", "未配置 LLM 模型，请在模型配置中添加")
+        if not self._model_config_service:
+            raise ResearchFailedError("", "未配置 LLM 模型，请在模型配置中添加")
+        try:
+            return await self._model_config_service.resolve_llm_client(
+                user_id, llm_model or None
+            )
+        except ModelConfigNotFoundError as e:
+            raise ResearchFailedError("", str(e)) from e
 
     async def list_researches(
         self,

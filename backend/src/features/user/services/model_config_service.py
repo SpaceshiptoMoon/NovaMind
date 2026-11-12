@@ -613,6 +613,52 @@ class ModelConfigService:
             ),
         )
 
+    async def resolve_llm_with_model(
+        self,
+        user_id: int,
+        model: str | None = None,
+    ) -> tuple[BaseLLM, str]:
+        """按指定模型或用户默认模型解析 LLM 客户端，返回 (客户端, 实际模型名)。
+
+        跨 feature 曾各自复制「默认名解析 + 按名构造」两步（5 处 `_get_llm_client`
+        薄壳 + ko 变体 1 处），仅异常翻译不同——统一收口到此；软失败语义由调用方
+        try/except 决定。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名；None 用该用户 llm 类型下的第一个配置（用户默认）。
+
+        Returns:
+            (LLM 客户端, 实际使用的模型名)。
+
+        Raises:
+            ModelConfigNotFoundError: 指定模型与用户默认模型均未配置。
+        """
+        if not model:
+            model = await self.get_user_default_model_name(user_id, "llm")
+        if not model:
+            raise ModelConfigNotFoundError(
+                message=f"用户 {user_id} 未配置可用的 LLM 模型（指定模型与默认模型均未找到）"
+            )
+        client = await self.get_llm_client_by_model(user_id, model)
+        return client, model
+
+    async def resolve_llm_client(self, user_id: int, model: str | None = None) -> BaseLLM:
+        """按指定模型或用户默认模型解析 LLM 客户端（不回传模型名的简版）。
+
+        Args:
+            user_id: 归属用户 ID。
+            model: 模型名；None 用用户默认模型。
+
+        Returns:
+            LLM 客户端实例。
+
+        Raises:
+            ModelConfigNotFoundError: 指定模型与用户默认模型均未配置。
+        """
+        client, _ = await self.resolve_llm_with_model(user_id, model)
+        return client
+
     async def get_vlm_client_by_model(
         self,
         user_id: int,

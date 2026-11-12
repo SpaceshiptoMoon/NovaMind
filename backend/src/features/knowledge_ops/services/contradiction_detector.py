@@ -140,14 +140,14 @@ async def detect_contradictions(
 
 
 async def _resolve_llm(session: AsyncSession, user_id: int):
-    """解析用户默认 LLM 客户端（公共面）。"""
+    """解析用户默认 LLM 客户端（委托 ModelConfigService 统一入口）。"""
+    from novamind.features.user.exceptions import ModelConfigNotFoundError
     from novamind.features.user.services.model_config_service import ModelConfigService
 
-    mcs = ModelConfigService(session)
-    model_name = await mcs.get_user_default_model_name(user_id, "llm")
-    if not model_name:
-        raise RuntimeError(f"用户 {user_id} 未配置默认 LLM 模型")
-    return await mcs.get_llm_client_by_model(user_id=user_id, model=model_name)
+    try:
+        return await ModelConfigService(session).resolve_llm_client(user_id)
+    except ModelConfigNotFoundError as e:
+        raise RuntimeError(f"用户 {user_id} 未配置默认 LLM 模型：{e}") from e
 
 
 async def _llm_check_contradiction(llm_client, text_a: str, text_b: str) -> str | None:

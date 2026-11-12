@@ -1702,12 +1702,8 @@ class EvaluationService:
         """
         mcs = model_config_service or self.model_config_service
         try:
-            if not model:
-                model = await mcs.get_user_default_model_name(user_id, "llm")
-            if model:
-                client = await mcs.get_llm_client_by_model(user_id, model)
-                return (client, model)
-            return (None, None)
+            client, resolved = await mcs.resolve_llm_with_model(user_id, model or None)
+            return (client, resolved)
         except Exception as e:
             logger.warning("获取 LLM 客户端失败", error=str(e))
             return (None, None)

@@ -894,21 +894,11 @@ class SkillMarketplaceService:
     # ==================== 内部方法 ====================
 
     async def _get_llm_client(self, user_id: int, model_name: str | None = None) -> BaseLLM | None:
-        """获取用户的 LLM 客户端（用于 AI 搜索）
-
-        优先使用指定模型，否则使用用户默认模型
-        """
+        """获取用户的 LLM 客户端（用于 AI 搜索；失败返回 None 软降级）"""
         if not self.model_config_service:
             return None
-        if not model_name:
-            try:
-                model_name = await self.model_config_service.get_user_default_model_name(user_id, "llm")
-            except Exception:
-                model_name = None
-        if not model_name:
-            return None
         try:
-            return await self.model_config_service.get_llm_client_by_model(user_id, model_name)
+            return await self.model_config_service.resolve_llm_client(user_id, model_name or None)
         except Exception as e:
             logger.warning("获取 LLM 客户端失败", error=str(e))
             return None

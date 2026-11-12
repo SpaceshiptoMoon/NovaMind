@@ -27,6 +27,7 @@ from novamind.features.knowledge_space.exceptions import (
     SearchError,
     SpaceAccessDeniedError,
 )
+from novamind.features.user.exceptions import ModelConfigNotFoundError
 from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
@@ -181,30 +182,24 @@ class SearchService:
         user_id: int,
         model: str
     ) -> BaseLLM:
-        """
-        获取 LLM 客户端
-
-        通过 ModelConfigService 从数据库解析凭证
+        """获取 LLM 客户端（委托 ModelConfigService 统一解析）。
 
         Args:
             user_id: 用户 ID
-            model: 模型名称
+            model: 模型名称，空值回退用户默认模型
 
         Returns:
             LLM 客户端
 
         Raises:
-            SearchError: 未找到模型配置
+            SearchError: 模型配置缺失或本服务未装配配置服务
         """
-        if not model and self.model_config_service:
-            model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
-
-        if self.model_config_service and model:
-            return await self.model_config_service.get_llm_client_by_model(
-                user_id, model
-            )
-
-        raise SearchError("未配置 LLM 模型，请在模型配置中添加")
+        if not self.model_config_service:
+            raise SearchError("未配置 LLM 模型，请在模型配置中添加")
+        try:
+            return await self.model_config_service.resolve_llm_client(user_id, model or None)
+        except ModelConfigNotFoundError as e:
+            raise SearchError(str(e)) from e
 
     async def _generate_llm_answer(
         self,
