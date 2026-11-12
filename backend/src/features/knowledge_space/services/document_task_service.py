@@ -212,7 +212,8 @@ class DocumentTaskService:
 
         Args:
             kb_id: 知识库 ID
-            document_ids: 文档 ID 列表，为空则处理全部 UPLOADED 文档
+            document_ids: 文档 ID 列表，为空则处理全部未处理文档
+                （无任务或最新任务排队中的文档；COMPLETED 走专门重试端点，不在此列）
 
         Returns:
             批量处理结果
@@ -221,7 +222,18 @@ class DocumentTaskService:
 
         documents: list[Document] = []
         if not document_ids:
-            documents = await self.doc_repo.get_by_kb(kb_id)
+            # 契约语义 = 全部未处理文档：滤最新任务 PENDING（覆盖「从无任务」），
+            # 不把 COMPLETED 卷进来误触发 REPROCESS；分页取全量防默认 limit 截断。
+            page_size = 200
+            skip = 0
+            while True:
+                page = await self.doc_repo.get_by_kb(
+                    kb_id, skip=skip, limit=page_size, status=int(TaskStatus.PENDING)
+                )
+                documents.extend(page)
+                if len(page) < page_size:
+                    break
+                skip += page_size
             document_ids = [doc.id for doc in documents]
         else:
             document_ids = list(dict.fromkeys(document_ids))
