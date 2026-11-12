@@ -288,28 +288,37 @@ async def _replay_search(
     Returns:
         合并去重排序后的来源列表（含 document_id/lifecycle 元数据）。
     """
-    from novamind.features.knowledge_space.api.dependencies import (
-        get_elasticsearch_client,
-    )
     from novamind.features.knowledge_space.models.knowledge_base import (
+        KnowledgeBase,
         KnowledgeBaseStatus,
-    )
-    from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-        KnowledgeBaseRepository,
     )
     from novamind.features.knowledge_space.schemas.search_schema import (
         SearchRequest,
         WeightConfig,
     )
-    from novamind.features.knowledge_space.services.search_service import SearchService
-    from novamind.features.user.services.model_config_service import ModelConfigService
+    from novamind.features.knowledge_space.services.search_factory import (
+        build_search_service,
+    )
+    from novamind.shared.storage.client_factory import get_elasticsearch_client
+    from sqlalchemy import select
 
-    kb_repo = KnowledgeBaseRepository(db)
     if not kb_ids:
         # 默认回退列表只取活跃库（与主链路 _retrieve_knowledge 一致）——
         # 归档库不参与召回；显式指定归档 kb_id 的由 SearchService 拦截。
-        kbs = await kb_repo.get_by_space(space_id, status=KnowledgeBaseStatus.ACTIVE)
-        kb_ids = [kb.id for kb in kbs[:3]]
+        # models 直查（R2）：替代 import 对方 repository，查询语义保持一致
+        # （deleted_at 未删 + ACTIVE + created_at 倒序）。
+        result = await db.execute(
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.space_id == space_id,
+                KnowledgeBase.deleted_at.is_(None),
+                KnowledgeBase.status == KnowledgeBaseStatus.ACTIVE,
+            )
+            .order_by(KnowledgeBase.created_at.desc())
+            .limit(3)
+        )
+        kbs = list(result.scalars().all())
+        kb_ids = [kb.id for kb in kbs]
     if not kb_ids:
         return []
 
@@ -321,11 +330,12 @@ async def _replay_search(
         weights=WeightConfig(vector_weight=0.7, bm25_weight=0.3),
     )
 
+    # 后台归因重放：非用户交互场景不进运营账本（instrumented=False）
     es_client = await get_elasticsearch_client()
-    search_service = SearchService(
-        session=db,
+    search_service = await build_search_service(
+        db,
         es_client=es_client,
-        model_config_service=ModelConfigService(db),
+        instrumented=False,
     )
 
     all_results: list[dict[str, Any]] = []

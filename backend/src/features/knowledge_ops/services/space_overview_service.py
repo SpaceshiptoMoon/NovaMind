@@ -39,7 +39,9 @@ class SpaceOverviewService:
         from novamind.features.knowledge_ops.repository.space_overview_repository import (
             SpaceOverviewRepository,
         )
-        from novamind.features.knowledge_ops.tasks.review_reminder import load_review_config
+        from novamind.features.knowledge_space.services.document_review_service import (
+            load_review_config,
+        )
 
         repo = SpaceOverviewRepository(self._db)
         advance_days = load_review_config()["advance_days"]

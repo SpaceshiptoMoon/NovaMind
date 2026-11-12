@@ -256,7 +256,8 @@ async def _async_noop(*args, **kwargs):
 
 def test_compute_next_review_at_fallback():
     """周期顺延：有周期用周期，无周期回退默认 90 天。"""
-    from novamind.features.knowledge_ops.tasks.review_reminder import (
+    # 2026-11-12 迁移：纯函数归 ks document_review_service（文档域行为）
+    from novamind.features.knowledge_space.services.document_review_service import (
         compute_next_review_at,
     )
 

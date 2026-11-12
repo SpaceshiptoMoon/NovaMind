@@ -6,45 +6,19 @@
 
 失败方向安全：扫描/通知任何失败仅记日志；「确认复审」重算 next_review_at，
 不设周期（review_cycle_days 为空）的文档确认后默认顺延 90 天。
+
+复审参数与顺延计算（load_review_config/compute_next_review_at）2026-11-12
+迁往 ks document_review_service（文档域行为归 ks），本 cron 反向 import 其公共面。
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-# 默认参数（YAML knowledge_ops.review_* 可覆盖）
-DEFAULT_ADVANCE_DAYS = 7        # 提前提醒量
-DEFAULT_FALLBACK_CYCLE_DAYS = 90  # 无 review_cycle_days 的文档确认复审后的顺延周期
-
 REVIEW_REMINDER_TYPE = "kb_review_due"  # 与 NotificationType.KB_REVIEW_DUE 同值
-
-
-def load_review_config() -> dict:
-    """读复审提醒参数（YAML 可配，异常回退默认值）。公共面：跨 feature 确认复审端点复用。"""
-    defaults = {
-        "advance_days": DEFAULT_ADVANCE_DAYS,
-        "fallback_cycle_days": DEFAULT_FALLBACK_CYCLE_DAYS,
-    }
-    try:
-        from novamind.setting.yaml_config import get_config
-
-        ko = get_config().knowledge_ops
-        defaults["advance_days"] = int(ko.review_advance_days)
-        defaults["fallback_cycle_days"] = int(ko.review_fallback_cycle_days)
-    except Exception as e:
-        logger.warning("复审提醒配置读取失败，使用默认值", error=str(e))
-    return defaults
-
-
-def compute_next_review_at(
-    review_cycle_days: int | None, fallback_cycle_days: int, base: datetime | None = None
-) -> datetime:
-    """计算下次复审时间：文档周期优先，空则回退默认周期。"""
-    days = review_cycle_days or fallback_cycle_days
-    return (base or datetime.now()) + timedelta(days=days)
 
 
 async def send_review_reminders(ctx: dict | None = None) -> dict[str, int]:
@@ -59,6 +33,9 @@ async def send_review_reminders(ctx: dict | None = None) -> dict[str, int]:
     from novamind.features.knowledge_space.models.document import (
         Document,
         DocumentLifecycleStatus,
+    )
+    from novamind.features.knowledge_space.services.document_review_service import (
+        load_review_config,
     )
     from sqlalchemy import and_, select
 

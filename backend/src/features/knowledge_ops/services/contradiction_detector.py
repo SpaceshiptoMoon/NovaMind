@@ -57,9 +57,7 @@ async def detect_contradictions(
         SUGGESTION_CONTRADICTION,
         SuggestionRepository,
     )
-    from novamind.features.knowledge_space.api.dependencies import (
-        get_elasticsearch_client,
-    )
+    from novamind.shared.storage.client_factory import get_elasticsearch_client
 
     es_client = await get_elasticsearch_client()
     index_name = es_client.generate_index_name(space_id)
