@@ -26,7 +26,7 @@ from novamind.shared.ai_models.llm.quirks import is_stream_only_error, resolve_q
 _PROBE_MAX_TOKENS = 512
 
 
-async def _probe_llm_stream(client: BaseLLM) -> str:
+async def probe_llm_stream(client: BaseLLM) -> str:
     """用流式调用探测 LLM 连通性，返回收到的内容（可为空串）。
 
     Args:
@@ -85,7 +85,7 @@ async def probe_llm_connection(
     try:
         if quirks.stream_only:
             # 声明命中：直接流式探针，收到任意内容块即视为可达
-            content = await _probe_llm_stream(client)
+            content = await probe_llm_stream(client)
         elif quirks.force_thinking:
             content = await client.generate_text(
                 prompt="Hello", max_tokens=_PROBE_MAX_TOKENS, temperature=0.1,
@@ -104,7 +104,7 @@ async def probe_llm_connection(
             )
         elif is_stream_only_error(error_msg):
             # reactive 兜底：声明漏了 stream-only 时的运行时回退
-            content = await _probe_llm_stream(client)
+            content = await probe_llm_stream(client)
         else:
             # 统一错误翻译：403/404 等得到中文人话（未开通/模型不存在/额度耗尽）
             raise translate_provider_error(e, model=model) from e
@@ -117,4 +117,4 @@ async def probe_llm_connection(
         )
 
 
-__all__ = ["probe_llm_connection"]
+__all__ = ["probe_llm_connection", "probe_llm_stream"]

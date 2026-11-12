@@ -18044,6 +18044,55 @@
         ]
       }
     },
+    "/api/v1/agent/sessions/{session_id}/turn-state": {
+      "get": {
+        "description": "断连后台续跑恢复用：返回 running_turn（后台运行中）与 pending_approval（待审批请求）。",
+        "operationId": "get_session_turn_state_api_v1_agent_sessions__session_id__turn_state_get",
+        "parameters": [
+          {
+            "description": "会话ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话ID",
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "查询会话轮次状态",
+        "tags": [
+          "Agent 智能体"
+        ]
+      }
+    },
     "/api/v1/agent/sessions/{session_id}/workspace": {
       "put": {
         "description": "本地文件夹模式开关：绑定后 read/glob/grep/bash 工具默认必带（以 root 为工作区根执行）；传 null 解绑恢复云端 agent 模式",

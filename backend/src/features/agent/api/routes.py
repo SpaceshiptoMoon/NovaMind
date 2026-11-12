@@ -151,7 +151,7 @@ async def consume_agent_stream(
                 break
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=0.5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             if event is None:
                 break  # 流自然结束

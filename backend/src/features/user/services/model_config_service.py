@@ -38,15 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = get_logger(__name__)
 
 # 兼容再导出（2026-11-12 探针下沉 shared/ai_models/connection_testers/llm.py）：
-# 权威归属在 shared，既有测试与外部调用方仍从本模块 import（保留导入面不变）。
-from novamind.shared.ai_models.connection_testers.llm import (  # noqa: E402
-    _probe_llm_stream,
-)
+# stream-only 判据的权威归属在 shared/ai_models/llm/quirks.py，既有测试仍从
+# 本模块 import（保留导入面不变；判据本身已是 shared 公共名，无私有成员跨界）。
 from novamind.shared.ai_models.llm.quirks import (  # noqa: E402
     is_stream_only_error,
 )
 
-__all__ = ["ModelConfigService", "_probe_llm_stream", "is_stream_only_error"]
+__all__ = ["ModelConfigService", "is_stream_only_error"]
 
 
 # ---------------------------------------------------------------------------

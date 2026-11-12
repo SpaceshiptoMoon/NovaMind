@@ -1,10 +1,8 @@
 """LLM 连接测试的 stream-only 回退：仅支持流式的模型不再被非流式探针误判为连接失败。"""
 import pytest
 from novamind.features.user.schemas.model_config_schema import ModelTestRequest
-from novamind.features.user.services.model_config_service import (
-    _probe_llm_stream,
-    is_stream_only_error,
-)
+from novamind.shared.ai_models.connection_testers.llm import probe_llm_stream
+from novamind.shared.ai_models.llm.quirks import is_stream_only_error
 
 # ========== is_stream_only_error 判据（正反两用） ==========
 
@@ -160,7 +158,7 @@ async def test_test_llm_non_stream_error_still_raises(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_probe_llm_stream_returns_joined_content():
+async def testprobe_llm_stream_returns_joined_content():
     """流式探针把内容块拼接为完整字符串。"""
 
     async def _gen():
@@ -168,4 +166,4 @@ async def test_probe_llm_stream_returns_joined_content():
         yield "B"
 
     client = type("_C", (), {"generate_text_stream": staticmethod(lambda **kw: _gen())})()
-    assert await _probe_llm_stream(client) == "AB"
+    assert await probe_llm_stream(client) == "AB"
