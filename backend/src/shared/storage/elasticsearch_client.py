@@ -447,7 +447,25 @@ class ElasticsearchClient:
         try:
             result = await self.es_client.search(
                 index=index_name,
-                query={"term": {self._schema.field_names.document_id: document_id}},
+                # ES 9.2+ 默认 exclude_source_vectors，向量不随 _source 返回——
+                # 用命名子句打标（minimum_should_match=0 不影响召回与排序），
+                # 由 matched_queries 判定是否已向量化，版本无关。
+                query={
+                    "bool": {
+                        "filter": [
+                            {"term": {self._schema.field_names.document_id: document_id}}
+                        ],
+                        "should": [
+                            {
+                                "exists": {
+                                    "field": self._schema.field_names.embedding,
+                                    "_name": "has_vec",
+                                }
+                            }
+                        ],
+                        "minimum_should_match": 0,
+                    }
+                },
                 from_=skip,
                 size=limit,
                 sort=[{self._schema.field_names.chunk_index: {"order": "asc"}}],
@@ -460,7 +478,14 @@ class ElasticsearchClient:
             else:
                 total_value = int(total_obj or 0)
             items = [
-                {"chunk_id": hit["_id"], "score": hit["_score"], **hit["_source"]}
+                {
+                    "chunk_id": hit["_id"],
+                    "score": hit["_score"],
+                    # 该键先于 _source 展开：9.2+ 打标结果优先，_source 若含 embedding
+                    # （8.x）也只是附带透传，不再作为判定依据。
+                    "has_embedding": "has_vec" in hit.get("matched_queries", []),
+                    **hit["_source"],
+                }
                 for hit in hits.get("hits", [])
             ]
             return {"items": items, "total": total_value}

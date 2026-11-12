@@ -144,7 +144,9 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
         chunk_index=c.get("chunk_index", 0),
         content=c.get("content", ""),
         score=c.get("score"),
-        has_embedding=c.get("embedding") is not None,
+        # ES 9.2+ 向量不随 _source 返回，has_embedding 由查询侧命名子句打标；
+        # 缺省时（8.x 旧路径）回退 _source 直读判定。
+        has_embedding=c.get("has_embedding", c.get("embedding") is not None),
         metadata=c.get("metadata"),
         file_info=c.get("file_info"),
         questions=c.get("questions"),
