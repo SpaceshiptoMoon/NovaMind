@@ -107,6 +107,8 @@ class PromptTemplate(Enum):
     AGENT_LONG_TERM_MEMORY = "agent_long_term_memory"
     # 群聊身份段（features/agent/agent_prompts.py，GroupOrchestrator 注入成员 system）
     AGENT_GROUP_IDENTITY = "agent_group_identity"
+    # 对话追问建议（features/agent/agent_prompts.py，每轮回答后生成 follow-up pills）
+    AGENT_FOLLOWUP_SUGGESTIONS = "agent_followup_suggestions"
 
     # ==================== Agent 引擎层（engines/agent/prompts.py） ====================
     AGENT_ENGINE_STRUCTURED_SUMMARY = "agent_engine_structured_summary"
