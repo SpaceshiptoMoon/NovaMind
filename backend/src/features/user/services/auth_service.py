@@ -22,10 +22,19 @@ from novamind.core.auth.blacklist import (
     AuthBlacklistError,
 )
 from novamind.core.auth.blacklist import (
+    get_token_family_current_jti as _core_family_current_jti,
+)
+from novamind.core.auth.blacklist import (
+    is_token_family_revoked as _core_is_family_revoked,
+)
+from novamind.core.auth.blacklist import (
     is_token_revoked as _core_is_token_revoked,
 )
 from novamind.core.auth.blacklist import (
     is_user_blacklisted as _core_is_user_blacklisted,
+)
+from novamind.core.auth.blacklist import (
+    mark_token_family_revoked as _core_mark_family_revoked,
 )
 
 # 认证原语下沉 core/auth：JWT 解码与黑名单查询是横切基础设施，user/AuthService
@@ -154,6 +163,7 @@ class AuthService:
         email: str | None = None,
         role_code: str | None = None,
         expires_days: int = 7,
+        fam: str | None = None,
     ) -> str:
         """
         创建刷新令牌
@@ -164,6 +174,8 @@ class AuthService:
             email: 邮箱（可选，用于刷新时减少 DB 查询）
             role_code: 角色编码（可选，用于刷新时减少 DB 查询）
             expires_days: 过期天数（默认7天）
+            fam: token family 标识（轮换链追踪）；None 生成新 family
+                （登录场景），轮换场景透传旧 fam
 
         Returns:
             str: Refresh token
@@ -172,6 +184,7 @@ class AuthService:
 
         # 生成唯一标识符
         jti = secrets.token_urlsafe(32)
+        fam = fam or secrets.token_urlsafe(16)
 
         to_encode = {
             "sub": username,
@@ -180,6 +193,7 @@ class AuthService:
             "role_code": role_code,
             "type": cls.TOKEN_TYPE_REFRESH,
             "jti": jti,  # 用于黑名单
+            "fam": fam,  # 轮换链标识（复用连坐检测）
         }
 
         expire = now_china() + timedelta(days=expires_days)
@@ -198,6 +212,14 @@ class AuthService:
             await cls._add_user_token(user_id, jti, expires_days * 24 * 60 * 60)
         except TokenInvalidError as e:
             cls._logger.warning("刷新令牌未记录到用户 token 列表", user_id=user_id, error=str(e))
+
+        # 登记 family 当前有效 jti（复用连坐检测用）；失败不影响签发
+        try:
+            from novamind.core.auth.blacklist import set_token_family_current_jti
+
+            await set_token_family_current_jti(fam, jti, expires_days * 24 * 60 * 60)
+        except Exception as e:
+            cls._logger.warning("token family 登记失败（不影响签发）", error=str(e))
 
         return encoded_jwt
 
@@ -235,6 +257,7 @@ class AuthService:
             username=username,
             email=email,
             role_code=role_code,
+            fam=secrets.token_urlsafe(16),  # 登录签发新 family
         )
         return access_token, refresh_token
 
@@ -265,11 +288,27 @@ class AuthService:
             cls._logger.warning("Token 类型错误，需要 refresh token")
             return None
 
-        # 检查是否在黑名单中
+        # 检查是否在黑名单中 + token family 复用检测
         jti = payload.get("jti")
+        fam = payload.get("fam")  # 存量 token 无 fam 时走现状逻辑（平滑过渡）
         if jti and await cls.is_token_revoked(jti):
+            # 已轮换掉的 token 再次出现 = 被盗或重放 → 连坐撤销整条轮换链
+            # （只拒本次请求挡不住盗贼手里更新的那枚 token）
+            if fam:
+                await cls._revoke_token_family(fam, reason="rotated-jti-reuse")
             cls._logger.warning("Refresh token 已被撤销")
             return None
+        if fam:
+            if await _core_is_family_revoked(fam):
+                await cls._revoke_token_family(fam, reason="family-revoked")  # 幂等
+                cls._logger.warning("Token family 已被连坐撤销")
+                return None
+            family_current = await _core_family_current_jti(fam)
+            if family_current and family_current != jti:
+                # 非当前轮换 token（黑名单条目过期后的兜底复用检测）
+                await cls._revoke_token_family(fam, reason="family-jti-mismatch")
+                cls._logger.warning("Refresh token 与 family 当前轮换不一致，连坐撤销")
+                return None
 
         # 获取用户信息
         user_id = payload.get("user_id")
@@ -321,6 +360,7 @@ class AuthService:
         new_refresh_token = await cls.create_refresh_token(
             user_id=user_id,
             username=username,
+            fam=fam,  # 轮换透传 family（None=存量 token 无 fam，平滑过渡）
         )
 
         return new_access_token, new_refresh_token, user_id
@@ -420,9 +460,38 @@ class AuthService:
             raise TokenInvalidError(f"检查 Token 黑名单失败: {str(e)}") from e
 
     @classmethod
+    async def _revoke_token_family(cls, fam: str, *, reason: str) -> None:
+        """连坐撤销整条 token family（幂等）：拉黑 family 当前 jti + 标记 family 作废。
+
+        复用检测（已轮换 token 再现）/显式登出时调用。写失败不阻断拒绝语义
+        （触发场景下该 jti 自身已/将在黑名单），记错误便于排查。
+
+        Args:
+            fam: token family 标识。
+            reason: 连坐原因（复用检测 family-jti-mismatch / logout 等，进日志）。
+        """
+        if not fam:
+            return
+        try:
+            current = await _core_family_current_jti(fam)
+            if current:
+                await cls.revoke_token(current)
+            await _core_mark_family_revoked(fam, cls.BLACKLIST_DEFAULT_TTL)
+            cls._logger.warning(
+                "Token family 已连坐撤销", reason=reason, fam=fam[:8] + "..."
+            )
+        except Exception as e:
+            cls._logger.error(
+                "Token family 连坐撤销失败", reason=reason, fam=fam[:8] + "...", error=str(e)
+            )
+
+    @classmethod
     async def logout(cls, token: str) -> bool:
         """
         用户登出，撤销 token
+
+        refresh token 登出时连坐撤销整条轮换链（family）：rotation 意味着客户端
+        只持最新一枚，杀链可让被偷的旧/新副本都无法再换新 token。
 
         Args:
             token: Access token 或 Refresh token
@@ -437,6 +506,11 @@ class AuthService:
         jti = payload.get("jti")
         if jti:
             await cls.revoke_token(jti)
+
+        if payload.get("type") == cls.TOKEN_TYPE_REFRESH:
+            fam = payload.get("fam")
+            if fam:
+                await cls._revoke_token_family(fam, reason="logout")
 
         return True
 

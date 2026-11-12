@@ -17,6 +17,8 @@ logger = get_logger(__name__)
 TOKEN_BLACKLIST_PREFIX = "token_blacklist:"
 USER_TOKENS_PREFIX = "user_tokens:"
 USER_BLACKLIST_PREFIX = "user_blacklist:"
+TOKEN_FAMILY_PREFIX = "token_family:"            # fam -> 当前有效 jti
+TOKEN_FAMILY_REVOKED_PREFIX = "token_family_revoked:"  # fam -> "1"（连坐/登出杀链）
 
 # 黑名单默认过期时间（7 天，与 Refresh Token 一致）
 BLACKLIST_DEFAULT_TTL = 7 * 24 * 60 * 60
@@ -102,13 +104,68 @@ async def is_user_blacklisted(user_id: int, token_iat: int | None = None) -> boo
         return True
 
 
+# ===== Token family（refresh token 轮换链追踪，2026-11-12）=====
+# family 读写是「增强防御」层：jti 级黑名单（TOKEN_BLACKLIST_PREFIX）仍是
+# fail-close 主防线；family 键读失败按缺失处理（走现状逻辑）、写失败由调用方
+# 记日志放行——Redis 掉线不阻断正常刷新，只在「复用已轮换 token」时失去连坐能力。
+
+
+async def get_token_family_current_jti(fam: str) -> str | None:
+    """读 token family 当前有效 jti；键不存在或 Redis 异常返回 None（fail-open）。"""
+    if not fam:
+        return None
+    try:
+        redis_client = await _raw_redis()
+        result = await redis_client.get(f"{TOKEN_FAMILY_PREFIX}{fam}")
+        if result is None:
+            return None
+        return result.decode("utf-8") if isinstance(result, bytes) else str(result)
+    except Exception as e:
+        logger.warning("读 token family 当前 jti 失败（按缺失处理）", error=str(e))
+        return None
+
+
+async def set_token_family_current_jti(fam: str, jti: str, ttl: int) -> None:
+    """登记/轮换 family 当前有效 jti（TTL 对齐 refresh 有效期）。失败由调用方记日志。"""
+    if not fam or not jti:
+        return
+    redis_client = await _raw_redis()
+    await redis_client.setex(f"{TOKEN_FAMILY_PREFIX}{fam}", ttl, jti)
+
+
+async def mark_token_family_revoked(fam: str, ttl: int) -> None:
+    """标记 family 作废（复用连坐/登出杀链）；幂等。失败由调用方记日志。"""
+    if not fam:
+        return
+    redis_client = await _raw_redis()
+    await redis_client.setex(f"{TOKEN_FAMILY_REVOKED_PREFIX}{fam}", ttl, "1")
+
+
+async def is_token_family_revoked(fam: str) -> bool:
+    """检查 family 是否已被连坐撤销；Redis 异常按未撤销（jti 黑名单仍是主防线）。"""
+    if not fam:
+        return False
+    try:
+        redis_client = await _raw_redis()
+        return await redis_client.exists(f"{TOKEN_FAMILY_REVOKED_PREFIX}{fam}") > 0
+    except Exception as e:
+        logger.warning("检查 token family 撤销态失败（按未撤销处理）", error=str(e))
+        return False
+
+
 __all__ = [
     "TOKEN_BLACKLIST_PREFIX",
     "USER_TOKENS_PREFIX",
     "USER_BLACKLIST_PREFIX",
+    "TOKEN_FAMILY_PREFIX",
+    "TOKEN_FAMILY_REVOKED_PREFIX",
     "BLACKLIST_DEFAULT_TTL",
     "AuthBlacklistError",
     "get_raw_redis",
     "is_token_revoked",
     "is_user_blacklisted",
+    "get_token_family_current_jti",
+    "set_token_family_current_jti",
+    "mark_token_family_revoked",
+    "is_token_family_revoked",
 ]
