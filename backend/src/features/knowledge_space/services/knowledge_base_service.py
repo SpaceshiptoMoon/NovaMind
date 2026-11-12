@@ -31,6 +31,30 @@ from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+# KB 配置里的 LLM 类模型字段 → (schema 路径, 凭证类型, 业务标签, 是否受功能开关门控)。
+# ASR 模型不在列（连通性探针不同族，走 asr connection tester，另行评估）。
+_KB_LLM_MODEL_PATHS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+    (("wiki", "llm", "model"), "llm", "Wiki 生成", True),
+    (("question_generation", "llm", "model"), "llm", "假设问题生成", True),
+    (("parsing", "image", "vlm_model"), "vlm", "图片 VLM 描述", False),
+    (("parsing", "video", "vlm_model"), "vlm", "视频 VLM 描述", False),
+    (("parsing", "video", "steps_llm_model"), "llm", "视频分镜", False),
+    (("parsing", "video", "narrative_llm_model"), "llm", "视频解说", False),
+    (("parsing", "audio", "clean_llm_model"), "llm", "音频清洗", False),
+)
+# 单模型试调上限（秒）：预检是保存路径上的同步等待，超时即按失败拒绝
+_KB_PROBE_TIMEOUT_SECONDS = 8
+
+
+def _get_config_nested(config: dict | None, path: tuple[str, ...]):
+    """按字段路径取嵌套配置值；任一层缺失返回 None。"""
+    cur: Any = config
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
 
 def get_effective_space_types(kb_config: dict | None = None) -> list[str]:
     """
@@ -534,12 +558,85 @@ class KnowledgeBaseService:
         # 3. 深度合并
         merged_config = self._deep_merge(current_config, config_updates)
 
+        # 3.5 LLM 模型连通性预检（仅本次变更且启用中的字段，按创建者凭证解析——
+        # 与 wiki_tasks 运行时同口径）。失败拒绝保存，把「模型名在所选 Base URL
+        # 下不存在」这类配置错误从运行时提前到保存时。
+        await self._probe_changed_llm_models(kb, current_config, merged_config)
+
         # 4. 保存
         kb.config = merged_config
         flag_modified(kb, "config")
         await self.session.commit()
 
         return {"message": "配置更新成功，新配置将在下次拆分解析时生效"}
+
+    async def _probe_changed_llm_models(
+        self,
+        kb: KnowledgeBase,
+        current_config: dict[str, Any],
+        merged_config: dict[str, Any],
+    ) -> None:
+        """对本次变更且启用中的 LLM 类模型字段做连通性预检（失败抛 InvalidParameterError）。
+
+        只触发「值有变化」的字段（用户刚改的才值得验），不阻塞未触碰字段；
+        wiki/假设问题生成还要求对应功能启用。按 ``kb.creator_id`` 解析凭证：
+        模型配置按用户隔离，编辑者≠创建者时「编辑者下拉里选的模型」在创建者
+        凭证下可能不存在——这正是 wiki 生成 404 Model not exist 的主要根因。
+        """
+        import asyncio
+
+        from novamind.shared.ai_models.connection_testers.llm import probe_llm_connection
+
+        probes: list[tuple[str, str, str]] = []  # (label, model, model_type)
+        seen: set[tuple[str, str]] = set()
+        for path, model_type, label, gated in _KB_LLM_MODEL_PATHS:
+            new = _get_config_nested(merged_config, path)
+            if not new or new == _get_config_nested(current_config, path):
+                continue
+            if gated:
+                section = merged_config.get(path[0])
+                if not isinstance(section, dict) or not section.get("enabled"):
+                    continue
+            key = (model_type, new)
+            if key not in seen:
+                seen.add(key)
+                probes.append((label, new, model_type))
+
+        if not probes:
+            return
+
+        mcs = ModelConfigService(self.session)
+
+        async def _probe_one(label: str, model: str, model_type: str) -> None:
+            cred = await mcs.get_credentials_by_model(kb.creator_id, model_type, model)
+            if cred is None:
+                raise InvalidParameterError(
+                    f"{label}模型「{model}」未在创建者（用户 {kb.creator_id}）的"
+                    f"{model_type} 模型配置中找到——生成任务按创建者凭证解析，"
+                    "请用创建者账号配置该模型或改选其他模型"
+                )
+            try:
+                async with asyncio.timeout(_KB_PROBE_TIMEOUT_SECONDS):
+                    await probe_llm_connection(
+                        protocol=cred.protocol,
+                        api_key=cred.api_key or "",
+                        base_url=cred.base_url or "",
+                        model=cred.model,
+                        extra_config=cred.extra_config,
+                    )
+            except Exception as e:
+                raise InvalidParameterError(
+                    f"{label}模型「{model}」连通性预检失败"
+                    f"（Base URL: {cred.base_url or '默认'}）：{e}"
+                ) from e
+
+        results = await asyncio.gather(
+            *(_probe_one(label, model, model_type) for label, model, model_type in probes),
+            return_exceptions=True,
+        )
+        for r in results:
+            if isinstance(r, Exception):
+                raise r
 
     def _get_default_config(self) -> dict[str, Any]:
         """获取默认知识库配置（从 Schema 统一生成）"""

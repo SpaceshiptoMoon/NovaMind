@@ -25,7 +25,6 @@ from novamind.features.user.schemas.model_config_schema import (
     ModelTestResponse,
 )
 from novamind.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
-from novamind.shared.ai_models.errors import translate_provider_error
 from novamind.shared.ai_models.llm import BaseLLM, create_llm_client
 from novamind.shared.ai_models.llm.quirks import resolve_quirks
 from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
@@ -38,29 +37,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
-# 兼容别名：stream-only 判据的权威归属在 shared/ai_models/llm/quirks.py，
-# 既有测试与外部调用方仍从此处 import。
-from novamind.shared.ai_models.llm.quirks import is_stream_only_error  # noqa: E402
+# 兼容再导出（2026-11-12 探针下沉 shared/ai_models/connection_testers/llm.py）：
+# 权威归属在 shared，既有测试与外部调用方仍从本模块 import（保留导入面不变）。
+from novamind.shared.ai_models.connection_testers.llm import (  # noqa: E402
+    _probe_llm_stream,
+)
+from novamind.shared.ai_models.llm.quirks import (  # noqa: E402
+    is_stream_only_error,
+)
 
-
-async def _probe_llm_stream(client: BaseLLM) -> str:
-    """用流式调用探测 LLM 连通性，返回收到的内容（可为空串）。
-
-    Args:
-        client: 已构造的 LLM 客户端。
-
-    Returns:
-        流式响应拼接的内容；模型可达但 thinking 耗尽预算时为空串。
-
-    Raises:
-        Exception: 流式请求本身失败（鉴权/网络/参数错误）时原样抛出。
-    """
-    chunks: list[str] = []
-    async for chunk in client.generate_text_stream(
-        prompt="Hello", max_tokens=512, temperature=0.1
-    ):
-        chunks.append(chunk)
-    return "".join(chunks)
+__all__ = ["ModelConfigService", "_probe_llm_stream", "is_stream_only_error"]
 
 
 # ---------------------------------------------------------------------------
@@ -868,56 +854,24 @@ class ModelConfigService:
             raise ModelConfigTestFailedError(request.model_type, error_msg)
 
     async def _test_llm(self, request: ModelTestRequest) -> None:
-        """测试 LLM 连接（quirks 声明驱动探针梯子，reactive 回退兜底）。
+        """测试 LLM 连接（探针梯子下沉 shared/connection_testers，本方法做 schema 适配）。
 
-        探针梯子：声明 stream_only → 直接流式探针（免付必败的第一次 400）；
-        声明 force_thinking → 直带 enable_thinking=True；未声明 → 非流式探针，
-        失败后按错误特征 reactive 回退（thinking 强制 / stream-only）。
+        client_factory 传本模块级引用：既有探针测试 monkeypatch
+        ``model_config_service.create_llm_client`` 即可拦截客户端构造。
 
         Raises:
             ValueError: 请求失败或返回空内容（如 thinking 吃满输出预算）。
         """
-        quirks = resolve_quirks(request.base_url, request.model, request.extra_config)
-        client = create_llm_client(
+        from novamind.shared.ai_models.connection_testers.llm import probe_llm_connection
+
+        await probe_llm_connection(
             protocol=request.protocol,
             api_key=request.api_key,
             base_url=request.base_url or "",
-            model_name=request.model,
-            quirks=quirks,
+            model=request.model,
+            extra_config=request.extra_config,
+            client_factory=create_llm_client,
         )
-        # 探针预算放宽到 512：思考 token 计入 completion 预算（对齐 LiteLLM
-        # health_check_max_tokens_reasoning 的同类问题），10 会被思考吃满导致
-        # 正文恒空、连通性被误判为失败。
-        try:
-            if quirks.stream_only:
-                # 声明命中：直接流式探针，收到任意内容块即视为可达
-                content = await _probe_llm_stream(client)
-            elif quirks.force_thinking:
-                content = await client.generate_text(
-                    prompt="Hello", max_tokens=512, temperature=0.1, enable_thinking=True
-                )
-            else:
-                content = await client.generate_text(prompt="Hello", max_tokens=512, temperature=0.1)
-        except Exception as e:
-            error_msg = str(e)
-            if "enable_thinking" in error_msg.lower():
-                content = await client.generate_text(
-                    prompt="Hello", max_tokens=512, temperature=0.1, enable_thinking=True
-                )
-            elif is_stream_only_error(error_msg):
-                # reactive 兜底：声明漏了 stream-only 时的运行时回退
-                content = await _probe_llm_stream(client)
-            else:
-                # 统一错误翻译：403 等得到中文人话（未开通/已下线/额度耗尽），
-                # 再由 test_connection 包为 ModelConfigTestFailedError
-                raise translate_provider_error(e, model=request.model) from e
-        # 空 content 视为失败：thinking 强制模型可能把 max_tokens 全部耗在思考上
-        # （generate_text 只打 warning 返回空串），报成功会让用户带着坏配置上线
-        if not (content or "").strip():
-            raise ValueError(
-                "模型返回了空内容——可能启用了 thinking 且思考耗尽了输出预算，"
-                "请在扩展配置中调整或更换非思考模型"
-            )
 
     async def _test_embedding(self, request: ModelTestRequest) -> int:
         """测试 Embedding 连接，返回检测到的维度"""

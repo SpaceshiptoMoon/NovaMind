@@ -20,6 +20,7 @@ class FakeKnowledgeBase:
     def __init__(self, kb_id: int, config: dict):
         self.id = kb_id
         self.space_id = 1
+        self.creator_id = 1  # LLM 模型预检按创建者解析凭证（2026-11-12）
         self.config = config
 
     def get_config(self) -> dict:
@@ -106,6 +107,31 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
             "max_questions_per_chunk": 4,
         },
     }
+
+    # 本测 Intent 是深合并语义；updates 触碰 vlm_model（LLM 类字段）会触发
+    # 保存预检——打桩凭证与探针让两个 vlm 模型均通过（2026-11-12 预检上线）
+    from novamind.shared.ai_models.connection_testers import llm as probe_mod
+
+    cred = SimpleNamespace(
+        protocol="openai", api_key="sk-x",
+        base_url="https://p.example.com/v1", model="resolved", extra_config={},
+    )
+
+    class _FakeMCS:
+        def __init__(self, session):
+            pass
+
+        async def get_credentials_by_model(self, user_id, model_type, model):
+            return cred
+
+    async def _ok_probe(**kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.knowledge_base_service.ModelConfigService",
+        _FakeMCS,
+    )
+    monkeypatch.setattr(probe_mod, "probe_llm_connection", _ok_probe)
 
     result = _run(service.update_config(1, 99, updates))
 
