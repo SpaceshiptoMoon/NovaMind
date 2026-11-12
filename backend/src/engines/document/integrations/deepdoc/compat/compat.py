@@ -13,13 +13,18 @@ class SimpleTokenizer:
     def tokenize(self, text: str) -> str:
         """按中英文词边界粗分词，空格连接（上游 ragflow NltkTokenizer 的轻量替身）。
 
+        入口先全角转半角（对齐上游 RagTokenizer.tokenize 第一步 strQ2B）：
+        裸正则只匹配半角 ASCII 与 CJK，全角字符（ＡＢＣ１２３等）整体丢出
+        token 流——token 计数偏小使切分块超预算且 html 超大块切不开。
+        只转计量输入，不改存储文本。
+
         Args:
             text: 待分词文本。
 
         Returns:
             空格连接的词串。
         """
-        return " ".join(self._token_pattern.findall(text or ""))
+        return " ".join(self._token_pattern.findall(self.strQ2B(text or "")))
 
     def tag(self, token: str) -> str:
         """词性粗标（n 名词/nr 人名/en 英文/m 数词/x 其他），供上游命名体识别路径兼容。
