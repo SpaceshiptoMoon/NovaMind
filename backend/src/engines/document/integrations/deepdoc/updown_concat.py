@@ -385,12 +385,10 @@ class UpDownConcatMerger:
             # 同页合并按最终 bbox 重算跨度 tag（对齐 pdf.py _boxes_from_vendored_domain
             # 的合并后重算先例）：引用溯源高亮覆盖整段而非仅首行。启发式路径
             # 判据（_should_merge_heuristic）只同页合并，不存在跨页错位问题。
-            merged_tag = "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
-                int(current.page),
-                min(current.x0, box.x0),
-                max(current.x1, box.x1),
-                float(current.top),
-                float(box.bottom),
+            merged_tag = (
+                f"@@{int(current.page)}\t{min(current.x0, box.x0):.1f}\t"
+                f"{max(current.x1, box.x1):.1f}\t{float(current.top):.1f}\t"
+                f"{float(box.bottom):.1f}##"
             )
             current = box.__class__(
                 page=current.page,
@@ -518,11 +516,9 @@ class UpDownConcatMerger:
         if len(block) > 1:
             pages = {int(state["page_number"]) for state in block}
             if len(pages) == 1:
-                merged["position_tag"] = "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
-                    int(merged["page_number"]),
-                    float(merged["x0"]),
-                    float(merged["x1"]),
-                    float(merged["top"]),
-                    float(merged["bottom"]),
+                merged["position_tag"] = (
+                    f"@@{int(merged['page_number'])}\t{float(merged['x0']):.1f}\t"
+                    f"{float(merged['x1']):.1f}\t{float(merged['top']):.1f}\t"
+                    f"{float(merged['bottom']):.1f}##"
                 )
         return merged
