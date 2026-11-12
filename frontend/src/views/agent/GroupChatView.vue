@@ -19,7 +19,7 @@
             </div>
           </div>
           <div class="header-actions">
-            <button class="header-dissolve" title="协作设置" @click="settingsVisible = true">
+            <button class="header-config" title="协作设置" @click="settingsVisible = true">
               <el-icon :size="14"><Setting /></el-icon>
             </button>
             <button class="header-dissolve" title="解散群聊" @click="handleDissolve">
@@ -254,6 +254,8 @@ watch(groupId, (v, old) => {
   gap: var(--space-1);
 }
 
+/* 头部图标钮：中性底色，hover 反馈跟随语义——设置用中性色，解散才用危险色 */
+.header-config,
 .header-dissolve {
   display: flex;
   align-items: center;
@@ -267,6 +269,11 @@ watch(groupId, (v, old) => {
   cursor: pointer;
   flex-shrink: 0;
   transition: all var(--transition-fast);
+}
+
+.header-config:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .header-dissolve:hover {

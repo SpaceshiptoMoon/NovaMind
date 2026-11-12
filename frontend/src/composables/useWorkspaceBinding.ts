@@ -50,7 +50,7 @@ export function useWorkspaceBinding() {
       if (conv) {
         conv.extra_config = { ...conv.extra_config, workspace: { mode: 'local', root } }
       }
-      ElMessage.success('已进入工作模式：read / glob / grep / bash 已启用')
+      ElMessage.success('已进入工作模式：read / glob / grep / write / edit / bash 已启用')
       return true
     } catch (e) {
       ElMessage.error(e instanceof Error ? e.message : '绑定失败')

@@ -246,7 +246,7 @@ export function toContentBlocks(msg: AgentMessage | null): ContentBlock[] {
 }
 
 /** 判定 assistant 消息是否含工具调用块（决策消息），用于 finalAssistant 归类 */
-export function hasToolCallBlocks(msg: AgentMessage | null): boolean {
+function hasToolCallBlocks(msg: AgentMessage | null): boolean {
   return toContentBlocks(msg).some((b) => b.kind === 'tool_call')
 }
 

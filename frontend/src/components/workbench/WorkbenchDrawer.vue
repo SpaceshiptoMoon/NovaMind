@@ -150,8 +150,8 @@
       <!-- 工作目录视图（仅 agent 单聊会话）：目录浏览器 + 绑定/解绑 -->
       <div v-else-if="workbench.drawerView === 'workspace'" class="drawer-body">
         <p class="ws-hint">
-          选择本地文件夹作为智能体的工作目录，进入工作模式后启用 read / glob / grep / bash
-          工具。
+          选择本地文件夹作为智能体的工作目录，进入工作模式后启用 read / glob / grep /
+          write / edit / bash 工具。
         </p>
 
         <WorkspaceBrowser ref="wsBrowserRef" @change="wsSelectedPath = $event" />

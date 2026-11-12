@@ -114,6 +114,7 @@ import {
   stepSummary,
   toContentBlocks,
   toolStatusLabel,
+  toolStatusOf,
   truncateResult,
   wikiToolLinks,
 } from '@/utils/chatRender'
@@ -149,7 +150,7 @@ function toolDuration(callId: string | null): number | undefined {
 }
 
 function toolStatus(callId: string | null): string {
-  return findToolRecord(props.toolCalls, callId)?.status || 'completed'
+  return toolStatusOf(props.toolCalls, callId)
 }
 
 function wikiLinks(tool: { tool_name?: string | null; content?: string | null }) {

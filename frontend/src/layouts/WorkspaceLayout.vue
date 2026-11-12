@@ -22,8 +22,8 @@
         <!-- 展开模式：上下文列表 -->
         <template v-if="!sidebarCollapsed">
           <div class="sidebar-body">
-            <!-- 会话中心：按主体分组（助手/协作群作分组头，组内挂各自会话）；
-                 头部「新建对话」开统一创建弹窗、「助手」开助手管理抽屉 -->
+            <!-- 会话中心：按用途三分类（助手对话/本地项目/协作对话），类头可折叠；
+                 类头 + 号按类预置创建形态、「助手」开助手管理抽屉 -->
             <div class="list-section">
               <div class="list-section-header">
                 <span class="list-section-title">会话</span>
@@ -33,7 +33,7 @@
               </div>
               <div v-loading="recentSessionsLoading" class="list-area">
                 <template v-for="cat in groupedSessions" :key="cat.key">
-                  <!-- 分类头：纯文字类名 + 会话数（点击进该类最近会话）；管理动作收在「助手」抽屉与条目 hover -->
+                  <!-- 分类头：chevron + 类名 + 会话数，点击折叠/展开；+ 号按类预置创建形态 -->
                   <div class="session-group-head">
                     <button
                       class="session-group-toggle"
@@ -83,7 +83,7 @@
                     </div>
                     <div class="session-item-actions" @click.stop>
                       <template v-if="s.kind === 'group'">
-                        <button class="session-delete" title="编辑协作对话" @click="openGroupDialog(null, s.ref_id)">
+                        <button class="session-delete" title="编辑协作对话" @click="openGroupDialog(s.ref_id)">
                           <el-icon :size="12"><EditPen /></el-icon>
                         </button>
                         <button
@@ -320,7 +320,7 @@ const sidebarCollapsed = ref(false)
 
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
 
-// ===================== 会话中心（按主体分组：助手/协作群作分组头，组内挂各自会话） =====================
+// ===================== 会话中心（按用途三分类，见 SESSION_CATEGORY_DEFS） =====================
 
 const recentSessions = ref<RecentSessionItem[]>([])
 const recentSessionsLoading = ref(false)
@@ -376,7 +376,7 @@ function handleOpenSession(item: RecentSessionItem) {
   router.push({ name: 'WorkspaceSessionChat', params: { sessionId: item.session_id } })
 }
 
-// ===================== 主体分组视图模型（按助手/协作群聚合会话） =====================
+// ===================== 分类视图模型（会话按用途分桶） =====================
 
 /** 会话中心固定三分类：助手对话 / 本地项目（绑定工作目录的单聊）/ 协作对话 */
 type SessionCategoryKey = "agent" | "workspace" | "group"
@@ -461,9 +461,9 @@ function isAgentChatRoute(agentId: number): boolean {
   return route.name === 'WorkspaceAgentChat' && Number(route.params.agentId) === agentId
 }
 
-// 对话页（单聊/群聊）页内自带会话侧栏：折叠态 rail 的 agent/群聊轨道与其重复，
-// 此时 rail 主体不渲染、只留展开键（用户点进对话即已离开「全局切换」场景）；
-// WorkspaceSessionChat 是会话直达过渡页，同属会话上下文
+// 会话上下文路由：折叠态 rail 主体让位只留展开键（会话的切换/新建/删除已收编
+// 在展开态侧栏会话中心，折叠态不再重复占地）；WorkspaceSessionChat 是会话直达
+// 过渡页，同属会话上下文
 const inChatRoute = computed(
   () =>
     route.name === 'WorkspaceAgentChat' ||
@@ -524,7 +524,7 @@ async function handleDeleteGroupSession(item: RecentSessionItem) {
   }
 }
 
-// ===================== 统一创建对话弹窗（分区 + 号共用：选 1 人直进单聊，≥2 人转协作配置） =====================
+// ===================== 统一创建对话弹窗（分类头 + 号共用：助手形态直达 / 协作形态预置） =====================
 
 const unifiedCreateVisible = ref(false)
 const unifiedCreatePreset = ref<'agent' | 'group'>('agent')
@@ -576,18 +576,16 @@ function handleSelectGroup(group: AgentGroup) {
   router.push({ name: 'WorkspaceGroupChat', params: { groupId: group.id } })
 }
 
-// 占位页经 inject 调用建群弹窗（与单聊 openAgentDialog 同收编模式）
-
-// 群条目「编辑」与空态页「创建群聊」共用弹窗：groupId 非空 = 编辑（弹窗拉详情回填）
+// 会话中心协作条目「编辑」打开本弹窗：groupId 非空 = 编辑（弹窗拉详情回填）
 const groupFormVisible = ref(false)
 const groupFormTarget = ref<number | null>(null)
 
-function openGroupDialog(_agent?: unknown, groupId?: number) {
+function openGroupDialog(groupId?: number) {
   groupFormTarget.value = groupId ?? null
   groupFormVisible.value = true
 }
 
-/** 解散群聊：参数取 {id, name} 结构（legacy 群条目与会话中心协作条目两处复用） */
+/** 解散群聊：参数取 {id, name} 结构（会话中心协作条目 hover 动作复用） */
 async function handleDissolveGroup(group: { id: number; name: string }) {
   try {
     await ElMessageBox.confirm(`确定解散群聊 "${group.name}" 吗？`, '解散群聊', {
@@ -733,16 +731,6 @@ onMounted(async () => {
   flex: 1;
 }
 
-/* 群分区与智能体分区同构：不抢主区滚动（分区各自内部滚），占高度按内容收缩 */
-.list-section--group {
-  flex: 0 1 auto;
-}
-
-.list-section--group > .list-area {
-  flex: 0 1 auto;
-  max-height: 32vh;
-}
-
 /* 分区头：标题（点击折叠）+ 创建 + 号并列——常驻创建动作收进一行 */
 .list-section-header {
   display: flex;
@@ -783,11 +771,6 @@ onMounted(async () => {
 .header-action:hover {
   background: var(--color-primary-muted);
   color: var(--color-primary);
-}
-
-.header-action--primary {
-  color: var(--color-primary);
-  font-weight: var(--weight-semibold);
 }
 
 /* 助手管理抽屉：复用 list-item 结构，行本体不可点（动作在 hover 钮上） */
@@ -947,19 +930,6 @@ onMounted(async () => {
   color: var(--color-primary);
 }
 
-.session-group-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.session-group-head:hover .session-group-actions {
-  opacity: 1;
-}
-
 /* 类内条目两行结构：标题 + 归属名，hover 浮现动作组 */
 .session-item-info {
   flex: 1;
@@ -1048,12 +1018,6 @@ onMounted(async () => {
 .session-delete:hover {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
-}
-
-.session-empty {
-  padding: var(--space-3) var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
 }
 
 /* 折叠时 list-area 隐藏，section 收成一条 header */
@@ -1258,31 +1222,6 @@ onMounted(async () => {
   flex-direction: column;
 }
 
-.item-delete {
-  opacity: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.list-item:hover .item-delete {
-  opacity: 1;
-}
-
-.item-delete:hover {
-  background: var(--color-danger-subtle);
-  color: var(--color-danger);
-}
-
 .list-empty {
   display: flex;
   align-items: center;
@@ -1345,17 +1284,6 @@ onMounted(async () => {
 .item-action-btn--danger:hover {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
-}
-
-.sidebar-info {
-  padding: var(--space-4);
-}
-
-.info-text {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin: 0;
-  line-height: var(--leading-relaxed);
 }
 
 /* ========================================

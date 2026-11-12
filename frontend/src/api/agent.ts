@@ -261,17 +261,10 @@ export const agentApi = {
     return request.delete<{ success: boolean; message: string }>(`/agent/sessions/${sessionId}`)
   },
 
-  /** 绑定/解绑会话工作区（local 模式：read/glob/grep/bash 默认必带；null 解绑） */
+  /** 绑定/解绑会话工作区（local 模式：read/glob/grep/write/edit/bash 六件套默认必带；null 解绑） */
   updateSessionWorkspace(sessionId: string, workspace: { mode: 'local'; root: string } | null) {
     return request.put<AgentConversation>(`/agent/sessions/${sessionId}/workspace`, {
       workspace,
-    })
-  },
-
-  /** 绑定前校验工作区根目录（本地形态：后端与文件同机时可用） */
-  validateWorkspaceRoot(root: string) {
-    return request.post<{ success: boolean; message: string }>(`/agent/workspace/validate`, {
-      workspace: { mode: 'local', root },
     })
   },
 

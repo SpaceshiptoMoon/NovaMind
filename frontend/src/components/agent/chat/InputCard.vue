@@ -521,11 +521,6 @@ function getFileIcon(type: string): string {
   }
   return map[type] || 'FILE'
 }
-
-defineExpose({
-  /** 外部定位焦点（如发送后） */
-  focus: () => textareaRef.value?.focus(),
-})
 </script>
 
 <style scoped>

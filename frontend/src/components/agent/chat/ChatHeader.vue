@@ -113,7 +113,7 @@ const emit = defineEmits<{
   white-space: nowrap;
 }
 
-/* 视图切换组（对话/轨迹/工作）：分段控件，与左侧助手徽标分组留白 */
+/* 视图切换组（对话/轨迹）：分段控件，与左侧助手徽标分组留白 */
 .header-tabs {
   display: flex;
   gap: 2px;

@@ -67,7 +67,6 @@
       <InputCard
         v-if="viewMode === 'chat'"
         :streaming="agentStore.isStreaming"
-        :loading="agentStore.loading"
         :uploading="uploadingFiles"
         :attachments="agentStore.pendingAttachments"
         :followups="followups"
@@ -171,9 +170,7 @@ watch(currentSessionId, () => {
 
 // ===================== 按轮分组 =====================
 // 分组与 ReAct 步骤归类在 utils/chatRender.groupTurns（纯函数，群聊可复用）
-const turns = computed<ChatTurn[]>(() =>
-  groupTurns(agentStore.messages, agentStore.isStreaming || agentStore.loading),
-)
+const turns = computed<ChatTurn[]>(() => groupTurns(agentStore.messages, agentStore.isStreaming))
 
 // ===================== 流式滚动跟随 =====================
 const messagesRef = ref<HTMLElement>()
@@ -218,10 +215,6 @@ watch(
 )
 watch(
   () => agentStore.streamingContent,
-  () => scrollToBottomIfNeeded(),
-)
-watch(
-  () => agentStore.loading,
   () => scrollToBottomIfNeeded(),
 )
 

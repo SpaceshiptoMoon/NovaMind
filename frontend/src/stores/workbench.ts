@@ -27,7 +27,7 @@ function readStoredDrawerWidth(): number {
 /**
  * 工作台右抽屉状态
  *
- * 仅持有 UI 态（开关/当前视图/选中的工具调用 ID / 选中的消息 ID）；
+ * 仅持有 UI 态（开关/当前视图/面板宽度/选中的工具调用 ID）；
  * 抽屉展示的数据（sources / toolCalls）由 WorkspaceLayout 按当前频道
  * 从 chatStore / agentStore 聚合后以 props 喂入，避免在视图层重复接线。
  */
@@ -61,10 +61,6 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     drawerOpen.value = false
   }
 
-  function toggleDrawer() {
-    drawerOpen.value = !drawerOpen.value
-  }
-
   /** 切换抽屉视图（sources/tool/workspace），抽屉随之打开 */
   function setView(view: DrawerView) {
     drawerView.value = view
@@ -91,7 +87,6 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     selectedToolCallId,
     openDrawer,
     closeDrawer,
-    toggleDrawer,
     setDrawerWidth,
     setView,
     selectToolCall,

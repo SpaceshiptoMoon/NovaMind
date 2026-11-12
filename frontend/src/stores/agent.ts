@@ -1,9 +1,8 @@
 /**
  * Agent 会话 store
  *
- * 管理 Agent CRUD、对话会话与消息流、SSE 流式/非流式发送（正文/思考/来源/工具调用/
+ * 管理 Agent CRUD、对话会话与消息流、SSE 流式发送（正文/思考/来源/工具调用/
  * 上下文用量/计划卡增量渲染）、MCP 服务器与工具注册表、聊天附件待发队列。
- * 消费方：AgentChatView、WorkspaceLayout、WorkbenchDrawer。
  */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
@@ -159,7 +158,6 @@ export const useAgentStore = defineStore('agent', () => {
   const toolCalls = ref<ToolCallRecord[]>([])
   const contextUsage = ref<AgentContextUsageData | null>(null)
   const abortController = ref<AbortController | null>(null)
-  const loading = ref(false)
   const pendingAttachments = ref<ChatAttachment[]>([])
   // 当前 plan 消息引用（Plan-and-Execute 模式，onPlan 聚合 step 状态用）
   const planMsg = ref<AgentMessage | null>(null)
@@ -610,237 +608,6 @@ export const useAgentStore = defineStore('agent', () => {
     return true
   }
 
-  // ===================== 非流式对话 =====================
-
-  /**
-   * 非流式发送消息：全程收集增量事件，onDone 时一次性按
-   * 「user → 各轮决策消息 → 各工具结果 → 最终回答」的顺序重建消息列表。
-   * 决策文本按 offset 切片归轮，与流式路径的渲染语义对齐。
-   */
-  async function sendMessage(
-    agentId: number,
-    content: string,
-    options?: { llm_model?: string; enable_thinking?: boolean; deep_research?: boolean; attachmentIds?: number[] },
-  ) {
-    if (!content.trim() && !options?.attachmentIds?.length) return
-
-    const userMsg: AgentMessage = {
-      id: Date.now(),
-      conversation_id: 0,
-      role: 'user',
-      content,
-      tool_call_id: null,
-      tool_name: null,
-      token_count: null,
-      created_at: new Date().toISOString(),
-      extra: options?.attachmentIds?.length
-        ? {
-            attachments: pendingAttachments.value.filter((a) =>
-              options.attachmentIds!.includes(a.id),
-            ),
-          }
-        : null,
-    }
-    messages.value.push(userMsg)
-    if (options?.attachmentIds?.length) clearPendingAttachments()
-
-    loading.value = true
-    toolCalls.value = []
-    error.value = null
-    planMsg.value = null
-    researchMsg.value = null
-
-    const controller2 = new AbortController()
-    abortController.value = controller2
-
-    try {
-      let collectedContent = ''
-      let collectedReasoning = ''
-      let collectedSources: SourceRef[] = []
-      const collectedToolCalls: ToolCallRecord[] = []
-      // 决策消息按轮切片：记录每轮 tool_calls + 该轮 content/reasoning 切片，
-      // 与流式路径 onAssistantToolCalls 语义对齐（流式用 streamingContent 累积重置，
-      // 批量用 offset 切片，二者决策消息都带 content+reasoning 而非 content=null）
-      const collectedDecisions: {
-        tool_calls: OpenAICompatToolCall[]
-        content: string | null
-        reasoning: string | undefined
-      }[] = []
-      let decisionContentOffset = 0
-      let decisionReasoningOffset = 0
-
-      await agentApi.chatStream(
-        agentId,
-        {
-          content,
-          session_id: currentSessionId.value || null,
-          llm_model: options?.llm_model || null,
-          enable_thinking: options?.enable_thinking,
-          deep_research: options?.deep_research,
-          stream: false,
-          attachment_ids: options?.attachmentIds,
-        },
-        {
-          signal: controller2.signal,
-          onSession(d) {
-            if (!currentSessionId.value) {
-              currentSessionId.value = d.session_id
-              conversations.value.unshift({
-                id: 0,
-                user_id: 0,
-                agent_id: agentId,
-                session_id: d.session_id,
-                title: content.slice(0, 30),
-                status: 'active',
-                message_count: 1,
-                total_tokens_used: 0,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-            }
-          },
-          onToolCall(d) {
-            collectedToolCalls.push({
-              toolName: d.tool_name,
-              arguments: d.arguments,
-              callId: d.call_id,
-              status: 'running',
-            })
-          },
-          onAssistantToolCalls(d) {
-            // 按轮切片：该轮决策文本 = 自上次决策偏移以来的 content/reasoning
-            const iterText = collectedContent.slice(decisionContentOffset)
-            const iterReasoning = collectedReasoning.slice(decisionReasoningOffset)
-            collectedDecisions.push({
-              tool_calls: d.tool_calls as OpenAICompatToolCall[],
-              content: iterText || null,
-              reasoning: iterReasoning || undefined,
-            })
-            decisionContentOffset = collectedContent.length
-            decisionReasoningOffset = collectedReasoning.length
-          },
-          onToolResult(d) {
-            const call = collectedToolCalls.find((c) => c.callId === d.call_id)
-            if (call) {
-              call.status = d.status === 'completed' ? 'completed' : 'failed'
-              call.result = d.result
-              call.durationMs = d.duration_ms
-            }
-          },
-          onReasoning(text) {
-            collectedReasoning += text || ''
-          },
-          onContent(text) {
-            collectedContent += text || ''
-          },
-          onSources(d) {
-            collectedSources = d.sources as SourceRef[]
-          },
-          onResearchProgress(d) {
-            applyResearchProgress(researchMsg, messages.value, d)
-          },
-          onDone(d) {
-            // Apply collected data once
-            toolCalls.value = collectedToolCalls
-
-            // 先按序 push AI 决策消息（该轮 content + reasoning + extra.tool_calls），再 push 工具结果
-            for (const dec of collectedDecisions) {
-              const decisionMsg: AgentMessage = {
-                id: Date.now() + Math.random(),
-                conversation_id: 0,
-                role: 'assistant',
-                content: dec.content,
-                tool_call_id: null,
-                tool_name: null,
-                token_count: null,
-                created_at: new Date().toISOString(),
-                reasoning: dec.reasoning,
-                extra: { tool_calls: dec.tool_calls },
-              }
-              messages.value.push(decisionMsg)
-            }
-
-            for (const tc of collectedToolCalls) {
-              const toolMsg: AgentMessage = {
-                id: Date.now() + Math.random(),
-                conversation_id: 0,
-                role: 'tool',
-                content: tc.result || null,
-                tool_call_id: tc.callId,
-                tool_name: tc.toolName,
-                token_count: null,
-                created_at: new Date().toISOString(),
-              }
-              messages.value.push(toolMsg)
-            }
-
-            // 最终回答 = 最后一轮（无工具调用）的 content/reasoning（自最后决策偏移切片）
-            const finalText = collectedContent.slice(decisionContentOffset)
-            const finalReasoning = collectedReasoning.slice(decisionReasoningOffset)
-            const aiMsg: AgentMessage = {
-              id: d.message_id || Date.now() + 1,
-              conversation_id: 0,
-              role: 'assistant',
-              content: finalText,
-              tool_call_id: null,
-              tool_name: null,
-              token_count: null,
-              created_at: new Date().toISOString(),
-              reasoning: finalReasoning || undefined,
-              sources: d.sources || collectedSources,
-            }
-            messages.value.push(aiMsg)
-            controller2.abort()
-          },
-          onCompaction(d) {
-            messages.value.push({
-              id: Date.now() + Math.random(),
-              conversation_id: 0,
-              role: 'compaction',
-              content: null,
-              tool_call_id: null,
-              tool_name: null,
-              token_count: null,
-              created_at: d.created_at || new Date().toISOString(),
-              extra: { compaction: d },
-            })
-          },
-          onContextUsage(d) {
-            contextUsage.value = d
-          },
-          onPlan(type, d) {
-            // 非流式路径：plan.completed 的 summary 已在 applyPlanEvent 写入 plan 消息；
-            // 最终气泡由 onDone 重建（finalText 切片 = 外层 done 的 full_response = summary）
-            applyPlanEvent(planMsg, messages.value, type, d)
-          },
-          onLoopWarning(d) {
-            messages.value.push({
-              id: Date.now() + Math.random(),
-              conversation_id: 0,
-              role: 'notice',
-              content: d.content,
-              tool_call_id: null,
-              tool_name: null,
-              token_count: null,
-              created_at: new Date().toISOString(),
-              extra: { notice: true, iteration: d.iteration },
-            })
-          },
-          onError(err) {
-            error.value = err.content
-          },
-        },
-      )
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      error.value = e instanceof Error ? e.message : '发送失败'
-      throw e
-    } finally {
-      loading.value = false
-      abortController.value = null
-    }
-  }
-
   /** 中止当前流式请求 */
   function cancelStream() {
     abortController.value?.abort()
@@ -979,7 +746,6 @@ export const useAgentStore = defineStore('agent', () => {
     toolCalls,
     contextUsage,
     abortController,
-    loading,
     mcpServers,
     tools,
     error,
@@ -995,7 +761,6 @@ export const useAgentStore = defineStore('agent', () => {
     fetchConversations,
     fetchMessages,
     deleteConversation,
-    sendMessage,
     sendMessageStream,
     steer,
     respondApproval,
