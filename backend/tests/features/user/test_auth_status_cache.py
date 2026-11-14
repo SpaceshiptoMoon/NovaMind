@@ -17,8 +17,6 @@ import asyncio
 import json
 
 import pytest
-from sqlalchemy import event, update
-
 from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User, UserStatus
 from novamind.features.user.repository.user_repository import (
@@ -26,57 +24,11 @@ from novamind.features.user.repository.user_repository import (
     _post_commit_tasks,
 )
 from novamind.features.user.services.user_service import UserService
+from sqlalchemy import event, update
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
 AUTH_KEY = "auth:status:{}"
-
-
-class JsonFakeRedis:
-    """模拟 RedisCache：JSON 序列化往返 + 可注入故障。"""
-
-    def __init__(self):
-        self.store = {}
-        self.fail = False
-
-    async def get(self, key):
-        if self.fail:
-            raise ConnectionError("redis down")
-        raw = self.store.get(key)
-        return json.loads(raw) if raw is not None else None
-
-    async def set(self, key, value, expire=None):
-        if self.fail:
-            raise ConnectionError("redis down")
-        self.store[key] = json.dumps(value, ensure_ascii=False, default=int)
-        return True
-
-    async def delete(self, *keys):
-        if self.fail:
-            raise ConnectionError("redis down")
-        for k in keys:
-            self.store.pop(k, None)
-        return len(keys)
-
-
-@pytest.fixture
-def fake_redis():
-    """假 Redis，同时塞进 ClientFactory 单例缓存。
-
-    业务代码里新建的 repository 实例（如 role_service 内的
-    UserRepository(self.db)）经 get_redis_client() 取客户端；塞进单例口后
-    它们拿到的是同一个假客户端，测到的就是生产同款失效路径。
-    """
-    from novamind.shared.storage.client_factory import ClientFactory
-
-    fake = JsonFakeRedis()
-    previous = ClientFactory._instances.get("redis")
-    ClientFactory._instances["redis"] = fake
-    yield fake
-    if previous is None:
-        ClientFactory._instances.pop("redis", None)
-    else:
-        ClientFactory._instances["redis"] = previous
 
 
 @pytest.fixture

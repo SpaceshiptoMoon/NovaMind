@@ -7,7 +7,6 @@
 3. 故障方向：带 jti 时 Redis 异常向上透传；无 jti 时 fail-close 拒绝。
 """
 import pytest
-
 from novamind.core.auth import blacklist as bl
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]

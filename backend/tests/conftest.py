@@ -87,3 +87,60 @@ async def tmp_db():
     async with Session() as session:
         yield session
     await engine.dispose()
+
+
+class JsonFakeRedis:
+    """RedisCache 替身：与真实客户端一样以 JSON 存取，记录 TTL，可注入故障。"""
+
+    def __init__(self):
+        self.store: dict[str, str] = {}
+        self.ttls: dict[str, int | None] = {}
+        self.fail = False
+
+    def _check(self):
+        if self.fail:
+            raise ConnectionError("redis down")
+
+    async def get(self, key):
+        import json
+
+        self._check()
+        raw = self.store.get(key)
+        return json.loads(raw) if raw is not None else None
+
+    async def set(self, key, value, expire=None):
+        import json
+
+        self._check()
+        self.store[key] = json.dumps(value, ensure_ascii=False)
+        self.ttls[key] = expire
+        return True
+
+    async def delete(self, *keys):
+        self._check()
+        for key in keys:
+            self.store.pop(key, None)
+            self.ttls.pop(key, None)
+        return len(keys)
+
+
+@pytest.fixture
+def fake_redis():
+    """假 Redis，塞进 ClientFactory 单例缓存口。
+
+    业务代码经 get_redis_client() 取客户端；塞进单例口后，无论是注入到被测
+    对象的，还是业务代码里临时新建的 repository，拿到的都是同一个假客户端，
+    测到的是与生产相同的读写与失效路径。
+    """
+    from novamind.shared.cache.helpers import reset_cache_stats
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    fake = JsonFakeRedis()
+    previous = ClientFactory._instances.get("redis")
+    ClientFactory._instances["redis"] = fake
+    reset_cache_stats()
+    yield fake
+    if previous is None:
+        ClientFactory._instances.pop("redis", None)
+    else:
+        ClientFactory._instances["redis"] = previous

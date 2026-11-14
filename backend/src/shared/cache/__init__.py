@@ -1,24 +1,5 @@
-"""
-缓存模块
+"""缓存模块：RedisCache 客户端（redis_client）与 cache-aside 薄助手（helpers）。
 
-提供本地 LRU 缓存、Redis 缓存和缓存装饰器
+本包不做 re-export：client_factory 懒 import redis_client 时会执行本文件，
+在此处 import helpers 会把 client_factory 拉回来。使用方直接 import 子模块。
 """
-from .cache_service import (
-    CacheService,
-    cached,
-    get_cache_service,
-)
-from .lru_cache import (
-    LRUCache,
-    default_cache,
-)
-
-__all__ = [
-    # LRU 缓存
-    "LRUCache",
-    "default_cache",
-    # 高级缓存服务
-    "CacheService",
-    "cached",
-    "get_cache_service",
-]

@@ -17,7 +17,6 @@ import time
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.user.services.model_config_service import (
     ModelConfigService,
     _clear_client_cache_global,

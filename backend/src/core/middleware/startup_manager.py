@@ -245,19 +245,6 @@ class AppLifespanManager:
             self.redis_connected = True
             self.logger.info("Redis连接已建立")
 
-            # 向量索引已由 Elasticsearch 管理，无需在 Redis 中创建
-            # 如需启用 Redis 向量索引，请取消下方注释并确保安装 Redis Stack（支持 RediSearch 模块）
-            # try:
-            #     await redis_client.create_embedding_index(1024)
-            #     self.logger.info("Redis向量索引创建成功")
-            # except Exception as idx_err:
-            #     # 普通Redis不支持向量索引，但不影响基础缓存功能
-            #     self.logger.warning(
-            #         "向量索引创建失败（需要Redis Stack）",
-            #         error=str(idx_err),
-            #     )
-            #     self.logger.info("将使用基础缓存功能，向量相似搜索不可用")
-
         except Exception as e:
             self.logger.warning("Redis连接失败，部分缓存功能将不可用", error=str(e))
 
