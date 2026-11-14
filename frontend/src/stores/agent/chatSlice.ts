@@ -1,145 +1,38 @@
 /**
- * Agent 会话 store
+ * 聊天域 slice（纯搬移自 stores/agent.ts）：会话列表 + 消息 + SSE 流式 +
+ * 断连续跑轮询（turn-state）+ 审批卡 + 运行中插话。
  *
- * 管理 Agent CRUD、对话会话与消息流、SSE 流式发送（正文/思考/来源/工具调用/
- * 上下文用量/计划卡增量渲染）、MCP 服务器与工具注册表、聊天附件待发队列。
+ * 这是一个内聚状态机（流式回调/轮询/审批通道互相引用），整体拆出；
+ * 跨域依赖仅 clearPendingAttachments（发消息成功后清待发队列）。
  */
 import { ref } from 'vue'
-import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import type {
-  Agent,
-  CreateAgentRequest,
-  UpdateAgentRequest,
   AgentConversation,
   AgentMessage,
-  McpServer,
-  ToolProvider,
-  ToolCallRecord,
-  ChatAttachment,
-  SourceRef,
   OpenAICompatToolCall,
-  AgentContextUsageData,
-  PlanData,
-  ResearchProgressData,
-  ApprovalRequestData,
+  SourceRef,
+  ToolCallRecord,
 } from '@/api/types'
-
-// 后端工具状态归并到前端 ToolCallRecord.status 四态
-// pending/running → running；completed → completed；failed/timeout/其它 → failed
-/** 把后端工具状态字符串归并为前端三态（running/completed/failed） */
-function normalizeToolStatus(status: string): ToolCallRecord['status'] {
-  switch (status) {
-    case 'completed':
-      return 'completed'
-    case 'pending':
-    case 'running':
-      return 'running'
-    default:
-      return 'failed'
-  }
-}
-
-/** plan.created 时构造的 extra.plan 初始形状 */
-interface PlanExtra {
-  title: string
-  steps: string[]
-  statuses: string[]
-  summary?: string
-  interrupted?: boolean
-}
+import {
+  applyPlanEvent,
+  applyResearchProgress,
+  normalizeToolStatus,
+} from './pureHelpers'
+import type { AttachmentState } from './attachmentSlice'
 
 /**
- * plan.* 事件统一处理（流式/非流式两路共用）：
- * created 建 role='plan' 消息（statuses 初始化 not_started）；
- * step_started/step_completed/step_failed 推进 statuses；
- * completed 写 summary + interrupted。
- * 返回是否处理了 plan.created（调用方据此把 summary 写进最终气泡）。
+ * 创建聊天域状态与操作（在 store setup 内调用一次）。
+ *
+ * Args:
+ *   pendingAttachments: 附件待发队列 ref（attachment slice 提供；消息 extra
+ *     快照与 clearChat 清队列直接读写它，保持原句逐字）。
+ *   clearPendingAttachments: 发送成功后清空附件待发队列（同上）。
  */
-function applyPlanEvent(
-  planMsg: { value: AgentMessage | null },
-  messages: AgentMessage[],
-  type: string,
-  d: PlanData,
-): boolean {
-  if (type === 'plan.created') {
-    const steps = d.steps || []
-    const msg: AgentMessage = {
-      id: Date.now() + Math.random(),
-      conversation_id: 0,
-      role: 'plan',
-      content: d.title || null,
-      tool_call_id: null,
-      tool_name: null,
-      token_count: null,
-      created_at: new Date().toISOString(),
-      extra: {
-        plan: {
-          title: d.title || '',
-          steps,
-          statuses: steps.map(() => 'not_started'),
-        } satisfies PlanExtra,
-      },
-    }
-    messages.push(msg)
-    planMsg.value = msg
-    return true
-  }
-  if (!planMsg.value) return false
-  const plan = (planMsg.value.extra as { plan?: PlanExtra } | null)?.plan
-  if (!plan?.statuses) return false
-  if (type === 'plan.step_started' && d.step_index != null) {
-    plan.statuses[d.step_index] = 'in_progress'
-  } else if (type === 'plan.step_completed' && d.step_index != null) {
-    plan.statuses[d.step_index] = 'completed'
-  } else if (type === 'plan.step_failed' && d.step_index != null) {
-    plan.statuses[d.step_index] = 'blocked'
-  } else if (type === 'plan.completed') {
-    if (d.summary) plan.summary = d.summary
-    plan.interrupted = !!d.interrupted
-  }
-  return false
-}
-
-/**
- * research_progress 事件统一处理（批3 深度研究工具化）：
- * 首个事件建 role='research' 消息（extra.research 存进度态），后续事件原地
- * 更新同一条消息——研究耗时数分钟，进度一条消息内推进而非刷屏。
- */
-function applyResearchProgress(
-  researchMsg: { value: AgentMessage | null },
-  messages: AgentMessage[],
-  d: ResearchProgressData,
-): void {
-  if (!researchMsg.value) {
-    const msg: AgentMessage = {
-      id: Date.now() + Math.random(),
-      conversation_id: 0,
-      role: 'research',
-      content: d.current_step || '深度研究进行中',
-      tool_call_id: null,
-      tool_name: null,
-      token_count: null,
-      created_at: new Date().toISOString(),
-      extra: { research: d },
-    }
-    messages.push(msg)
-    researchMsg.value = msg
-    return
-  }
-  researchMsg.value.content = d.current_step || researchMsg.value.content
-  researchMsg.value.extra = { research: d }
-}
-
-export const useAgentStore = defineStore('agent', () => {
-  // Agent 列表
-  const agents = ref<Agent[]>([])
-  const agentsTotal = ref(0)
-  const agentsLoading = ref(false)
-
-  // 当前 Agent
-  const currentAgent = ref<Agent | null>(null)
-
+export function createChatState({
+  pendingAttachments,
+  clearPendingAttachments,
+}: Pick<AttachmentState, 'pendingAttachments' | 'clearPendingAttachments'>) {
   // 对话列表
   const conversations = ref<AgentConversation[]>([])
   const conversationsTotal = ref(0)
@@ -156,71 +49,25 @@ export const useAgentStore = defineStore('agent', () => {
   const streamingReasoning = ref('')
   const streamingSources = ref<SourceRef[]>([])
   const toolCalls = ref<ToolCallRecord[]>([])
-  const contextUsage = ref<AgentContextUsageData | null>(null)
+  const contextUsage = ref<import('@/api/types').AgentContextUsageData | null>(null)
   const abortController = ref<AbortController | null>(null)
-  const pendingAttachments = ref<ChatAttachment[]>([])
   // 当前 plan 消息引用（Plan-and-Execute 模式，onPlan 聚合 step 状态用）
   const planMsg = ref<AgentMessage | null>(null)
   // 当前深度研究进度消息引用（批3 research 工具，onResearchProgress 原地推进用）
   const researchMsg = ref<AgentMessage | null>(null)
   // E5 异步审批请求（危险代码执行前等用户决策）：瞬时态，120s 后端超时按 deny
   // fail-closed；不入消息流（不落库无回放语义），会话结束/清理时一并置空
-  const pendingApproval = ref<ApprovalRequestData | null>(null)
-
-  // MCP & 工具（全局共享）
-  const mcpServers = ref<McpServer[]>([])
-  const tools = ref<ToolProvider[]>([])
+  const pendingApproval = ref<import('@/api/types').ApprovalRequestData | null>(null)
   const error = ref<string | null>(null)
 
-  // ===================== Agent CRUD =====================
-
-  /** 拉取 Agent 列表（支持分页），失败时清空列表 */
-  async function fetchAgents(params?: { limit?: number; offset?: number }) {
-    agentsLoading.value = true
-    try {
-      const data = await agentApi.listAgents(params)
-      agents.value = data.items || []
-      agentsTotal.value = data.total || 0
-    } catch {
-      agents.value = []
-    } finally {
-      agentsLoading.value = false
-    }
-  }
-
-  async function fetchAgent(agentId: number) {
-    try {
-      currentAgent.value = await agentApi.getAgent(agentId)
-    } catch {
-      currentAgent.value = null
-    }
-  }
-
-  async function createAgent(data: CreateAgentRequest) {
-    const agent = await agentApi.createAgent(data)
-    agents.value.unshift(agent)
-    agentsTotal.value += 1
-    return agent
-  }
-
-  async function updateAgent(agentId: number, data: UpdateAgentRequest) {
-    const updated = await agentApi.updateAgent(agentId, data)
-    const idx = agents.value.findIndex((a) => a.id === agentId)
-    if (idx !== -1) agents.value[idx] = updated
-    if (currentAgent.value?.id === agentId) currentAgent.value = updated
-    return updated
-  }
-
-  /** 删除 Agent；若删的是当前 Agent，同步清空会话状态 */
-  async function deleteAgent(agentId: number) {
-    await agentApi.deleteAgent(agentId)
-    agents.value = agents.value.filter((a) => a.id !== agentId)
-    agentsTotal.value -= 1
-    if (currentAgent.value?.id === agentId) {
-      currentAgent.value = null
-      clearChat()
-    }
-  }
+  // 运行中插话发送通道（sendMessageStream 的 onReady 注入；连接结束在 finally 置空）
+  let wsSendRef: ((msg: unknown) => void) | null = null
+  // 审批附着通道（action=attach）：无在途流时向后台续跑轮次回传审批决策
+  let attachChannel: { close: () => void } | null = null
+  let attachSendRef: ((msg: unknown) => void) | null = null
+  // 断连后台续跑状态（turn-state 轮询驱动）
+  const backgroundRunning = ref(false)
+  let turnPollTimer: number | null = null
 
   // ===================== 对话管理 =====================
 
@@ -289,15 +136,6 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   // ===================== SSE 流式对话 =====================
-
-  // 运行中插话发送通道（sendMessageStream 的 onReady 注入；连接结束在 finally 置空）
-  let wsSendRef: ((msg: unknown) => void) | null = null
-  // 审批附着通道（action=attach）：无在途流时向后台续跑轮次回传审批决策
-  let attachChannel: { close: () => void } | null = null
-  let attachSendRef: ((msg: unknown) => void) | null = null
-  // 断连后台续跑状态（turn-state 轮询驱动）
-  const backgroundRunning = ref(false)
-  let turnPollTimer: number | null = null
 
   /**
    * 流式发送消息并按事件增量渲染：正文/思考流式累积、工具卡片插到当前决策消息之后、
@@ -718,107 +556,7 @@ export const useAgentStore = defineStore('agent', () => {
     pendingApproval.value = null
   }
 
-  // ========== 附件管理 ==========
-
-  /** 上传附件（共享 /agent/attachments 端点），成功后加入待发队列 */
-  async function uploadAttachment(
-    file: File,
-    onProgress?: (percent: number) => void,
-  ): Promise<ChatAttachment> {
-    const result = await agentApi.uploadAttachment(file, onProgress)
-    const attachment: ChatAttachment = {
-      id: result.attachment_id,
-      filename: result.filename,
-      file_type: result.file_type,
-      file_size: result.file_size,
-    }
-    pendingAttachments.value.push(attachment)
-    return attachment
-  }
-
-  function removePendingAttachment(attachmentId: number) {
-    pendingAttachments.value = pendingAttachments.value.filter((a) => a.id !== attachmentId)
-  }
-
-  function clearPendingAttachments() {
-    pendingAttachments.value = []
-  }
-
-  // ===================== MCP 服务器 =====================
-
-  async function fetchMcpServers() {
-    try {
-      mcpServers.value = await agentApi.listMcpServers()
-    } catch {
-      mcpServers.value = []
-    }
-  }
-
-  async function createMcpServer(data: Parameters<typeof agentApi.createMcpServer>[0]) {
-    const server = await agentApi.createMcpServer(data)
-    mcpServers.value.push(server)
-    return server
-  }
-
-  async function updateMcpServer(
-    serverId: number,
-    data: Parameters<typeof agentApi.updateMcpServer>[1],
-  ) {
-    const updated = await agentApi.updateMcpServer(serverId, data)
-    const idx = mcpServers.value.findIndex((s) => s.id === serverId)
-    if (idx !== -1) mcpServers.value[idx] = updated
-    return updated
-  }
-
-  async function deleteMcpServer(serverId: number) {
-    await agentApi.deleteMcpServer(serverId)
-    mcpServers.value = mcpServers.value.filter((s) => s.id !== serverId)
-  }
-
-  async function connectMcpServer(serverId: number) {
-    const updated = await agentApi.connectMcpServer(serverId)
-    const idx = mcpServers.value.findIndex((s) => s.id === serverId)
-    if (idx !== -1) mcpServers.value[idx] = updated
-  }
-
-  async function disconnectMcpServer(serverId: number) {
-    await agentApi.disconnectMcpServer(serverId)
-    const server = mcpServers.value.find((s) => s.id === serverId)
-    if (server) server.status = 'disconnected'
-  }
-
-  async function refreshMcpTools(serverId: number) {
-    return await agentApi.refreshMcpTools(serverId)
-  }
-
-  // ===================== 工具 =====================
-
-  async function fetchTools() {
-    try {
-      tools.value = await agentApi.listTools()
-    } catch {
-      tools.value = []
-    }
-  }
-
-  // ===================== 初始化 =====================
-
-  /** 进入某 Agent 聊天页的入口：拉 Agent 详情 + 会话列表 */
-  async function initForAgent(agentId: number) {
-    // 切换智能体必须先清聊天态：currentSessionId 归属上一个 agent，残留时发消息
-    // 会把旧会话 ID 传给新 agent（后端 500「会话不存在」）；messages 残留则串台显示
-    // 上一个 agent 的历史。同 agent 重进也只需重拉列表，清态无副作用。
-    clearChat()
-    await fetchAgent(agentId)
-    await fetchConversations(agentId)
-  }
-
   return {
-    // State
-    agents,
-    agentsTotal,
-    agentsLoading,
-    currentAgent,
     conversations,
     conversationsTotal,
     conversationsLoading,
@@ -832,41 +570,22 @@ export const useAgentStore = defineStore('agent', () => {
     toolCalls,
     contextUsage,
     abortController,
-    mcpServers,
-    tools,
-    error,
-    pendingAttachments,
     planMsg,
     researchMsg,
-    // Actions
-    fetchAgents,
-    fetchAgent,
-    createAgent,
-    updateAgent,
-    deleteAgent,
+    pendingApproval,
+    error,
+    backgroundRunning,
     fetchConversations,
     fetchMessages,
     deleteConversation,
     sendMessageStream,
     steer,
     respondApproval,
-    pendingApproval,
-    backgroundRunning,
-    checkTurnState,
-    abortStreamSilently,
     cancelStream,
+    abortStreamSilently,
+    checkTurnState,
     clearChat,
-    fetchMcpServers,
-    createMcpServer,
-    updateMcpServer,
-    deleteMcpServer,
-    connectMcpServer,
-    disconnectMcpServer,
-    refreshMcpTools,
-    fetchTools,
-    initForAgent,
-    uploadAttachment,
-    removePendingAttachment,
-    clearPendingAttachments,
   }
-})
+}
+
+export type ChatState = ReturnType<typeof createChatState>
