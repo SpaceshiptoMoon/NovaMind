@@ -80,6 +80,54 @@ async def _get_cached_user(
     return user
 
 
+# 成员与知识库的请求级缓存。只在 API 依赖层使用：这里的生命周期就是一次 HTTP
+# 请求，对象与请求会话同生共死。不要下沉到 repository/service——那些层还会被
+# 后台任务和长会话调用，在那里缓存会读到被其他进程改过的旧状态。
+_request_member_cache: contextvars.ContextVar[dict[tuple[int, int], Any]] = (
+    contextvars.ContextVar("request_member_cache", default=None)
+)
+_request_kb_cache: contextvars.ContextVar[dict[int, Any]] = contextvars.ContextVar(
+    "request_kb_cache", default=None
+)
+
+
+async def _get_cached_member(
+    space_id: int,
+    user_id: int,
+    db: AsyncSession,
+) -> SpaceMember | None:
+    """获取空间成员记录（请求级去重）。
+
+    一个端点挂多个空间校验依赖时，同一成员关系只查一次。只缓存查到的成员：
+    「不是成员」不缓存，避免同请求内加入空间后仍被判为非成员。
+    """
+    cache = _request_member_cache.get() or {}
+    key = (space_id, user_id)
+    if key in cache:
+        return cache[key]
+
+    member = await MemberRepository(db).get_by_space_and_user(space_id, user_id)
+    if member is not None:
+        _request_member_cache.set({**cache, key: member})
+    return member
+
+
+async def _get_cached_kb(kb_id: int, db: AsyncSession) -> KnowledgeBase | None:
+    """获取知识库（请求级去重）。
+
+    validate_kb_writable 内部复用 validate_kb_access，路由体内也常再校验一次；
+    同一请求内同一知识库只查一次。只缓存查到的知识库。
+    """
+    cache = _request_kb_cache.get() or {}
+    if kb_id in cache:
+        return cache[kb_id]
+
+    kb = await KnowledgeBaseRepository(db).get_by_id(kb_id)
+    if kb is not None:
+        _request_kb_cache.set({**cache, kb_id: kb})
+    return kb
+
+
 # ========== 基础服务依赖 ==========
 
 async def get_space_service(db: AsyncSession = Depends(get_db)) -> SpaceService:
@@ -310,7 +358,6 @@ async def validate_space_access(
         SpaceAccessDeniedError: 无权访问
     """
     space_repo = SpaceRepository(db)
-    member_repo = MemberRepository(db)
 
     # 获取空间
     space = await space_repo.get_by_id(space_id)
@@ -330,11 +377,11 @@ async def validate_space_access(
 
     # 系统管理员拥有所有空间的访问权限
     if user and user.is_admin:
-        member = await member_repo.get_by_space_and_user(space_id, user_id)
+        member = await _get_cached_member(space_id, user_id, db)
         return space, member
 
     # 检查是否是成员
-    member = await member_repo.get_by_space_and_user(space_id, user_id)
+    member = await _get_cached_member(space_id, user_id, db)
 
     # 如果不是成员，检查是否是公开空间
     if not member and space.visibility != SpaceVisibility.PUBLIC:
@@ -368,7 +415,6 @@ async def ensure_space_member(
         MemberNotFoundError: 不是成员。
     """
     space_repo = SpaceRepository(db)
-    member_repo = MemberRepository(db)
 
     # 获取空间
     space = await space_repo.get_by_id(space_id)
@@ -386,7 +432,7 @@ async def ensure_space_member(
     # 系统管理员自动拥有所有空间的成员权限 - 使用请求级缓存
     user = await _get_cached_user(user_id, db)
     if user and user.is_admin:
-        member = await member_repo.get_by_space_and_user(space_id, user_id)
+        member = await _get_cached_member(space_id, user_id, db)
         if member is None:
             # 构造虚拟管理员成员（不持久化，仅供权限判断）
             member = SpaceMember(
@@ -400,7 +446,7 @@ async def ensure_space_member(
         return member
 
     # 检查成员
-    member = await member_repo.get_by_space_and_user(space_id, user_id)
+    member = await _get_cached_member(space_id, user_id, db)
     if not member:
         raise MemberNotFoundError(space_id, user_id)
 
@@ -513,8 +559,7 @@ async def validate_kb_access(
     Raises:
         KnowledgeBaseNotFoundError: 知识库不存在
     """
-    kb_repo = KnowledgeBaseRepository(db)
-    kb = await kb_repo.get_by_id(kb_id)
+    kb = await _get_cached_kb(kb_id, db)
 
     if not kb:
         raise KnowledgeBaseNotFoundError(kb_id)
