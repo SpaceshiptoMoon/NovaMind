@@ -30,6 +30,11 @@
 | aeaab5ff | 批次4：预签名/查询向量/查询改写三处缓存 |
 | 89ed9037 | 批次5：页面级短 TTL（六桶/会话中心/未读数/看板/wiki 统计）+ ES 索引探测缓存 |
 | 64373775 | /health/detailed 暴露 cache_stats（命中率运维观测入口） |
+| 5009b272 | **正确性修复：emb/rw 缓存键补客户端配置签名**（用户指出串键漏洞后）——BaseLLM/BaseEmbedding 基类加 cache_signature()，同名模型跨提供商/归一化开关不同不再静默串键 |
+
+## 缓存键的配置签名（重要设计）
+
+`emb`/`rw` 缓存键里的客户端身份**不是裸模型名**，而是 `client_cache_signature()`（`base_model.py`）＝ md5(base_url | model | 子类追加配置)。原因：同名模型在不同提供商（DashScope vs 自建 vLLM）下向量/输出完全不同，只按模型名隔离会静默串键——维度恰好相同时是错误结果而非报错。新增影响输出的构造级配置时，记得往 `self._cache_sig_extra` 追加。当前实例（Redis 8.0.5 MSYS2 构建）实测无 RediSearch Query Engine、vectorset 模块残缺不可用——向量检索只能由 ES 承担，emb 缓存仅依赖 String GET/SET，与此无关。
 
 ## 实施中的方案修正（相对最初盘点方案，均有依据）
 
