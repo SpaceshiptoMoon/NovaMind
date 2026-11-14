@@ -3,6 +3,7 @@
 embedding 模型从知识库字段获取，rerank 模型从请求参数获取，凭证经 ModelConfigService 解析。
 """
 
+import hashlib
 import time
 from typing import Any
 
@@ -47,6 +48,7 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
+from novamind.shared.cache.helpers import get_or_load
 from novamind.shared.storage.client_factory import get_minio_client
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -303,7 +305,37 @@ class SearchService:
                 "error": str(e),
             }
 
+    # 改写结果缓存：同模型同配置同查询 10 分钟内复用 LLM 结果
+    QUERY_REWRITE_CACHE_TTL = 600
+
     async def _rewrite_query(
+        self,
+        query: str,
+        rewrite_config: "QueryRewriteConfig",
+        user_id: int,
+    ) -> dict[str, Any]:
+        """
+        查询改写（带缓存）。
+
+        temperature=0.3 的改写输出非确定，缓存的定位是「同一查询短时间内
+        不重复付 LLM 费用」，不是确定性保证。QueryRewriteConfig 全量进键：
+        策略、模型、子问题数任一变更即换键；prompt 模板变更属部署事件，
+        由 TTL 在 10 分钟内自然收敛。
+
+        策略语义见 :meth:`_rewrite_query_uncached`。
+        """
+        config_sig = hashlib.md5(rewrite_config.model_dump_json().encode("utf-8")).hexdigest()
+        key = (
+            f"rw:{rewrite_config.strategy}:{config_sig}:"
+            f"{hashlib.md5(query.encode('utf-8')).hexdigest()}"
+        )
+        return await get_or_load(
+            key,
+            self.QUERY_REWRITE_CACHE_TTL,
+            lambda: self._rewrite_query_uncached(query, rewrite_config, user_id),
+        )
+
+    async def _rewrite_query_uncached(
         self,
         query: str,
         rewrite_config: "QueryRewriteConfig",

@@ -9,10 +9,12 @@ from typing import Any
 from novamind.engines.rag.errors import EmbeddingError, RagError, SearchError
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
+from novamind.shared.cache.helpers import get_or_load
 from novamind.shared.logging import get_logger
 
 # 默认配置常量（与 search_service 保持一致，批次 6 迁入引擎包）
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时
+QUERY_EMBEDDING_CACHE_TTL = 1800  # 查询向量缓存 30 分钟：同模型同文本不重复调用远程 embedding
 
 # 检索客户端 resolver 类型：宿主按需构造并返回客户端（懒解析）
 EmbeddingClientResolver = Callable[[], Awaitable[BaseEmbedding | None]]
@@ -204,7 +206,7 @@ class RetrievalEngine:
                 embedding_client = await embedding_client_resolver()
                 if embedding_client is None:
                     raise EmbeddingError("未配置 Embedding 模型，请在模型配置中添加")
-                query_vector = await embedding_client.generate_embedding(q.effective_query)
+                query_vector = await self._embed_cached(embedding_client, q.effective_query)
                 self.logger.debug(
                     "生成查询向量成功",
                     vector_dim=len(query_vector) if query_vector else 0,
@@ -406,7 +408,7 @@ class RetrievalEngine:
             sub_vector = query_vector
             if needs_vector and embedding_client:
                 try:
-                    sub_vector = await embedding_client.generate_embedding(sub_query)
+                    sub_vector = await self._embed_cached(embedding_client, sub_query)
                 except Exception as e:
                     self.logger.warning(
                         "子问题向量生成失败，使用原始查询向量",
@@ -525,6 +527,28 @@ class RetrievalEngine:
             f"wb_{wiki_boost_factor:.2f}"
         )
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
+
+    async def _embed_cached(self, embedding_client: BaseEmbedding, text: str) -> list[float]:
+        """查询向量缓存：同模型同文本不重复调用远程 embedding（30 分钟）。
+
+        键必须含模型名——不同模型的向量维度不同，串键会让 kNN 直接报错；
+        向量与模型强绑定，换模型必须换键。embedding 是确定性调用（同模型同
+        文本同向量），TTL 仅作内存回收，无一致性问题。
+        """
+        model = (
+            getattr(embedding_client, "model", None)
+            or getattr(embedding_client, "model_name", None)
+            or "unknown"
+        )
+        key = (
+            f"emb:{hashlib.md5(str(model).encode('utf-8')).hexdigest()}:"
+            f"{hashlib.md5(text.encode('utf-8')).hexdigest()}"
+        )
+
+        async def _load() -> list[float]:
+            return await embedding_client.generate_embedding(text)
+
+        return await get_or_load(key, QUERY_EMBEDDING_CACHE_TTL, _load)
 
     def _get_search_cache_key(
         self, kb_id: int, search_type: str, query_hash: str, user_id: int | None = None
