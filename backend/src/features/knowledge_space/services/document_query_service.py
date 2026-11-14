@@ -27,6 +27,7 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.storage.url_signing import presigned_get_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -523,8 +524,8 @@ class DocumentQueryService:
             if not object_name:
                 continue
             try:
-                url_map[figure_file] = await self.minio_client.get_file_url(
-                    self.minio_client.default_bucket, object_name, expires
+                url_map[figure_file] = await presigned_get_url(
+                    self.minio_client, self.minio_client.default_bucket, object_name, expires
                 )
             except Exception as exc:
                 self.logger.warning(
@@ -552,8 +553,8 @@ class DocumentQueryService:
             from novamind.shared.storage.client_factory import ClientFactory
 
             minio_client = await ClientFactory.get_minio_client()
-            return await minio_client.get_file_url(
-                minio_client.default_bucket, storage_path, 3600
+            return await presigned_get_url(
+                minio_client, minio_client.default_bucket, storage_path, 3600
             )
         except Exception:
             return None
@@ -592,7 +593,7 @@ class DocumentQueryService:
             urls: list[str] = []
             for path in metadata["frame_paths"][:max_urls]:
                 try:
-                    urls.append(await minio_client.get_file_url(bucket, path, expires=3600))
+                    urls.append(await presigned_get_url(minio_client, bucket, path, 3600))
                 except Exception as exc:
                     logger.warning("帧图预签名失败，跳过该帧", path=str(path), error=str(exc))
             if urls:
@@ -718,10 +719,11 @@ class DocumentQueryService:
             for idx, path in enumerate(frame_paths):
                 if not path:
                     continue
-                url = await self.minio_client.get_file_url(
-                    bucket_name=self.minio_client.default_bucket,
-                    object_name=path,
-                    expires=3600,
+                url = await presigned_get_url(
+                    self.minio_client,
+                    self.minio_client.default_bucket,
+                    path,
+                    3600,
                 )
                 frames.append({"index": idx, "url": url})
 

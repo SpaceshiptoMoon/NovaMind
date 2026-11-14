@@ -48,10 +48,13 @@ from novamind.features.agent.schemas.agent_schema import (
     ToolCallResponse,
 )
 from novamind.setting.yaml_config.loader import get_config
+from novamind.shared.cache.helpers import get_or_load
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
+
+_SESSION_CENTER_CACHE_TTL = 60  # 会话中心缓存：每轮对话 touch updated_at，主动失效无意义
 
 # 默认助手内置工具基线：ensure 幂等更新时对 is_default 行做并集补齐
 # （版本演进新增工具时，存量默认助手在下次 ensure 自动获得）
@@ -527,7 +530,11 @@ class AgentService:
     async def list_recent_sessions(
         self, user_id: int, limit: int = 50
     ) -> SessionCenterListResponse:
-        """会话中心聚合列表：单聊与群会话混排，updated_at 倒序。
+        """会话中心聚合列表：单聊与群会话混排，updated_at 倒序（60s 缓存）。
+
+        每轮对话都会 touch 会话 updated_at，主动失效等于不缓存；侧栏数据对
+        分钟级延迟不敏感，靠 TTL 自然过期。缓存命中时返回 dict（JSON 往返），
+        路由层 response_model 会对 dict 再校验，对外形状不变。
 
         群会话（extra_config.group 标记）带群名、成员数与前 3 个成员名；
         单聊带助手名。群已解散但时间线会话残留的悬空条目跳过（delete_group
@@ -541,6 +548,19 @@ class AgentService:
             会话中心聚合列表响应；无会话时 items 为空。
         """
         clamped = max(1, min(100, limit))
+        cached = await get_or_load(
+            f"sesscenter:{user_id}:{clamped}",
+            _SESSION_CENTER_CACHE_TTL,
+            lambda: self._list_recent_sessions_uncached(user_id, clamped),
+        )
+        # Redis 存的是 mode=json 的 dict，命中后重建 pydantic 模型，
+        # 对调用方保持单一返回形状（模型对象），不再有对象/dict 分裂
+        return SessionCenterListResponse.model_validate(cached)
+
+    async def _list_recent_sessions_uncached(
+        self, user_id: int, clamped: int
+    ) -> dict[str, Any]:
+        """会话中心聚合的实时计算；返回 mode=json 的 dict（datetime 可序列化）。"""
         sessions = await self.session_repo.list_recent(user_id, clamped)
 
         # 按 kind 分桶收集 ref_id，批量取名字与群成员（避免逐条 N+1）
@@ -589,7 +609,7 @@ class AgentService:
                     name=name,
                     updated_at=conv.updated_at,
                 ))
-        return SessionCenterListResponse(items=items)
+        return SessionCenterListResponse(items=items).model_dump(mode="json")
 
     async def get_session(self, user_id: int, session_id: str) -> AgentSession:
         """按 session_id 取会话并校验归属与 active 状态，失败抛 SessionNotFoundError。

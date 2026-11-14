@@ -22,6 +22,10 @@ MAX_SEARCH_RESULTS = 100
 # Elasticsearch 查询特殊字符（需要转义）
 ES_SPECIAL_CHARS = re.compile(r'[+\-=&|><!(){}[\]^"~*?:\\/]')
 
+# 进程内已知存在的索引名（ensure_index_exists 探测缓存）。
+# 多 worker 各自维护，最坏各自多一次冗余探测；写入遇 index_not_found 时移除。
+_known_indexes: set[str] = set()
+
 
 class ElasticsearchClient:
     """
@@ -172,7 +176,12 @@ class ElasticsearchClient:
     async def ensure_index_exists(
         self, space_id: int, embedding_dim: int | None = None
     ) -> str:
-        """确保索引存在（不存在则按给定维度创建）。
+        """确保索引存在（不存在则按给定维度创建），进程内缓存已知索引。
+
+        wiki 逐页/解析逐 chunk 写入时每次探测 ``indices.exists`` 是纯冗余往返；
+        进程内 set 缓存已知存在的索引。索引被外部删除时的失效方向：本进程
+        ``delete_index`` 会移出缓存；进程外删除则靠写入报错（index_not_found）
+        移出缓存重探——缓存错了最多多一次探测，不会写错数据。
 
         Args:
             space_id: 空间 ID。
@@ -182,8 +191,11 @@ class ElasticsearchClient:
             索引名字符串。
         """
         index_name = self.generate_index_name(space_id)
+        if index_name in _known_indexes:
+            return index_name
         if not await self.index_exists(space_id):
             await self.create_index(space_id, embedding_dim)
+        _known_indexes.add(index_name)
         return index_name
 
     async def delete_index(self, space_id: int) -> bool:
@@ -196,6 +208,7 @@ class ElasticsearchClient:
             删除成功或索引本不存在返回 True；其他失败返回 False。
         """
         index_name = self.generate_index_name(space_id)
+        _known_indexes.discard(index_name)
         try:
             await self.es_client.indices.delete(index=index_name)
             logger.info("删除索引成功", index=index_name)
@@ -252,6 +265,9 @@ class ElasticsearchClient:
             )
             return True
         except Exception as e:
+            # 索引可能已被外部删除：移出缓存让下次写入重新探测重建
+            if "index_not_found_exception" in str(e):
+                _known_indexes.discard(index_name)
             logger.error("索引分块失败", chunk_id=chunk_data.get("chunk_id"), error=str(e))
             return False
 

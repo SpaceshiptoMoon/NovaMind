@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -15,6 +17,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.space_stats_repository import (
     SpaceStatsRepository,
 )
+from novamind.shared.cache.helpers import get_or_load
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -59,7 +62,10 @@ class SpaceStatsService:
         kb_id: int | None = None,
         low_score_threshold: float = DEFAULT_LOW_SCORE_THRESHOLD,
     ) -> dict[str, Any]:
-        """看板全量数据（KPI/趋势/明细/KB 聚合）。
+        """看板全量数据（KPI/趋势/明细/KB 聚合），5 分钟缓存。
+
+        读多写少（看板页打开/刷新才读），30 天窗口 JSON 谓词扫描开销大，
+        看板数据对分钟级延迟不敏感，靠 TTL 自然过期。
 
         Args:
             space_id: 空间 ID。
@@ -74,6 +80,29 @@ class SpaceStatsService:
         Raises:
             KnowledgeBaseNotFoundError: kb_id 指定的知识库不存在或不属于该空间。
         """
+        window_sig = hashlib.md5(
+            f"{start}|{end}|{kb_id}|{low_score_threshold}".encode()
+        ).hexdigest()
+
+        async def _load() -> dict[str, Any]:
+            result = await self._compute_knowledge_gap_stats(
+                space_id, start, end, kb_id, low_score_threshold
+            )
+            # default=str 归一：趋势日期等 datetime 字段序列化为字符串，
+            # 与 FastAPI 对外输出的 JSON 形状一致
+            return json.loads(json.dumps(result, ensure_ascii=False, default=str))
+
+        return await get_or_load(f"gapstats:{space_id}:{window_sig}", 300, _load)
+
+    async def _compute_knowledge_gap_stats(
+        self,
+        space_id: int,
+        start: datetime | None,
+        end: datetime | None,
+        kb_id: int | None,
+        low_score_threshold: float,
+    ) -> dict[str, Any]:
+        """看板全量数据的实时计算。"""
         window_start, window_end = self._resolve_window(start, end)
 
         if kb_id is not None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
+from novamind.shared.storage.url_signing import presigned_get_url
 
 if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
@@ -36,8 +37,8 @@ async def enrich_attachments_with_presigned_urls(
             and "preview_url" not in att
         ):
             try:
-                att["preview_url"] = await minio_client.get_file_url(
-                    bucket, att["storage_path"], expires
+                att["preview_url"] = await presigned_get_url(
+                    minio_client, bucket, att["storage_path"], expires
                 )
             except Exception:
                 pass

@@ -13,13 +13,24 @@
 from collections.abc import Awaitable, Callable
 
 from novamind.shared.logging import get_logger
-from novamind.shared.storage.client_factory import get_redis_client
 
 logger = get_logger(__name__)
 
 # 进程内命中计数，按键前缀（首个冒号之前）聚合，供健康检查与验收读取。
 # 多进程部署下各进程各计各的，仅用于观测，不参与任何决策。
 _stats: dict[str, dict[str, int]] = {}
+
+
+async def _get_redis_client():
+    """经工厂取缓存客户端；函数内 import 防环。
+
+    本模块若在顶层 import client_factory，会经由 shared/storage/__init__ →
+    minio_client → helpers 形成循环（minio_client 顶层也用本模块），故延迟到
+    调用时再取。sys.modules 缓存使重复 import 只做一次查表。
+    """
+    from novamind.shared.storage.client_factory import get_redis_client
+
+    return await get_redis_client()
 
 
 def _bump(key: str, field: str) -> None:
@@ -72,7 +83,7 @@ async def get_or_load[T](key: str, ttl: int, loader: Callable[[], Awaitable[T]])
 
     cache = None
     try:
-        cache = await get_redis_client()
+        cache = await _get_redis_client()
         cached = await cache.get(key)
     except Exception as e:
         _bump(key, "error")
@@ -105,7 +116,7 @@ async def invalidate(*keys: str) -> None:
     if not keys:
         return
     try:
-        cache = await get_redis_client()
+        cache = await _get_redis_client()
         for key in keys:
             await cache.delete(key)
     except Exception as e:

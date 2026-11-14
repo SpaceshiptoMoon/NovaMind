@@ -12,16 +12,9 @@ from typing import Any, BinaryIO
 
 from minio import Minio
 from minio.error import S3Error
-from novamind.shared.cache.helpers import get_or_load
 from novamind.shared.document.file_types import IMAGE_FILE_TYPES  # noqa: F401 归位后 re-export
 from novamind.shared.logging import get_logger
 from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
-
-# 预签名缓存安全余量：缓存 TTL = expires - 600，保证缓存返回的 URL 至少还有
-# 10 分钟有效期。签名是本地 HMAC 计算，与签名时刻无关（有效期由算法保证），
-# 对象路径不可变，因此缓存的 URL 在余量窗口内始终有效，无一致性问题。
-# 附带收益：URL 字符串在窗口内稳定，前端 img/audio 的浏览器 HTTP 缓存得以命中。
-PRESIGN_CACHE_MARGIN = 600
 
 logger = get_logger(__name__)
 
@@ -836,11 +829,7 @@ class MinioClient:
         expires: int = 3600,
     ) -> str:
         """
-        异步获取文件预签名 URL（带缓存）
-
-        对象路径不可变、签名有效性由 HMAC 算法保证，同对象同 expires 的签名
-        在 ``expires - PRESIGN_CACHE_MARGIN`` 窗口内复用，不再重复计算。
-        expires 不足安全余量两倍的短签名不缓存，直接签名。
+        异步获取文件预签名 URL
 
         Args:
             bucket_name: 桶名
@@ -849,30 +838,13 @@ class MinioClient:
 
         Returns:
             预签名 URL
-
-        Raises:
-            S3Error: 签名失败（失败结果不缓存，每次重试）
         """
-        cache_ttl = expires - PRESIGN_CACHE_MARGIN
-        if cache_ttl <= 0:
-            return await asyncio.to_thread(
-                self.client.presigned_get_object,
-                bucket_name,
-                object_name,
-                timedelta(seconds=expires),
-            )
-
-        async def _sign() -> str:
-            return await asyncio.to_thread(
-                self.client.presigned_get_object,
-                bucket_name,
-                object_name,
-                timedelta(seconds=expires),
-            )
-
         try:
-            return await get_or_load(
-                f"presign:{bucket_name}:{object_name}:{expires}", cache_ttl, _sign
+            return await asyncio.to_thread(
+                self.client.presigned_get_object,
+                bucket_name,
+                object_name,
+                timedelta(seconds=expires),
             )
         except S3Error as e:
             logger.error(

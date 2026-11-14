@@ -4,12 +4,14 @@
 取最新任务实现。分块数据仅存 ES，不在 MySQL。
 """
 
+import hashlib
 from datetime import datetime
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.shared.cache.helpers import get_or_load
 from novamind.shared.storage.client_factory import get_redis_client
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import Integer, case, cast, func, select, update
@@ -507,8 +509,15 @@ class DocumentRepository:
 
     # ========== 统计查询 ==========
 
+    # KB 六桶统计缓存：列表/详情页高频读取，解析期间状态高频变化，主动失效
+    # 等于不缓存，60s TTL 自然过期即可（前端本就轮询处理状态）
+    KB_STATS_CACHE_TTL = 60
+
     async def get_kb_realtime_stats(self, kb_id: int) -> dict[str, Any]:
         """实时统计知识库信息（排除软删除文档），通过 LEFT JOIN document_tasks 获取状态。
+
+        带 60s 缓存：实时聚合是全表 JOIN，KB 详情/列表高频读取；数据对分钟级
+        延迟不敏感（处理状态本就靠前端轮询刷新）。
 
         Args:
             kb_id: 知识库 ID。
@@ -516,6 +525,13 @@ class DocumentRepository:
         Returns:
             统计字典：文档数/分块数/存储 MB 与各处理状态计数。
         """
+        return await get_or_load(
+            f"kbstats:{kb_id}",
+            self.KB_STATS_CACHE_TTL,
+            lambda: self._query_kb_realtime_stats(kb_id),
+        )
+
+    async def _query_kb_realtime_stats(self, kb_id: int) -> dict[str, Any]:
         stmt = self._build_stats_select().where(
             Document.kb_id == kb_id,
             Document.deleted_at.is_(None),
@@ -524,7 +540,7 @@ class DocumentRepository:
         return self._row_to_stats_dict(row)
 
     async def batch_get_kb_stats(self, kb_ids: list[int]) -> dict[int, dict[str, Any]]:
-        """批量统计多个知识库信息（单条 SQL，解决 N+1 问题）。
+        """批量统计多个知识库信息（单条 SQL，解决 N+1 问题），60s 缓存。
 
         Args:
             kb_ids: 知识库 ID 列表。
@@ -534,6 +550,16 @@ class DocumentRepository:
         """
         if not kb_ids:
             return {}
+        ids_sig = hashlib.md5(
+            ",".join(str(i) for i in sorted(kb_ids)).encode("utf-8")
+        ).hexdigest()
+        return await get_or_load(
+            f"kbstats:batch:{ids_sig}",
+            self.KB_STATS_CACHE_TTL,
+            lambda: self._query_batch_kb_stats(kb_ids),
+        )
+
+    async def _query_batch_kb_stats(self, kb_ids: list[int]) -> dict[int, dict[str, Any]]:
         stmt = self._build_stats_select(with_kb_id=True).where(
             Document.kb_id.in_(kb_ids),
             Document.deleted_at.is_(None),

@@ -82,7 +82,7 @@ async def test_unconfigured_factory_degrades(monkeypatch):
     async def boom():
         raise RuntimeError("ClientFactory 未装配配置")
 
-    monkeypatch.setattr(helpers, "get_redis_client", boom)
+    monkeypatch.setattr(helpers, "_get_redis_client", boom)
     loader, calls = _counting_loader({"ok": True})
 
     assert await get_or_load("kb:1", 60, loader) == {"ok": True}

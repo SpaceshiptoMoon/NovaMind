@@ -19,9 +19,12 @@ from novamind.features.notification.schemas.notification_schema import (
     UnreadCountResponse,
 )
 from novamind.features.notification.services.email_service import EmailService
+from novamind.shared.cache.helpers import get_or_load, invalidate
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
+
+UNREAD_COUNT_CACHE_TTL = 30  # 未读数缓存：与前端断连兜底轮询周期一致
 
 
 class NotificationService:
@@ -74,6 +77,7 @@ class NotificationService:
                 })
                 await self._push_ws(user_id, notification)
                 logger.info("站内通知已发送", user_id=user_id, type=type, title=title)
+                await self._invalidate_unread_cache(user_id)
 
         # 3. 邮件通知（异步，失败不影响站内通知）
         if pref.email_enabled:
@@ -132,13 +136,25 @@ class NotificationService:
         notifications, total = await self._repo.list_by_user(
             user_id, limit, offset, unread_only
         )
-        unread_count = await self._repo.get_unread_count(user_id)
+        unread_count = await get_or_load(
+            f"notif:unread:{user_id}",
+            UNREAD_COUNT_CACHE_TTL,
+            lambda: self._repo.get_unread_count(user_id),
+        )
 
         return NotificationListResponse(
             items=[NotificationResponse.model_validate(n) for n in notifications],
             total=total,
             unread_count=unread_count,
         )
+
+    async def _invalidate_unread_cache(self, user_id: int) -> None:
+        """未读数缓存失效（send/mark_read/mark_all_read 共用）。
+
+        失效发生在事务提交前，与认证快照同款窗口；红点对 30s 内的偏差不敏感
+        （TTL 本就是 30s），不需要提交后二次失效。
+        """
+        await invalidate(f"notif:unread:{user_id}")
 
     async def mark_read(self, notification_id: int, user_id: int) -> bool:
         """标记单条通知为已读（带归属校验，仅本人通知生效）。
@@ -150,7 +166,9 @@ class NotificationService:
         Returns:
             是否命中并更新（False 表示通知不存在或不属于该用户，调用方转 404）。
         """
-        return await self._repo.mark_read(notification_id, user_id)
+        updated = await self._repo.mark_read(notification_id, user_id)
+        await self._invalidate_unread_cache(user_id)
+        return updated
 
     async def mark_all_read(self, user_id: int) -> int:
         """把该用户全部未读通知标记为已读，返回更新条数。
@@ -161,10 +179,15 @@ class NotificationService:
         Returns:
             本次实际置为已读的条数（已读的不重复计数，可为 0）。
         """
-        return await self._repo.mark_all_read(user_id)
+        updated = await self._repo.mark_all_read(user_id)
+        await self._invalidate_unread_cache(user_id)
+        return updated
 
     async def get_unread_count(self, user_id: int) -> UnreadCountResponse:
-        """查询用户未读通知数（红点/角标数据源）。
+        """查询用户未读通知数（红点/角标数据源），30s 缓存。
+
+        前端断连兜底轮询周期就是 30s：缓存把同周期内全部用户的 COUNT 收敛为
+        每用户至多一次；写路径（发送/已读）即时失效。
 
         Args:
             user_id: 用户 ID。
@@ -172,7 +195,11 @@ class NotificationService:
         Returns:
             含 unread_count 的响应模型，无未读时为 0。
         """
-        count = await self._repo.get_unread_count(user_id)
+        count = await get_or_load(
+            f"notif:unread:{user_id}",
+            UNREAD_COUNT_CACHE_TTL,
+            lambda: self._repo.get_unread_count(user_id),
+        )
         return UnreadCountResponse(unread_count=count)
 
     async def get_preferences(self, user_id: int) -> NotificationPreferenceResponse:
