@@ -364,9 +364,11 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            list_pages_by_slugs,
+        )
 
-        pages = await WikiPageRepository(db).list_by_slugs(kb_id, slugs)
+        pages = await list_pages_by_slugs(db, kb_id, slugs)
         url = f"/home/spaces/{kb.space_id}/knowledge-bases/{kb_id}/wiki?page="
         results = []
         for slug in slugs:
@@ -401,10 +403,12 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            search_pages_ranked,
+        )
 
         # 排序搜索（对齐 WeKnora）：rank 分级 + snippet + 别名参与匹配
-        ranked = await WikiPageRepository(db).search_pages_ranked(kb_id, query, limit=limit)
+        ranked = await search_pages_ranked(db, kb_id, query, limit=limit)
         # url：前端可点链接直达 wiki 阅读页（对话工具卡片渲染用；slug 含 / 走 query 传递）
         url = f"/home/spaces/{kb.space_id}/knowledge-bases/{kb_id}/wiki?page="
         return json.dumps({
@@ -445,16 +449,17 @@ class WikiTool(BaseTool):
             return _err(error)
 
         from novamind.engines.wiki.slug import normalize_slug
-        from novamind.features.knowledge_space.models.wiki import WikiEditSource
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            list_live_slugs,
+            write_agent_page,
+        )
 
         slug = normalize_slug(raw_slug)
         if not slug:
             return _err("slug 清洗后为空")
 
-        repo = WikiPageRepository(db)
         # 有效链接 = KB 内存活 slug（含本页即将写入的 slug 的其它页面）
-        existing_slugs = set(await repo.list_slugs_by_kb(kb_id))
+        existing_slugs = set(await list_live_slugs(db, kb_id))
         # 提取 [[slug|title]] 链接，无效链接静默降级为纯文本（正文中保留原文）
         out_links = []
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):
@@ -464,19 +469,15 @@ class WikiTool(BaseTool):
 
         try:
             async with db.begin_nested():
-                page, _created = await repo.upsert_with_snapshot(
-                    kb_id,
-                    slug,
+                page, _created = await write_agent_page(
+                    db,
+                    kb_id=kb_id,
                     space_id=kb.space_id,
+                    slug=slug,
                     title=title,
                     content=content,
                     summary=summary or title,
                     page_type=page_type,
-                    aliases=None,
-                    category_path=None,
-                    source_refs=[],
-                    chunk_refs=[],
-                    edit_source=WikiEditSource.AGENT,
                     editor_id=user_id,
                     link_slugs=out_links,
                 )
@@ -509,19 +510,18 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-            WikiIssueRepository,
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            create_issue,
+            get_page_by_slug,
         )
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 
-        repo = WikiPageRepository(db)
-        page = await repo.get_by_slug(kb_id, slug)
+        page = await get_page_by_slug(db, kb_id, slug)
         if not page:
             return _err(f"页面 {slug} 不存在")
 
         try:
             async with db.begin_nested():
-                issue = await WikiIssueRepository(db).create({
+                issue = await create_issue(db, {
                     "space_id": page.space_id,
                     "kb_id": kb_id, "slug": slug, "issue_type": issue_type,
                     "description": description[:2000], "reported_by": f"agent:{user_id}",
@@ -554,11 +554,12 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.models.wiki import WikiEditSource
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            get_page_by_slug,
+            replace_page_text,
+        )
 
-        repo = WikiPageRepository(db)
-        page = await repo.get_by_slug(kb_id, slug)
+        page = await get_page_by_slug(db, kb_id, slug)
         if not page:
             return _err(f"页面 {slug} 不存在")
 
@@ -568,10 +569,10 @@ class WikiTool(BaseTool):
 
         try:
             async with db.begin_nested():
-                await repo.update_page_with_lock(
-                    page,
-                    content=page.content.replace(old_text, new_text),
-                    edit_source=WikiEditSource.AGENT,
+                await replace_page_text(
+                    db,
+                    page=page,
+                    new_content=page.content.replace(old_text, new_text),
                     editor_id=user_id,
                 )
             await db.commit()
@@ -602,7 +603,10 @@ class WikiTool(BaseTool):
             return _err(error)
 
         from novamind.engines.wiki.slug import normalize_slug
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            get_page_by_slug,
+            rename_page_with_link_rewrite,
+        )
 
         new_slug = normalize_slug(new_slug_raw)
         if not new_slug:
@@ -611,46 +615,18 @@ class WikiTool(BaseTool):
         if slug.split("/", 1)[0] != new_slug.split("/", 1)[0]:
             return _err("new_slug 必须保持与原 slug 相同的类型前缀")
 
-        repo = WikiPageRepository(db)
-        page = await repo.get_by_slug(kb_id, slug)
+        page = await get_page_by_slug(db, kb_id, slug)
         if not page:
             return _err(f"页面 {slug} 不存在")
-        if await repo.get_by_slug(kb_id, new_slug):
+        if await get_page_by_slug(db, kb_id, new_slug):
             return _err(f"新 slug {new_slug} 已被占用")
 
         try:
             async with db.begin_nested():
-                # 1) 新 slug 建页：全字段拷贝，version 重置为 1
-                new_page = await repo.create_page({
-                    "space_id": page.space_id, "kb_id": kb_id, "slug": new_slug,
-                    "title": page.title, "content": page.content,
-                    "summary": page.summary, "page_type": page.page_type,
-                    "status": page.status, "aliases": list(page.aliases or []),
-                    "category_path": list(page.category_path or []),
-                    "source_refs": list(page.source_refs or []),
-                    "chunk_refs": list(page.chunk_refs or []),
-                    "in_links": [],  # 下面级联后统一重算
-                    "out_links": list(page.out_links or []),
-                })
-
-                # 2) 级联：所有入链页正文 [[old]] / [[old|display]] → 新 slug
-                in_link_pages = await repo.list_by_slugs(kb_id, list(page.in_links or []))
-                rewritten = 0
-                for p in in_link_pages.values():
-                    if slug not in (p.out_links or []):
-                        continue
-                    content = p.content.replace(f"[[{slug}]]", f"[[{new_slug}]]")
-                    content = re.sub(
-                        r"\[\[" + re.escape(slug) + r"\|", f"[[{new_slug}|", content,
-                    )
-                    if content != p.content:
-                        # 机器链接维护：不快照不递增
-                        await repo.update_auto_linked_content(p, content)
-                        rewritten += 1
-
-                # 3) 新页 in_links 继承 + 旧页软删
-                new_page.in_links = list(page.in_links or [])
-                await repo.soft_delete_page(page)
+                # 建页+级联替换+软删编排下沉 ks（wiki_access_service），单 SAVEPOINT 原子
+                rewritten = await rename_page_with_link_rewrite(
+                    db, kb_id=kb_id, page=page, new_slug=new_slug
+                )
             await db.commit()
             return json.dumps({
                 "old_slug": slug, "new_slug": new_slug,
@@ -673,13 +649,13 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-            WikiIssueRepository,
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            get_issue,
+            list_pending_issues,
         )
 
-        issue_repo = WikiIssueRepository(db)
         if issue_id:
-            issue = await issue_repo.get_by_id(str(issue_id))
+            issue = await get_issue(db, str(issue_id))
             if not issue or issue.kb_id != kb_id:
                 return _err(f"问题 {issue_id} 不存在")
             return json.dumps({
@@ -689,7 +665,7 @@ class WikiTool(BaseTool):
                 "created_at": issue.created_at.isoformat() if issue.created_at else None,
             }, ensure_ascii=False, default=str)
 
-        issues = await issue_repo.list_by_kb(kb_id, status="pending", limit=50)
+        issues = await list_pending_issues(db, kb_id, limit=50)
         if slug:
             issues = [i for i in issues if i.slug == slug]
         return json.dumps({
@@ -712,22 +688,17 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-            WikiIssueRepository,
+        from novamind.features.knowledge_space.services.wiki_access_service import (
+            get_issue,
+            transition_issue,
         )
 
-        issue_repo = WikiIssueRepository(db)
-        issue = await issue_repo.get_by_id(str(issue_id))
+        issue = await get_issue(db, str(issue_id))
         if not issue or issue.kb_id != kb_id:
             return _err(f"问题 {issue_id} 不存在")
 
         try:
-            if status == "resolved":
-                issue.resolve()
-            elif status == "ignored":
-                issue.ignore()
-            else:
-                issue.reopen()
+            await transition_issue(db, issue, status)
             await db.commit()
             return json.dumps({"id": issue.id, "status": issue.status}, ensure_ascii=False)
         except Exception as e:

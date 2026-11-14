@@ -644,3 +644,45 @@ class KnowledgeBaseService:
             KnowledgeBaseConfig,
         )
         return KnowledgeBaseConfig().model_dump()
+
+
+# ==================== 模块级轻查询（跨 feature 公共面） ====================
+# agent/deep_research 等消费方不持 KnowledgeBaseService 实例（其构造需 ES/MinIO），
+# 经这两个函数按空间边界查询 KB——repository 直查已被门禁禁止
+# （test_no_cross_feature_repository_imports），本组函数即其服务面替身。
+
+KB_SERVICE_DEPENDENCIES_NOTE = "轻查询零外部依赖，仅走 session。"
+
+
+async def get_kb_in_space(
+    session: AsyncSession,
+    kb_id: int,
+    space_id: int,
+    status: "KnowledgeBaseStatus | None" = None,
+):
+    """取「存在且属于指定空间」的知识库（跨空间越权防御的公共面入口）。
+
+    Args:
+        session: 请求级数据库会话。
+        kb_id: 知识库 ID。
+        space_id: 归属空间 ID，不匹配按不存在处理（防 IDOR 枚举）。
+        status: 可选状态过滤（如仅 ACTIVE）。
+
+    Returns:
+        命中的 KnowledgeBase；不存在/不属于该空间/状态不符返回 None。
+    """
+    kb = await KnowledgeBaseRepository(session).get_by_id(kb_id)
+    if not kb or kb.space_id != space_id:
+        return None
+    if status is not None and kb.status != status:
+        return None
+    return kb
+
+
+async def list_space_kbs(
+    session: AsyncSession,
+    space_id: int,
+    status: "KnowledgeBaseStatus | None" = None,
+) -> list:
+    """列空间下的知识库（可选状态过滤）。"""
+    return await KnowledgeBaseRepository(session).get_by_space(space_id, status=status)

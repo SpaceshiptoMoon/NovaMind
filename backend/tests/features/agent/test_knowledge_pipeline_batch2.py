@@ -440,7 +440,7 @@ async def test_port_list_documents_rejects_kb_space_mismatch(monkeypatch):
             return kb_by_id.get(kb_id)
 
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository",
+        "novamind.features.knowledge_space.services.knowledge_base_service.KnowledgeBaseRepository",
         _FakeKbRepo,
     )
 

@@ -9,14 +9,15 @@ from novamind.engines.deep_research.types import SourceType
 from novamind.features.deep_research.exceptions import DeepResearchError
 from novamind.features.deep_research.schemas.research_schema import InternalSearchConfig
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
-from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-    KnowledgeBaseRepository,
-)
 from novamind.features.knowledge_space.schemas.search_schema import (
     RerankConfig,
     SearchMode,
     SearchRequest,
     WeightConfig,
+)
+from novamind.features.knowledge_space.services.knowledge_base_service import (
+    get_kb_in_space,
+    list_space_kbs,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
 
@@ -33,15 +34,15 @@ class HostInternalSearchPort:
     def __init__(
         self,
         search_port: "SearchService",
-        kb_repo: KnowledgeBaseRepository,
+        kb_repo_session,
         space_id: int | None,
         user_id: int,
         internal_config: InternalSearchConfig,
         logger: object | None = None,
     ):
-        """绑定检索服务、KB 仓储与 space_id/user_id/internal_config，每请求构造、不跨请求复用。"""
+        """绑定检索服务、KB 会话与 space_id/user_id/internal_config，每请求构造、不跨请求复用。"""
         self._search_port = search_port
-        self._kb_repo = kb_repo
+        self._session = kb_repo_session
         self._space_id = space_id
         self._user_id = user_id
         self._config = internal_config
@@ -68,12 +69,15 @@ class HostInternalSearchPort:
             if config.kb_ids:
                 kbs = []
                 for kb_id in config.kb_ids:
-                    kb = await self._kb_repo.get_by_id(kb_id)
-                    if kb and kb.space_id == space_id and kb.status == KnowledgeBaseStatus.ACTIVE:
+                    kb = await get_kb_in_space(
+                        self._session, kb_id, space_id, status=KnowledgeBaseStatus.ACTIVE
+                    )
+                    if kb:
                         kbs.append(kb)
             else:
-                all_kbs = await self._kb_repo.get_by_space(space_id)
-                kbs = [kb for kb in all_kbs if kb.status == KnowledgeBaseStatus.ACTIVE]
+                kbs = await list_space_kbs(
+                    self._session, space_id, status=KnowledgeBaseStatus.ACTIVE
+                )
 
             if not kbs:
                 if self._logger is not None:
@@ -144,7 +148,7 @@ class HostInternalSearchPort:
 
 def as_internal_search_port(
     search_port: SearchService,
-    kb_repo: KnowledgeBaseRepository,
+    kb_repo_session,
     space_id: int,
     user_id: int,
     internal_config: InternalSearchConfig,
@@ -154,7 +158,7 @@ def as_internal_search_port(
 
     Args:
         search_port: SearchService 实例，实际执行多租户 KB 检索。
-        kb_repo: 知识库仓储，用于解析候选 KB 列表。
+        kb_repo_session: 数据库会话，KB 候选解析经 ks 服务面轻查询。
         space_id: 当前空间 ID，检索范围边界。
         user_id: 当前用户 ID，透传给检索服务。
         internal_config: 内部检索配置（kb_ids/search_mode/top_k/权重/重排）。
@@ -165,7 +169,7 @@ def as_internal_search_port(
     """
     return HostInternalSearchPort(
         search_port=search_port,
-        kb_repo=kb_repo,
+        kb_repo_session=kb_repo_session,
         space_id=space_id,
         user_id=user_id,
         internal_config=internal_config,
@@ -178,16 +182,13 @@ def build_internal_source(context: SearchSourceContext) -> SearchSourcePort:
 
     - ``ctx.config``：InternalSearchConfig dump（kb_ids/search_mode/top_k/...）
     - ``ctx.deps``：宿主依赖容器，须含 ``search_service``（service 装配点延迟构造的
-      SearchService）与可选 ``kb_repo``（缺省自建 KnowledgeBaseRepository）及 ``logger``
+      SearchService）、``session``（KB 候选解析用）及可选 ``logger``
     - HostInternalSearchPort.search 签名与统一 ``SearchSourcePort`` 同形，天然满足
     """
     config = InternalSearchConfig(**(context.config or {}))
-    kb_repo = context.deps.get("kb_repo") or KnowledgeBaseRepository(
-        context.deps["session"]
-    )
     return as_internal_search_port(
         search_port=context.deps["search_service"],
-        kb_repo=kb_repo,
+        kb_repo_session=context.deps["session"],
         space_id=context.space_id,
         user_id=context.user_id,
         internal_config=config,

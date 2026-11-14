@@ -27,20 +27,17 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 SRC = BACKEND_ROOT / "src"
 
 # 白名单：rel_path → 允许的跨 feature .repository import 行数（精确对账）。
-# 2026-11-12 实测基线（ko→ks 的 attribution_worker 已在本批 A3 砍除）。
+# 2026-11-15 更新：ks 相关 12 处（wiki_tools 9/host_knowledge_search/deep_research/user
+# 各 1）已随 wiki_access_service 等服务面落地砍除，白名单仅余非 ks 域 7 处。
 KNOWN_VIOLATIONS: dict[str, int] = {
     "src/core/auth/dependencies.py": 1,
     "src/features/agent/services/chat_context_builder.py": 1,  # 2026-11-15 自 chat_service 拆分迁移
-    "src/features/agent/services/host_knowledge_search.py": 1,
-    "src/features/agent/tool/builtins/wiki_tools.py": 9,
     "src/features/agent_api/services/api_key_service.py": 1,
-    "src/features/deep_research/services/internal_search_source.py": 1,
     "src/features/knowledge_space/api/dependencies.py": 1,
     "src/features/knowledge_space/api/member_routes.py": 1,
     "src/features/notification/services/notification_service.py": 1,
     "src/features/skill/api/dependencies.py": 1,
     "src/features/skill/api/routes.py": 1,
-    "src/features/user/services/model_config_service.py": 1,
 }
 
 _FEATURE_REPO_RE = re.compile(

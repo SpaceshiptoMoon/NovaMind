@@ -1135,15 +1135,13 @@ class ModelConfigService:
 
         if model_type == ModelType.EMBEDDING:
             # 检查空间绑定（Embedding 配置由空间级别统一管理）
-            # 批次 4.5：经 ks repository 公共方法直查（R2 防环——user 不 import ks services）
+            # 2026-11-15：改走 ks services 公共面轻查询（repository 直查被门禁禁止）
             try:
-                from novamind.features.knowledge_space.repository.space_repository import (
-                    SpaceRepository,
+                from novamind.features.knowledge_space.services.space_lookup_service import (
+                    find_spaces_using_embedding as _find_spaces_using_embedding,
                 )
 
-                usages = await SpaceRepository(self.db).find_spaces_using_embedding(
-                    config.model
-                )
+                usages = await _find_spaces_using_embedding(self.db, config.model)
                 for usage in usages:
                     impacts.append({
                         "type": "space",
