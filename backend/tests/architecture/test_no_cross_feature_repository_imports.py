@@ -30,7 +30,7 @@ SRC = BACKEND_ROOT / "src"
 # 2026-11-12 实测基线（ko→ks 的 attribution_worker 已在本批 A3 砍除）。
 KNOWN_VIOLATIONS: dict[str, int] = {
     "src/core/auth/dependencies.py": 1,
-    "src/features/agent/services/chat_service.py": 1,
+    "src/features/agent/services/chat_context_builder.py": 1,  # 2026-11-15 自 chat_service 拆分迁移
     "src/features/agent/services/host_knowledge_search.py": 1,
     "src/features/agent/tool/builtins/wiki_tools.py": 9,
     "src/features/agent_api/services/api_key_service.py": 1,

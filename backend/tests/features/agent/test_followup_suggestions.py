@@ -145,9 +145,9 @@ async def test_generate_builds_prompt_and_parses(monkeypatch) -> None:
             captured["conversation_text"] = kw["conversation_text"]
             return f"PROMPT<{kw['conversation_text']}>"
 
-    import novamind.features.agent.services.chat_service as cs
+    import novamind.features.agent.services.followup_suggestions as fs
 
-    monkeypatch.setattr(cs, "PromptManager", _FakePromptManager)
+    monkeypatch.setattr(fs, "PromptManager", _FakePromptManager)
 
     out = await svc.generate_followup_suggestions(7, "sess-1")
 
