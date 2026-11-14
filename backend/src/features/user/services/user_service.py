@@ -248,26 +248,12 @@ class UserService:
     async def get_auth_status(self, user_id: int) -> dict | None:
         """认证状态快照（原 UserStatusResolverAdapter 语义上移，core/auth 消费）。
 
-        按 user_id 取最新用户状态并派生认证所需布尔（is_active/is_deleted/
-        is_admin/must_change_password），role_code 供 core/auth 派生权限守卫；
-        枚举语义留在 user 侧计算，core 只判布尔。
+        派生逻辑已下沉到 user_repository.get_auth_status_cached（快照即
+        最终 dict，命中零计算）；本方法保持接口不变，core/auth 不感知缓存。
+        失效由 _invalidate_user_cache 在全部用户写入口统一触发，TTL 60s
+        为漏失效时的脏读上限（用户被禁用/删除最多延迟 60s 生效）。
         """
-        user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
-        if not user:
-            return None
-        role_code = user.role.code if user.role else None
-        return {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "role_code": role_code,
-            # 用 role_code 派生布尔，避免 user.is_admin 方法对象被判真
-            "is_admin": role_code == "admin",
-            "status": user.status,
-            "is_active": user.status == UserStatus.ACTIVE,
-            "is_deleted": user.status == UserStatus.DELETED,
-            "must_change_password": bool(user.must_change_password),
-        }
+        return await self.user_repository.get_auth_status_cached(user_id)
 
     async def get_user_by_username(self, username: str) -> UserModel | None:
         """
@@ -709,6 +695,9 @@ class UserService:
         async with self.user_repository.db.begin_nested():
             stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=value)
             await self.user_repository.db.execute(stmt)
+        # must_change_password 是认证快照字段：不失效则改密后旧标记残留一个 TTL，
+        # 用户改完密码仍被强制改密门禁拒绝
+        await self.user_repository._invalidate_user_cache(user_id)
 
     async def change_password(
         self, user_id: int, old_password: str, new_password: str

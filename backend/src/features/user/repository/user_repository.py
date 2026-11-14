@@ -5,6 +5,7 @@
 支持 Redis 缓存
 """
 
+import asyncio
 import time
 
 from novamind.core.auth.hashing import verify_password_async
@@ -13,14 +14,18 @@ from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User, UserStatus
 from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.shared.storage.client_factory import get_redis_client
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 缓存 TTL 常量
 USER_CACHE_TTL = 7200  # 2 小时
+AUTH_STATUS_CACHE_TTL = 60  # 认证状态快照 TTL（秒）；上限即「禁用/删除用户被踢出的最大延迟」
 
 logger = get_logger(__name__)
+
+# 提交后二次失效任务的强引用：事件循环只弱引用 task，不持有会被中途回收
+_post_commit_tasks: set[asyncio.Task] = set()
 
 
 class UserRepository:
@@ -71,15 +76,60 @@ class UserRepository:
             logger.warning("缓存用户信息失败", user_id=user.id, error=str(e))
 
     async def _invalidate_user_cache(self, user_id: int, username: str = None) -> None:
-        """失效用户缓存"""
+        """失效用户缓存（含认证状态快照）。
+
+        本方法是用户写入口的统一失效点：update_user / toggle_user_status /
+        soft_delete / update_login_info / _set_password_hash 均经此处，
+        认证快照在此一并删除即可全覆盖，新增写入口只要调本方法即自动覆盖。
+        """
+        await self._delete_user_cache_keys(user_id, username)
+        self._schedule_post_commit_invalidation(user_id, username)
+
+    async def _delete_user_cache_keys(self, user_id: int, username: str | None = None) -> None:
+        """删除用户的全部缓存键；Redis 故障只告警，不影响主流程。"""
         try:
             cache = await self._get_cache()
             await cache.delete(self._get_user_cache_key(user_id))
+            await cache.delete(self._get_auth_status_cache_key(user_id))
             if username:
                 await cache.delete(self._get_username_cache_key(username))
             logger.debug("用户缓存已失效", user_id=user_id)
         except Exception as e:
             logger.warning("失效用户缓存失败", user_id=user_id, error=str(e))
+
+    def _schedule_post_commit_invalidation(
+        self, user_id: int, username: str | None = None
+    ) -> None:
+        """注册事务提交后的二次失效，关闭「失效早于提交」的竞态窗口。
+
+        repository 不提交事务，写入口的失效发生在 commit 之前：并发请求可能在
+        失效之后、提交之前 miss，把尚未变更的旧状态回填进缓存。提交之后的回填
+        读到的都是新值，所以提交后再删一次即可清掉窗口内的脏回填。
+
+        注册失败（测试桩会话、无事件循环）时退化为只有立即失效，脏读上限仍由
+        TTL 兜底。事务回滚时监听器不触发，随请求级会话一起销毁。
+        """
+        sync_session = getattr(self.db, "sync_session", None)
+        if sync_session is None:
+            return
+
+        def _after_commit(_session) -> None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            task = loop.create_task(self._delete_user_cache_keys(user_id, username))
+            _post_commit_tasks.add(task)
+            task.add_done_callback(_post_commit_tasks.discard)
+
+        try:
+            event.listen(sync_session, "after_commit", _after_commit, once=True)
+        except Exception as e:
+            logger.warning("注册提交后失效失败，仅保留立即失效", user_id=user_id, error=str(e))
+
+    def _get_auth_status_cache_key(self, user_id: int) -> str:
+        """生成认证状态快照缓存键"""
+        return f"auth:status:{user_id}"
 
     async def create_user(self, user_create: dict) -> User:
         """
@@ -243,6 +293,75 @@ class UserRepository:
             await self._cache_user(user)
 
         return user
+
+    async def get_auth_status_cached(self, user_id: int) -> dict | None:
+        """认证状态快照（Redis dict，TTL 60s），供每请求认证链使用。
+
+        与 get_user_by_id 的 ORM 对象缓存刻意并存、形状不同：快照是纯
+        dict，命中路径不回 identity map、不 refresh、不触发 role 懒加载
+        （旧用户缓存命中反而比直查多出 refresh+selectin 两条 SQL，是负
+        收益）。已删除用户返回 None 且不缓存，与直查语义一致。
+
+        失效：_invalidate_user_cache 一并删快照（覆盖 update/toggle/
+        软删/改密全部写入口）；角色分配变更由 role_service 单独失效。
+        两者都在事务提交后再删一次。Redis 故障时降级直查，不阻断认证。
+
+        调用前提：本会话内未修改过该用户。会话工厂 autoflush=False，同会话
+        先改 role_id 再调本方法时，identity map 命中的旧对象不重载 role
+        关系，会把陈旧 role_code 回填进快照。现有调用方（HTTP/WS 认证链、
+        API key 校验）都在请求开头只读调用，满足前提。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            认证所需字段快照 dict；用户不存在/已删除返回 None。
+        """
+        key = self._get_auth_status_cache_key(user_id)
+        try:
+            cache = await self._get_cache()
+            snap = await cache.get(key)
+            if snap is not None:
+                logger.debug("认证快照命中", user_id=user_id)
+                return snap
+        except Exception as e:
+            logger.warning("读取认证快照失败，降级直查", user_id=user_id, error=str(e))
+
+        stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        if not user:
+            return None
+
+        # lazy="selectin"：主查询已随行加载 role，此访问不触发新查询
+        role_code = user.role.code if user.role else None
+        snap = {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role_code": role_code,
+            "is_admin": role_code == "admin",
+            "status": user.status,
+            "is_active": user.status == UserStatus.ACTIVE,
+            "is_deleted": user.status == UserStatus.DELETED,
+            "must_change_password": bool(user.must_change_password),
+        }
+        try:
+            cache = await self._get_cache()
+            await cache.set(key, snap, expire=AUTH_STATUS_CACHE_TTL)
+        except Exception as e:
+            logger.warning("写认证快照失败", user_id=user_id, error=str(e))
+        return snap
+
+    async def invalidate_auth_status(self, user_id: int) -> None:
+        """主动失效认证快照（供 user_repository 写入口之外的调用方使用，如角色变更）。"""
+        try:
+            cache = await self._get_cache()
+            await cache.delete(self._get_auth_status_cache_key(user_id))
+        except Exception as e:
+            logger.warning("失效认证快照失败", user_id=user_id, error=str(e))
+        # 角色变更没有 token 黑名单兜底，降级后的 is_admin 残留只能靠这里清掉
+        self._schedule_post_commit_invalidation(user_id)
 
     async def get_users(self, skip: int = 0, limit: int = 100) -> list[User]:
         """获取用户列表（排除已删除用户）。

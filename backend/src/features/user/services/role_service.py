@@ -11,6 +11,7 @@ from novamind.features.user.exceptions import (
 from novamind.features.user.models.role import Permission, Role
 from novamind.features.user.models.user import User
 from novamind.features.user.repository.role_repository import RoleRepository
+from novamind.features.user.repository.user_repository import UserRepository
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -135,8 +136,11 @@ class RoleService:
         user_ids = (
             await self.db.execute(select(User.id).where(User.role_id == role_id))
         ).scalars().all()
+        user_auth_cache = UserRepository(self.db)
         for uid in user_ids:
             await self.checker.invalidate(uid)
+            # 角色权限变更会改变 is_admin 派生值，认证快照同步失效
+            await user_auth_cache.invalidate_auth_status(uid)
 
     async def delete_role(self, role_id: int) -> None:
         """删除角色；系统内置角色与仍被用户绑定的角色拒绝删除。
@@ -195,6 +199,8 @@ class RoleService:
 
         if self.checker is not None:
             await self.checker.invalidate(user_id)
+        # 角色分配改变 role_code/is_admin，认证快照同步失效（60s TTL 为漏失效上限）
+        await UserRepository(self.db).invalidate_auth_status(user_id)
 
     async def list_roles(self) -> list[Role]:
         """列出全部角色及其权限。"""
