@@ -1,11 +1,26 @@
 """AI 模型基类定义：BaseLLM / BaseEmbedding / BaseRerank + 响应数据结构（StreamChunk / LLMResponse / ToolCall）。跨 LLM provider 统一抽象层。"""
 import asyncio
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+
+def client_cache_signature(base_url: str, model: str, extra: dict | None = None) -> str:
+    """客户端配置指纹：影响模型输出的全部配置的 md5（结果缓存键隔离用）。
+
+    同名模型在不同提供商（base_url）或不同输出配置（如归一化开关）下产出
+    完全不同——结果缓存键只按模型名隔离会静默串键（维度恰好相同时是错误
+    结果而非报错，比炸掉更危险）。
+    """
+    payload = "|".join(
+        [base_url or "", model, json.dumps(extra or {}, sort_keys=True, ensure_ascii=False)]
+    )
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -178,6 +193,12 @@ class BaseLLM(ABC):
         self.max_retries = max_retries
         self._semaphore = None
         self._max_concurrent = max_concurrent
+        # 影响输出分布的构造级配置（子类按需追加，如归一化开关），进结果缓存签名
+        self._cache_sig_extra: dict[str, Any] = {}
+
+    def cache_signature(self) -> str:
+        """结果缓存键用的配置指纹（提供商/模型/子类追加的输出配置）。"""
+        return client_cache_signature(self.base_url, self.model, self._cache_sig_extra)
 
     def _get_semaphore(self) -> asyncio.Semaphore:
         """延迟创建 Semaphore，确保在事件循环内初始化"""
@@ -392,6 +413,16 @@ class BaseEmbedding(ABC):
         self._semaphore = None
         self._max_concurrent = max_concurrent
         self._http_client_lock = None
+        # 影响向量输出的构造级配置（子类按需追加，如归一化开关），进结果缓存签名
+        self._cache_sig_extra: dict[str, Any] = {}
+
+    def cache_signature(self) -> str:
+        """向量缓存键用的配置指纹（提供商/模型/子类追加的输出配置）。
+
+        同名模型在不同提供商下向量完全不同，向量缓存键只按模型名隔离会
+        静默串键——维度恰好相同时返回错误向量，比 kNN 报错更危险。
+        """
+        return client_cache_signature(self.base_url, self.model, self._cache_sig_extra)
 
     def _get_lock(self) -> asyncio.Lock:
         """延迟创建 Lock，确保在事件循环内初始化"""

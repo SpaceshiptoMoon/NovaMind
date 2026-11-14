@@ -111,7 +111,10 @@ def test_cache_miss_invokes_embedding_resolver():
         )
     )
 
-    fake_embedding = SimpleNamespace(generate_embedding=AsyncMock(return_value=[0.1, 0.2, 0.3, 0.4]))
+    fake_embedding = SimpleNamespace(
+        generate_embedding=AsyncMock(return_value=[0.1, 0.2, 0.3, 0.4]),
+        cache_signature=lambda: "seam-test-sig",
+    )
     resolver_called = {"count": 0}
 
     async def _resolver():

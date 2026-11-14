@@ -318,28 +318,31 @@ class SearchService:
         查询改写（带缓存）。
 
         temperature=0.3 的改写输出非确定，缓存的定位是「同一查询短时间内
-        不重复付 LLM 费用」，不是确定性保证。QueryRewriteConfig 全量进键：
-        策略、模型、子问题数任一变更即换键；prompt 模板变更属部署事件，
+        不重复付 LLM 费用」，不是确定性保证。键含三层隔离：QueryRewriteConfig
+        全量（策略/模型名/子问题数）、LLM 客户端配置签名（同名模型不同提供商
+        输出不同）、查询文本——任一变更即换键。prompt 模板变更属部署事件，
         由 TTL 在 10 分钟内自然收敛。
 
         策略语义见 :meth:`_rewrite_query_uncached`。
         """
+        # 客户端先解析：键需要它的配置签名（模型名相同、提供商不同 → 输出不同）
+        llm_client = await self._get_llm_client(user_id, rewrite_config.llm_model)
         config_sig = hashlib.md5(rewrite_config.model_dump_json().encode("utf-8")).hexdigest()
         key = (
-            f"rw:{rewrite_config.strategy}:{config_sig}:"
-            f"{hashlib.md5(query.encode('utf-8')).hexdigest()}"
+            f"rw:{rewrite_config.strategy}:{llm_client.cache_signature()}:"
+            f"{config_sig}:{hashlib.md5(query.encode('utf-8')).hexdigest()}"
         )
         return await get_or_load(
             key,
             self.QUERY_REWRITE_CACHE_TTL,
-            lambda: self._rewrite_query_uncached(query, rewrite_config, user_id),
+            lambda: self._rewrite_query_uncached(query, rewrite_config, llm_client),
         )
 
     async def _rewrite_query_uncached(
         self,
         query: str,
         rewrite_config: "QueryRewriteConfig",
-        user_id: int,
+        llm_client: "BaseLLM",
     ) -> dict[str, Any]:
         """
         查询改写
@@ -351,7 +354,7 @@ class SearchService:
         Args:
             query: 原始查询文本
             rewrite_config: 查询改写配置
-            user_id: 用户 ID
+            llm_client: 已解析的 LLM 客户端（配置签名已并入缓存键）
 
         Returns:
             {
@@ -366,9 +369,7 @@ class SearchService:
 
         strategy = rewrite_config.strategy
 
-        # 获取 LLM 客户端
-        llm_model = rewrite_config.llm_model
-        llm_client = await self._get_llm_client(user_id, llm_model)
+        # LLM 客户端由缓存外壳解析传入（键已含其配置签名）
 
         if strategy == "hyde":
             # HyDE: 生成假设性回答文档

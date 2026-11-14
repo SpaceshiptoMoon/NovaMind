@@ -52,6 +52,8 @@ class TransformersEmbedding(BaseEmbedding):
         )
         self.device = device
         self.normalize_embeddings = normalize_embeddings
+        # 归一化开关改变 encode 输出（进缓存签名，隔离同模型不同归一化配置）
+        self._cache_sig_extra["normalize"] = normalize_embeddings
 
         self._model = None
         self._initialized = False

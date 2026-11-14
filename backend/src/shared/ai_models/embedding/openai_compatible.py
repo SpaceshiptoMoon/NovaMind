@@ -162,6 +162,8 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         )
         self.batch_size = batch_size
         self.normalize = normalize
+        # 归一化开关改变返回向量（进缓存签名，隔离同模型不同归一化配置）
+        self._cache_sig_extra["normalize"] = normalize
         # 服务商批量上限的学习值（取历史最小，保守安全——部分服务商上限随请求
         # token 数浮动，如 DashScope 同一模型观测到 20 与 25 两个值）。
         self._learned_batch_limit: int | None = None

@@ -529,21 +529,15 @@ class RetrievalEngine:
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
 
     async def _embed_cached(self, embedding_client: BaseEmbedding, text: str) -> list[float]:
-        """查询向量缓存：同模型同文本不重复调用远程 embedding（30 分钟）。
+        """查询向量缓存：同配置同文本不重复调用远程 embedding（30 分钟）。
 
-        键必须含模型名——不同模型的向量维度不同，串键会让 kNN 直接报错；
-        向量与模型强绑定，换模型必须换键。embedding 是确定性调用（同模型同
-        文本同向量），TTL 仅作内存回收，无一致性问题。
+        键含客户端配置签名（提供商 base_url / 模型 / 归一化开关）——同名模型
+        在不同提供商下向量完全不同，只按模型名隔离会静默串键：维度恰好相同
+        时返回错误向量（比 kNN 报错更危险），维度不同则直接炸 kNN。
+        向量是确定性输出（同配置同文本同向量），TTL 仅作内存回收，无一致性问题。
         """
-        model = (
-            getattr(embedding_client, "model", None)
-            or getattr(embedding_client, "model_name", None)
-            or "unknown"
-        )
-        key = (
-            f"emb:{hashlib.md5(str(model).encode('utf-8')).hexdigest()}:"
-            f"{hashlib.md5(text.encode('utf-8')).hexdigest()}"
-        )
+        sig = embedding_client.cache_signature()
+        key = f"emb:{sig}:{hashlib.md5(text.encode('utf-8')).hexdigest()}"
 
         async def _load() -> list[float]:
             return await embedding_client.generate_embedding(text)
