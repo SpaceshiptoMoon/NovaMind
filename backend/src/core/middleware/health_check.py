@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.cache.helpers import cache_stats
 from novamind.shared.storage.client_factory import (
     get_elasticsearch_client,
     get_minio_client,
@@ -184,6 +185,9 @@ async def detailed_health_check() -> dict[str, Any]:
             log_func(f"{name} 健康检查失败", error=str(e))
 
     health_status["status"] = overall_status
+
+    # 进程内缓存命中率观测（键前缀聚合）：多进程各计各的，仅供观测
+    health_status["cache_stats"] = cache_stats()
 
     if health_status["status"] == "unhealthy":
         return JSONResponse(content=health_status, status_code=503)
