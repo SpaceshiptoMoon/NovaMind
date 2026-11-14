@@ -104,6 +104,53 @@ async def is_user_blacklisted(user_id: int, token_iat: int | None = None) -> boo
         return True
 
 
+async def check_auth_blacklists(
+    jti: str | None, user_id: int, token_iat: int | None = None
+) -> tuple[bool, bool]:
+    """一次 Redis 往返同时检查 token 级与用户级黑名单（认证链每请求热路径）。
+
+    语义与依次调用 is_token_revoked + is_user_blacklisted 严格等价，只是把
+    两条命令合进一个非事务 pipeline：带 jti 时 Redis 异常向上透传（与
+    is_token_revoked 一致）；无 jti 时只有用户级检查，异常按 fail-close 处理。
+
+    Args:
+        jti: JWT ID；为空则不查 token 级黑名单。
+        user_id: 用户 ID。
+        token_iat: Token 签发时间戳，语义同 is_user_blacklisted。
+
+    Returns:
+        （token 已撤销, 用户在黑名单中）。
+
+    Raises:
+        AuthBlacklistError: 带 jti 时 Redis 访问失败。
+    """
+    try:
+        redis_client = await _raw_redis()
+        pipe = redis_client.pipeline(transaction=False)
+        if jti:
+            pipe.exists(f"{TOKEN_BLACKLIST_PREFIX}{jti}")
+        pipe.get(f"{USER_BLACKLIST_PREFIX}{user_id}")
+        results = await pipe.execute()
+    except Exception as e:
+        if jti:
+            logger.error("检查 Token 黑名单失败", jti=jti[:8] + "...", error=str(e))
+            raise AuthBlacklistError(f"检查 Token 黑名单失败: {str(e)}") from e
+        logger.error(
+            "检查用户级黑名单失败（安全策略：fail-close，拒绝访问）",
+            user_id=user_id,
+            error=str(e),
+        )
+        return False, True
+
+    token_revoked = bool(results[0]) if jti else False
+    blacklist_raw = results[-1]
+    if blacklist_raw is None:
+        return token_revoked, False
+    if token_iat is not None:
+        return token_revoked, token_iat < int(blacklist_raw)
+    return token_revoked, True
+
+
 # ===== Token family（refresh token 轮换链追踪，2026-11-12）=====
 # family 读写是「增强防御」层：jti 级黑名单（TOKEN_BLACKLIST_PREFIX）仍是
 # fail-close 主防线；family 键读失败按缺失处理（走现状逻辑）、写失败由调用方
@@ -164,6 +211,7 @@ __all__ = [
     "get_raw_redis",
     "is_token_revoked",
     "is_user_blacklisted",
+    "check_auth_blacklists",
     "get_token_family_current_jti",
     "set_token_family_current_jti",
     "mark_token_family_revoked",

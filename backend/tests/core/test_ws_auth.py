@@ -47,11 +47,12 @@ def fake_config(monkeypatch):
 
 @pytest.fixture
 def no_blacklist(monkeypatch):
-    """短路 is_user_blacklisted / is_token_revoked（避免 Redis），默认未拉黑/未撤销。"""
+    """短路黑名单查询（避免 Redis），默认未撤销/未拉黑。"""
     import novamind.core.auth.ws_auth as ws_mod
 
-    monkeypatch.setattr(ws_mod, "is_user_blacklisted", AsyncMock(return_value=False))
-    monkeypatch.setattr(ws_mod, "is_token_revoked", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        ws_mod, "check_auth_blacklists", AsyncMock(return_value=(False, False))
+    )
 
 
 class FakeWS:

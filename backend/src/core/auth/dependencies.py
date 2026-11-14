@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
+from novamind.core.auth.blacklist import check_auth_blacklists
 from novamind.core.auth.exceptions import (
     AuthenticationError,
     AuthenticationRevokedError,
@@ -81,11 +81,14 @@ async def _resolve_user_from_token(
         raise AuthenticationError("无效的认证凭证")
 
     # 2. token 级黑名单（登出/刷新轮换后该 jti 立即失效）
-    if claims.jti and await is_token_revoked(claims.jti):
-        raise AuthenticationRevokedError("登录凭证已撤销，请重新登录")
-
     # 3. 用户级黑名单（用户被软删除/停用时所有 Token 立即失效）
-    if await is_user_blacklisted(claims.user_id, token_iat=claims.iat):
+    # 两项合并为一次 Redis 往返，语义与依次检查等价
+    token_revoked, user_blacklisted = await check_auth_blacklists(
+        claims.jti, claims.user_id, token_iat=claims.iat
+    )
+    if token_revoked:
+        raise AuthenticationRevokedError("登录凭证已撤销，请重新登录")
+    if user_blacklisted:
         raise AuthenticationRevokedError("用户凭证已失效，请重新登录")
 
     # 4. 从 DB 取最新用户状态（user 侧 service，core 不碰 ORM）

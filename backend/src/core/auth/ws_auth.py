@@ -6,7 +6,7 @@ accept 前 close 会被 uvicorn 转成 HTTP 403，close code 无法作为 WS clo
 from __future__ import annotations
 
 from fastapi import WebSocket
-from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
+from novamind.core.auth.blacklist import check_auth_blacklists
 from novamind.core.auth.token import decode_access_token
 from novamind.features.user.services.user_service import UserService
 
@@ -47,12 +47,12 @@ async def ws_authenticate(
     if not claims or not claims.user_id:
         return None, WS_CLOSE_UNAUTHENTICATED
 
-    # token 级黑名单（登出/刷新轮换后该 jti 立即失效）
-    if claims.jti and await is_token_revoked(claims.jti):
-        return None, WS_CLOSE_UNAUTHENTICATED
-
-    # 用户级黑名单（用户被软删除/停用时所有 Token 立即失效）
-    if await is_user_blacklisted(claims.user_id, token_iat=claims.iat):
+    # token 级黑名单（登出/刷新轮换后该 jti 立即失效）+ 用户级黑名单（用户被
+    # 软删除/停用时所有 Token 立即失效），合并为一次 Redis 往返
+    token_revoked, user_blacklisted = await check_auth_blacklists(
+        claims.jti, claims.user_id, token_iat=claims.iat
+    )
+    if token_revoked or user_blacklisted:
         return None, WS_CLOSE_UNAUTHENTICATED
 
     # 经端口取 DB 最新用户状态（core 不碰 user ORM）

@@ -54,14 +54,10 @@ def _patch_blacklists(monkeypatch, *, revoked: bool = False):
     """屏蔽 Redis 黑名单查询，返回受控结果。"""
     from novamind.core.auth import dependencies as auth_deps
 
-    async def _fake_revoked(jti):
-        return revoked
+    async def _fake_check(jti, user_id, token_iat=None):
+        return revoked, False
 
-    async def _fake_user_blacklisted(user_id, token_iat=None):
-        return False
-
-    monkeypatch.setattr(auth_deps, "is_token_revoked", _fake_revoked)
-    monkeypatch.setattr(auth_deps, "is_user_blacklisted", _fake_user_blacklisted)
+    monkeypatch.setattr(auth_deps, "check_auth_blacklists", _fake_check)
 
 
 def _make_app(resolver: _FakeResolver) -> FastAPI:
