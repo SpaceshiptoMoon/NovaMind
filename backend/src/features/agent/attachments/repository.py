@@ -108,3 +108,21 @@ class ChatAttachmentRepository:
         stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def update_extracted_text(self, attachment_id: int, extracted_text: str | None) -> bool:
+        """更新附件提取文本（重提取补救路径；SAVEPOINT 内 flush，由调用方 commit）。
+
+        Args:
+            attachment_id: 附件 ID。
+            extracted_text: 新的提取文本；提取失败传 None 清空旧值。
+
+        Returns:
+            是否命中附件行。
+        """
+        attachment = await self.get_by_id(attachment_id)
+        if attachment is None:
+            return False
+        async with self.session.begin_nested():
+            attachment.extracted_text = extracted_text
+            await self.session.flush()
+        return True

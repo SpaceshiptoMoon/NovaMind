@@ -8591,6 +8591,39 @@
         "title": "QuestionLLMConfig",
         "type": "object"
       },
+      "ReextractAttachmentResponse": {
+        "description": "附件文本重提取响应",
+        "properties": {
+          "attachment_id": {
+            "description": "附件ID",
+            "title": "Attachment Id",
+            "type": "integer"
+          },
+          "extraction_status": {
+            "description": "重提取状态：ok=成功 / empty=无文本内容 / failed=提取失败",
+            "title": "Extraction Status",
+            "type": "string"
+          },
+          "filename": {
+            "description": "文件名",
+            "title": "Filename",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "description": "提示信息",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "filename",
+          "extraction_status"
+        ],
+        "title": "ReextractAttachmentResponse",
+        "type": "object"
+      },
       "RerankConfig": {
         "description": "Rerank 重排序配置\n\n对检索结果进行二次精排序，提升 Top-K 的精准度。",
         "properties": {
@@ -13116,6 +13149,12 @@
             "title": "Attachment Id",
             "type": "integer"
           },
+          "extraction_status": {
+            "default": "ok",
+            "description": "文本提取状态：ok=成功 / empty=无文本内容 / failed=提取失败 / skipped=图片无需提取",
+            "title": "Extraction Status",
+            "type": "string"
+          },
           "file_size": {
             "description": "文件大小（字节）",
             "title": "File Size",
@@ -16198,6 +16237,57 @@
           }
         ],
         "summary": "下载聊天附件",
+        "tags": [
+          "Agent 聊天附件"
+        ]
+      }
+    },
+    "/api/v1/agent/attachments/{attachment_id}/reextract": {
+      "post": {
+        "description": "对非图片附件重新执行文本提取并回写（修复历史提取失败/引擎缺失期的残废附件：extracted_text 为空的记录）",
+        "operationId": "reextract_chat_attachment_api_v1_agent_attachments__attachment_id__reextract_post",
+        "parameters": [
+          {
+            "description": "附件ID",
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "description": "附件ID",
+              "exclusiveMinimum": 0,
+              "title": "Attachment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReextractAttachmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "重新提取附件文本",
         "tags": [
           "Agent 聊天附件"
         ]

@@ -28,4 +28,19 @@ class UploadChatAttachmentResponse(BaseModel):
     filename: str = Field(..., description="文件名")
     file_type: str = Field(..., description="文件类型")
     file_size: int = Field(..., description="文件大小（字节）")
+    extraction_status: str = Field(
+        default="ok",
+        description="文本提取状态：ok=成功 / empty=无文本内容 / failed=提取失败 / skipped=图片无需提取",
+    )
+    message: str = Field(default="", description="提示信息")
+
+
+class ReextractAttachmentResponse(BaseModel):
+    """附件文本重提取响应"""
+    attachment_id: int = Field(..., description="附件ID")
+    filename: str = Field(..., description="文件名")
+    extraction_status: str = Field(
+        ...,
+        description="重提取状态：ok=成功 / empty=无文本内容 / failed=提取失败",
+    )
     message: str = Field(default="", description="提示信息")

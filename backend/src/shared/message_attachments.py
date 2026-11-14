@@ -38,4 +38,33 @@ def write_attachment_ids(extra: dict | None, items: list[dict]) -> dict:
     return out
 
 
-__all__ = ["ATTACHMENT_EXTRA_KEY", "read_attachment_ids", "write_attachment_ids"]
+__all__ = [
+    "ATTACHMENT_EXTRA_KEY",
+    "CLIENT_ATTACHMENT_FIELDS",
+    "read_attachment_ids",
+    "write_attachment_ids",
+    "sanitize_attachments_for_client",
+]
+
+# 回放出口对客户端可见的附件字段白名单：storage_path 是 MinIO 内部对象键，
+# 不必要的内部信息不外泄（前端渲染只消费 id/filename/file_type/preview_url，
+# 文档下载走 /attachments/{id}/download 端点，均不依赖 storage_path）
+CLIENT_ATTACHMENT_FIELDS = ("id", "filename", "file_type", "file_size", "preview_url")
+
+
+def sanitize_attachments_for_client(extra: dict | None) -> None:
+    """把消息 extra 中附件项就地收敛为客户端白名单字段（回放出口层调用）。
+
+    附件的 storage_path 仅在服务端流转（presign 生成 preview_url、清理由 DB
+    行自持），入库形态不变；本函数只作用于即将返回给前端的 extra dict。
+
+    Args:
+        extra: 消息 extra dict（含 attachments 键）；None 或缺键时原样返回。
+    """
+    if not extra:
+        return
+    for att in extra.get(ATTACHMENT_EXTRA_KEY) or []:
+        if isinstance(att, dict):
+            for key in list(att.keys()):
+                if key not in CLIENT_ATTACHMENT_FIELDS:
+                    del att[key]

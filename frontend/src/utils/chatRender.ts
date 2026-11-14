@@ -331,7 +331,6 @@ export interface MessageAttachment {
   filename: string
   file_type?: string
   file_size?: number
-  storage_path?: string
   preview_url?: string
 }
 
@@ -343,7 +342,9 @@ export function getMessageAttachments(msg: AgentMessage): MessageAttachment[] {
       filename: typeof a.filename === 'string' ? a.filename : '',
       file_type: typeof a.file_type === 'string' ? a.file_type : undefined,
       file_size: typeof a.file_size === 'number' ? a.file_size : undefined,
-      storage_path: typeof a.storage_path === 'string' ? a.storage_path : undefined,
+      // 后端回放出口已把附件收敛为白名单字段（无 storage_path），preview_url
+      // 优先于 Blob 下载缓存渲染图片缩略图
+      preview_url: typeof a.preview_url === 'string' ? a.preview_url : undefined,
     })) ?? []
   )
 }

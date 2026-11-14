@@ -72,6 +72,7 @@ from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.user_service import UserService
+from novamind.shared.message_attachments import sanitize_attachments_for_client
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -705,9 +706,14 @@ async def get_messages(
     minio_client=Depends(get_minio_client_for_presign),
 ):
     result = await service.get_messages(user_id, session_id, limit, offset)
-    if minio_client:
-        for msg in result.items:
+    for msg in result.items:
+        if not msg.extra or "attachments" not in (msg.extra or {}):
+            continue
+        # 先用 DB 形态里的 storage_path 生成图片 preview_url，再把附件收敛为
+        # 客户端白名单字段（MinIO 对象键不出服务边界）
+        if minio_client:
             await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
+        sanitize_attachments_for_client(msg.extra)
     return result
 
 

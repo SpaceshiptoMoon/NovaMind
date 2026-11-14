@@ -265,7 +265,11 @@ class AgentChatRequest(BaseModel):
         default=False, description="是否开启深度研究模式（本轮引导模型优先调用 research 工具）"
     )
     stream: bool = Field(default=True, description="是否流式输出")
-    attachment_ids: list[int] | None = Field(default=None, description="附件ID列表")
+    # 上限与附件清单单段展示上限（MANIFEST_MAX_FILES_PER_SECTION=10）对齐；
+    # 无硬上限时批量 id 会在轮次开始前触发批量 MinIO 下载转 base64，阻塞首轮
+    attachment_ids: list[int] | None = Field(
+        default=None, max_length=10, description="附件ID列表（单条消息最多 10 个）"
+    )
 
 
 # ==================== MCP 服务器 ====================

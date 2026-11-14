@@ -392,9 +392,16 @@ class FileValidator:
                     expected_mimes=expected_mimes,
                 )
         elif not expected_mimes:
-            if detected_mime:
+            # 无 MIME 登记的扩展名：探测出 MIME 放行；探测失败时与上分支同理
+            # 分治——文本类（如 markdown）无魔数属正常，按扩展名放行，
+            # 其余无法核验一律拒绝（防任意载荷凭未登记扩展名入库）
+            if detected_mime or self._is_textual_extension(extension):
                 info.is_valid = True
-                info.validation_message = f"文件验证通过 (MIME: {detected_mime})"
+                info.validation_message = (
+                    f"文件验证通过 (MIME: {detected_mime})"
+                    if detected_mime
+                    else "文件验证通过（文本类型，无魔数特征）"
+                )
             else:
                 info.validation_message = f"无法识别的文件类型: {extension}"
         else:
@@ -423,12 +430,15 @@ class FileValidator:
 
     # 无固定魔数的文本类扩展名：内容探测失败时按扩展名放行（eml 是 RFC 822
     # 纯文本——无 libmagic 部署下首行 "From:" 探不出 MIME，按文本类放行，
-    # 解析层 email 库对坏结构显式报错兜底）
-    _TEXTUAL_EXTENSIONS = frozenset({"txt", "md", "csv", "html", "htm", "json", "xml", "eml"})
+    # 解析层 email 库对坏结构显式报错兜底）。markdown 与 md 同为 markdown
+    # 文本，缺了它会让 .markdown 文件在魔数探测失败分支被误拒。
+    _TEXTUAL_EXTENSIONS = frozenset(
+        {"txt", "md", "markdown", "csv", "html", "htm", "json", "xml", "eml"}
+    )
 
     @classmethod
     def _is_textual_extension(cls, extension: str) -> bool:
-        """判断扩展名是否属于无固定魔数的文本类（txt/md/csv/html/json/xml）。"""
+        """判断扩展名是否属于无固定魔数的文本类（txt/md/markdown/csv/html/json/xml）。"""
         return extension.lower() in cls._TEXTUAL_EXTENSIONS
 
 

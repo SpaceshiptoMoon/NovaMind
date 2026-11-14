@@ -28,6 +28,7 @@ from novamind.features.agent.api.dependencies import (
 from novamind.features.agent.attachments.schemas import (
     ChatAvailableModelsResponse,
     HealthCheckResponse,
+    ReextractAttachmentResponse,
     UploadChatAttachmentResponse,
 )
 from novamind.features.agent.attachments.service import AttachmentService
@@ -92,6 +93,28 @@ async def download_chat_attachment(
             )
         },
     )
+
+
+@router.post(
+    "/attachments/{attachment_id}/reextract",
+    response_model=ReextractAttachmentResponse,
+    summary="重新提取附件文本",
+    description=(
+        "对非图片附件重新执行文本提取并回写（修复历史提取失败/引擎缺失期的"
+        "残废附件：extracted_text 为空的记录）"
+    ),
+)
+async def reextract_chat_attachment(
+    attachment_id: Annotated[int, Path(gt=0, description="附件ID")],
+    attachment_service: AttachmentService = Depends(get_attachment_service),
+    current_user: dict = Depends(get_current_user),
+):
+    """重新提取附件文本（按 user 归属校验，图片附件拒绝）。"""
+    result = await attachment_service.reextract_attachment(
+        user_id=current_user["id"],
+        attachment_id=attachment_id,
+    )
+    return ReextractAttachmentResponse(**result)
 
 
 @router.get(

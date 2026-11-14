@@ -185,6 +185,24 @@ async def get_agent_chat_service(
     )
 
 
+_shared_document_processor = None
+
+
+def _get_shared_document_processor():
+    """返回进程级 DocumentProcessor 单例（构造轻量：解析器与模型全部懒加载）。
+
+    附件文本提取复用知识库同款文档引擎（engines/document）；单例避免
+    每请求重复构造读取器注册表。历史缺陷：装配点漏传该参数导致 pdf/docx
+    提取静默失败（AttributeError 被 except 吞掉），此处为唯一修复面。
+    """
+    global _shared_document_processor
+    if _shared_document_processor is None:
+        from novamind.engines.document.pipeline import DocumentProcessor
+
+        _shared_document_processor = DocumentProcessor()
+    return _shared_document_processor
+
+
 async def get_attachment_service(
     db: AsyncSession = Depends(get_db),
 ) -> AttachmentService:
@@ -196,7 +214,11 @@ async def get_attachment_service(
         minio_client = await ClientFactory.get_minio_client()
     except Exception:
         pass
-    return AttachmentService(db=db, minio_client=minio_client)
+    return AttachmentService(
+        db=db,
+        minio_client=minio_client,
+        document_processor=_get_shared_document_processor(),
+    )
 
 
 async def get_mcp_server_service(
