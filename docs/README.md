@@ -46,6 +46,7 @@
 - [`notification-architecture.md`](./notification-architecture.md)：通知系统架构（NotificationService.notify、WS 推送、轮询兜底）
 - [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）
 - [`transaction-boundary-conventions.md`](./transaction-boundary-conventions.md)：仓储写操作 `begin_nested()` 事务边界约定
+- [`single-process-boundary-conventions.md`](./single-process-boundary-conventions.md)：单进程部署边界约定（进程内状态清单、多 worker 故障形态、水平扩展演进路径）
 - [`multi-agent-parallel-development-workflow.md`](./multi-agent-parallel-development-workflow.md)：多 Agent 并行开发的 worktree 工作流
 
 ### Agent / Deep Research 子系统

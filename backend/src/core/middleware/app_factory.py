@@ -3,6 +3,8 @@
 负责创建和配置FastAPI应用实例
 """
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from novamind.core.security.config_validator import validate_security_config
@@ -18,6 +20,32 @@ from .startup_manager import AppLifespanManager
 from .structured_logging import get_logger, setup_structured_logging
 from .trace_middleware import TraceIDMiddleware
 
+logger = get_logger(__name__)
+
+# 运行形态诊断入口：main.py 经环境变量把 --workers 传入每个 worker 子进程；
+# 未经 main.py 启动（直接 uvicorn CLI）时变量缺失，按 1 处理（不知情不误报）
+_WORKERS_ENV = "NOVAMIND_WORKERS"
+
+
+def _diagnose_runtime_shape() -> None:
+    """启动期运行形态诊断（只告警不阻断）：多 worker 部署检测。
+
+    本服务按单 worker 进程设计（WS 路由表/断连审批路由表/进程级锁/嵌入式
+    任务 consumer 均为进程内状态），多 worker 部署会产生静默故障。边界清单
+    与演进路径见 docs/single-process-boundary-conventions.md。
+    """
+    try:
+        workers = int(os.environ.get(_WORKERS_ENV, "1"))
+    except ValueError:
+        workers = 1
+    if workers > 1:
+        logger.warning(
+            "运行形态诊断：检测到多 worker 部署（仅告警，不阻断启动）",
+            workers=workers,
+            hint="本服务按单进程设计，WS 路由/断连续跑审批/任务消费会静默故障，"
+                 "请回退 --workers 1；详见 docs/single-process-boundary-conventions.md",
+        )
+
 
 def create_app() -> FastAPI:
     """
@@ -31,6 +59,9 @@ def create_app() -> FastAPI:
 
     # 启动期安全配置诊断（只告警不阻断：弱密钥/占位符/通配 CORS 等记 WARNING 日志）
     validate_security_config(config)
+
+    # 启动期运行形态诊断（只告警不阻断：多 worker 部署检测）
+    _diagnose_runtime_shape()
 
     # 初始化路由管理器
     router_manager = RouterManager()

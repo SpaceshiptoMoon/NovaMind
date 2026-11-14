@@ -19,14 +19,11 @@ from novamind.features.agent.exceptions import (
     AttachmentUploadError,
     InvalidMessageContentError,
 )
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from novamind.engines.document.pipeline import DocumentProcessor
-    from novamind.features.knowledge_space.services.search_service import SearchService
     from novamind.shared.storage.minio_client import MinioClient
 
 
@@ -41,32 +38,26 @@ class AttachmentService:
 
     def __init__(
         self,
-        model_config_service: ModelConfigService | None = None,
         db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
-        search_service: Optional["SearchService"] = None,
         document_processor: Optional["DocumentProcessor"] = None,
-        search_config_service: SearchConfigService | None = None,
     ):
         """
         初始化附件服务
 
         Args:
-            model_config_service: 模型配置服务（保留装配面兼容，附件链未消费）
             db: 数据库会话（用于附件存储）
             minio_client: MinIO 客户端（用于文件存储）
-            search_service: 检索服务（保留装配面兼容，附件链未消费）
-            document_processor: 文档摄入处理器（DocumentProcessor 引擎实例）
-            search_config_service: 用户搜索配置服务（保留装配面兼容，附件链未消费）
+            document_processor: 文档摄入处理器（DocumentProcessor 引擎实例，
+                pdf/docx 文本提取必需；历史缺陷：装配点漏传导致提取静默失败，
+                DI 门禁按语义必填检查本参——见
+                tests/architecture/test_di_wiring_completeness.py）
         """
-        self.model_config_service = model_config_service
         self.db = db
         self.minio_client = minio_client
         self.attachment_repo = ChatAttachmentRepository(db) if db else None
         self.logger = get_logger(__name__)
-        self._search_service = search_service
         self._document_processor = document_processor
-        self._search_config_service = search_config_service
 
     async def get_attachment_content(self, attachment_id: int, user_id: int) -> tuple[Any, bytes]:
         """按用户校验归属后取回附件记录与文件内容。

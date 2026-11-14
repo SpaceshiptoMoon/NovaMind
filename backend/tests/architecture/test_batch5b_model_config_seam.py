@@ -9,12 +9,14 @@
     ``KnowledgeSpaceInfoPort`` 解除）；``_check_delete_impact`` 经注入 port 查询，不内联查 KnowledgeSpace。
   - ``KnowledgeSpaceInfoPort`` 协议中立（不依赖 feature），``HostKnowledgeSpaceInfoPort``
     满足协议；adapter 层持有跨 feature import（``knowledge_space.models``），service 层不再持有。
-  - 各 feature 服务类（agent/chat、agent/attachments、agent/attachments、deep_research、space_service、
+  - 各 feature 服务类（agent/chat、deep_research、space_service、
     search_service、question_generation、knowledge_base_service、document_pipeline /
     document_upload_service / document_task_service / document_query_service、media_processing、
     evaluation_service、skill_marketplace）不再 import
     ``user.services.model_config_service``（切断 ``features.<X> → features.user.services`` 导入边），
     构造器含 ``model_config_service``/``model_config_port`` 参数。
+    （2026-11-15：agent/attachments 的 AttachmentService 移出清单——其
+    model_config_service 死参数已随 DI 接线门禁批次删除，该服务从未消费模型配置。）
   - 装配/入口点（``features/*/api/dependencies.py``、arq worker）允许 import 具体类（白名单）。
   - ``execute_document_pipeline`` 为 ``document_pipeline`` 模块级函数、接收 ``model_config_port`` 参数，
     内部不再 ``self.model_config_service``（模块级函数无 self）；document_pipeline / media_processing
@@ -102,7 +104,6 @@ def test_model_config_service_ctor_accepts_ks_info_port():
 
 _DI_SERVICE_CLASSES = [
     ("novamind.features.agent.services.chat_service", "AgentChatService"),
-    ("novamind.features.agent.attachments.service", "AttachmentService"),
     ("novamind.features.deep_research.services.deep_research_service", "DeepResearchService"),
     ("novamind.features.knowledge_space.services.space_service", "SpaceService"),
     ("novamind.features.knowledge_space.services.search_service", "SearchService"),

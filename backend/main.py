@@ -76,6 +76,10 @@ def main():
         print("警告: 热重载模式下 workers 参数被忽略，固定为 1")
         workers = 1
 
+    # worker 数经环境变量传入 factory（uvicorn 多进程下 factory 在每个子进程
+    # 执行，子进程继承父进程环境）——app_factory 启动诊断据此检测多 worker 部署
+    os.environ["NOVAMIND_WORKERS"] = str(workers)
+
     uvicorn.run(
         "main:create_app",
         factory=True,
