@@ -22,10 +22,8 @@ def _build_stm(db_messages: list, compression=None):
     """构造 build_context 可驱动的 ShortTermMemory（仓储桩 + 真实 TokenBudget）"""
     stm = ShortTermMemory.__new__(ShortTermMemory)
     stm._msg_repo = SimpleNamespace(
-        list_recent_by_conversation=AsyncMock(return_value=(db_messages, len(db_messages))),
-        list_recent_by_conversation_after=AsyncMock(
-            return_value=(db_messages, len(db_messages))
-        ),
+        list_recent_by_conversation=AsyncMock(return_value=db_messages),
+        list_recent_by_conversation_after=AsyncMock(return_value=db_messages),
     )
     stm._tc_repo = SimpleNamespace(list_by_conversation=AsyncMock(return_value=[]))
     stm._session_repo = SimpleNamespace()

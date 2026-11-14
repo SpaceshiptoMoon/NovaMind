@@ -1,5 +1,6 @@
 """用户模型配置服务：模型凭证查询、配置 CRUD 与连接测试。"""
 import asyncio
+import random
 import time
 from typing import Any
 
@@ -51,26 +52,54 @@ __all__ = ["ModelConfigService", "is_stream_only_error"]
 # 模块级客户端缓存
 #
 # 设计约定（所有操作必须遵守）：
-# 1. _client_cache 的所有读写操作必须在 _cache_lock 保护下进行，
-#    防止并发创建重复客户端或竞态条件导致缓存不一致。
-# 2. _cache_lock 是 asyncio.Lock（协程锁），适用于同一事件循环内的并发协程，
-#    不适用于多线程/多进程场景。当前 FastAPI 默认单线程事件循环，因此足够。
-# 3. 若未来部署多线程/多进程，需将缓存迁移至 Redis 等外部共享存储。
-# 4. _cleanup_expired_cache() 仅在已持有 _cache_lock 的上下文中调用，
-#    不可单独加锁（asyncio.Lock 不可重入，会导致死锁）。
+# 1. 快路径无锁读 _client_cache；构造路径必须经 _get_key_lock() 取 cache_key
+#    专属锁，锁内 double-check 后再构造，防止并发重复构造。
+# 2. 失效（_clear_client_cache_global）必须拿同一把 key 锁，保证「进行中的
+#    构造先完成，失效删除发生在其后」，否则旧凭证写回会存活整个 TTL。
+# 3. 这些锁是 asyncio.Lock（协程锁），仅适用于同一事件循环内的并发协程；
+#    多进程部署下各进程各有一份缓存，失效不跨进程（以 TTL 为上限兜底）。
+# 4. _cleanup_expired_cache() 无锁实现（list 快照 + pop 原子删除），可在
+#    任意上下文调用，调用方按 _CLEANUP_PROBABILITY 概率触发。
 # ---------------------------------------------------------------------------
 _client_cache: dict[str, tuple[float, Any]] = {}  # key -> (timestamp, client)
 _CACHE_TTL = 3600  # 客户端缓存 TTL（秒）
 _MAX_CACHE_SIZE = 100  # 最大缓存条数
-_cache_lock = asyncio.Lock()  # 缓存操作锁，防止并发协程的竞态条件
+# per-key 锁：只串行化同一 cache_key 的并发构造，不同用户/模型的解析互不阻塞。
+# 旧全局单锁把缓存命中的读路径与 miss 的构造路径全部串行化，且锁内做 DB 查询
+# + 凭证解密 + 客户端构造，是全进程的并发瓶颈（2026-11-14 重构）。
+# 锁表随 (user_id, model_type, model) 组合线性增长；单锁对象字节级开销，
+# 千级组合内存可忽略。不做回收：清理「未被持有」的锁存在双锁并存竞态
+# （A 取到锁对象未 acquire → 清理删除 → C 建新锁 acquire → 互斥失效）。
+_key_locks: dict[str, asyncio.Lock] = {}
+_locks_guard = asyncio.Lock()  # 仅保护 _key_locks 字典本身的读写
+_CLEANUP_PROBABILITY = 0.02  # 过期清理概率触发频率（原为每次调用全表扫描）
 
 
+
+
+async def _get_key_lock(cache_key: str) -> asyncio.Lock:
+    """取 cache_key 专属锁；不存在则创建。
+
+    仅保护 _key_locks 字典操作本身，锁的 acquire 在调用方完成。
+    """
+    async with _locks_guard:
+        lock = _key_locks.get(cache_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _key_locks[cache_key] = lock
+        return lock
 
 
 async def _clear_client_cache_global(user_id: int, model_type: str, model: str) -> None:
-    """清除指定模型的客户端缓存（全局，异步安全）"""
+    """清除指定模型的客户端缓存（与构造共用同一把 per-key 锁）。
+
+    若失效只删缓存不持锁，存在构造-失效竞态：构造协程已读出旧凭证 →
+    配置变更方删键完成 → 构造协程把旧客户端写回缓存，旧凭证将存活整个
+    TTL。持同一把 key 锁保证「进行中的构造先完成，失效删除发生在其后」。
+    """
     cache_key = f"{user_id}:{model_type}:{model}"
-    async with _cache_lock:
+    lock = await _get_key_lock(cache_key)
+    async with lock:
         if cache_key in _client_cache:
             del _client_cache[cache_key]
             logger.debug("客户端缓存已清除", cache_key=cache_key)
@@ -79,24 +108,27 @@ async def _clear_client_cache_global(user_id: int, model_type: str, model: str) 
 
 
 async def _cleanup_expired_cache() -> None:
-    """清理过期的缓存条目，并关闭旧客户端连接
+    """清理过期的缓存条目，并关闭旧客户端连接。
 
-    注意：此函数仅在 _get_client_by_model() 内部调用，
-    调用方已持有 _cache_lock，因此这里不能再加锁（asyncio.Lock 不可重入，会导致死锁）。
+    无锁实现：先用 list() 快照键集遍历（dict 迭代中禁止并发修改），
+    删除走 pop 原子操作，可在任意上下文调用（含 per-key 锁外）。
+    触发方按 _CLEANUP_PROBABILITY 概率调用，避免每次解析都全表扫描。
     """
     now = time.time()
     expired_keys = [
-        k for k, (ts, _) in _client_cache.items()
+        k for k, (ts, _) in list(_client_cache.items())
         if now - ts > _CACHE_TTL
     ]
     for k in expired_keys:
-        _, old_client = _client_cache[k]
+        entry = _client_cache.pop(k, None)
+        if entry is None:
+            continue
+        _, old_client = entry
         if hasattr(old_client, 'aclose'):
             try:
                 await old_client.aclose()
             except Exception:
                 pass
-        del _client_cache[k]
     if expired_keys:
         logger.debug("清理过期客户端缓存", count=len(expired_keys))
 
@@ -504,8 +536,10 @@ class ModelConfigService:
         model_type: str,
         create_from_credentials,
     ):
-        """
-        通用的客户端缓存查找 + 创建逻辑
+        """通用的客户端缓存查找 + 创建逻辑（per-key 锁串行化构造）。
+
+        快路径无锁读缓存；未命中按 cache_key 取专属锁构造，锁内 double-check
+        防等待期间已被其他协程构造完成。不同用户/模型的解析互不阻塞。
 
         Args:
             user_id: 用户ID
@@ -516,15 +550,24 @@ class ModelConfigService:
         Raises:
             ModelConfigNotFoundError: 未找到模型配置
         """
-        global _client_cache
         cache_key = f"{user_id}:{model_type}:{model}"
+        now = time.time()
 
-        async with _cache_lock:
+        # 快路径：无锁读
+        entry = _client_cache.get(cache_key)
+        if entry is not None and now - entry[0] < _CACHE_TTL:
+            return entry[1]
+
+        # 概率触发过期清理（替代旧实现每次调用全表扫描）
+        if random.random() < _CLEANUP_PROBABILITY:
             await _cleanup_expired_cache()
-            if cache_key in _client_cache:
-                timestamp, client = _client_cache[cache_key]
-                if time.time() - timestamp < _CACHE_TTL:
-                    return client
+
+        lock = await _get_key_lock(cache_key)
+        async with lock:
+            # double-check：等待锁期间可能已被其他协程构造完成
+            entry = _client_cache.get(cache_key)
+            if entry is not None and time.time() - entry[0] < _CACHE_TTL:
+                return entry[1]
 
             credentials = await self.get_credentials_by_model(user_id, model_type, model)
 
@@ -533,18 +576,26 @@ class ModelConfigService:
             else:
                 raise ModelConfigNotFoundError(message=f"{model_type}/{model} 不存在")
 
+            # 覆盖已过期的旧条目前关闭旧客户端，防连接泄漏
+            old_entry = _client_cache.get(cache_key)
+            if old_entry is not None and hasattr(old_entry[1], 'aclose'):
+                try:
+                    await old_entry[1].aclose()
+                except Exception:
+                    pass
+
             # 写入缓存前检查容量上限，淘汰最旧条目
             if len(_client_cache) >= _MAX_CACHE_SIZE:
                 await _cleanup_expired_cache()
-                if len(_client_cache) >= _MAX_CACHE_SIZE:
-                    oldest_key = min(_client_cache, key=lambda k: _client_cache[k][0])
-                    old_ts, old_client = _client_cache[oldest_key]
-                    if hasattr(old_client, 'aclose'):
-                        try:
-                            await old_client.aclose()
-                        except Exception:
-                            pass
-                    del _client_cache[oldest_key]
+            if len(_client_cache) >= _MAX_CACHE_SIZE:
+                oldest_key = min(_client_cache, key=lambda k: _client_cache[k][0])
+                _, old_client = _client_cache[oldest_key]
+                if hasattr(old_client, 'aclose'):
+                    try:
+                        await old_client.aclose()
+                    except Exception:
+                        pass
+                del _client_cache[oldest_key]
 
             _client_cache[cache_key] = (time.time(), client)
             return client

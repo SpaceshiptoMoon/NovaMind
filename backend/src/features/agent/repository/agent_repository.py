@@ -446,7 +446,7 @@ class MessageRepository:
 
     async def list_recent_by_conversation(
         self, conversation_id: int, limit: int = 200
-    ) -> tuple[list[AgentMessage], int]:
+    ) -> list[AgentMessage]:
         """按会话取**最新** limit 条消息，返回仍为时间升序。
 
         供 ShortTermMemory 加载上下文窗口使用：asc+limit 会取到最旧一段，
@@ -457,25 +457,21 @@ class MessageRepository:
             limit: 尾部窗口大小，默认 200。
 
         Returns:
-            （最新 limit 条消息（时间升序）, 符合条件的总数）元组。
+            最新 limit 条消息（时间升序）。不返回总数：所有调用方均只消费
+            窗口消息，COUNT 子查询在长会话上是纯浪费（2026-11-14 删除）。
         """
         base = select(AgentMessage).where(AgentMessage.conversation_id == conversation_id)
-        count_result = await self.session.execute(
-            select(func.count()).select_from(base.subquery())
-        )
-        total = count_result.scalar() or 0
-
         result = await self.session.execute(
             base.order_by(AgentMessage.created_at.desc()).limit(limit)
         )
-        return list(reversed(result.scalars().all())), total
+        return list(reversed(result.scalars().all()))
 
     async def list_recent_by_conversation_after(
         self,
         conversation_id: int,
         after: datetime,
         limit: int = 200,
-    ) -> tuple[list[AgentMessage], int]:
+    ) -> list[AgentMessage]:
         """取 cutoff 之后**最新** limit 条消息（时间升序返回），语义同 list_recent_by_conversation。
 
         Args:
@@ -484,21 +480,17 @@ class MessageRepository:
             limit: 尾部窗口大小，默认 200。
 
         Returns:
-            （最新 limit 条消息（时间升序）, 符合条件的总数）元组。
+            最新 limit 条消息（时间升序）。总数语义同 list_recent_by_conversation
+            一并移除（无消费方）。
         """
         base = select(AgentMessage).where(
             AgentMessage.conversation_id == conversation_id,
             AgentMessage.created_at > after,
         )
-        count_result = await self.session.execute(
-            select(func.count()).select_from(base.subquery())
-        )
-        total = count_result.scalar() or 0
-
         result = await self.session.execute(
             base.order_by(AgentMessage.created_at.desc()).limit(limit)
         )
-        return list(reversed(result.scalars().all())), total
+        return list(reversed(result.scalars().all()))
 
     async def update_extra(self, message_id: int, extra: dict) -> None:
         """按主键整体替换消息 extra（JSON 直更，flush 不 commit，随会话事务统一提交）。

@@ -167,8 +167,8 @@ def test_short_term_build_context_passes_header() -> None:
         for i in range(5)
     ]
     stm._msg_repo = SimpleNamespace(
-        list_recent_by_conversation=AsyncMock(return_value=(long_msgs, 5)),
-        list_recent_by_conversation_after=AsyncMock(return_value=(long_msgs, 5)),
+        list_recent_by_conversation=AsyncMock(return_value=long_msgs),
+        list_recent_by_conversation_after=AsyncMock(return_value=long_msgs),
     )
     stm._tc_repo = SimpleNamespace(list_by_conversation=AsyncMock(return_value=[]))
     stm._session_repo = SimpleNamespace()

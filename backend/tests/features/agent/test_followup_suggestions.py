@@ -34,7 +34,7 @@ def _build_service(conv, messages, llm_content='["追问一", "追问二", "追�
     svc = AgentChatService.__new__(AgentChatService)
     svc.session_repo = SimpleNamespace(get_by_session_id=AsyncMock(return_value=conv))
     svc.msg_repo = SimpleNamespace(
-        list_recent_by_conversation=AsyncMock(return_value=(messages, len(messages)))
+        list_recent_by_conversation=AsyncMock(return_value=messages)
     )
     svc.agent_service = SimpleNamespace(
         agent_repo=SimpleNamespace(

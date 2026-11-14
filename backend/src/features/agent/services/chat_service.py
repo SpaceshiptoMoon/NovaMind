@@ -634,7 +634,7 @@ class AgentChatService:
         # 尾部窗口先放宽再过滤：tool/compaction 等过程行穿插时会挤占固定窗口，
         # 只留 user/assistant 对话文本（过程行无追问价值）。
         # list_recent_by_conversation 返回时间升序，直接取尾部窗口即「最新 N 条」
-        recent, _total = await self.msg_repo.list_recent_by_conversation(
+        recent = await self.msg_repo.list_recent_by_conversation(
             conv.id, limit=30
         )
         lines = [

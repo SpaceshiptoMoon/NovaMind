@@ -173,11 +173,11 @@ class ShortTermMemory(IShortTermMemory):
         # 一律从尾部取最新 200 条：asc+limit 在长会话下取到最旧一段，
         # 会丢最新消息乃至刚落库的当前提问（红队审计 P1）
         if summary_cutoff:
-            db_messages, _ = await self._msg_repo.list_recent_by_conversation_after(
+            db_messages = await self._msg_repo.list_recent_by_conversation_after(
                 conversation_id, after=summary_cutoff, limit=200
             )
         else:
-            db_messages, _ = await self._msg_repo.list_recent_by_conversation(
+            db_messages = await self._msg_repo.list_recent_by_conversation(
                 conversation_id, limit=200
             )
 
@@ -304,7 +304,7 @@ class ShortTermMemory(IShortTermMemory):
         Returns:
             消息与工具调用记录折算的 token 总数。
         """
-        db_messages, _ = await self._msg_repo.list_recent_by_conversation(
+        db_messages = await self._msg_repo.list_recent_by_conversation(
             conversation_id, limit=200
         )
         db_tool_calls = await self._tc_repo.list_by_conversation(conversation_id)
