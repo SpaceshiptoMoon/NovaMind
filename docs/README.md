@@ -47,6 +47,7 @@
 - [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）
 - [`transaction-boundary-conventions.md`](./transaction-boundary-conventions.md)：仓储写操作 `begin_nested()` 事务边界约定
 - [`single-process-boundary-conventions.md`](./single-process-boundary-conventions.md)：单进程部署边界约定（进程内状态清单、多 worker 故障形态、水平扩展演进路径）
+- [`workbench-stripdown-and-knowledge-service-pivot.md`](./workbench-stripdown-and-knowledge-service-pivot.md)：工作台剥离与知识服务定位转型全档（2026-11-15 决策动机、实施过程、教训与最终形态）
 - [`multi-agent-parallel-development-workflow.md`](./multi-agent-parallel-development-workflow.md)：多 Agent 并行开发的 worktree 工作流
 
 ### 知识服务出口（agent_api）
