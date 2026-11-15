@@ -85,6 +85,13 @@ const router = createRouter({
           meta: { title: '首页' },
         },
         {
+          // 跨空间全局检索（消费侧入口）：门户 Hero 搜索框与顶栏搜索位的落地页
+          path: 'search',
+          name: 'GlobalSearch',
+          component: () => import('@/views/search/GlobalSearchView.vue'),
+          meta: { title: '知识检索' },
+        },
+        {
           path: 'profile',
           name: 'Profile',
           component: () => import('@/views/user/UserProfileView.vue'),

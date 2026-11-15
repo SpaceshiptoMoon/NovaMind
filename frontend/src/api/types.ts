@@ -988,6 +988,48 @@ export interface SearchMode {
   requires_question_generation: boolean
 }
 
+/** 跨空间全局检索请求（消费侧入口；范围 = 可访问空间的全部活跃库） */
+export interface GlobalSearchRequest {
+  query: string
+  search_mode?: string
+  top_k?: number
+  score_threshold?: number
+  llm?: SearchLLM
+  filters?: SearchFilters
+  use_cache?: boolean
+}
+
+/** 未参与全局检索的知识库（超上限截断或单库失败） */
+export interface GlobalSearchSkippedKb {
+  kb_id: number
+  kb_name: string
+  space_id: number
+  /** fan_out_limit（超参与上限）/ error（单库检索失败） */
+  reason: string
+}
+
+/** 全局检索结果项：单库结果补空间/知识库来源信息 */
+export interface GlobalSearchResultItem extends SearchResultItem {
+  space_id?: number | null
+  space_name?: string | null
+  kb_name?: string | null
+}
+
+export interface GlobalSearchResponse {
+  results: GlobalSearchResultItem[]
+  total: number
+  query: string
+  search_mode: string
+  top_k: number
+  searched_kbs: number
+  skipped_kbs: GlobalSearchSkippedKb[]
+  answer: string | null
+  answer_model: string | null
+  answer_elapsed_ms: number | null
+  answer_error?: string | null
+  elapsed_ms: number | null
+}
+
 export interface SearchModeListResponse {
   modes: SearchMode[]
   total: number

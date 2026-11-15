@@ -7,18 +7,20 @@
         <p class="hero-subtitle">ASK · KNOW · ACT</p>
         <p class="hero-desc">企业知识库：文档解析、语义检索、Wiki 沉淀与知识运营</p>
 
-        <!-- 主 CTA：输入胶囊（点击进知识空间） -->
-        <div
-          class="hero-input"
-          role="button"
-          tabindex="0"
-          @click="goSpaces"
-          @keydown.enter="goSpaces"
-        >
-          <span class="hero-input-placeholder">进入知识空间，管理文档与知识</span>
-          <span class="hero-input-send">
+        <!-- 主 CTA：真实搜索框（回车/点击直达跨空间全局检索；空输入进知识空间） -->
+        <div class="hero-input">
+          <input
+            v-model="heroQuery"
+            class="hero-input-field"
+            type="text"
+            placeholder="搜索全部知识空间…"
+            maxlength="2000"
+            aria-label="全局知识检索"
+            @keydown.enter="goSearch"
+          />
+          <button type="button" class="hero-input-send" aria-label="搜索" @click="goSearch">
             <el-icon :size="15"><Promotion /></el-icon>
-          </span>
+          </button>
         </div>
       </section>
 
@@ -110,11 +112,28 @@ const featureCards = [
   },
 ]
 
+const heroQuery = ref('')
+
+/** Hero 搜索：非空直达全局检索（携带 ?q 深链），空输入进知识空间列表 */
+function goSearch() {
+  const q = heroQuery.value.trim()
+  if (q) void router.push({ path: '/home/search', query: { q } })
+  else goSpaces()
+}
+
 function goSpaces() {
   router.push('/home/spaces')
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 数据条依赖 spaceStore；直接进首页（未路过空间列表）时自取一次
+  if (!spaceStore.spaces.length) {
+    try {
+      await spaceStore.fetchSpaces()
+    } catch {
+      // 静默：数据条缺数字不影响入口功能
+    }
+  }
   void loadWikiOverview()
 })
 </script>
@@ -185,11 +204,10 @@ onMounted(() => {
   margin: 0 0 var(--space-6);
 }
 
-/* 主 CTA：输入胶囊（米哈游胶囊按钮语言） */
+/* 主 CTA：搜索胶囊（输入框与发送按钮同壳；米哈游胶囊按钮语言） */
 .hero-input {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   width: 100%;
   max-width: 560px;
@@ -197,24 +215,35 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   background: var(--color-bg-card);
-  cursor: pointer;
   transition: all var(--transition-base);
   box-shadow: var(--shadow-xs);
 }
 
-.hero-input:hover {
+.hero-input:hover,
+.hero-input:focus-within {
   border-color: var(--color-text-faint);
   box-shadow: var(--shadow-md);
 }
 
-.hero-input-placeholder {
+.hero-input-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
   font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.hero-input-field::placeholder {
   color: var(--color-text-faint);
 }
 
 .hero-input-send {
   width: 36px;
   height: 36px;
+  border: none;
   border-radius: var(--radius-full);
   background: var(--color-btn-primary);
   color: var(--color-btn-primary-text);
@@ -222,10 +251,12 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
   transition: background var(--transition-fast);
 }
 
-.hero-input:hover .hero-input-send {
+.hero-input:hover .hero-input-send,
+.hero-input:focus-within .hero-input-send {
   background: var(--color-btn-primary-hover);
 }
 

@@ -44,6 +44,21 @@
       </div>
     </nav>
 
+    <!-- 全局搜索位：跨空间知识检索直达（宽屏内联输入，窄屏收成图标） -->
+    <div class="header-search">
+      <el-icon :size="18" class="search-icon-btn" title="知识检索" @click="goGlobalSearch">
+        <Search />
+      </el-icon>
+      <el-input
+        v-model="globalQuery"
+        class="search-input"
+        placeholder="搜索知识…"
+        maxlength="2000"
+        clearable
+        @keydown.enter.prevent="goGlobalSearch"
+      />
+    </div>
+
     <div class="header-right">
       <!-- 主题切换 -->
       <el-icon :size="20" class="theme-toggle" @click="toggleTheme">
@@ -157,6 +172,7 @@ import {
   Moon,
   Sunny,
   Key,
+  Search,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
@@ -193,6 +209,16 @@ const isSystemActive = computed(() => {
   const path = router.currentRoute.value.path
   return path.startsWith('/home/settings') || path.startsWith('/home/admin')
 })
+
+// ==================== 全局搜索位 ====================
+const globalQuery = ref('')
+
+/** 顶栏搜索：非空直达全局检索（?q 深链），空输入也进检索页聚焦输入 */
+function goGlobalSearch() {
+  const q = globalQuery.value.trim()
+  void router.push(q ? { path: '/home/search', query: { q } } : '/home/search')
+  globalQuery.value = ''
+}
 
 // hover 触发的下拉：菜单项 hover 期间 mouseleave 不触发，路由跳转后弹层不收起；
 // command 回调里显式关闭（el-dropdown 暴露 handleClose）
@@ -351,6 +377,42 @@ const handleCommand = async (command: string) => {
   color: var(--color-text);
   font-weight: var(--weight-medium);
   background: var(--color-bg-hover);
+}
+
+/* ==================== 全局搜索位 ==================== */
+.header-search {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* 宽屏内联输入：聚焦轻放大；窄屏（<992px）收成图标按钮进检索页 */
+.search-input {
+  width: 240px;
+  transition: width var(--transition-base);
+}
+
+.search-input:focus-within {
+  width: 320px;
+}
+
+.search-icon-btn {
+  display: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+
+.search-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 /* ==================== Header Right ==================== */
@@ -526,6 +588,15 @@ const handleCommand = async (command: string) => {
 
   .header-nav {
     gap: var(--space-3);
+  }
+
+  /* 窄屏：内联搜索收成图标按钮（点击进全局检索页） */
+  .search-input {
+    display: none;
+  }
+
+  .search-icon-btn {
+    display: inline-flex;
   }
 }
 

@@ -4,12 +4,15 @@ import type {
   SearchResponse,
   SearchModeListResponse,
   SearchModelConfigResponse,
+  GlobalSearchRequest,
+  GlobalSearchResponse,
 } from '../types'
 
 /**
  * 检索 API
  *
- * 知识库检索入口：多模式检索执行与模式清单、检索所用模型配置查询。
+ * 知识库检索入口：多模式检索执行与模式清单、检索所用模型配置查询；
+ * 全局检索（跨空间，消费侧入口）。
  */
 export const searchApi = {
   /** 执行一次检索（9 种模式之一，支持重排/LLM 回答/改写等可选增强）；LLM 增强耗时长，超时放宽到 120s */
@@ -19,6 +22,11 @@ export const searchApi = {
       data,
       120000,
     )
+  },
+
+  /** 跨空间全局检索（可访问空间的全部活跃库 fan-out 融合）；AI 问答档耗时放宽到 120s */
+  globalSearch(data: GlobalSearchRequest) {
+    return request.post<GlobalSearchResponse>('/search', data, 120000)
   },
 
   /** 该知识库可用的检索模式清单（前端模式选择器数据源） */
