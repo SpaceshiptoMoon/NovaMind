@@ -216,6 +216,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 ## 提交与 PR 规范
 
 - Conventional Commits，可选 scope：`feat(knowledge): ...`、`fix: ...`、`docs: ...`；commit subject 用祈使句、一个提交一件事、中文描述动机
+- **commit message 保持简短**（2026-11-15 用户要求）：标题一行（约 40 字内），正文默认不写、必要时最多 1-2 行；细节归 diff 与文档，不写长篇正文
 - PR 需含：简要总结、影响面（backend/frontend/docker/config）、关联 issue；UI/契约改动附截图或 API 示例
 - 新增环境变量、schema 变更、迁移步骤必须在 PR 描述中显式标注
 

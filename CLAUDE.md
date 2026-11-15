@@ -218,6 +218,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - 重组目录时，文档与 import 路径在同一变更中更新。
 - 解析管道改动，运行时代码与样例夹具都要验证（仓库根 `test_data/` 存在则用之，否则 `backend/tests/fixtures/`）。
 - 知识库配置改动，后端 schema、前端表单、持久化配置结构三者保持对齐。
+- commit message 保持简短：标题一行（约 40 字内），正文默认不写、必要时最多 1-2 行；细节归 diff 与文档（2026-11-15 用户要求）。
 
 ## 硬规则
 
