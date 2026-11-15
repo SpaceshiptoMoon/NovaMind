@@ -16,8 +16,8 @@
       </div>
     </div>
 
-    <!-- 知识运营大入口：健康摘要 + 四待办维度计数直链（替代原 header 小按钮入口） -->
-    <OpsEntryCard :space-id="spaceId" />
+    <!-- 知识运营大入口（空间管理员/平台 admin 可见）：健康摘要 + 四待办维度计数直链 -->
+    <OpsEntryCard v-if="canSeeOps" :space-id="spaceId" />
 
     <!-- 统计卡条：点击切换归档筛选（第四卡纯展示：文档总数汇总） -->
     <div class="stat-grid">
@@ -215,6 +215,8 @@ import {
 } from '@element-plus/icons-vue'
 import { knowledgeBaseApi } from '@/api/knowledge'
 import { useSpaceStore } from '@/stores/space'
+import { usePermissionStore } from '@/stores/permission'
+import { useMySpaceRole } from '@/composables/useMySpaceRole'
 import OpsEntryCard from '@/components/knowledge/ops/OpsEntryCard.vue'
 import type { KnowledgeBase } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -223,8 +225,13 @@ import EmptyState from '@/components/common/EmptyState.vue'
 const route = useRoute()
 const router = useRouter()
 const spaceStore = useSpaceStore()
+const permStore = usePermissionStore()
 
 const spaceId = computed(() => Number(route.params.id))
+
+// 运营入口分层：空间管理员或平台 admin 可见（运营区含治理动作，从紧门控）
+const { isSpaceAdmin } = useMySpaceRole(spaceId)
+const canSeeOps = computed(() => permStore.isAdmin || isSpaceAdmin.value)
 
 const loading = ref(false)
 const submitLoading = ref(false)

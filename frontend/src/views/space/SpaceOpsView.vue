@@ -2,15 +2,29 @@
   <div class="space-ops">
     <PageHeader title="知识运营">
       <template #actions>
-        <el-button size="small" :icon="Refresh" :loading="badgesLoading" @click="refreshBadges">
+        <el-button
+          v-if="canSeeOps"
+          size="small"
+          :icon="Refresh"
+          :loading="badgesLoading"
+          @click="refreshBadges"
+        >
           刷新
         </el-button>
       </template>
     </PageHeader>
 
-    <OpsSubNav :badges="badges" />
+    <!-- 运营区分层：空间管理员/平台 admin 可见（URL 直达同样拦截为占位页） -->
+    <template v-if="canSeeOps">
+      <OpsSubNav :badges="badges" />
 
-    <router-view :key="route.fullPath" />
+      <router-view :key="route.fullPath" />
+    </template>
+    <EmptyState
+      v-else-if="roleLoaded"
+      title="无权访问知识运营"
+      description="知识运营面向空间管理员开放；如有需要请联系空间管理员调整你的角色"
+    />
   </div>
 </template>
 
@@ -20,17 +34,26 @@
  *
  * 徽标数（缺口待办/队列 open 建议）在此轻量拉取，子页经 inject 拿
  * refreshBadges 在处置动作后同步角标；切页时自动刷新一次。
+ * 消费/运营分层：入口卡与本级壳都按「空间管理员或平台 admin」门控，
+ * 普通成员经 URL 直达时渲染无权限占位而非运营数据视图。
  */
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import OpsSubNav from '@/components/knowledge/ops/OpsSubNav.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { spaceStatsApi } from '@/api/knowledge'
+import { usePermissionStore } from '@/stores/permission'
+import { useMySpaceRole } from '@/composables/useMySpaceRole'
 
 const route = useRoute()
+const permStore = usePermissionStore()
 
 const spaceId = computed(() => parseInt(String(route.params.id), 10))
+
+const { isSpaceAdmin, loaded: roleLoaded } = useMySpaceRole(spaceId)
+const canSeeOps = computed(() => permStore.isAdmin || isSpaceAdmin.value)
 
 const badges = ref<{ gaps: number; queue: number }>({ gaps: 0, queue: 0 })
 const badgesLoading = ref(false)
@@ -60,14 +83,14 @@ watch(
   () => route.name,
   (name) => {
     // 子页之间切换时刷新一次角标（处置动作后的同步由子页主动调 inject）
-    if (typeof name === 'string' && name.startsWith('SpaceOps')) {
+    if (canSeeOps.value && typeof name === 'string' && name.startsWith('SpaceOps')) {
       void refreshBadges()
     }
   },
 )
 
 onMounted(() => {
-  void refreshBadges()
+  if (canSeeOps.value) void refreshBadges()
 })
 </script>
 
