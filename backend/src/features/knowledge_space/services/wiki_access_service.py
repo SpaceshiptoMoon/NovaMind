@@ -112,7 +112,11 @@ async def rename_page_with_link_rewrite(
 ) -> int:
     """slug 重命名编排（对齐 WeKnora wiki_rename_page）：新 slug 建页 →
     入链页正文 [[old]] 级联替换（机器写通道，不 bump version）→ 新页继承
-    in_links → 旧页软删。整个编排单 SAVEPOINT 原子。
+    in_links → 旧页软删。
+
+    事务形态：编排自持 SAVEPOINT；调用方在工具层已包 SAVEPOINT 时形成
+    嵌套（行为等价——异常路径 db.rollback() 回滚整个事务，最终效果与
+    单层一致）。
 
     Returns:
         级联改写的入链页数量。

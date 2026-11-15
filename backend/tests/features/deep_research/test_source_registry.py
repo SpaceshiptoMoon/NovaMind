@@ -36,26 +36,12 @@ from novamind.features.deep_research.services.source_registry import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
-
 def _ctx(config: dict[str, Any], deps: dict[str, Any] = None) -> SearchSourceContext:
     return SearchSourceContext(space_id=1, user_id=1, config=config, deps=deps or {})
-
 
 class _FakeRetrievalPort:
     async def search(self, space_id, kb_id, user_id, request):
         return {"results": []}
-
-
-class _FakeKBRepo:
-    async def get_by_id(self, kb_id):
-        return None
-
-    async def get_by_space(self, space_id):
-        return []
-
-
-# ---- 注册表基础 ----
-
 
 def test_builtin_sources_registered():
     """模块加载期自注册：internal/external 工厂可用。"""
@@ -63,12 +49,10 @@ def test_builtin_sources_registered():
     assert "external" in source_registry.known_types()
     assert source_registry.display_name("internal") != "internal"  # 有中文名
 
-
 def test_unknown_source_type_raises():
     """未注册类型 build 抛 SearchProviderNotConfiguredError（feature 异常）。"""
     with pytest.raises(SearchProviderNotConfiguredError):
         source_registry.build("confluence", _ctx({}))
-
 
 def test_custom_registry_isolated():
     """新建注册表实例与全局单例隔离，register/get/build 语义正确。"""
@@ -84,16 +68,13 @@ def test_custom_registry_isolated():
     port = reg.build("stub", _ctx({}))
     assert isinstance(port, SearchSourcePort), "注册工厂产出的 port 应满足协议"
 
-
 # ---- internal 工厂 ----
-
 
 def test_internal_source_factory_builds_protocol_satisfying_port():
     """internal 工厂经 ctx.deps 注入依赖，产出满足 SearchSourcePort 的 port。"""
     deps = {
         "search_service": _FakeRetrievalPort(),
         "session": object(),
-        "kb_repo": _FakeKBRepo(),
         "logger": None,
     }
     config = {
@@ -114,9 +95,7 @@ def test_internal_source_factory_builds_protocol_satisfying_port():
     port = source_registry.build("internal", _ctx(config, deps))
     assert isinstance(port, SearchSourcePort), "HostInternalSearchPort 应满足统一协议"
 
-
 # ---- external 工厂 ----
-
 
 def _fake_es_config(tavily_key=None, serpapi_key=None):
     """构造 setting.external_search 替身。"""
@@ -144,7 +123,6 @@ def _fake_es_config(tavily_key=None, serpapi_key=None):
 
     return _ES()
 
-
 def test_external_source_duckduckgo_builds_and_normalizes():
     """duckduckgo（无 key）经共享工厂可构造，产出满足 SearchSourcePort 的 adapter。"""
     ctx = _ctx({"provider": "duckduckgo", "max_results": 5, "search_depth": "basic"})
@@ -154,7 +132,6 @@ def test_external_source_duckduckgo_builds_and_normalizes():
         mock_cfg.return_value.external_search = _fake_es_config()
         port = source_registry.build("external", ctx)
     assert isinstance(port, SearchSourcePort)
-
 
 def test_external_source_delegates_to_shared_factory():
     """构造委托共享工厂 + 异常镜像：中立 NotConfigured → feature SearchProviderNotConfiguredError。"""
@@ -196,7 +173,6 @@ def test_external_source_delegates_to_shared_factory():
         with pytest.raises(SearchProviderNotConfiguredError):
             wsa.build_web_search_source(_ctx({"provider": "locked"}))
 
-
 def test_external_source_provider_str_enum_unpolluted():
     """回归：provider 为 str-Enum 成员时取 .value，不被 str() 污染成类名形状。
 
@@ -231,7 +207,6 @@ def test_external_source_provider_str_enum_unpolluted():
             wsa.build_web_search_source(ctx2)
     assert calls == ["serpapi"]
 
-
 def test_external_source_tavily_without_key_raises():
     """tavily 无 YAML api_key → SearchProviderNotConfiguredError。"""
     ctx = _ctx({"provider": "tavily", "max_results": 5})
@@ -239,7 +214,6 @@ def test_external_source_tavily_without_key_raises():
         mock_cfg.return_value.external_search = _fake_es_config(tavily_key=None)
         with pytest.raises(SearchProviderNotConfiguredError):
             source_registry.build("external", ctx)
-
 
 def test_external_source_serpapi_without_key_raises():
     """serpapi 无 YAML api_key → SearchProviderNotConfiguredError。"""
@@ -249,7 +223,6 @@ def test_external_source_serpapi_without_key_raises():
         with pytest.raises(SearchProviderNotConfiguredError):
             source_registry.build("external", ctx)
 
-
 def test_external_source_unknown_provider_raises():
     """未知 provider → SearchProviderNotConfiguredError。"""
     ctx = _ctx({"provider": "baidu", "max_results": 5})
@@ -257,7 +230,6 @@ def test_external_source_unknown_provider_raises():
         mock_cfg.return_value.external_search = _fake_es_config()
         with pytest.raises(SearchProviderNotConfiguredError):
             source_registry.build("external", ctx)
-
 
 async def test_external_source_search_normalizes_to_dict():
     """external 源 search 归一化：WebSearchResult → 统一 dict（source_type=external）。"""
@@ -290,7 +262,6 @@ async def test_external_source_search_normalizes_to_dict():
     assert r["content"] == "c"
     assert r["score"] == 0.8
 
-
 async def test_external_source_adapter_close_delegates():
     """WebSearchSourceAdapter.close 委托底层 port（cleanup 链路）。"""
     from novamind.features.deep_research.services.web_search_source import (
@@ -310,15 +281,12 @@ async def test_external_source_adapter_close_delegates():
     await adapter.close()
     assert closed == [True]
 
-
 def test_search_depth_passthrough_in_config():
     """请求级 search_depth 进入工厂 config（tavily 分支消费；此处验证 config 透传形状）。"""
     ctx = _ctx({"provider": "tavily", "max_results": 5, "search_depth": "advanced"})
     assert ctx.config["search_depth"] == "advanced"
 
-
 # ---- 装配点 binding top_k 语义 ----
-
 
 async def test_build_source_bindings_extra_source_independent_top_k():
     """扩展源 top_k 优先取 extra 配置内独立值，缺省回落内部检索 top_k。"""

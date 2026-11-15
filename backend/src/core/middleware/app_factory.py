@@ -22,9 +22,33 @@ from .trace_middleware import TraceIDMiddleware
 
 logger = get_logger(__name__)
 
-# 运行形态诊断入口：main.py 经环境变量把 --workers 传入每个 worker 子进程；
-# 未经 main.py 启动（直接 uvicorn CLI）时变量缺失，按 1 处理（不知情不误报）
+# 运行形态诊断入口：main.py 经环境变量把 --workers 传入每个 worker 子进程。
+# 环境变量缺失（uvicorn/gunicorn CLI 直接启动）时退回进程名探测——worker
+# 子进程名非 MainProcess（reload 子进程经 argv --reload 排除，属开发形态）。
 _WORKERS_ENV = "NOVAMIND_WORKERS"
+
+
+def _detect_worker_shape() -> tuple[int, str]:
+    """推断运行形态：返回 (worker 数信号, 来源描述)。
+
+    信号优先级：
+    1. 环境变量显式声明（经 main.py 启动，最高置信）；
+    2. 环境变量缺失时进程名探测——uvicorn --workers / gunicorn 的 worker
+       子进程经 multiprocessing spawn，进程名非 MainProcess。
+    无信号时按 1（MainProcess 或 reload 开发子进程）。
+    """
+    raw = os.environ.get(_WORKERS_ENV)
+    if raw is not None:
+        try:
+            return max(1, int(raw)), "env"
+        except ValueError:
+            pass  # 非整数值视同缺失，走进程探测
+    import multiprocessing
+    import sys
+
+    if multiprocessing.current_process().name != "MainProcess" and "--reload" not in sys.argv:
+        return 2, "process"  # 数值无关紧要，>1 即触发告警
+    return 1, "default"
 
 
 def _diagnose_runtime_shape() -> None:
@@ -34,11 +58,17 @@ def _diagnose_runtime_shape() -> None:
     任务 consumer 均为进程内状态），多 worker 部署会产生静默故障。边界清单
     与演进路径见 docs/single-process-boundary-conventions.md。
     """
-    try:
-        workers = int(os.environ.get(_WORKERS_ENV, "1"))
-    except ValueError:
-        workers = 1
-    if workers > 1:
+    workers, source = _detect_worker_shape()
+    if workers <= 1:
+        return
+    if source == "process":
+        logger.warning(
+            "运行形态诊断：检测到疑似多进程运行形态（仅告警，不阻断启动）",
+            hint="uvicorn/gunicorn worker 子进程内运行且未经 main.py 声明 worker 数——"
+                 "本服务按单进程设计，多 worker 会静默故障，请确认 --workers 1；"
+                 "详见 docs/single-process-boundary-conventions.md",
+        )
+    else:
         logger.warning(
             "运行形态诊断：检测到多 worker 部署（仅告警，不阻断启动）",
             workers=workers,

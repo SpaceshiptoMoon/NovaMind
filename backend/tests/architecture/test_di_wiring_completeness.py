@@ -9,13 +9,21 @@
    或调用拼写错误（ AttributeError/TypeError 在请求期才爆）。
 2. **必填参缺失**：签名无默认值参数必须被装配覆盖（kwargs 键或按签名顺序的
    位置实参推断）。
+3. **语义必填**：SEMANTIC_REQUIRED 表内的可选签名参数漏传零容忍（漏传即
+   静默降级的历史断线形态）。
 
-扫描面：``src/features/*/api/dependencies.py`` 中 func 名以 ``Service`` 结尾的
-Call 节点。签名经 importlib 实际加载 dependencies 模块后从命名空间取类、
-inspect.signature 解析——函数内懒 import 的构造名不在模块命名空间，自动跳过。
+扫描面：``src/features/*/api/**/*.py``（api 目录全文件：dependencies.py +
+各 routes——GroupService 等路由层装配纳入）中 func 名以 ``Service`` 结尾的
+Call 节点。签名经 importlib 实际加载模块后从命名空间取类、inspect.signature
+解析。
 
-白名单 ``KNOWN_WIRING_GAPS``：(rel_path, service_name, param) 精确对账，新增
-豁免必须带注释自证（降级兜底语义或刻意延后装配），收敛时削减。
+**已知盲区（如实声明）**：api 目录之外的装配不受保护——services 内部自建、
+tasks/（arq worker 装配）、mcp/auth.py、core 装配链。静态覆盖这些面需要
+「构造点清单」人工维护，当前选择 api 目录（DI 装配的主归属）+ 本声明。
+
+防静默失效：模块加载失败/getattr 失败/签名缺失的跳过全部计数，并与
+KNOWN_SKIPPED_BASELINE 基线比对——基线上涨即扫描退化（如有人把构造改成
+函数内 import），零容忍。
 """
 from __future__ import annotations
 
@@ -55,9 +63,16 @@ SEMANTIC_REQUIRED: set[tuple[str, str, str]] = {
 # 类名后缀：本门禁只约束业务服务装配（Repository/工厂等装配面另行收敛）
 _SERVICE_SUFFIX = "Service"
 
+# 跳过基线：模块加载失败/getattr 失败/签名缺失的静默跳过计数上限（实测）。
+# 基线上涨 = 扫描退化（构造被改成函数内 import 等），先查原因再调基线。
+# 现有 13 处构成：wiki_routes 的 wiki 服务懒构造 ×13（WikiPageService 7/
+# WikiLintService 2/其余 4）、document_routes 4、knowledge_ops routes 3、
+# skill routes 2、agent/agent_api dependencies 各 1——均为存量懒 import 形态。
+KNOWN_SKIPPED_BASELINE = 13
+
 
 def _iter_dependency_files() -> list[Path]:
-    return sorted((SRC / "features").glob("*/api/dependencies.py"))
+    return sorted((SRC / "features").glob("*/api/**/*.py"))
 
 
 def _load_module(rel_path: str):
@@ -100,9 +115,10 @@ def _collect_service_calls(tree: ast.AST) -> dict[str, list[tuple[int, list[str]
 
 
 def test_service_wiring_matches_signatures():
-    """装配点构造调用与服务 __init__ 签名双向比对（幽灵参数 + 必填参缺失）。"""
+    """装配点构造调用与服务 __init__ 签名双向比对（幽灵参数/必填缺失/语义必填）。"""
     problems: list[str] = []
     checked_services = 0
+    skipped = 0
 
     for dep_file in _iter_dependency_files():
         rel_path = dep_file.relative_to(BACKEND_ROOT).as_posix()
@@ -110,13 +126,13 @@ def test_service_wiring_matches_signatures():
         module = _load_module(rel_path)
 
         for service_name, call_sites in _collect_service_calls(tree).items():
-            if module is None:
-                continue  # 模块加载失败（环境依赖缺失）交由其他测试覆盖
-            cls = getattr(module, service_name, None)
-            if cls is None or not isinstance(cls, type):
-                continue  # 函数内懒 import 的构造名不在模块命名空间，跳过
+            cls = getattr(module, service_name, None) if module else None
+            if module is None or cls is None or not isinstance(cls, type):
+                skipped += 1  # 模块加载失败 / 函数内懒 import 不在命名空间
+                continue
             params = _signature_params(cls)
             if not params:
+                skipped += 1  # 签名解析失败
                 continue
             checked_services += 1
             param_names = {name for name, _ in params}
@@ -154,7 +170,11 @@ def test_service_wiring_matches_signatures():
                         "（漏传即静默降级，见 SEMANTIC_REQUIRED 注释）"
                     )
 
-    assert checked_services >= 10, f"扫描面异常：仅解析到 {checked_services} 个服务装配"
+    assert checked_services >= 20, f"扫描面异常：仅解析到 {checked_services} 个服务装配"
+    assert skipped <= KNOWN_SKIPPED_BASELINE, (
+        f"扫描静默跳过 {skipped} 处超过基线 {KNOWN_SKIPPED_BASELINE}——扫描退化"
+        "（构造被改成函数内 import 等），先查原因勿直接调基线"
+    )
     assert not problems, (
         "DI 接线完整性违例（收敛请削减 KNOWN_WIRING_GAPS，新增豁免须带注释自证）：\n"
         + "\n".join(problems)
