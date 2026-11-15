@@ -56,6 +56,8 @@
  * 当前空间 KB 登记册：高频导航对象平铺字行，作用域被当前空间锁死
  * （列表上限 = 单空间 KB 数，无跨空间组合爆炸）。归档库不入册；
  * 失败任务 >0 的库行尾有 warning 小计数（信息而非装饰）。
+ *
+ * spaceId 由侧栏注入（路由 :id 优先，无空间参数页面回退最近空间）。
  */
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -63,6 +65,8 @@ import { Plus, Search } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 import type { KnowledgeBase } from '@/api/types'
 import { avatarColor } from './avatar'
+
+const props = defineProps<{ spaceId: number }>()
 
 const route = useRoute()
 const router = useRouter()
@@ -90,15 +94,12 @@ function failedCount(kb: KnowledgeBase): number {
 }
 
 function openKb(kb: KnowledgeBase) {
-  const sid = route.params.id
-  if (!sid) return
-  void router.push(`/home/spaces/${sid}/knowledge-bases/${kb.id}/documents`)
+  void router.push(`/home/spaces/${props.spaceId}/knowledge-bases/${kb.id}/documents`)
 }
 
 /** 新建 KB：跳 KB 列表页并经 ?create=1 打开 KnowledgeBaseView 的创建弹窗 */
 function createKb() {
-  const sid = route.params.id
-  if (!sid) return
+  const sid = props.spaceId
   const current = route.name === 'KnowledgeBases' && String(sid) === String(route.params.id)
   if (current) {
     // 已在 KB 列表页：直接改 query 触发该页弹窗（同页 push 由视图监听 query.create）

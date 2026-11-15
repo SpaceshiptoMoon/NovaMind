@@ -48,7 +48,7 @@
         <template v-if="searchResults.length > 0">
           <div class="gs-results-header">
             <span class="gs-results-meta">
-              共 {{ total }} 条 · {{ elapsedMs }}ms · 覆盖 {{ searchedKbs }} 个知识库
+              共 {{ total }} 条 · {{ formatElapsed(elapsedMs) }} · 覆盖 {{ searchedKbs }} 个知识库
               <el-tooltip
                 v-if="skippedKbs.length"
                 :content="skippedTooltip"
@@ -161,6 +161,11 @@ const answerError = ref<string | null>(null)
 const inputRef = ref<{ focus: () => void } | null>(null)
 
 const skippedTooltip = ref('')
+
+/** 耗时展示：秒级取一位小数，毫秒级取整 */
+function formatElapsed(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`
+}
 function buildSkippedTooltip(items: GlobalSearchSkippedKb[]) {
   const label = (r: string) => (r === 'fan_out_limit' ? '超参与上限' : '检索失败')
   skippedTooltip.value = items

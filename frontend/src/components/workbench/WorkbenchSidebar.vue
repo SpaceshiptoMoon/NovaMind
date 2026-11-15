@@ -28,7 +28,7 @@
     </div>
 
     <!-- 当前空间 KB 登记册（唯一滚动区；折叠态不显示——48px 辨识不了 KB） -->
-    <KbRegister v-if="!collapsed && routeSpaceId" />
+    <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
 
     <div class="sidebar-flex-fill" />
 
@@ -118,21 +118,47 @@ const routeSpaceId = computed(() => {
   return Number.isFinite(id) && id > 0 ? id : null
 })
 
-// 路由同步链：空间上下文 + 最近访问 + KB 登记册
+/**
+ * 侧栏空间上下文：路由 :id 优先，无空间参数的页面（全局检索/系统页/通知页）
+ * 回退最近空间——结构区块恒定是位置感的前提，KB 登记册不随页面消失。
+ */
+const sidebarSpaceId = computed(() => routeSpaceId.value ?? spaceStore.currentSpace?.id ?? null)
+
+// 路由同步链：空间上下文 + 最近访问 + KB 登记册。
+// 无空间参数的页面（全局检索/系统页）不清空上下文——KB 登记册回退最近
+// 空间（结构区块恒定）；刷新落地且无上下文时从「最近空间」恢复。
 watch(
   routeSpaceId,
   async (spaceId) => {
-    if (!spaceId) {
-      spaceStore.clearCurrentSpace()
+    if (spaceId) {
+      const uid = userStore.getUserIdFromToken()
+      spaceStore.touchSpaceAccess(spaceId, uid)
+      try {
+        await spaceStore.fetchSpace(spaceId)
+        await spaceStore.fetchCurrentSpaceKbs(spaceId)
+      } catch {
+        // 空间不存在/无权限：SpaceListView 壳的兜底回退逻辑接管
+      }
       return
     }
-    const uid = userStore.getUserIdFromToken()
-    spaceStore.touchSpaceAccess(spaceId, uid)
-    try {
-      await spaceStore.fetchSpace(spaceId)
-      await spaceStore.fetchCurrentSpaceKbs(spaceId)
-    } catch {
-      // 空间不存在/无权限：SpaceListView 壳的兜底回退逻辑接管
+    if (!spaceStore.currentSpace) {
+      const uid = userStore.getUserIdFromToken()
+      const lastId = uid != null ? spaceStore.getLastSpaceId(uid) : null
+      const fallback = lastId ?? spaceStore.spaces[0]?.id ?? null
+      if (!fallback) return
+      if (!spaceStore.spaces.length) {
+        try {
+          await spaceStore.fetchSpaces()
+        } catch {
+          return
+        }
+      }
+      try {
+        await spaceStore.fetchSpace(fallback)
+        await spaceStore.fetchCurrentSpaceKbs(fallback)
+      } catch {
+        // 最近空间已不可达：侧栏保持「选择空间」占位
+      }
     }
   },
   { immediate: true },
