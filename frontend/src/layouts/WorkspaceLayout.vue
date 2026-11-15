@@ -2,42 +2,56 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- 顶栏：全局导航 + 全局项 -->
-    <AppHeader />
+    <!-- 登记簿式全局侧栏（全高）：品牌/空间切换/KB 登记/系统区 -->
+    <WorkbenchSidebar />
 
-    <!-- 主内容区（知识空间/首页/系统页共用；页内滚动由 is-page 承接） -->
-    <div class="workspace-body">
-      <main class="workspace-main" id="workspace-main" role="main">
-        <div class="workspace-content is-page">
-          <router-view v-slot="{ Component }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" />
-            </transition>
-          </router-view>
-        </div>
-      </main>
+    <!-- 右列：瘦身顶栏（全局搜索 + 全局项）+ 主内容区 -->
+    <div class="workspace-right">
+      <AppHeader />
+
+      <div class="workspace-body">
+        <main class="workspace-main" id="workspace-main" role="main">
+          <div class="workspace-content is-page">
+            <router-view v-slot="{ Component }">
+              <transition name="fade" mode="out-in">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </div>
+        </main>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 主布局：全宽顶栏 + 主内容区
+ * 主布局：全局侧栏 + 右列（顶栏 + 主内容区）。
  *
- * 工作台（agent 对话）已剥离，布局只剩顶栏与内容容器；skip-link 供键盘导航。
+ * 产品已收敛为知识空间单模块——侧栏即工作台（品牌/空间切换器/KB 登记
+ * 册/系统区），顶栏只保留全局搜索与主题/通知/用户；skip-link 供键盘导航。
  */
 import AppHeader from './AppHeader.vue'
+import { WorkbenchSidebar } from '@/components/workbench'
 </script>
 
 <style scoped>
 .workspace-layout {
   display: flex;
-  flex-direction: column;
   height: 100vh;
   min-height: 0;
   background: var(--color-bg);
   overflow: hidden;
   position: relative;
+}
+
+.workspace-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ========================================

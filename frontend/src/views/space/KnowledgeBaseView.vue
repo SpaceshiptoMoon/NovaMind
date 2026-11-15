@@ -440,6 +440,10 @@ function goToDocuments(kbId: number) {
 
 onMounted(() => {
   fetchKnowledgeBases()
+  // 侧栏 KB 登记册的「新建知识库」入口经 ?create=1 触发本页弹窗
+  if (route.query.create === '1') {
+    showCreateDialog()
+  }
 })
 </script>
 

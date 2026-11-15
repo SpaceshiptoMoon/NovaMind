@@ -1,50 +1,6 @@
 <template>
   <header class="app-header">
-    <nav class="header-nav">
-      <div class="brand" @click="router.push('/home')">
-        <UnicornIcon :size="36" />
-        <span class="brand-name">NovaMind</span>
-      </div>
-      <div class="nav-links">
-        <span
-          v-for="item in navItems"
-          :key="item.key"
-          :class="['nav-item', { active: activeNav === item.key }]"
-          @click="router.push(item.to)"
-        >
-          <NavIcon :name="item.icon" />
-          {{ item.label }}
-        </span>
-        <el-dropdown ref="systemDropdownRef" trigger="hover" @command="handleNavCommand">
-          <span :class="['nav-item', { active: isSystemActive }]">
-            <NavIcon name="settings" />
-            系统
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="settings/models">
-                <el-icon><Cpu /></el-icon>
-                模型配置
-              </el-dropdown-item>
-              <el-dropdown-item command="settings/api-keys">
-                <el-icon><Key /></el-icon>
-                API 密钥
-              </el-dropdown-item>
-              <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
-                <el-icon><User /></el-icon>
-                用户管理
-              </el-dropdown-item>
-              <el-dropdown-item v-if="permStore.hasPermission('role.manage')" command="admin/roles">
-                <el-icon><UserFilled /></el-icon>
-                角色管理
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-    </nav>
-
-    <!-- 全局搜索位：跨空间知识检索直达（宽屏内联输入，窄屏收成图标） -->
+    <!-- 全局搜索位：知识产品的第一动作，居中独大（品牌与导航已入侧栏） -->
     <div class="header-search">
       <el-icon :size="18" class="search-icon-btn" title="知识检索" @click="goGlobalSearch">
         <Search />
@@ -128,22 +84,6 @@
               <el-icon><User /></el-icon>
               个人信息
             </el-dropdown-item>
-            <el-dropdown-item command="settings/models">
-              <el-icon><Cpu /></el-icon>
-              模型配置
-            </el-dropdown-item>
-            <el-dropdown-item command="settings/api-keys">
-              <el-icon><Key /></el-icon>
-              API 密钥
-            </el-dropdown-item>
-            <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
-              <el-icon><User /></el-icon>
-              用户管理
-            </el-dropdown-item>
-            <el-dropdown-item v-if="permStore.hasPermission('role.manage')" command="admin/roles">
-              <el-icon><UserFilled /></el-icon>
-              角色管理
-            </el-dropdown-item>
             <el-dropdown-item divided command="logout">
               <el-icon><SwitchButton /></el-icon>
               退出登录
@@ -157,58 +97,25 @@
 
 <script setup lang="ts">
 /**
- * 全局顶栏：品牌区 + 主导航 + 系统菜单 + 全局项（通知/用户）
+ * 全局顶栏（瘦身版）：全局搜索位居中独大 + 主题/通知/用户。
  *
+ * 品牌与主导航已下沉到 WorkbenchSidebar（登记簿式工作台），系统管理入口
+ * 在侧栏系统组——顶栏不再承担导航职责。
  */
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import {
-  User,
-  SwitchButton,
-  Cpu,
-  Bell,
-  UserFilled,
-  Moon,
-  Sunny,
-  Key,
-  Search,
-} from '@element-plus/icons-vue'
+import { User, SwitchButton, Bell, Moon, Sunny, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { usePermissionStore } from '@/stores/permission'
 import { useNotificationStore } from '@/stores/notification'
 import { formatRelativeTime } from '@/utils/format'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
-import NavIcon from '@/components/common/NavIcon.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const userStore = useUserStore()
-const permStore = usePermissionStore()
 const { theme, toggleTheme } = useTheme()
-
-// ==================== 顶部导航（全局） ====================
-const allNavItems = [
-  { key: 'home', label: '首页', icon: 'home', to: '/home', app: null },
-  { key: 'spaces', label: '知识空间', icon: 'spaces', to: '/home/spaces', app: null },
-] as const
-
-const navItems = computed(() =>
-  allNavItems.filter((item) => item.app === null || permStore.hasApp(item.app)),
-)
-
-const activeNav = computed(() => {
-  const path = router.currentRoute.value.path
-  if (path.startsWith('/home/spaces')) return 'spaces'
-  if (path === '/home') return 'home'
-  return ''
-})
-
-const isSystemActive = computed(() => {
-  const path = router.currentRoute.value.path
-  return path.startsWith('/home/settings') || path.startsWith('/home/admin')
-})
 
 // ==================== 全局搜索位 ====================
 const globalQuery = ref('')
@@ -218,15 +125,6 @@ function goGlobalSearch() {
   const q = globalQuery.value.trim()
   void router.push(q ? { path: '/home/search', query: { q } } : '/home/search')
   globalQuery.value = ''
-}
-
-// hover 触发的下拉：菜单项 hover 期间 mouseleave 不触发，路由跳转后弹层不收起；
-// command 回调里显式关闭（el-dropdown 暴露 handleClose）
-const systemDropdownRef = ref<{ handleClose: () => void } | null>(null)
-
-function handleNavCommand(path: string) {
-  systemDropdownRef.value?.handleClose()
-  router.push(`/home/${path}`)
 }
 
 // ==================== 通知相关（经 notifStore：WS 实时 + 30s 轮询兜底） ====================
@@ -263,35 +161,22 @@ function handleNotificationClick(n: Notification) {
 }
 
 const handleCommand = async (command: string) => {
-  switch (command) {
-    case 'profile':
-      router.push('/home/profile')
-      break
-    case 'settings/models':
-      router.push('/home/settings/models')
-      break
-    case 'settings/api-keys':
-      router.push('/home/settings/api-keys')
-      break
-    case 'admin/users':
-      router.push('/home/admin/users')
-      break
-    case 'admin/roles':
-      router.push('/home/admin/roles')
-      break
-    case 'logout':
-      try {
-        await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning',
-        })
-        userStore.logout()
-        router.push('/login')
-      } catch {
-        // 用户取消
-      }
-      break
+  if (command === 'profile') {
+    router.push('/home/profile')
+    return
+  }
+  if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+      userStore.logout()
+      router.push('/login')
+    } catch {
+      // 用户取消
+    }
   }
 }
 </script>
@@ -299,11 +184,11 @@ const handleCommand = async (command: string) => {
 <style scoped>
 .app-header {
   height: var(--header-height);
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 560px) 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 0 var(--space-6);
-  /* 顶栏磨砂玻璃（sticky 悬浮于内容之上，滚动时透出下方内容） */
+  /* 顶栏磨砂玻璃（悬浮于内容之上，滚动时透出下方内容） */
   background: var(--glass-bg-strong);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
@@ -317,85 +202,24 @@ const handleCommand = async (command: string) => {
   .app-header { background: var(--color-bg-card); }
 }
 
-.header-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  cursor: pointer;
-  user-select: none;
-}
-
-.brand-name {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
-  letter-spacing: var(--tracking-tight);
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  /* 与 header-right 同款 hover 阴影变量 */
-  --header-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-/* 导航项：胶囊造型，hover 浅灰圆底 + 浮起阴影（与顶栏右侧操作键同语言） */
-.nav-item {
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background var(--transition-fast),
-    box-shadow var(--transition-base);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  user-select: none;
-  white-space: nowrap;
-  border-radius: var(--radius-full);
-  outline: none;
-}
-
-.nav-item:hover,
-.nav-item:focus-visible {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
-  box-shadow: var(--header-hover-shadow);
-}
-
-.nav-item.active {
-  color: var(--color-text);
-  font-weight: var(--weight-medium);
-  background: var(--color-bg-hover);
-}
-
-/* ==================== 全局搜索位 ==================== */
+/* ==================== 全局搜索位（中列） ==================== */
 .header-search {
+  grid-column: 2;
   display: flex;
   align-items: center;
-  flex: 1;
   justify-content: center;
   min-width: 0;
 }
 
 /* 宽屏内联输入：聚焦轻放大；窄屏（<992px）收成图标按钮进检索页 */
 .search-input {
-  width: 240px;
-  transition: width var(--transition-base);
+  width: 100%;
+  max-width: 400px;
+  transition: max-width var(--transition-base);
 }
 
 .search-input:focus-within {
-  width: 320px;
+  max-width: 520px;
 }
 
 .search-icon-btn {
@@ -415,16 +239,16 @@ const handleCommand = async (command: string) => {
   color: var(--color-text);
 }
 
-/* ==================== Header Right ==================== */
+/* ==================== Header Right（右列） ==================== */
 .header-right {
+  grid-column: 3;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-1);
   /* 顶栏右侧操作键统一 hover 浮起阴影（就近定义便于整体调档） */
   --header-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-
-/* ==================== 侧栏折叠按钮 ==================== */
 
 /* ==================== 主题切换 ==================== */
 .theme-toggle {
@@ -443,42 +267,48 @@ const handleCommand = async (command: string) => {
     box-shadow var(--transition-base);
 }
 
+.theme-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+  box-shadow: var(--header-hover-shadow);
+}
+
 /* ==================== 通知铃铛 ==================== */
-/* el-badge 包裹层撑成 32px 对齐位，与主题切换/折叠按钮同基线 */
 .notification-badge {
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  transition:
-    background var(--transition-fast),
-    box-shadow var(--transition-base);
 }
 
 .notification-bell {
   color: var(--color-text-secondary);
-  transition: color var(--transition-fast);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
-.notification-badge:hover .notification-bell {
+.notification-bell:hover {
   color: var(--color-text);
+  background: var(--color-bg-hover);
+  box-shadow: var(--header-hover-shadow);
 }
-
-/* 顶栏操作键统一 hover 态：浅灰圆底 + 浮起阴影 */
 
 .notification-panel {
-  margin: -12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .notification-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border-light);
+  align-items: center;
 }
 
 .notification-title {
@@ -488,22 +318,25 @@ const handleCommand = async (command: string) => {
 }
 
 .notification-empty {
-  padding: 32px 16px;
+  padding: var(--space-6) 0;
   text-align: center;
-  color: var(--color-text-secondary);
   font-size: var(--text-sm);
+  color: var(--color-text-faint);
 }
 
 .notification-list {
   max-height: 360px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .notification-item {
-  padding: 12px 16px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast);
-  border-bottom: 1px solid var(--color-border-lighter, #f5f5f5);
 }
 
 .notification-item:hover {
@@ -518,50 +351,53 @@ const handleCommand = async (command: string) => {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
-  margin-bottom: 4px;
 }
 
 .notification-item-content {
   font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
+  color: var(--color-text-muted);
+  margin-top: 2px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .notification-item-time {
   font-size: var(--text-xs);
-  color: var(--color-text-placeholder, #c0c4cc);
+  color: var(--color-text-faint);
   margin-top: 4px;
 }
 
 .notification-footer {
-  padding: 8px 16px;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-1);
   border-top: 1px solid var(--color-border-light);
 }
 
-/* ==================== 用户头像触发器 ==================== */
+/* ==================== 用户菜单 ==================== */
 .user-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
-  border-radius: var(--radius-full);
   cursor: pointer;
-  outline: none;
+  padding: var(--space-1);
+  border-radius: var(--radius-full);
+  transition:
+    background var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
-/* 头像透明底：独角兽图案直接浮在页面上，仅 hover 时有浅底托住 */
-.user-trigger .user-avatar {
-  background: transparent;
+.user-trigger:hover {
+  background: var(--color-bg-hover);
+  box-shadow: var(--header-hover-shadow);
 }
 
-.user-avatar .unicorn-icon {
-  /* 头像容器裁切下稍留呼吸，防阴影贴边 */
-  margin: 2px;
+.user-avatar {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .user-name {
@@ -570,26 +406,8 @@ const handleCommand = async (command: string) => {
   white-space: nowrap;
 }
 
-/* ==================== 窄视口自适应（开发者工具/小窗） ==================== */
-@media (max-width: 1200px) {
-  .nav-item {
-    padding: var(--space-2) 0;
-  }
-}
-
+/* ==================== Responsive ==================== */
 @media (max-width: 992px) {
-  .nav-links {
-    gap: var(--space-1);
-  }
-
-  .nav-item {
-    font-size: var(--text-xs);
-  }
-
-  .header-nav {
-    gap: var(--space-3);
-  }
-
   /* 窄屏：内联搜索收成图标按钮（点击进全局检索页） */
   .search-input {
     display: none;
@@ -605,73 +423,15 @@ const handleCommand = async (command: string) => {
     padding: 0 var(--space-3);
   }
 
-  .brand-name {
-    display: none;
-  }
-
-  /* 极窄：导航文字隐藏，胶囊收成 32px 图标位 */
-  .nav-item {
-    padding: 0;
-    font-size: 0;
-    gap: 0;
-    width: 32px;
-    height: 32px;
-    justify-content: center;
-  }
-
-  .nav-item svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .user-trigger {
-    gap: 0;
-    padding: var(--space-2);
-  }
-
   .user-name {
     display: none;
   }
 }
 
-/* 极窄视口（<420px）：图标位仍溢出视口（评审 P2-2 实测 320px 溢出 32px）——
-   收紧内边距与 gap，让 header-right 完整落在视口内 */
 @media (max-width: 420px) {
   .app-header {
-    padding: 0 var(--space-2);
-  }
-
-  .header-nav {
     gap: var(--space-1);
-  }
-
-  .header-right {
-    gap: 0;
-    /* 右缘与视口边界相贴（亚像素余量），允许收缩消除 */
-    min-width: 0;
-    flex-shrink: 1;
-  }
-
-  /* 通知铃铛与主题切换在极窄屏收小一位 */
-  .theme-toggle,
-  .notification-bell {
-    width: 28px;
-    height: 28px;
-  }
-
-  /* 头像触发器 48px 是溢出主源（8px 内边距），收到与图标同宽 */
-  .user-trigger {
-    padding: var(--space-1);
-  }
-
-  /* 头像 32px 仍会溢出 8px（评审 P3-2），收到 24px 挤进安全区 */
-  .user-trigger :deep(.user-avatar) {
-    width: 24px;
-    height: 24px;
-  }
-
-  .user-trigger :deep(.user-avatar .unicorn-icon) {
-    margin: 0;
+    padding: 0 var(--space-2);
   }
 }
 </style>

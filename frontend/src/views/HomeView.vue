@@ -1,151 +1,41 @@
 <template>
   <div class="home-view">
     <div class="home-inner">
-      <!-- Hero（米哈游招聘站排版层级：左对齐大标题 + 字距副题 + 描述 + 主 CTA） -->
-      <section class="hero">
-        <h1 class="hero-title">问而知，知而行</h1>
-        <p class="hero-subtitle">ASK · KNOW · ACT</p>
-        <p class="hero-desc">企业知识库：文档解析、语义检索、Wiki 沉淀与知识运营</p>
-
-        <!-- 主 CTA：真实搜索框（回车/点击直达跨空间全局检索；空输入进知识空间） -->
-        <div class="hero-input">
-          <input
-            v-model="heroQuery"
-            class="hero-input-field"
-            type="text"
-            placeholder="搜索全部知识空间…"
-            maxlength="2000"
-            aria-label="全局知识检索"
-            @keydown.enter="goSearch"
-          />
-          <button type="button" class="hero-input-send" aria-label="搜索" @click="goSearch">
-            <el-icon :size="15"><Promotion /></el-icon>
-          </button>
-        </div>
-      </section>
-
-      <!-- 功能入口（米哈游职业分类卡片同构：图标 + 标题 + 描述 + hover 上浮） -->
-      <section class="features">
-        <button
-          v-for="card in featureCards"
-          :key="card.key"
-          class="feature-card"
-          @click="card.action()"
-        >
-          <span class="feature-icon">
-            <NavIcon :name="card.icon" :size="22" />
-          </span>
-          <span class="feature-meta">
-            <span class="feature-title">{{ card.title }}</span>
-            <span class="feature-desc">{{ card.desc }}</span>
-          </span>
-          <el-icon :size="14" class="feature-arrow"><ArrowRight /></el-icon>
-        </button>
-      </section>
-
-      <!-- 数据条 -->
-      <section class="stats-bar">
-        <span class="stat-item"
-          ><strong>{{ spaceStore.spaces.length }}</strong> 个知识空间</span
-        >
-        <template v-if="wikiPagesLabel">
-          <span class="stat-divider" />
-          <span class="stat-item"
-            ><strong>{{ wikiPagesLabel }}</strong> 篇 Wiki 页</span
-          >
-        </template>
+      <section class="welcome">
+        <UnicornIcon :size="44" />
+        <h1 class="welcome-title">欢迎使用 NovaMind</h1>
+        <p class="welcome-desc">
+          企业知识库：上传文档自动解析与向量化，语义检索、Wiki 沉淀与知识运营都在这里。
+        </p>
+        <el-button type="primary" size="large" class="welcome-cta" @click="createVisible = true">
+          新建第一个知识空间
+        </el-button>
       </section>
     </div>
+
+    <SpaceCreateDialog v-model:visible="createVisible" />
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 登录后首页（/home）
+ * 首页空态引导（/home）。
  *
- * 承载 Hero 主 CTA（跳转知识空间）、功能入口卡片与平台数据条。
+ * 登录后路由守卫直达最近空间工作台；本页仅在「零空间」时可见——空屏是
+ * 行动邀请：一句话说明产品 + 唯一动作「新建第一个知识空间」。
  */
+import { ref } from 'vue'
+import UnicornIcon from '@/components/common/UnicornIcon.vue'
+import { SpaceCreateDialog } from '@/components/workbench'
 
-import { onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { Promotion, ArrowRight } from '@element-plus/icons-vue'
-import { useSpaceStore } from '@/stores/space'
-import { wikiApi } from '@/api/knowledge'
-import NavIcon from '@/components/common/NavIcon.vue'
-
-const router = useRouter()
-const spaceStore = useSpaceStore()
-
-// 当前空间的 Wiki 资产概览（跨 KB 聚合）；零页/无空间时不占位
-const wikiPagesLabel = ref('')
-let wikiOverviewLoadedFor = 0
-
-/** 拉取当前（或首个）空间的 Wiki 总页数用于数据条；同一空间只加载一次 */
-async function loadWikiOverview() {
-  const spaceId = spaceStore.currentSpace?.id || spaceStore.spaces[0]?.id
-  if (!spaceId || wikiOverviewLoadedFor === spaceId) return
-  wikiOverviewLoadedFor = spaceId
-  try {
-    const overview = await wikiApi.getSpaceWikiOverview(spaceId)
-    wikiPagesLabel.value = overview.total_pages > 0 ? String(overview.total_pages) : ''
-  } catch {
-    wikiPagesLabel.value = ''
-  }
-}
-
-watch(
-  () => spaceStore.currentSpace?.id ?? spaceStore.spaces[0]?.id,
-  () => {
-    wikiOverviewLoadedFor = 0
-    void loadWikiOverview()
-  },
-)
-
-// 功能卡片
-const featureCards = [
-  {
-    key: 'spaces',
-    icon: 'spaces',
-    title: '知识空间',
-    desc: '多租户知识管理：上传文档自动分段、向量化，支持语义检索与 Wiki 沉淀',
-    action: () => router.push('/home/spaces'),
-  },
-]
-
-const heroQuery = ref('')
-
-/** Hero 搜索：非空直达全局检索（携带 ?q 深链），空输入进知识空间列表 */
-function goSearch() {
-  const q = heroQuery.value.trim()
-  if (q) void router.push({ path: '/home/search', query: { q } })
-  else goSpaces()
-}
-
-function goSpaces() {
-  router.push('/home/spaces')
-}
-
-onMounted(async () => {
-  // 数据条依赖 spaceStore；直接进首页（未路过空间列表）时自取一次
-  if (!spaceStore.spaces.length) {
-    try {
-      await spaceStore.fetchSpaces()
-    } catch {
-      // 静默：数据条缺数字不影响入口功能
-    }
-  }
-  void loadWikiOverview()
-})
+const createVisible = ref(false)
 </script>
 
 <style scoped>
-/* ========================================
-   Layout — 门面页（米哈游招聘站式排版层级）
-   ======================================== */
 .home-view {
   display: flex;
   justify-content: center;
-  min-height: calc(100vh - var(--header-height));
+  min-height: 100%;
   padding: var(--space-10) var(--space-6) var(--space-8);
 }
 
@@ -153,231 +43,34 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 880px;
-  animation: fadeIn 0.5s ease;
+  max-width: 640px;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ========================================
-   Hero — 左对齐排版层级
-   ======================================== */
-.hero {
+.welcome {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  margin-bottom: var(--space-9, 36px);
+  gap: var(--space-3);
+  padding-top: clamp(var(--space-8), 12vh, var(--space-16));
 }
 
-.hero-title {
+.welcome-title {
   font-family: var(--font-display);
-  font-size: 44px;
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--color-text);
-  margin: 0 0 var(--space-2);
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
+  margin: var(--space-2) 0 0;
 }
 
-.hero-subtitle {
-  font-family: var(--font-display);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-muted);
-  letter-spacing: 0.28em;
-  margin: 0 0 var(--space-4);
-}
-
-.hero-desc {
+.welcome-desc {
   font-size: var(--text-md);
   color: var(--color-text-secondary);
   line-height: var(--leading-relaxed);
-  margin: 0 0 var(--space-6);
+  margin: 0 0 var(--space-4);
+  max-width: 52em;
 }
 
-/* 主 CTA：搜索胶囊（输入框与发送按钮同壳；米哈游胶囊按钮语言） */
-.hero-input {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  max-width: 560px;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  background: var(--color-bg-card);
-  transition: all var(--transition-base);
-  box-shadow: var(--shadow-xs);
-}
-
-.hero-input:hover,
-.hero-input:focus-within {
-  border-color: var(--color-text-faint);
-  box-shadow: var(--shadow-md);
-}
-
-.hero-input-field {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-}
-
-.hero-input-field::placeholder {
-  color: var(--color-text-faint);
-}
-
-.hero-input-send {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-btn-primary);
-  color: var(--color-btn-primary-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.hero-input:hover .hero-input-send,
-.hero-input:focus-within .hero-input-send {
-  background: var(--color-btn-primary-hover);
-}
-
-/* ========================================
-   Feature Cards — 功能入口网格
-   ======================================== */
-.features {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-  margin-bottom: var(--space-8);
-}
-
-.feature-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
-  background: var(--color-bg-card);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  text-align: left;
-  font-family: var(--font-body);
-}
-
-.feature-card:hover {
-  border-color: var(--color-border);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.feature-card:hover .feature-arrow {
-  color: var(--color-primary);
-  transform: translateX(2px);
-}
-
-.feature-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
-  background: var(--color-primary-muted);
-  color: var(--color-text);
-  flex-shrink: 0;
-}
-
-.feature-meta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.feature-title {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-}
-
-.feature-desc {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  line-height: var(--leading-normal);
-}
-
-.feature-arrow {
-  color: var(--color-text-faint);
-  flex-shrink: 0;
-  transition: all var(--transition-fast);
-}
-
-/* ========================================
-   Stats Bar — 数据条
-   ======================================== */
-.stats-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-5);
-  padding: var(--space-4);
-  border-top: 1px solid var(--color-border-light);
-}
-
-.stat-item {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.stat-item strong {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
-  margin-right: 4px;
-}
-
-.stat-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--color-border-light);
-}
-
-/* ========================================
-   Responsive
-   ======================================== */
-@media (max-width: 768px) {
-  .home-view {
-    padding: var(--space-6) var(--space-4);
-  }
-
-  .hero-title {
-    font-size: 32px;
-  }
-
-  .features {
-    grid-template-columns: 1fr;
-  }
+.welcome-cta {
+  min-width: 180px;
 }
 </style>

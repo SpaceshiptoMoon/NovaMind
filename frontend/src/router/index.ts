@@ -83,6 +83,34 @@ const router = createRouter({
           name: 'Home',
           component: () => import('@/views/HomeView.vue'),
           meta: { title: '首页' },
+          // 登录后消除中转：直达最近空间工作台；零空间才落 HomeView 空态引导
+          beforeEnter: async () => {
+            const { useSpaceStore } = await import('@/stores/space')
+            const { useUserStore } = await import('@/stores/user')
+            const spaceStore = useSpaceStore()
+            const userStore = useUserStore()
+            const userId = userStore.getUserIdFromToken()
+            if (userId != null) {
+              const lastId = spaceStore.getLastSpaceId(userId)
+              if (lastId) {
+                return { path: `/home/spaces/${lastId}/knowledge-bases`, replace: true }
+              }
+            }
+            if (!spaceStore.spaces.length) {
+              try {
+                await spaceStore.fetchSpaces()
+              } catch {
+                return true
+              }
+            }
+            if (spaceStore.spaces.length) {
+              return {
+                path: `/home/spaces/${spaceStore.spaces[0]!.id}/knowledge-bases`,
+                replace: true,
+              }
+            }
+            return true
+          },
         },
         {
           // 跨空间全局检索（消费侧入口）：门户 Hero 搜索框与顶栏搜索位的落地页
