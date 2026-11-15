@@ -15,12 +15,45 @@ export interface HighlightSegment {
   hit: boolean
 }
 
-/** 查询文本 → 高亮词列表（空白分词；中文无空格即整句一词） */
+// Intl.Segmenter 类型在当前 TS lib 目标（<es2022）中不存在——运行时特性
+// 检测 + 局部窄化类型（不提升全局 tsconfig lib，旧环境自动退回空白分词）
+interface SegmenterPartLike {
+  segment: string
+  isWordLike?: boolean
+}
+interface SegmenterLike {
+  segment(input: string): Iterable<SegmenterPartLike>
+}
+const SegmenterCtor = (
+  Intl as unknown as {
+    Segmenter?: new (locale: string, options: { granularity: 'word' }) => SegmenterLike
+  }
+).Segmenter
+
+/**
+ * 查询文本 → 高亮词列表。
+ *
+ * 优先用 Intl.Segmenter 词级分词（平台 ICU 分词，CJK 无空格语言自动
+ * 切词：「知识库检索」→「知识库」「检索」）；环境不支持时退回空白分词。
+ * 过滤多词句中的单字词（单字高亮噪音大；检索本身用整句，高亮仅辅助定位）。
+ */
 export function queryToTerms(query: string): string[] {
-  return query
+  const raw = query
     .trim()
     .split(/\s+/)
     .filter(Boolean)
+
+  if (SegmenterCtor) {
+    const segmenter = new SegmenterCtor('zh', { granularity: 'word' })
+    const terms: string[] = []
+    for (const part of segmenter.segment(query)) {
+      const text = part.segment.trim()
+      if (part.isWordLike && text.length >= 2) terms.push(text)
+    }
+    if (terms.length) return terms
+  }
+
+  return raw
 }
 
 function escapeRegExp(text: string): string {

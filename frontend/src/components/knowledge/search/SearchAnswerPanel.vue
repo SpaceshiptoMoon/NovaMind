@@ -4,7 +4,7 @@
       <span>AI 回答</span>
       <span class="llm-answer-meta">
         <span v-if="model" class="llm-answer-model">{{ model }}</span>
-        <span v-if="elapsedMs" class="llm-answer-model">{{ elapsedMs }}ms</span>
+        <span v-if="elapsedMs" class="llm-answer-model">{{ Math.round(elapsedMs) }}ms</span>
       </span>
     </div>
     <div class="llm-answer-content">

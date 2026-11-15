@@ -1,17 +1,46 @@
 import { describe, expect, it } from 'vitest'
 import { highlightSegments, queryToTerms } from '../highlight'
 
+const hasSegmenter = 'Segmenter' in (Intl as object)
+
 describe('queryToTerms', () => {
   it('空白分词并过滤空串', () => {
     expect(queryToTerms('  部署 流程 ')).toEqual(['部署', '流程'])
   })
 
-  it('中文无空格整句一词', () => {
-    expect(queryToTerms('如何部署生产环境')).toEqual(['如何部署生产环境'])
+  it('单字整查询保留（用户显式输入的单字即查询本体，不算噪音）', () => {
+    expect(queryToTerms('光')).toEqual(['光'])
+  })
+
+  it('英文查询按词切分', () => {
+    expect(queryToTerms('deploy guide')).toEqual(['deploy', 'guide'])
   })
 
   it('空查询返回空数组', () => {
     expect(queryToTerms('   ')).toEqual([])
+  })
+})
+
+describe.skipIf(!hasSegmenter)('queryToTerms（Intl.Segmenter 可用）', () => {
+  it('无空格中文经 ICU 分词切成多词（词典版本无关的行为断言）', () => {
+    const terms = queryToTerms('知识库检索')
+    expect(terms.length).toBeGreaterThanOrEqual(2)
+    expect(terms).toContain('检索')
+    expect(terms.every((t) => t.length >= 2)).toBe(true)
+  })
+})
+
+describe.skipIf(hasSegmenter)('queryToTerms（无 Intl.Segmenter 退回空白分词）', () => {
+  it('中文整句一词', () => {
+    expect(queryToTerms('知识库检索')).toEqual(['知识库检索'])
+  })
+})
+
+describe.skipIf(!hasSegmenter)('highlightSegments 端到端（无空格中文查询）', () => {
+  it('整句中文查询经分词后子词命中高亮', () => {
+    const segs = highlightSegments('本知识库支持混合检索与全文检索', queryToTerms('知识库检索'))
+    const hits = segs.filter((s) => s.hit).map((s) => s.text)
+    expect(hits).toContain('检索')
   })
 })
 
