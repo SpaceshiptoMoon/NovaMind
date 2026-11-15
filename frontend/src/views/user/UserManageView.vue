@@ -161,12 +161,6 @@
                     编辑
                   </el-dropdown-item>
                   <el-dropdown-item
-                    command="appAccess"
-                    v-if="permStore.hasPermission('user.manage')"
-                  >
-                    应用权限
-                  </el-dropdown-item>
-                  <el-dropdown-item
                     command="role"
                     v-if="permStore.hasPermission('role.manage')"
                     :disabled="row.is_super_admin"
@@ -339,36 +333,6 @@
       </template>
     </el-dialog>
 
-    <!-- 应用权限弹窗（勾选=可用，取消勾选=禁用；deny-list） -->
-    <el-dialog
-      v-model="appAccessVisible"
-      title="应用权限"
-      width="440px"
-      append-to-body
-      destroy-on-close
-    >
-      <p class="dialog-tip">
-        为用户 <strong>{{ appAccessUser?.username }}</strong> 配置可用应用（取消勾选即禁用该应用）
-      </p>
-      <div v-if="appAccessLoading" style="text-align: center; padding: 40px">
-        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-      </div>
-      <template v-else>
-        <el-checkbox-group v-model="appAccessEnabled" class="app-access-group">
-          <el-checkbox v-for="code in APP_CODES" :key="code" :value="code">
-            {{ APP_CODE_LABELS[code] }}
-          </el-checkbox>
-        </el-checkbox-group>
-        <p class="dialog-note">知识空间不在此列——其内容由空间成员角色控制。</p>
-      </template>
-      <template #footer>
-        <el-button @click="appAccessVisible = false">取消</el-button>
-        <el-button type="primary" :loading="appAccessSubmitLoading" @click="handleAppAccessSubmit">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-
     <!-- 设置角色弹窗 -->
     <el-dialog
       v-model="roleDialogVisible"
@@ -418,8 +382,7 @@ import { Plus, Loading, Search, MoreFilled } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
-import type { User, Role, AppCodeType } from '@/api/types'
-import { APP_CODES, APP_CODE_LABELS } from '@/api/types'
+import type { User, Role } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const userStore = useUserStore()
@@ -546,7 +509,6 @@ function avatarClass(u: User): string {
 type UserCommand =
   | 'detail'
   | 'edit'
-  | 'appAccess'
   | 'role'
   | 'toggleStatus'
   | 'forceLogout'
@@ -562,9 +524,6 @@ function handleCommand(...args: unknown[]) {
       break
     case 'edit':
       showEditDialog(user)
-      break
-    case 'appAccess':
-      showAppAccessDialog(user)
       break
     case 'role':
       showRoleDialog(user)
@@ -850,50 +809,8 @@ async function handleDelete(user: User) {
 }
 
 // ===================== 应用权限（deny-list） =====================
-const appAccessVisible = ref(false)
-const appAccessLoading = ref(false)
-const appAccessSubmitLoading = ref(false)
-const appAccessUser = ref<User | null>(null)
-// 勾选集合 = 可用应用（提交时转换为被禁集合：全集 - 勾选）
-const appAccessEnabled = ref<AppCodeType[]>([])
-
-/** 加载用户当前可用应用（disabled_apps 取反为勾选集）并打开应用权限弹窗。 */
-async function showAppAccessDialog(user: User) {
-  appAccessUser.value = user
-  appAccessVisible.value = true
-  appAccessLoading.value = true
-  appAccessEnabled.value = []
-  try {
-    const access = await userApi.getUserAppAccess(user.id)
-    const disabled = new Set(access.disabled_apps)
-    appAccessEnabled.value = APP_CODES.filter((c) => !disabled.has(c))
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { message?: string } } }
-    ElMessage.error(err.response?.data?.message || '获取应用权限失败')
-    appAccessVisible.value = false
-  } finally {
-    appAccessLoading.value = false
-  }
-}
-
-/** 勾选集换算回 disabled_apps（全集 - 勾选）后提交。 */
-async function handleAppAccessSubmit() {
-  if (!appAccessUser.value) return
-  appAccessSubmitLoading.value = true
-  try {
-    // 勾选=可用 → 被禁集合 = 全集 - 勾选
-    const enabled = new Set(appAccessEnabled.value)
-    const disabled = APP_CODES.filter((c) => !enabled.has(c))
-    await userApi.updateUserAppAccess(appAccessUser.value.id, { disabled_apps: disabled })
-    ElMessage.success(`用户 "${appAccessUser.value.username}" 应用权限已更新`)
-    appAccessVisible.value = false
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { message?: string } } }
-    ElMessage.error(err.response?.data?.message || '保存应用权限失败')
-  } finally {
-    appAccessSubmitLoading.value = false
-  }
-}
+// 可门禁应用已随工作台剥离清空（后端 AppCode.ALL=[]），应用权限管理功能下线；
+// getUserAppAccess/updateUserAppAccess 接口与后端表保留（数据面兼容）。
 
 // ===================== 设置角色 =====================
 const roleDialogVisible = ref(false)

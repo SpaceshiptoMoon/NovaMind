@@ -45,17 +45,6 @@
     </nav>
 
     <div class="header-right">
-      <!-- 侧栏折叠切换（仅工作台路由传入 sidebar-collapsed 时显示） -->
-      <button
-        v-if="sidebarCollapsed !== undefined"
-        class="sidebar-collapse-btn"
-        :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
-        :aria-expanded="!sidebarCollapsed"
-        @click="emit('toggle-sidebar')"
-      >
-        <el-icon :size="16"><DArrowLeft v-if="!sidebarCollapsed" /><DArrowRight v-else /></el-icon>
-      </button>
-
       <!-- 主题切换 -->
       <el-icon :size="20" class="theme-toggle" @click="toggleTheme">
         <Sunny v-if="theme === 'dark'" />
@@ -168,8 +157,6 @@ import {
   UserFilled,
   Moon,
   Sunny,
-  DArrowLeft,
-  DArrowRight,
   Key,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -186,21 +173,10 @@ const userStore = useUserStore()
 const permStore = usePermissionStore()
 const { theme, toggleTheme } = useTheme()
 
-// 侧栏折叠（父级 WorkspaceLayout 传入；仅工作台路由）
-defineProps<{
-  sidebarCollapsed?: boolean
-}>()
-
-const emit = defineEmits<{
-  'toggle-sidebar': []
-}>()
-
 // ==================== 顶部导航（全局） ====================
 const allNavItems = [
   { key: 'home', label: '首页', icon: 'home', to: '/home', app: null },
   { key: 'spaces', label: '知识空间', icon: 'spaces', to: '/home/spaces', app: null },
-  { key: 'workspace', label: '工作台', icon: 'chat', to: '/home/workspace', app: null },
-  { key: 'apps', label: '应用', icon: 'apps', to: '/home/apps', app: 'app' },
 ] as const
 
 const navItems = computed(() =>
@@ -209,9 +185,7 @@ const navItems = computed(() =>
 
 const activeNav = computed(() => {
   const path = router.currentRoute.value.path
-  if (path.startsWith('/home/workspace')) return 'workspace'
   if (path.startsWith('/home/spaces')) return 'spaces'
-  if (path.startsWith('/home/apps')) return 'apps'
   if (path === '/home') return 'home'
   return ''
 })
@@ -390,23 +364,6 @@ const handleCommand = async (command: string) => {
 }
 
 /* ==================== 侧栏折叠按钮 ==================== */
-.sidebar-collapse-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-right: var(--space-2);
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background var(--transition-fast),
-    box-shadow var(--transition-base);
-}
 
 /* ==================== 主题切换 ==================== */
 .theme-toggle {
@@ -450,15 +407,6 @@ const handleCommand = async (command: string) => {
 }
 
 /* 顶栏操作键统一 hover 态：浅灰圆底 + 浮起阴影 */
-.sidebar-collapse-btn:hover,
-.theme-toggle:hover,
-.notification-badge:hover,
-.user-trigger:hover,
-.user-trigger:focus-visible {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
-  box-shadow: var(--header-hover-shadow);
-}
 
 .notification-panel {
   margin: -12px;
@@ -654,11 +602,6 @@ const handleCommand = async (command: string) => {
 
   .user-trigger :deep(.user-avatar .unicorn-icon) {
     margin: 0;
-  }
-
-  /* 折叠按钮的 8px 右 margin 在极窄屏是溢出零头来源，收紧到 4px */
-  .sidebar-collapse-btn {
-    margin-right: 4px;
   }
 }
 </style>

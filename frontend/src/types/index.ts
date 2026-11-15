@@ -16,8 +16,6 @@ declare module 'vue-router' {
     requiresAuth?: boolean
     requiresAdmin?: boolean
     requiresPermission?: string | string[]
-    /** 应用级权限（被禁应用的路由 403） */
-    requiresApp?: import('../api/types').AppCodeType
     layout?: 'auth' | 'main'
     title?: string
   }

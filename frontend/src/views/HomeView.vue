@@ -5,11 +5,17 @@
       <section class="hero">
         <h1 class="hero-title">问而知，知而行</h1>
         <p class="hero-subtitle">ASK · KNOW · ACT</p>
-        <p class="hero-desc">集知识管理、AI 对话、深度研究于一体的智能平台</p>
+        <p class="hero-desc">企业知识库：文档解析、语义检索、Wiki 沉淀与知识运营</p>
 
-        <!-- 主 CTA：输入胶囊（点击进对话） -->
-        <div class="hero-input" role="button" tabindex="0" @click="goChat" @keydown.enter="goChat">
-          <span class="hero-input-placeholder">问我任何问题，或输入 / 使用知识库</span>
+        <!-- 主 CTA：输入胶囊（点击进知识空间） -->
+        <div
+          class="hero-input"
+          role="button"
+          tabindex="0"
+          @click="goSpaces"
+          @keydown.enter="goSpaces"
+        >
+          <span class="hero-input-placeholder">进入知识空间，管理文档与知识</span>
           <span class="hero-input-send">
             <el-icon :size="15"><Promotion /></el-icon>
           </span>
@@ -40,14 +46,6 @@
         <span class="stat-item"
           ><strong>{{ spaceStore.spaces.length }}</strong> 个知识空间</span
         >
-        <span class="stat-divider" />
-        <span class="stat-item"
-          ><strong>{{ sessionCount }}</strong> 段对话</span
-        >
-        <span class="stat-divider" />
-        <span class="stat-item"
-          ><strong>{{ agentStore.agents.length }}</strong> 个智能体</span
-        >
         <template v-if="wikiPagesLabel">
           <span class="stat-divider" />
           <span class="stat-item"
@@ -63,26 +61,18 @@
 /**
  * 登录后首页（/home）
  *
- * 对应路由 Home，承载 Hero 主 CTA（跳转对话）、功能入口卡片与应用门禁过滤、平台数据条。
+ * 承载 Hero 主 CTA（跳转知识空间）、功能入口卡片与平台数据条。
  */
 
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Promotion, ArrowRight } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
-import { useAgentStore } from '@/stores/agent'
-import { agentApi } from '@/api/agent'
-import { usePermissionStore } from '@/stores/permission'
 import { wikiApi } from '@/api/knowledge'
 import NavIcon from '@/components/common/NavIcon.vue'
 
 const router = useRouter()
 const spaceStore = useSpaceStore()
-const agentStore = useAgentStore()
-const permStore = usePermissionStore()
-
-// 对话总数（agent 会话，数据条展示）
-const sessionCount = ref(0)
 
 // 当前空间的 Wiki 资产概览（跨 KB 聚合）；零页/无空间时不占位
 const wikiPagesLabel = ref('')
@@ -109,52 +99,22 @@ watch(
   },
 )
 
-// 功能卡片（应用门禁过滤；emoji 全部换 NavIcon 统一语言）
+// 功能卡片
 const featureCards = [
   {
     key: 'spaces',
     icon: 'spaces',
     title: '知识空间',
-    desc: '多租户知识管理，上传文档自动分段、向量化、精准检索',
+    desc: '多租户知识管理：上传文档自动分段、向量化，支持语义检索与 Wiki 沉淀',
     action: () => router.push('/home/spaces'),
-    app: null,
   },
-  {
-    key: 'research',
-    icon: 'research',
-    title: '深度研究',
-    desc: '对话中发起深度研究：自动规划、多源检索，生成结构化研究报告',
-    action: () => router.push('/home/workspace/chat'),
-    app: null,
-  },
-  {
-    key: 'agents',
-    icon: 'agents',
-    title: '智能体',
-    desc: '按你的指令自主调用工具、检索知识库，完成复杂任务',
-    action: () => router.push('/home/workspace/agents'),
-    app: 'agent' as const,
-  },
-  {
-    key: 'apps',
-    icon: 'apps',
-    title: '应用',
-    desc: '开箱即用的场景化应用，快速获得 AI 能力',
-    action: () => router.push('/home/apps'),
-    app: 'app' as const,
-  },
-].filter((card) => card.app === null || permStore.hasApp(card.app))
+]
 
-function goChat() {
-  router.push('/home/workspace/chat')
+function goSpaces() {
+  router.push('/home/spaces')
 }
 
 onMounted(() => {
-  // 数据条数据源（已有智能体缓存时静默跳过）
-  agentApi.listAllSessions({ limit: 1 }).then((d) => {
-    sessionCount.value = d.total
-  }).catch(() => {})
-  if (agentStore.agents.length === 0) agentStore.fetchAgents().catch(() => {})
   void loadWikiOverview()
 })
 </script>

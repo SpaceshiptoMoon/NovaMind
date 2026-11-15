@@ -22,7 +22,7 @@
         <h1 class="hero-title">问而知，知而行</h1>
         <p class="hero-subtitle">Ask. Know. Act.</p>
         <p class="hero-desc">
-          用对话唤醒沉睡的知识 — 集知识管理、AI 对话、深度研究于一体的智能平台
+          让知识可管理、可检索、可沉淀 — 企业知识库与开放知识服务
         </p>
         <div class="hero-actions">
           <router-link v-if="!hasToken" to="/login" class="hero-btn hero-btn-primary"
@@ -41,7 +41,7 @@
     <section ref="featuresRef" class="features">
       <div class="features-inner">
         <h2 class="section-title">一个平台，四种能力</h2>
-        <p class="section-desc">从文档上传到智能问答，从知识检索到深度研究</p>
+        <p class="section-desc">从文档上传到语义检索，从 Wiki 沉淀到开放接口</p>
 
         <div class="feature-cards">
           <div class="feature-card feature-card-main">
@@ -59,24 +59,24 @@
             <div class="feature-card-icon feature-icon-coral">
               <NavIcon name="chat" :size="24" />
             </div>
-            <h3>AI 对话</h3>
-            <p>基于 RAG 的智能问答，从你的知识库中提取精准答案，每条回复可溯源至原文。</p>
+            <h3>语义检索</h3>
+            <p>混合检索（BM25 + 向量）多路召回与重排，从知识库中提取精准答案，每条结果可溯源至原文。</p>
           </div>
 
           <div class="feature-card">
             <div class="feature-card-icon feature-icon-violet">
               <NavIcon name="research" :size="24" />
             </div>
-            <h3>深度研究</h3>
-            <p>AI 自动搜索、分析、整合信息，生成结构化研究报告，让深度研究效率提升十倍。</p>
+            <h3>Wiki 沉淀</h3>
+            <p>文档自动整理为互相链接的 Wiki 知识页，知识从「存起来」变成「长出来」。</p>
           </div>
 
           <div class="feature-card">
             <div class="feature-card-icon feature-icon-teal">
-              <NavIcon name="agents" :size="24" />
+              <NavIcon name="settings" :size="24" />
             </div>
-            <h3>智能体</h3>
-            <p>创建和管理 AI 智能体，自动化复杂任务，让 AI 按照你的流程工作。</p>
+            <h3>开放接口</h3>
+            <p>标准 MCP 与 OpenAI 兼容网关，任何 agent 宿主都能接入你的知识库。</p>
           </div>
         </div>
       </div>

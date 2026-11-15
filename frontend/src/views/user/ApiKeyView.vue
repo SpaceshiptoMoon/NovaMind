@@ -186,7 +186,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, CopyDocument } from '@element-plus/icons-vue'
-import { apiKeyApi } from '@/api/agent'
+import { apiKeyApi } from '@/api/user'
 import type { ApiKeyItem } from '@/api/types'
 
 const keys = ref<ApiKeyItem[]>([])
