@@ -198,9 +198,16 @@ class AgentChatService(
                 memory_store, memory_search, prompt_provider,
             )
 
-            llm_client, tools, messages, snapshot, _, caps = await self._build_context(
-                agent, conv, user_id, model, content, memory_manager,
-                deep_research=deep_research,
+            llm_client, tools, messages, snapshot, _, caps, enabled_mcp_ids = (
+                await self._build_context(
+                    agent, conv, user_id, model, content, memory_manager,
+                    deep_research=deep_research,
+                )
+            )
+            # 按需工具目录机制：登记本轮 tools 列表引用（load_tools 激活时
+            # 原地追加）与 MCP 授权边界；turn 结束（含异常路径）由 finally 清理
+            self.agent_engine.tool_executor.begin_turn(
+                tools, enabled_mcp_server_ids=enabled_mcp_ids
             )
             # 深度研究模式引导块已作为 overlay 在 build_context 内注入
             # （计量前，与记忆预取/附件清单同管线），此处不再单独 mutate 消息。
@@ -520,6 +527,10 @@ class AgentChatService(
             except Exception as rollback_err:
                 logger.warning("事务回滚失败", error=str(rollback_err))
             yield self._emit("error", {"content": f"对话失败：{str(e)}"})
+        finally:
+            # 按需工具目录：清理本轮 tools 列表引用与已加载记录（含取消/异常
+            # 路径），防引用悬挂污染下一轮
+            self.agent_engine.tool_executor.end_turn()
 
     # ==================== 断连后台续跑（turn 状态标记） ====================
 

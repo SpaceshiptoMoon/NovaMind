@@ -144,6 +144,7 @@ def _make_orchestrator(factory, fake_engine):
             None,      # snapshot
             "",        # system_prompt
             type("Caps", (), {"tools": False})(),
+            [],        # enabled_mcp_ids
         )
 
     async def fake_resolve_model(user_id, agent, llm_model):

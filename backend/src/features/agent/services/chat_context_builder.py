@@ -4,12 +4,18 @@
 类级 _PROMPT_CACHE/_CACHE_TTL/_CLASS_CACHE_MAX 定义在主类，经 cls 从 MRO 可达。
 """
 import base64
+import copy as _copy
 from time import monotonic
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.agent.memory.interfaces import MemorySnapshot
 from novamind.engines.agent.memory.memory_manager import MemoryManager
+from novamind.engines.agent.tool.catalog import (
+    LOAD_TOOLS_NAME,
+    LOAD_TOOLS_OPENAI_FORMAT,
+    render_tool_catalog,
+)
 from novamind.features.agent.exceptions import (
     AgentError,
 )
@@ -133,6 +139,7 @@ class ChatContextBuilderMixin:
         memory_manager: MemoryManager,
         dry_run: bool = False,
         deep_research: bool = False,
+        enable_catalog: bool = True,
     ) -> tuple[Any, list[dict], list[dict], MemorySnapshot, str, LLMCapabilities]:
         """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）。
 
@@ -140,9 +147,15 @@ class ChatContextBuilderMixin:
         access_count、图片不做 MinIO 下载，用于历史会话初始 context_usage 估算
         （ContextMeter）。
 
+        Args:
+            enable_catalog: 是否启用按需工具目录机制。群聊成员并行 turn 共享
+                单例 executor，turn 级加载状态会互踩，须传 False（全量直发）。
+
         Returns:
-            (llm_client, tools, messages, snapshot, system_prompt, caps)。
-            caps 为模型生效能力集，供调用侧协商 plan_mode/thinking 透传。
+            (llm_client, tools, messages, snapshot, system_prompt, caps,
+            enabled_mcp_ids)。caps 为模型生效能力集，供调用侧协商
+            plan_mode/thinking 透传；enabled_mcp_ids 为归属过滤后的授权
+            server id 列表（供 executor.begin_turn 登记 load_tools 加载边界）。
         """
         # LLM 客户端（优先 LLM 类型，fallback 到 VLM 类型）
         try:
@@ -171,11 +184,44 @@ class ChatContextBuilderMixin:
         enabled_mcp_ids = await filter_visible_mcp_ids(
             self.db, user_id, agent.enabled_mcp_servers or []
         )
-        tools = (
-            tool_executor.resolve_tools_openai_format(enabled_tools, enabled_mcp_ids)
-            if caps.tools
-            else []
-        )
+        # 目录分组：enabled_tools 中属于目录组的 provider 不直发 schema，
+        # 只在 system prompt 目录 fragment 里列清单，模型经 load_tools 激活；
+        # enable_catalog=False（群聊成员）全量直发，机制整体关闭
+        exclude_groups: set[str] = set()
+        catalog_entries: list[tuple[str, str, list[str]]] = []
+        mcp_catalog: list[tuple[str, int, list[str]]] = []
+        # 直发集：剔除目录组后的 provider 名单（prompt 组装链的口径——
+        # {tools} 占位符/tool_guidance fragment/技能 fragment 只覆盖直发工具）
+        direct_tool_names = list(enabled_tools)
+        # MCP 下发模式：默认 catalog（工具名进目录，按需加载，schema 不直发——
+        # 外部 server 工具数无上限，全量直发是上下文最大膨胀点）；
+        # extra_config.mcp_tool_mode == "inline" 或 enable_catalog=False（群聊）
+        # 回退现状全量直发
+        mcp_mode = (agent.extra_config or {}).get("mcp_tool_mode", "catalog")
+        mcp_ids_for_resolve = list(enabled_mcp_ids)
+        if caps.tools:
+            if enable_catalog:
+                registry = tool_executor.tool_registry
+                exclude_groups = {
+                    g for p in enabled_tools if (g := registry.group_of(p))
+                }
+                descriptions = registry.catalog_groups()
+                catalog_entries = [
+                    (group, descriptions.get(group, ""), registry.group_functions(group))
+                    for group in sorted(exclude_groups)
+                ]
+                direct_tool_names = [
+                    p for p in enabled_tools
+                    if registry.group_of(p) not in exclude_groups
+                ]
+                if mcp_mode != "inline":
+                    mcp_ids_for_resolve = []
+                    mcp_catalog = tool_executor.build_mcp_catalog(enabled_mcp_ids)
+            tools = tool_executor.resolve_tools_openai_format(
+                enabled_tools, mcp_ids_for_resolve, exclude_groups=exclude_groups
+            )
+        else:
+            tools = []
 
         # 自动注入 read_tool_result 工具（始终可用，不受 enabled_tools 限制）
         if caps.tools and not any(
@@ -205,6 +251,14 @@ class ChatContextBuilderMixin:
         if caps.tools:
             self._inject_plan_output_tool(tools, agent)
 
+        # 按需目录存在时注入 load_tools（目录机制入口，常驻）：目录为空时
+        # 不注入——load 无可加载对象，徒占 schema；tools 为空的 agent 也必须
+        # 有 load_tools（否则 run() 走无工具路径，目录永远无法激活）
+        if caps.tools and (catalog_entries or mcp_catalog) and not any(
+            t.get("function", {}).get("name") == LOAD_TOOLS_NAME for t in tools
+        ):
+            tools.append(_copy.deepcopy(LOAD_TOOLS_OPENAI_FORMAT))
+
         # 工作模式：工作目录以 user-role 运行时快照注入（dsh 同款——不入
         # 按 agent 冻结的 prompt 缓存，会话内路径恒定不撕裂 KV cache）
         workspace_prompt = ""
@@ -215,22 +269,51 @@ class ChatContextBuilderMixin:
             )
 
         # 构建系统提示词（分层组装 + 缓存）
-        formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
+        formatted_prompt = self._format_base_prompt(agent.system_prompt, direct_tool_names)
+        # 按需工具目录 fragment 拼在 identity 文本尾部：目录随 identity 层恒在
+        # （预算丢弃不可伤——丢了模型不知道有按需工具），且自动进按 agent 冻结
+        # 的 prompt 缓存（目录内容按 agent 配置稳定）
+        catalog_text = (
+            render_tool_catalog(catalog_entries, mcp_catalog)
+            if caps.tools and (catalog_entries or mcp_catalog)
+            else ""
+        )
+        if catalog_text:
+            formatted_prompt = f"{formatted_prompt}\n\n{catalog_text}"
         # 快照护栏 = 窗口×20%，与 prompt_builder 分层丢弃阈值同口径；会话粒度冻结
         frozen_memory = await self._get_frozen_memory(
             memory_manager, agent.id, user_id, conv.id,
             max_tokens=int((agent.context_window or 32768) * 0.20),
         )
 
-        # cache key 纳入能力标记：同 agent 换模型（能力面不同 → 提示词不同）不串缓存
-        cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}:tools={caps.tools}"
+        # cache key 纳入能力标记：同 agent 换模型（能力面不同 → 提示词不同）不串缓存；
+        # MCP catalog 模式下纳入工具名集合指纹——外部 server 工具集变化（server
+        # 端增删工具）时目录内容变，缓存须失效重算
+        mcp_fingerprint = ""
+        if mcp_catalog:
+            import hashlib
+            import json as _json
+
+            mcp_fingerprint = (
+                ":mcp"
+                + hashlib.md5(
+                    _json.dumps(
+                        sorted(name for _, _, names in mcp_catalog for name in names),
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest()[:8]
+            )
+        cache_key = (
+            f"{agent.id}:{frozenset(enabled_tools)}:{model}:tools={caps.tools}"
+            f"{mcp_fingerprint}"
+        )
         cached_partial = self._get_cached_prompt(cache_key)
 
         if cached_partial is None:
-            skill_fragments = await self._collect_skill_fragments(enabled_tools)
+            skill_fragments = await self._collect_skill_fragments(direct_tool_names)
             cached_partial = await self._prompt_builder.build(
                 base_prompt=formatted_prompt,
-                enabled_tools=enabled_tools if caps.tools else [],
+                enabled_tools=direct_tool_names if caps.tools else [],
                 skill_fragments=skill_fragments,
                 frozen_memory="",
                 model_name=model,
@@ -299,7 +382,15 @@ class ChatContextBuilderMixin:
         if not dry_run:
             self._inject_current_images(snapshot, overlay_img_parts)
 
-        return llm_client, tools, snapshot.messages, snapshot, system_prompt, caps
+        return (
+            llm_client,
+            tools,
+            snapshot.messages,
+            snapshot,
+            system_prompt,
+            caps,
+            enabled_mcp_ids,
+        )
 
     # ---- 纯搬移自 chat_service.AgentChatService（勿原地修改语义） ----
     @staticmethod
@@ -347,7 +438,7 @@ class ChatContextBuilderMixin:
             agent, user_id, model, conv.id,
             self._memory_store_port, self._memory_search_port, self._prompt_provider,
         )
-        _, _, _, snapshot, _, _ = await self._build_context(
+        _, _, _, snapshot, _, _, _ = await self._build_context(
             agent, conv, user_id, model, "", memory_manager, dry_run=True
         )
         return ContextUsageResponse(

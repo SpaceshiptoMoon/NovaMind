@@ -40,25 +40,41 @@ def build_tool_registry(todo_store: Any, sandbox: Any = None) -> ToolRegistry:
     )
 
     registry = ToolRegistry()
-    for tool in (
-        KnowledgeSearchTool(),
-        WebSearchTool(),
-        MemoryTool(),
-        TodoTool(todo_store),
-        ReadToolResultTool(),
-        TaskTool(),
-        PlanOutputTool(),
-        WikiTool(),
-        ResearchTool(),
-        ReadAttachmentTool(),
-        ConsultMemberTool(),
-        GroupMessagingTool(),
-        LocalWorkspaceTool(),
+    # (工具实例, 目录分组名, 组描述)：组名 None = 常驻工具（schema 每轮直发）；
+    # 有组的工具默认只进按需目录（system prompt 目录 fragment），模型经
+    # load_tools 激活。分组选择标准：高频核心链路常驻，低频重 schema 组入目录。
+    for tool, group, group_desc in (
+        (KnowledgeSearchTool(), None, ""),
+        (WebSearchTool(), None, ""),
+        (MemoryTool(), None, ""),
+        (TodoTool(todo_store), None, ""),
+        (ReadToolResultTool(), None, ""),
+        (TaskTool(), None, ""),
+        (PlanOutputTool(), None, ""),
+        (
+            WikiTool(),
+            "wiki",
+            "Read, search, create and manage wiki pages and issues "
+            "(page CRUD, full-text replace, rename with link rewrite, "
+            "issue flagging and lifecycle transitions).",
+        ),
+        (ResearchTool(), None, ""),
+        (ReadAttachmentTool(), None, ""),
+        (ConsultMemberTool(), None, ""),
+        (GroupMessagingTool(), None, ""),
+        (LocalWorkspaceTool(), None, ""),
     ):
-        registry.register(tool)
+        registry.register(tool, group=group or None, group_description=group_desc)
 
     if sandbox is not None:
-        registry.register(CodeExecutionTool(sandbox))
+        registry.register(
+            CodeExecutionTool(sandbox),
+            group="code_execution",
+            group_description=(
+                "Execute Python/JavaScript/Shell code in an isolated Docker "
+                "sandbox (for computation, data processing and running scripts)."
+            ),
+        )
         logger.info("代码执行工具已注册")
 
     return registry

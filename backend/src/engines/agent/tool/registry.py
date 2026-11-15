@@ -31,8 +31,14 @@ class ToolRegistry:
         """初始化工具提供者表与 OpenAI tool 名到提供者名的二级索引。"""
         self._tools: dict[str, BaseTool] = {}
         self._tool_name_to_provider: dict[str, str] = {}  # tool_name -> provider_name
+        # 目录分组索引（按需加载机制）：provider → 组名、组名 → 描述、组名 → function 名
+        self._provider_group: dict[str, str] = {}
+        self._group_descriptions: dict[str, str] = {}
+        self._group_functions: dict[str, list[str]] = {}
 
-    def register(self, tool: BaseTool) -> None:
+    def register(
+        self, tool: BaseTool, group: str | None = None, group_description: str = ""
+    ) -> None:
         """注册工具并建 OpenAI tool 名 → 提供者的二级索引。
 
         逐个验证 function 定义：function 名必填且不重复；parameters schema
@@ -42,11 +48,15 @@ class ToolRegistry:
 
         Args:
             tool: 工具提供者实例（BaseTool 子类）。
+            group: 目录分组名；None 表示常驻工具（schema 每轮直发），
+                有组的工具默认只进目录（模型经 load_tools 按需激活）。
+            group_description: 组的一句话用途描述（目录 fragment 用）。
 
         Raises:
             ValueError: function 名缺失/重复，或 parameters schema 非法。
         """
         self._tools[tool.name] = tool
+        function_names: list[str] = []
         for tool_def in tool.get_tools():
             func = tool_def.get("function", {})
             tool_name = func.get("name", "")
@@ -59,6 +69,11 @@ class ToolRegistry:
                 )
             self._validate_parameters_schema(tool.name, tool_name, func.get("parameters"))
             self._tool_name_to_provider[tool_name] = tool.name
+            function_names.append(tool_name)
+        if group:
+            self._provider_group[tool.name] = group
+            self._group_descriptions[group] = group_description
+            self._group_functions.setdefault(group, []).extend(function_names)
         logger.info("工具已注册", tool_name=tool.name)
 
     @staticmethod
@@ -117,3 +132,15 @@ class ToolRegistry:
     def list_tool_names(self) -> list[str]:
         """列出所有已注册的工具名称"""
         return list(self._tools.keys())
+
+    def group_of(self, provider_name: str) -> str | None:
+        """按提供者名返回所属目录分组名；常驻工具返回 None。"""
+        return self._provider_group.get(provider_name)
+
+    def catalog_groups(self) -> dict[str, str]:
+        """返回全部目录分组（组名 → 描述）。"""
+        return dict(self._group_descriptions)
+
+    def group_functions(self, group: str) -> list[str]:
+        """返回分组内全部 function 名（按注册顺序）。"""
+        return list(self._group_functions.get(group, []))

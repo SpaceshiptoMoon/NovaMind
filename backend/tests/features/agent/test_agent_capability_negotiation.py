@@ -78,10 +78,17 @@ def _build_svc_for_context(llm_client) -> AgentChatService:
 
     svc._prompt_builder = _FakeBuilder()
 
+    fake_registry = SimpleNamespace(
+        group_of=lambda provider: None,
+        catalog_groups=lambda: {},
+        group_functions=lambda group: [],
+    )
     tool_executor = SimpleNamespace(
-        resolve_tools_openai_format=lambda enabled, mcp: [
+        tool_registry=fake_registry,
+        resolve_tools_openai_format=lambda enabled, mcp, **kw: [
             {"type": "function", "function": {"name": name}} for name in enabled
         ],
+        build_mcp_catalog=lambda server_ids: [],
         _resolve_tool_definition=lambda name: None,
     )
     svc.agent_engine = SimpleNamespace(tool_executor=tool_executor)
@@ -112,7 +119,7 @@ async def test_build_context_strips_tools_when_unsupported():
     )
     conv = SimpleNamespace(id=1, extra_config={})
 
-    _, tools, _, _, system_prompt, caps = await svc._build_context(
+    _, tools, _, _, system_prompt, caps, _mcp_ids = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,
     )
     assert caps.tools is False
@@ -136,7 +143,7 @@ async def test_build_context_no_simulation_block_when_agent_has_no_tools():
     )
     conv = SimpleNamespace(id=1, extra_config={})
 
-    _, tools, _, _, system_prompt, _ = await svc._build_context(
+    _, tools, _, _, system_prompt, _, _mcp_ids = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,
     )
     assert tools == []
@@ -155,7 +162,7 @@ async def test_build_context_keeps_tools_when_supported():
     )
     conv = SimpleNamespace(id=1, extra_config={})
 
-    _, tools, _, _, system_prompt, caps = await svc._build_context(
+    _, tools, _, _, system_prompt, caps, _mcp_ids = await svc._build_context(
         agent, conv, 1, "m", "hi", memory_manager,
     )
     assert caps.tools is True

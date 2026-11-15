@@ -563,9 +563,13 @@ class GroupOrchestrator:
             )
             await self.db.commit()
 
-        llm_client, tools, messages, _snapshot, _prompt, caps = (
+        llm_client, tools, messages, _snapshot, _prompt, caps, _mcp_ids = (
             await self.chat_service._build_context(
                 agent, conv, user_id, model, "", memory_manager,
+                # 群聊成员并行 turn 且共享单例 executor：目录机制的 turn 级
+                # 状态（begin_turn 登记）会互踩，成员侧禁用目录全量直发
+                # （群聊工具集小，目录收益低）；load_tools 不会被注入
+                enable_catalog=False,
             )
         )
         # user_content 传空：触发消息（用户原话/consult 问题）已在 build_context

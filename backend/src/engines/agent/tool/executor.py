@@ -5,6 +5,7 @@ from collections import OrderedDict
 from typing import Any
 
 from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.tool.catalog import LOAD_TOOLS_NAME
 from novamind.engines.agent.tool.context import ToolContext
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
 from novamind.engines.agent.tool.hooks import ToolHook
@@ -58,10 +59,188 @@ class ToolExecutor:
         # (session_id, tool_name) → 连续执行失败次数；成功即清零。
         # 只统计执行期失败（参数校验失败不走这里），用于升级纠错指引。
         self._consecutive_failures: dict[tuple[str, str], int] = {}
+        # 本轮 turn 的 tools 列表引用与按需加载记录（begin_turn 登记，end_turn
+        # 清理）。load_tools 激活的工具定义原地追加进该列表——列表引用贯穿
+        # agent_engine.run 的迭代循环（无拷贝），追加后本轮后续迭代即见新工具。
+        # 跨轮不保留：turn 结束清引用，下一轮从常驻集重新开始（KV-cache 前缀稳定）。
+        self._turn_tools: list[dict[str, Any]] | None = None
+        self._turn_loaded: set[str] = set()
+        self._turn_mcp_ids: list[int] = []
 
     @property
     def tool_registry(self) -> ToolRegistry:
         return self._tool_registry
+
+    # ==================== 按需工具目录（turn 级生命周期） ====================
+
+    def begin_turn(
+        self,
+        turn_tools: list[dict[str, Any]],
+        enabled_mcp_server_ids: list[int] | None = None,
+    ) -> None:
+        """登记本轮请求的 tools 列表引用（load_tools 激活时原地追加）。
+
+        Args:
+            turn_tools: 本轮请求的 OpenAI 格式 tools 列表（引用透传，
+                由 chat_context_builder 构造、agent_engine 循环消费）。
+            enabled_mcp_server_ids: 本轮授权的 MCP server id 列表
+                （load_tools 加载 MCP 工具时的授权边界，防越权加载未启用
+                server 的工具）。
+        """
+        self._turn_tools = turn_tools
+        self._turn_loaded = set()
+        self._turn_mcp_ids = list(enabled_mcp_server_ids or [])
+
+    def end_turn(self) -> None:
+        """清理本轮 tools 引用与已加载记录（防引用悬挂到下一轮）。"""
+        self._turn_tools = None
+        self._turn_loaded = set()
+        self._turn_mcp_ids = []
+
+    def build_mcp_catalog(
+        self, server_ids: list[int]
+    ) -> list[tuple[str, int, list[str]]]:
+        """构建 MCP 目录条目：(server 名, 工具数, 工具名清单)。
+
+        目录模式（默认）下 MCP 工具不直发 schema，只列名字进目录——
+        工具名 token 便宜，描述细节由外部 server 的 schema 在 load 后提供。
+        """
+        entries: list[tuple[str, int, list[str]]] = []
+        for server_id in server_ids:
+            raws = self._mcp_manager.get_tools_for_servers([server_id])
+            names = [
+                raw.get("function", {}).get("name", "")
+                for raw in raws
+                if raw.get("function", {}).get("name")
+            ]
+            server_name = self._mcp_manager.get_server_name(server_id) or str(server_id)
+            entries.append((server_name, len(names), names))
+        return entries
+
+    async def _execute_load_tools(
+        self, arguments: dict[str, Any]
+    ) -> ToolResult:
+        """执行 load_tools：解析组名/工具名 → 定义追加进本轮 tools 列表。
+
+        无副作用（只改本轮内存态），不走审批/预算钩子链；结果文本回喂
+        模型（已加载清单 / 未知名错误），幂等（重复加载跳过）。
+        """
+        start = time.time()
+
+        def _finish(content: str, status: ToolResultStatus) -> ToolResult:
+            return ToolResult(
+                status=status,
+                content=content,
+                duration_ms=int((time.time() - start) * 1000),
+            )
+
+        if self._turn_tools is None:
+            return _finish(
+                "load_tools 未激活：本轮 turn 未登记 tools 列表（内部状态缺失，"
+                "请直接基于已有上下文回答）。",
+                ToolResultStatus.ERROR,
+            )
+
+        groups = arguments.get("groups") or []
+        names = arguments.get("tools") or []
+        if not isinstance(groups, list) or not isinstance(names, list):
+            return _finish(
+                "参数类型错误：groups 与 tools 须为字符串数组。",
+                ToolResultStatus.ERROR,
+            )
+
+        loaded: list[str] = []
+        skipped: list[str] = []
+        missing: list[str] = []
+
+        registry = self._tool_registry
+        seen_groups: set[str] = set()
+        for group in groups:
+            group = str(group)
+            if group in seen_groups:
+                continue
+            seen_groups.add(group)
+            functions = registry.group_functions(group)
+            if not functions:
+                missing.append(group)
+                continue
+            for fn_name in functions:
+                self._append_turn_tool(fn_name, loaded, skipped, missing)
+
+        for name in names:
+            self._append_turn_tool(str(name), loaded, skipped, missing)
+
+        parts: list[str] = []
+        if loaded:
+            parts.append(f"Loaded {len(loaded)} tools: {', '.join(loaded)}.")
+        if skipped:
+            parts.append(
+                f"Skipped (already loaded): {', '.join(skipped)}."
+            )
+        if missing:
+            parts.append(
+                f"Not found: {', '.join(missing)} — check the names against "
+                "the on-demand catalog in the system prompt."
+            )
+        if not parts:
+            return _finish(
+                "No groups or tools specified. Pass groups (catalog group "
+                "names) and/or tools (specific function names).",
+                ToolResultStatus.ERROR,
+            )
+        return _finish(" ".join(parts), ToolResultStatus.SUCCESS)
+
+    def _append_turn_tool(
+        self,
+        fn_name: str,
+        loaded: list[str],
+        skipped: list[str],
+        missing: list[str],
+    ) -> None:
+        """解析单个工具定义并追加进本轮 tools 列表（幂等，失败进 missing）。"""
+        if fn_name in self._turn_loaded:
+            skipped.append(fn_name)
+            return
+        tool_def = self._resolve_loadable_definition(fn_name)
+        if tool_def is None:
+            missing.append(fn_name)
+            return
+        self._turn_tools.append(tool_def.to_openai_format())
+        self._turn_loaded.add(fn_name)
+        loaded.append(fn_name)
+
+    def _resolve_loadable_definition(self, fn_name: str) -> ToolDefinition | None:
+        """解析可加载的工具定义；内置查注册表，MCP 按 server 名反查缓存。
+
+        MCP 加载校验 turn 级授权边界（begin_turn 登记的 enabled server ids），
+        未启用 server 的工具返回 None（防模型借 load 越权访问未授权 server）。
+        """
+        if fn_name.startswith(MCP_PREFIX):
+            parts = fn_name[len(MCP_PREFIX):].split("__", 1)
+            if len(parts) != 2:
+                return None
+            server_name, _original = parts
+            server_id = self._mcp_manager.get_server_id_by_name(server_name)
+            if server_id is None or server_id not in self._turn_mcp_ids:
+                return None
+            for raw_tool in self._mcp_manager.get_tools_for_servers([server_id]):
+                func = raw_tool.get("function", {})
+                if func.get("name") == fn_name:
+                    return self._cache_tool_def(
+                        fn_name,
+                        self._raw_to_definition(
+                            raw_tool,
+                            ToolSource.MCP,
+                            timeout_ms=self._provider_timeout_ms(fn_name),
+                        ),
+                    )
+            return None
+        tool_def = self._resolve_tool_definition(fn_name)
+        # _resolve_tool_definition 未命中时返回空描述兜底定义——按需加载
+        # 语义下空定义即「不存在」，不能把空壳 append 进 tools
+        if not tool_def.description and not tool_def.parameters:
+            return None
+        return tool_def
 
     async def execute(
         self,
@@ -79,6 +258,11 @@ class ToolExecutor:
         Returns:
             ToolResult：status 为 SUCCESS/TIMEOUT/ERROR，content 或 data 承载结果。
         """
+        # load_tools 拦截（在定义解析/参数校验/钩子链之前）：无副作用元工具，
+        # 不在注册表内（无 schema 校验需求），执行即改本轮 tools 列表
+        if tool_name == LOAD_TOOLS_NAME:
+            return await self._execute_load_tools(arguments)
+
         tool_def = self._resolve_tool_definition(tool_name)
         timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
         session_id = str(context.session_id or "")
@@ -188,12 +372,15 @@ class ToolExecutor:
         self,
         enabled_tools: list[str],
         enabled_mcp_server_ids: list[int],
+        exclude_groups: set[str] | None = None,
     ) -> list[ToolDefinition]:
         """解析完整工具定义列表。
 
         Args:
             enabled_tools: 启用的内置工具名列表。
             enabled_mcp_server_ids: 启用的 MCP 服务器 ID 列表。
+            exclude_groups: 需剔除的目录分组名集合（分组内工具不直发，
+                经 load_tools 按需激活）；None/空集全量直发。
 
         Returns:
             ToolDefinition 列表（内置在前、MCP 在后，按传入顺序）。
@@ -203,6 +390,10 @@ class ToolExecutor:
         # 内置工具
         if enabled_tools:
             for tool_name in enabled_tools:
+                if exclude_groups:
+                    group = self._tool_registry.group_of(tool_name)
+                    if group and group in exclude_groups:
+                        continue
                 tool = self._tool_registry.get_tool(tool_name)
                 if tool:
                     for raw_tool in tool.get_tools():
@@ -244,17 +435,21 @@ class ToolExecutor:
         self,
         enabled_tools: list[str],
         enabled_mcp_server_ids: list[int],
+        exclude_groups: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """返回 OpenAI function calling 格式。
 
         Args:
             enabled_tools: 启用的内置工具名列表。
             enabled_mcp_server_ids: 启用的 MCP 服务器 ID 列表。
+            exclude_groups: 需剔除的目录分组名集合（不直发，按需加载）。
 
         Returns:
             OpenAI function calling 格式的 dict 列表。
         """
-        tools = self.resolve_tools(enabled_tools, enabled_mcp_server_ids)
+        tools = self.resolve_tools(
+            enabled_tools, enabled_mcp_server_ids, exclude_groups=exclude_groups
+        )
         return [t.to_openai_format() for t in tools]
 
     def _cache_tool_def(self, name: str, tool_def: ToolDefinition) -> ToolDefinition:
