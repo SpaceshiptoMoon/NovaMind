@@ -69,6 +69,9 @@ Wiki 页面以 `chunk_type="wiki_page"` 入 ES 向量库（`services/wiki_es_syn
 - `repository/` — 持久化查询
 - `schemas/` — Pydantic schemas
 - `services/` — 业务编排（管道入口、任务编排、检索、向量化、QG、成员权限、审计）
+  - 检索双入口：单库 `search_service.py`（SearchService，`retrieve_for_kb` 为单库检索公共段）
+    与跨空间全局 `global_search_service.py`（GlobalSearchService 继承前者，
+    `POST /api/v1/search`：可访问空间解析 → 按库 fan-out → RRF 融合 → 逐空间文档级权限过滤 → 单次 LLM 回答）
 - `tasks/` — arq worker 任务定义与异常处理
 - `prompts/` — Feature 专属 prompt 模板
 

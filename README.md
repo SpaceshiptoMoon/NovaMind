@@ -528,6 +528,7 @@ NovaMind/
 | 用户与模型配置 | `/api/v1/user` | 认证、用户管理、五类模型配置与连接测试 |
 | 知识空间 | `/api/v1/spaces` | 空间管理、成员管理、权限隔离 |
 | 知识库管理 | `/api/v1/spaces/{space_id}/knowledge-bases` | 知识库创建、配置、文档管理 |
+| 全局检索 | `/api/v1/search` | 跨空间检索（可访问空间按库 fan-out + RRF 融合，支持 LLM 回答） |
 | 知识检索 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | 搜索模式、检索、Rerank |
 | 知识库 Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki 生成 / 浏览 / 图谱 / 质量巡检 |
 | 空间洞察 | `/api/v1/spaces/{space_id}/stats` | 问答量/点踩率/零命中/低分聚合，知识缺口看板与治理视图 |
