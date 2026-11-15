@@ -35,6 +35,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_global_search_service,
 )
 from novamind.features.knowledge_space.api.global_search_routes import router as gs_router
+from novamind.features.knowledge_space.exceptions import EmbeddingError
 from novamind.features.knowledge_space.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseStatus,
@@ -265,6 +266,39 @@ def test_single_space_equivalence():
         _patch_env(mp)
         result = _run(svc.global_search(user_id=10, request=GlobalSearchRequest(query="q", top_k=10)))
     assert [r["chunk_id"] for r in result["results"]] == ["c1", "c2"]
+    assert result["skipped_kbs"] == []
+
+
+def test_embedding_call_failure_falls_back_to_bm25():
+    """向量调用期失败（配额/凭证在调用时暴露）：该库回退 BM25 重试而非整体缺席。"""
+    spaces = [_space(1, "A", embedding_model="m1")]
+    kbs = [_kb(1, 1, "库A")]
+    svc = _make_service(spaces, kbs)
+    svc._resolve_embedding_clients = AsyncMock(
+        return_value=({"m1": SimpleNamespace()}, set())
+    )
+    captured = []
+
+    async def _retrieve(kb, user_id, request, **kwargs):
+        captured.append(request.search_mode)
+        if "vector" in request.search_mode or "hybrid" in request.search_mode:
+            raise EmbeddingError("生成查询向量失败，请稍后重试")
+        return SimpleNamespace(results=[_hit("bm25-hit", 1, 0.6)], cached=False)
+
+    svc.retrieve_for_kb = AsyncMock(side_effect=_retrieve)
+
+    import contextlib
+    with contextlib.ExitStack() as stack:
+        mp = stack.enter_context(pytest.MonkeyPatch.context())
+        _patch_env(mp)
+        result = _run(svc.global_search(
+            user_id=10,
+            request=GlobalSearchRequest(query="q", search_mode="content_hybrid", top_k=5),
+        ))
+    # 先试 hybrid，失败后以 content_bm25 重试成功，结果不缺席
+    assert captured == ["content_hybrid", "content_bm25"]
+    assert result["total"] == 1
+    assert result["results"][0]["chunk_id"] == "bm25-hit"
     assert result["skipped_kbs"] == []
 
 

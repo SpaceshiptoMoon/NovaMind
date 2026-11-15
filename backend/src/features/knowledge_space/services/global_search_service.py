@@ -14,6 +14,7 @@ import asyncio
 import time
 from typing import Any
 
+from novamind.features.knowledge_space.exceptions import EmbeddingError
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 from novamind.features.knowledge_space.schemas.search_schema import (
@@ -224,36 +225,54 @@ class GlobalSearchService(SearchService):
         unavailable_models: set[str],
         requested_mode: str,
     ) -> list[dict[str, Any]]:
-        """单库检索任务体（fan-out 并发调用）：模式回退 → 复用单库检索段。"""
+        """单库检索任务体（fan-out 并发调用）：模式回退 → 复用单库检索段。
+
+        向量调用期失败（配额限流/凭证失效在调用时才暴露）回退 BM25 重试
+        一次——单库的 embedding 故障不该让该库在全局结果里整体缺席。
+        """
         space = space_by_id[kb.space_id]
         mode = self._resolve_mode_for_kb(requested_mode, kb, space, unavailable_models)
-        per_kb_request = SearchRequest(
-            query=request.query,
-            search_mode=mode,
-            top_k=request.top_k,
-            score_threshold=request.score_threshold,
-            filters=request.filters,
-            use_cache=request.use_cache,
-        )
 
         async def _space_lookup(space_id: int) -> KnowledgeSpace | None:
             return space_by_id.get(space_id)
 
-        # 预取数据闭合：注入预构建 embedding 客户端与空间查表，检索段零请求级 DB
-        embedding_client_resolver = None
-        if "vector" in mode or "hybrid" in mode:
-            client = embedding_clients[space.embedding_model]
+        def _make_request(search_mode: str) -> SearchRequest:
+            return SearchRequest(
+                query=request.query,
+                search_mode=search_mode,
+                top_k=request.top_k,
+                score_threshold=request.score_threshold,
+                filters=request.filters,
+                use_cache=request.use_cache,
+            )
 
-            async def _prebuilt_embedding() -> BaseEmbedding | None:
-                return client
+        async def _retrieve(search_mode: str):
+            # 预取数据闭合：注入预构建 embedding 客户端与空间查表，检索段零请求级 DB
+            embedding_client_resolver = None
+            if "vector" in search_mode or "hybrid" in search_mode:
+                client = embedding_clients[space.embedding_model]
 
-            embedding_client_resolver = _prebuilt_embedding
+                async def _prebuilt_embedding() -> BaseEmbedding | None:
+                    return client
 
-        result = await self.retrieve_for_kb(
-            kb, user_id, per_kb_request,
-            space_lookup=_space_lookup,
-            embedding_client_resolver=embedding_client_resolver,
-        )
+                embedding_client_resolver = _prebuilt_embedding
+            return await self.retrieve_for_kb(
+                kb, user_id, _make_request(search_mode),
+                space_lookup=_space_lookup,
+                embedding_client_resolver=embedding_client_resolver,
+            )
+
+        try:
+            result = await _retrieve(mode)
+        except EmbeddingError as e:
+            if "vector" not in mode and "hybrid" not in mode:
+                raise
+            fallback_mode = mode.replace("vector", "bm25").replace("hybrid", "bm25")
+            self.logger.warning(
+                "全局检索向量调用失败，该库回退 BM25",
+                kb_id=kb.id, mode=mode, fallback_mode=fallback_mode, error=str(e),
+            )
+            result = await _retrieve(fallback_mode)
         return result.results
 
     def _merge_and_stamp(
