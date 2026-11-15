@@ -112,13 +112,8 @@
           :image-size="64"
         />
         <div v-else class="scroll-list">
-          <div
-            v-for="m in lowScoreMessages"
-            :key="m.message_id"
-            class="mini-item mini-item--click"
-            title="跳回会话查看"
-            @click="goSession(m.session_id)"
-          >
+          <!-- 会话本体已随工作台剥离，条目仅展示摘要（跳转入口已移除） -->
+          <div v-for="m in lowScoreMessages" :key="m.message_id" class="mini-item">
             <span class="mini-snippet">{{ m.answer_snippet }}</span>
             <span class="mini-meta">
               <el-tag v-if="m.rating === 'down'" type="danger" size="small" effect="plain"
@@ -403,11 +398,6 @@ async function copyQuery(query: string): Promise<void> {
     ElMessage.warning('复制失败，请手动记录')
   }
   void router.push(`/home/spaces/${spaceId.value}/knowledge-bases`)
-}
-
-function goSession(sessionId: string | null): void {
-  if (!sessionId) return
-  void router.push({ path: '/home/workspace/chat', query: { session_id: sessionId } })
 }
 
 function exportGapsCsv(): void {

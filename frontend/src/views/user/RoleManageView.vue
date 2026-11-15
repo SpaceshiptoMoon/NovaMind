@@ -262,9 +262,6 @@ const formRules: FormRules = {
 const permissionCategoryMap: Record<string, string> = {
   'user.manage': '用户',
   'role.manage': '角色',
-  'skill.config': '技能',
-  'skill.review': '技能',
-  'agent.manage_system': '智能体',
 }
 
 const permissionCategories = computed(() => {

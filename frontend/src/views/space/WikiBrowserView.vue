@@ -654,7 +654,7 @@
       </template>
     </el-dialog>
 
-    <!-- 报告问题对话框：人工登记（与 Agent 的 wiki_flag_issue 同一存储） -->
+    <!-- 报告问题对话框：人工登记（与知识空间 wiki_flag_issue 同一存储） -->
     <el-dialog v-model="reportVisible" title="报告页面问题" width="480px">
       <el-form label-width="72px">
         <el-form-item label="页面">

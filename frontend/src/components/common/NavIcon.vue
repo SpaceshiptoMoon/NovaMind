@@ -45,39 +45,12 @@
       <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </template>
 
-    <!-- 智能体：节点网络 -->
-    <template v-else-if="name === 'agents'">
-      <circle cx="12" cy="5" r="2.5" />
-      <circle cx="5" cy="19" r="2.5" />
-      <circle cx="19" cy="19" r="2.5" />
-      <path d="M12 7.5v3M12 10.5L5 16.5M12 10.5l7 6" />
-    </template>
-
     <!-- 设置：滑块 -->
     <template v-else-if="name === 'settings'">
       <circle cx="12" cy="12" r="3" />
       <path
         d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
       />
-    </template>
-
-    <!-- 用户 -->
-    <template v-else-if="name === 'user'">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
-    </template>
-
-    <!-- 群聊：双人气泡 -->
-    <template v-else-if="name === 'group'">
-      <path d="M14 5.5a6.5 6.5 0 0 1 0 13h-.5" />
-      <path d="M4 12.5a6.5 6.5 0 1 1 13 0V19a1.5 1.5 0 0 1-1.5 1.5H10.5A6.5 6.5 0 0 1 4 12.5z" />
-      <circle cx="8.5" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12.5" cy="12" r="1" fill="currentColor" stroke="none" />
-    </template>
-
-    <!-- 技能：闪电 -->
-    <template v-else-if="name === 'skill'">
-      <path d="M13 2L4.5 13.5H11L9.5 22L18.5 10.5H12L13 2z" />
     </template>
   </svg>
 </template>

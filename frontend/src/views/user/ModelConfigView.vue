@@ -159,8 +159,8 @@
         <div class="section-card">
           <h3>我的搜索引擎配置</h3>
           <p class="desc search-hint">
-            配置联网搜索服务商凭证，工作台 AI 聊天「联网搜索」将按首选 provider
-            检索；未配置或失败时回退全局默认。
+            配置联网搜索服务商凭证；深度研究、知识增强等联网检索场景按首选 provider
+            检索，未配置或失败时回退全局默认。
           </p>
           <el-table :data="searchConfigs" v-loading="searchLoading">
             <el-table-column label="服务商" width="160">
