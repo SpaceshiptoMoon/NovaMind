@@ -516,6 +516,10 @@ class GlobalSearchResponse(BaseModel):
     answer: str | None = Field(None, description="LLM 生成的回答（llm.enabled 时返回）")
     answer_model: str | None = Field(None, description="生成回答使用的模型名称")
     answer_elapsed_ms: float | None = Field(None, description="LLM 回答耗时（毫秒）")
+    answer_error: str | None = Field(
+        None,
+        description="LLM 回答失败降级说明（生成失败/空回答时返回，检索结果不受影响）",
+    )
     elapsed_ms: float | None = Field(None, description="总耗时（毫秒）")
 
 
