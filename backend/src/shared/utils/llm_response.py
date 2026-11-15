@@ -50,7 +50,7 @@ def extract_json_str(text: str) -> str:
 def extract_json_obj(text: str | None) -> dict | None:
     """从 LLM 输出提取并解析首个 JSON 对象，失败返回 ``None``。
 
-    两级回退（精确保留原 ``grade_retrier`` 语义）：
+    两级回退（沿用 grade_retrier 收敛时的语义基线）：
       1. 先用 :func:`extract_json_str` 提取（覆盖纯 JSON 与 ``` ```json ``` 围栏两种形态），
          ``json.loads`` 解析成功即返回。
       2. 解析失败时，用贪婪正则 ``\\{[\\s\\S]*\\}``（首个 ``{`` 到末个 ``}``）兜底——

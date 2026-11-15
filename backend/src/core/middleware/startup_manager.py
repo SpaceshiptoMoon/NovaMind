@@ -4,7 +4,7 @@
 import time
 from contextlib import asynccontextmanager
 
-from novamind.core.database.base import create_tables, ensure_fulltext_indexes
+from novamind.core.database.base import create_tables
 from novamind.core.database.database import dispose_engine, get_engine
 from novamind.core.database.schema_migrations import (
     CONSTRAINT_MIGRATIONS,
@@ -234,7 +234,6 @@ class AppLifespanManager:
             self.logger.info("数据库表创建成功")
 
             # 创建 FULLTEXT 索引（ngram 中文分词）
-            await ensure_fulltext_indexes(db_engine)
         except Exception as e:
             self.logger.error(
                 "数据库表创建失败",

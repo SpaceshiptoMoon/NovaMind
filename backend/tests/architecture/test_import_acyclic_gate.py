@@ -10,7 +10,7 @@ R1：废止 ``features → engines → shared`` 单向分层，任何方向 impo
 - AST 扫描（非 importlib）：不执行代码、不受环境影响、天然覆盖懒 import。
 
 消环手法（R2 防环细则）：需要对方数据但对方已依赖自己时，改为 import 对方
-``models/`` 直查或引入数据契约模块（如 shared/message_attachments.py），不 import 对方 ``services/``。
+``models/`` 直查，不 import 对方 ``services/``。
 """
 from __future__ import annotations
 

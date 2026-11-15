@@ -112,13 +112,6 @@ test = [
 deepdoc-vision = [
     "onnx>=1.16.0",
 ]
-# Agent 长期记忆 Mem0 调和管线（agent.memory.backend=mem0 时必需；builtin 默认
-# 后端零新增依赖）。mem0ai 拖 openai>=3.31 与 httpx2——主项目 openai 已升 3.31
-# 全仓验证过（2026-10-16），无版本冲突。
-mem0 = [
-    "mem0ai>=0.1.0",
-]
-
 [project.scripts]
 deepdoc = "novamind.engines.document.integrations.deepdoc.__main__:main"
 

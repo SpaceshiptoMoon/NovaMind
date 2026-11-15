@@ -169,7 +169,7 @@ def get_sorted_manifests() -> list[FeatureManifest]:
     """发现 + 解析 enabled + 拓扑排序，返回有序 FeatureManifest 列表（含 system manifest 在前）。
 
     用于初始化（`startup_manager._init_features` / `_import_models`）：按依赖拓扑序
-    执行 init_hook 与 models_loader，日志呈现 user→knowledge_space→agent→… 拓扑顺序。
+    执行 init_hook 与 models_loader，日志呈现 user→knowledge_space→notification→… 拓扑顺序。
     """
     # system manifest 永远参与（其 enabled 也受 FeaturesConfig 控制，name="system"，
     # 默认未列出 → 启用），且其 order=0 保证排在最前。

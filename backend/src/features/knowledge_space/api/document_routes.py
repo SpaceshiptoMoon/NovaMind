@@ -24,7 +24,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_document_upload_service,
     validate_kb_access,
     validate_kb_writable,
-    validate_space_admin,
     validate_space_editor,
     validate_space_member,
 )
@@ -62,7 +61,6 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentListResponse,
     DocumentProcessResponse,
     DocumentResponse,
-    DocumentReviewSettingsUpdate,
     DocumentTagsUpdateRequest,
     DocumentUploadResponse,
     FailedFileItem,
@@ -1471,109 +1469,4 @@ async def get_document_preview(
             "Content-Disposition": f'inline; filename="{encoded_filename}"',
             "Cache-Control": "private, max-age=3600",
         },
-    )
-
-# ========== 文档生命周期（kb-ops B1：supersede/archive/reactivate，空间 admin） ==========
-
-
-@router.post(
-    "/{kb_id}/documents/{document_id}/lifecycle/{action}",
-    summary="文档生命周期转换",
-    description=(
-        "kb-ops B1：supersede（新版替代，body 传 new_doc_id）/ archive（下线归档）/ "
-        "reactivate（恢复召回）。转换后 ES chunk 状态同步，检索侧排除式过滤即时生效；"
-        "ES 同步失败自动回滚 DB 状态。空间管理员权限。"
-    ),
-)
-async def transition_document_lifecycle(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    action: Annotated[str, Path(pattern="^(supersede|archive|reactivate)$", description="转换动作")],
-    member: SpaceMember = Depends(validate_space_admin),
-    current_user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-    new_doc_id: Annotated[int | None, Body(embed=True, gt=0, description="新版文档ID（supersede 必填）")] = None,
-):
-    """文档生命周期转换（supersede/archive/reactivate）"""
-    from novamind.features.knowledge_space.services.lifecycle_service import (
-        DocumentLifecycleError,
-        LifecycleService,
-    )
-
-    await validate_kb_access(kb_id, space_id, db)
-
-    service = LifecycleService(db)
-    try:
-        if action == "supersede":
-            if new_doc_id is None:
-                raise DocumentLifecycleError("supersede 动作必须提供 new_doc_id（新版文档ID）")
-            doc = await service.supersede(document_id, new_doc_id)
-        elif action == "archive":
-            doc = await service.archive(document_id)
-        else:
-            doc = await service.reactivate(document_id)
-    except DocumentLifecycleError as e:
-        raise DocumentInvalidTypeError(str(e)) from e
-    except ValueError as e:
-        raise DocumentNotFoundError(document_id) from e
-
-    return {
-        "document_id": doc.id,
-        "lifecycle_status": doc.lifecycle_status,
-        "superseded_by_doc_id": doc.superseded_by_doc_id,
-    }
-
-@router.post(
-    "/{kb_id}/documents/{document_id}/confirm-review",
-    summary="确认复审",
-    description=(
-        "kb-ops B2：owner 确认文档内容仍然有效，next_review_at 按复审周期顺延"
-        "（无周期文档默认 90 天）。owner 本人或空间管理员可操作。"
-    ),
-)
-async def confirm_document_review(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    member: SpaceMember = Depends(validate_space_member),
-    current_user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """确认复审：顺延 next_review_at（owner 或空间管理员）"""
-    from novamind.features.knowledge_space.services.document_review_service import (
-        DocumentReviewService,
-    )
-
-    return await DocumentReviewService(db).confirm_review(
-        space_id, kb_id, document_id, member, current_user_id,
-    )
-
-@router.patch(
-    "/{kb_id}/documents/{document_id}/review-settings",
-    summary="设置文档复审策略",
-    description=(
-        "kb-ops B2 收尾补全：设置复审周期/下次复审时间/生效日期/内容责任人。"
-        "没有初始设置入口则复审提醒对存量文档永不触发——本端点是提醒链路的"
-        "启动器。owner 本人或空间管理员可操作；owner_id 改派仅空间管理员。"
-        "review_cycle_days 传 null 清除周期（确认复审时回退默认 90 天）；"
-        "next_review_at 显式传 null 可清除到期提醒。"
-    ),
-)
-async def update_document_review_settings(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    request: DocumentReviewSettingsUpdate,
-    member: SpaceMember = Depends(validate_space_member),
-    current_user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """设置复审策略字段（owner 或空间管理员；owner 改派仅管理员）"""
-    from novamind.features.knowledge_space.services.document_review_service import (
-        DocumentReviewService,
-    )
-
-    return await DocumentReviewService(db).update_review_settings(
-        space_id, kb_id, document_id, request, member, current_user_id,
     )

@@ -432,25 +432,6 @@
         "title": "Body_put_chunk_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_chunk_upload__upload_id__chunks__chunk_index__put",
         "type": "object"
       },
-      "Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post": {
-        "properties": {
-          "new_doc_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "新版文档ID（supersede 必填）",
-            "title": "New Doc Id"
-          }
-        },
-        "title": "Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post",
-        "type": "object"
-      },
       "Body_upload_document_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_post": {
         "properties": {
           "files": {
@@ -1057,14 +1038,6 @@
             "title": "Failed",
             "type": "integer"
           },
-          "results": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Results",
-            "type": "array"
-          },
           "skipped": {
             "title": "Skipped",
             "type": "integer"
@@ -1093,8 +1066,7 @@
           "total",
           "success",
           "failed",
-          "skipped",
-          "results"
+          "skipped"
         ],
         "title": "DocumentBatchProcessResponse",
         "type": "object"
@@ -1974,67 +1946,6 @@
           "has_active_task"
         ],
         "title": "DocumentResponse",
-        "type": "object"
-      },
-      "DocumentReviewSettingsUpdate": {
-        "additionalProperties": false,
-        "description": "文档复审策略设置（kb-ops B2 收尾：全字段可选，None=不修改）",
-        "properties": {
-          "effective_date": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "生效日期（ISO8601）；不传=不修改",
-            "title": "Effective Date"
-          },
-          "next_review_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "下次复审时间（ISO8601）；不传=不修改",
-            "title": "Next Review At"
-          },
-          "owner_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "内容责任人改派（仅空间管理员）；不传=不修改",
-            "title": "Owner Id"
-          },
-          "review_cycle_days": {
-            "anyOf": [
-              {
-                "maximum": 3650.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "复审周期（天）；null=不修改（清除周期走确认复审回退默认）",
-            "title": "Review Cycle Days"
-          }
-        },
-        "title": "DocumentReviewSettingsUpdate",
         "type": "object"
       },
       "DocumentTagsUpdateRequest": {
@@ -13895,77 +13806,6 @@
         ]
       }
     },
-    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/confirm-review": {
-      "post": {
-        "description": "kb-ops B2：owner 确认文档内容仍然有效，next_review_at 按复审周期顺延（无周期文档默认 90 天）。owner 本人或空间管理员可操作。",
-        "operationId": "confirm_document_review_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__confirm_review_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "知识库ID",
-            "in": "path",
-            "name": "kb_id",
-            "required": true,
-            "schema": {
-              "description": "知识库ID",
-              "exclusiveMinimum": 0,
-              "title": "Kb Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "文档ID",
-            "in": "path",
-            "name": "document_id",
-            "required": true,
-            "schema": {
-              "description": "文档ID",
-              "exclusiveMinimum": 0,
-              "title": "Document Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "确认复审",
-        "tags": [
-          "文档管理",
-          "文档管理"
-        ]
-      }
-    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/download": {
       "get": {
         "description": "下载文档原始文件",
@@ -14173,98 +14013,6 @@
           }
         ],
         "summary": "获取文档图片",
-        "tags": [
-          "文档管理",
-          "文档管理"
-        ]
-      }
-    },
-    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/lifecycle/{action}": {
-      "post": {
-        "description": "kb-ops B1：supersede（新版替代，body 传 new_doc_id）/ archive（下线归档）/ reactivate（恢复召回）。转换后 ES chunk 状态同步，检索侧排除式过滤即时生效；ES 同步失败自动回滚 DB 状态。空间管理员权限。",
-        "operationId": "transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "知识库ID",
-            "in": "path",
-            "name": "kb_id",
-            "required": true,
-            "schema": {
-              "description": "知识库ID",
-              "exclusiveMinimum": 0,
-              "title": "Kb Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "文档ID",
-            "in": "path",
-            "name": "document_id",
-            "required": true,
-            "schema": {
-              "description": "文档ID",
-              "exclusiveMinimum": 0,
-              "title": "Document Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "转换动作",
-            "in": "path",
-            "name": "action",
-            "required": true,
-            "schema": {
-              "description": "转换动作",
-              "pattern": "^(supersede|archive|reactivate)$",
-              "title": "Action",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle__action__post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "文档生命周期转换",
         "tags": [
           "文档管理",
           "文档管理"
@@ -14708,87 +14456,6 @@
           }
         ],
         "summary": "重试文档处理",
-        "tags": [
-          "文档管理",
-          "文档管理"
-        ]
-      }
-    },
-    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/review-settings": {
-      "patch": {
-        "description": "kb-ops B2 收尾补全：设置复审周期/下次复审时间/生效日期/内容责任人。没有初始设置入口则复审提醒对存量文档永不触发——本端点是提醒链路的启动器。owner 本人或空间管理员可操作；owner_id 改派仅空间管理员。review_cycle_days 传 null 清除周期（确认复审时回退默认 90 天）；next_review_at 显式传 null 可清除到期提醒。",
-        "operationId": "update_document_review_settings_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__review_settings_patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "知识库ID",
-            "in": "path",
-            "name": "kb_id",
-            "required": true,
-            "schema": {
-              "description": "知识库ID",
-              "exclusiveMinimum": 0,
-              "title": "Kb Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "文档ID",
-            "in": "path",
-            "name": "document_id",
-            "required": true,
-            "schema": {
-              "description": "文档ID",
-              "exclusiveMinimum": 0,
-              "title": "Document Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DocumentReviewSettingsUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "设置文档复审策略",
         "tags": [
           "文档管理",
           "文档管理"
@@ -16119,67 +15786,6 @@
           }
         ],
         "summary": "用用例列表直接建测试集",
-        "tags": [
-          "知识库测评",
-          "知识库测评"
-        ]
-      }
-    },
-    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/test-sets/generate": {
-      "post": {
-        "description": "kb-ops C：从 KB chunks 均匀采样，LLM 生成「问题+期望答案」用例落测试集。配额 YAML knowledge_ops.testset_max_cases（默认 20，LLM 成本硬闸）；生成失败返回部分结果或 422（可重试）。空间 editor 权限。",
-        "operationId": "generate_test_set_from_chunks_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_generate_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "知识库ID",
-            "in": "path",
-            "name": "kb_id",
-            "required": true,
-            "schema": {
-              "description": "知识库ID",
-              "exclusiveMinimum": 0,
-              "title": "Kb Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TestSetCreateResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "从知识库合成测试集",
         "tags": [
           "知识库测评",
           "知识库测评"

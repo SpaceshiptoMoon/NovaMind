@@ -1,6 +1,8 @@
 """AppGateMiddleware：应用级权限门禁（纯 ASGI 中间件）。
 
-管理员禁用的应用（qa/agent/skill/app）其 HTTP 与 WS 请求在此拦截；门禁是产品可见性控制，不是安全边界。
+管理员禁用的应用其 HTTP 与 WS 请求在此拦截；门禁是产品可见性控制，不是安全边界。
+门禁清单（core/authorization/app_codes.GATED_APP_PREFIXES）当前为空——可门禁应用
+已随 2026-11-15 工作台剥离移除，表空时本中间件恒放行，机制保留供未来应用接入。
 检查异常时 fail-open 放行并记 error；admin 按 JWT claims 直通（claims 允许 ≤30 分钟陈旧，撤销类检查仍由端点认证层强制）。
 """
 from __future__ import annotations

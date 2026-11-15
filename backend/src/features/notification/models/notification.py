@@ -9,13 +9,10 @@ from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, 
 
 
 class NotificationType(str, Enum):
-    """通知类型枚举"""
+    """通知类型枚举（resume_completed/research_done/skill_review 已随 2026-11-15 工作台剥离移除，历史行由清理脚本回收）"""
     SYSTEM = "system"
     SPACE_INVITE = "space_invite"
     DOCUMENT_READY = "document_ready"
-    RESUME_COMPLETED = "resume_completed"
-    RESEARCH_DONE = "research_done"
-    SKILL_REVIEW = "skill_review"
     PASSWORD_RESET = "password_reset"
     WIKI_READY = "wiki_ready"
     KB_OPS_WEEKLY_DIGEST = "kb_ops_weekly_digest"
@@ -41,7 +38,7 @@ class Notification(BaseModel):
     type = Column(
         String(30),
         nullable=False,
-        comment="通知类型: system/space_invite/document_ready/resume_completed/research_done/skill_review/password_reset/wiki_ready",
+        comment="通知类型: system/space_invite/document_ready/password_reset/wiki_ready",
     )
     title = Column(String(200), nullable=False, comment="通知标题")
     content = Column(Text, nullable=False, comment="通知内容")

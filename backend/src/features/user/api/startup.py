@@ -182,9 +182,6 @@ async def _init_rbac_seed(db) -> None:
 
 _PERM_META = {
     "user.manage": {"name": "用户管理", "module": "user"},
-    "skill.review": {"name": "技能审核", "module": "skill"},
-    "skill.config": {"name": "技能配置", "module": "skill"},
-    "agent.manage_system": {"name": "系统级Agent管理", "module": "agent"},
     "role.manage": {"name": "角色管理", "module": "user"},
 }
 

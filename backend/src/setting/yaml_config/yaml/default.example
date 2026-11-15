@@ -190,10 +190,6 @@ smtp:
   from_email: ""
   use_tls: true
 
-skill_marketplace:
-  llm_review_enabled: false
-  llm_review_model: null
-
 asr:
   # 云端 ASR 凭据；值可写 ${OPENAI_API_KEY} 等 .env 占位符
   openai_api_key: ""

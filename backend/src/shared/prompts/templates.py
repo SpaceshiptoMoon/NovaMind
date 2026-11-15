@@ -36,16 +36,6 @@ class PromptTemplate(Enum):
     # 音频转写清洗
     AUDIO_TRANSCRIPT_CLEAN = "audio_transcript_clean"
 
-    # ==================== 问答系统相关 ====================
-    # QueryRewriter（engines/rag）可插拔查询改写（4 种策略，与 search_service 的查询改写是两条独立路径）
-    QA_RW_COMPLETION = "qa_rw_completion"
-    QA_RW_SYNONYM = "qa_rw_synonym"
-    QA_RW_DECOMPOSE = "qa_rw_decompose"
-    QA_RW_HYDE = "qa_rw_hyde"
-
-    # GradeRetrier 检索后自评估（运行时打分→重试，区别于 evaluation 的离线评估）
-    QA_GRADE_RETRIEVAL = "qa_grade_retrieval"
-
     # ==================== 知识库测评相关 ====================
     # 检索评估
     EVAL_RETRIEVAL_RELEVANCE = "eval_retrieval_relevance"
@@ -61,8 +51,7 @@ class PromptTemplate(Enum):
     EVAL_CLAIM_VERIFY = "eval_claim_verify"
     # 测评回答生成
     EVAL_GENERATE_ANSWER = "eval_generate_answer"
-    # 测评测试集生成 + kb-ops 矛盾检测（evaluation_prompts.py）
-    EVAL_TESTSET_GENERATION = "eval_testset_generation"
+    # kb-ops 矛盾检测（evaluation_prompts.py）
     KB_OPS_CONTRADICTION_CHECK = "kb_ops_contradiction_check"
 
     # ==================== Wiki 生成（knowledge_space prompts/templates.py 子模块） ====================

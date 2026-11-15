@@ -19,10 +19,10 @@ async def test_create_role_with_permissions(tmp_db):
     svc = RoleService(tmp_db, permission_checker=None)
     role = await svc.create_role(
         code="custom", name="自定义", description="d",
-        permission_codes=["user.manage", "skill.review"]
+        permission_codes=["user.manage", "role.manage"]
     )
     assert role.code == "custom"
-    assert {p.code for p in role.permissions} == {"user.manage", "skill.review"}
+    assert {p.code for p in role.permissions} == {"user.manage", "role.manage"}
 
 
 @pytest.mark.asyncio
