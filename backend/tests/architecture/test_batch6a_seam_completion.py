@@ -1,6 +1,6 @@
 """批次 6a 接缝完成度回归测试。
 
-守护批次 6a-1 ~ 6a-5 五项「引擎抽包前遗留端口」的切断不变式，防止回退（绑定规则 #4）：
+守护批次 6a-1 ~ 6a-3/6a-5「引擎抽包前遗留端口」的切断不变式，防止回退（绑定规则 #4）：
 
   6a-1 Logger 注入：所有引擎候选模块零 ``novamind.core.middleware.structured_logging`` import。
   6a-2 RetrievalEngine 去宿主依赖：
@@ -9,13 +9,11 @@
     - 中立 ``rag_errors`` 异常树与宿主 ``KnowledgeSpaceError`` 树隔离（不继承 BaseAPIError）；
   6a-3 RetrievalPort 去 schema 绑定：
     - 零 ``novamind.features.knowledge_space.schemas`` import；``search`` 入参去类型化为 ``Any``。
-  6a-4 skill_checker 枚举下沉：
-    - 零 ``novamind.features.skill.models`` import；
-    - ``skill.models.skill.ReviewStatus`` 与中立 ``features.skill.review_status.ReviewStatus`` 同一对象（ORM 兼容）。
   6a-5 audio_utils 去 ClientFactory：
     - 零 ``novamind.shared.clients`` import；
     - ``upload_parsed_text_to_minio`` / ``transcribe_audio_with_dashscope`` 的 ``minio_client`` 为关键字必传注入。
   通用不变式：引擎候选零**跨 feature** ``novamind.features.<Y>`` import（自身 feature 与 adapter 层除外）。
+  （6a-4 skill_checker 枚举下沉已随工作台剥离移除，2026-11-15）
 
 断言方式：AST 扫描引擎候选文件收集 import 模块名（精确，不受 docstring 文本干扰）+ 运行时协议/同一性检查。
 """
@@ -40,15 +38,12 @@ ENGINE_CANDIDATE_DIRS = [
     SRC / "shared" / "utils",
     SRC / "shared" / "storage",
     SRC / "shared" / "document",
-    SRC / "engines" / "agent",
     SRC / "engines" / "rag",
     SRC / "engines" / "eval",
     SRC / "shared" / "clients" / "search",
 ]
 
-ENGINE_CANDIDATE_FILES = [
-    SRC / "features" / "skill" / "services" / "skill_checker.py",
-]
+ENGINE_CANDIDATE_FILES: list[Path] = []
 
 # 宿主装配文件（非引擎逻辑）排除：``ClientFactory`` 是宿主客户端工厂，
 # 由 startup_manager 调 ``ClientFactory.configure`` 注入策略后构造 MinIO/ES/Redis
@@ -187,28 +182,6 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 
 
 # ---------- 6a-3：RetrievalPort 去 SearchRequest schema 绑定 ----------
-
-# ---------- 6a-4：skill_checker ReviewStatus 枚举下沉 ----------
-
-def test_6a4_skill_checker_has_no_skill_models_import():
-    """6a-4：skill_checker 不得 import ``features.skill.models``（改用中立 features.skill.review_status）。"""
-    p = SRC / "features" / "skill" / "services" / "skill_checker.py"
-    bad = [m for m in _imports_in(p) if m.startswith("novamind.features.skill.models")]
-    assert not bad, f"skill_checker 残留 skill.models import: {bad}"
-
-
-def test_6a4_review_status_identity_between_neutral_and_orm():
-    """6a-4：中立 ``features.skill.review_status.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
-    from novamind.features.skill.models.skill import ReviewStatus as ORMReviewStatus
-    from novamind.features.skill.review_status import ReviewStatus as NeutralReviewStatus
-
-    assert NeutralReviewStatus is ORMReviewStatus, "ReviewStatus 中立枚举与 ORM re-export 必须同一对象"
-    # 值逐字对齐（DB 已存数据兼容）
-    assert NeutralReviewStatus.PENDING == 0
-    assert NeutralReviewStatus.APPROVED == 1
-    assert NeutralReviewStatus.SUSPICIOUS == 2
-    assert NeutralReviewStatus.REJECTED == 3
-
 
 # ---------- 6a-5：audio_utils 去 ClientFactory ----------
 

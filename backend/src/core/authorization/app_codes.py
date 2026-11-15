@@ -1,26 +1,18 @@
 """应用代码注册表（应用级权限门禁）。
 
 GATED_APP_PREFIXES 前缀与各 feature manifest 的挂载前缀两处需同步维护：新增 feature 或改挂载路径时更新此表。
+当前无可门禁应用（agent/skill/app 已随工作台剥离移除），表为空 = 门禁全放行。
 """
 
 
 class AppCode:
     """可门禁的应用代码（封闭枚举，与前端侧边栏过滤共用）。"""
 
-    QA = "qa"
-    AGENT = "agent"
-    SKILL = "skill"
-    APP = "app"  # 应用中心：简历挖掘等
-
-    ALL = [QA, AGENT, SKILL, APP]
+    ALL: list[str] = []
 
 
 # 应用代码 → 该应用的 API 路由前缀（含 manifest 挂载的 API_V1_PREFIX）
-GATED_APP_PREFIXES: dict[str, tuple[str, ...]] = {
-    AppCode.AGENT: ("/api/v1/agent",),
-    AppCode.SKILL: ("/api/v1/skills",),
-    AppCode.APP: ("/api/v1/apps",),
-}
+GATED_APP_PREFIXES: dict[str, tuple[str, ...]] = {}
 
 
 def match_app_code(path: str) -> str | None:

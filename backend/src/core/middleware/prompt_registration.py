@@ -13,17 +13,12 @@ def register_all_prompt_templates() -> int:
     注册顺序不影响结果。
     """
     # 各模块的提示词数据源（纯数据模块，零 novamind 导入）
-    from novamind.engines.agent.prompts import TEMPLATES as _agent_engine
     from novamind.engines.rag.prompts import TEMPLATES as _rag
-    from novamind.features.agent.agent_prompts import TEMPLATES as _ag
-    from novamind.features.app.app_prompts import TEMPLATES as _app
-    from novamind.features.deep_research.deep_research_prompts import TEMPLATES as _dr
     from novamind.features.evaluation.evaluation_prompts import TEMPLATES as _ev
     from novamind.features.knowledge_space.prompts import TEMPLATES as _ks
-    from novamind.features.skill.skill_prompts import TEMPLATES as _sk
 
     count = 0
-    for templates in [_ks, _dr, _rag, _ev, _app, _ag, _agent_engine, _sk]:
+    for templates in [_ks, _rag, _ev]:
         PromptManager.register(templates)
         count += len(templates)
     return count

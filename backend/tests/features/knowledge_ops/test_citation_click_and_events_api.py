@@ -3,8 +3,8 @@
 覆盖：
 - KbEventRepository.list_events/count_events：权限域过滤、event_type/时间窗过滤、分页
 
-citation_click 的服务逻辑由 agent 侧测试覆盖（QA 对话链清退后上报入口在
-features/agent）。
+citation_click 的服务逻辑属问答链路上报（工作台剥离后上报入口保留在知识运营
+事件账本）。
 """
 import sys
 from datetime import timedelta

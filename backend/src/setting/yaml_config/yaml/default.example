@@ -228,35 +228,3 @@ mineru:
   timeout: 600
   # 透传给 mineru CLI 的额外参数（如指定模型源：["--source", "modelscope"]）
   extra_args: []
-
-agent:
-  sandbox:
-    # 代码执行沙箱（agent code_execution 工具）；enabled=false 时工具不注册
-    enabled: false
-    max_memory_mb: 256
-    max_output_bytes: 65536
-    default_timeout: 30
-    max_timeout: 120
-    network_disabled: true
-    rebuild_interval: 50
-    container_prefix: "agent_sandbox"
-    images:
-      python: "python:3.12-slim"
-      javascript: "node:20-slim"
-      shell: "bash:5"
-  memory:
-    # 长期记忆巩固后端：builtin（内置 LLM 提取，默认）| mem0（Mem0 语义调和，
-    # 需 uv sync --extra mem0）。mem0 后端 LLM/embedding 走用户模型配置原始参数。
-    backend: builtin
-    # Mem0 工作存储的 ES collection 名（只服务调和比对，不对外检索）
-    es_collection: "novamind_mem0"
-    # 调和时参考的存量相似记忆条数
-    history_size: 5
-    # 压缩时记忆提取投递 arq 后台任务（true=异步，不入压缩关键路径，队列不可用自动退回同步；false=同步提取）
-    on_turn_done: false
-    # 压缩摘要生成投递 arq 后台任务（true=主循环不等 LLM 摘要走静态占位降级，任务落库后下轮请求生效；false=同步生成）
-    compaction_async: false
-    # 单用户单 Agent 的记忆条数上限（memory 工具新增时拦截；不配置走内置默认 50）
-    # memory_limit_per_user_agent: 50
-    # AsyncMemory 实例 LRU 缓存数
-    lru_size: 16

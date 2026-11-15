@@ -339,86 +339,6 @@ class MineruConfig:
 
 
 @dataclass
-class SandboxConfigYaml:
-    """agent 代码执行沙箱参数（features/agent/sandbox/config.py SandboxConfig 的 YAML 段）。"""
-
-    enabled: bool = False
-    max_memory_mb: int = 256
-    max_output_bytes: int = 65536
-    default_timeout: int = 30
-    max_timeout: int = 120
-    network_disabled: bool = True
-    rebuild_interval: int = 50
-    container_prefix: str = "agent_sandbox"
-    images: dict[str, str] = field(default_factory=lambda: {
-        "python": "python:3.12-slim",
-        "javascript": "node:20-slim",
-        "shell": "bash:5",
-    })
-
-
-@dataclass
-class AgentMemoryConfigYaml:
-    """agent.memory 段：长期记忆巩固后端（Mem0 调和管线）配置。
-
-    backend=mem0 时经 Mem0 做「提取+语义调和」（ADD/UPDATE/DELETE 事件），
-    MySQL agent_memories 仍是 source-of-truth；builtin 为内置提取路径（默认，
-    零额外依赖）。mem0 后端要求安装 mem0 extra（uv sync --extra mem0）。
-    """
-
-    backend: str = "builtin"
-    # Mem0 工作存储的 ES collection 名（只服务调和时相似比对，不对外检索）
-    es_collection: str = "novamind_mem0"
-    # 调和时 Mem0 参考的存量相似记忆条数
-    history_size: int = 5
-    # 每轮对话结束后异步巩固（行为变化大，默认关，P3 再启用）
-    on_turn_done: bool = False
-    # 压缩摘要生成投递 arq 后台任务（true=主循环不等 LLM 摘要走静态占位降级，
-    # 任务落库后下轮请求生效；false=同步生成，阻塞压缩关键路径）
-    compaction_async: bool = False
-    # AsyncMemory 实例 LRU 缓存数（按 base_url/model/api_key 指纹为键）
-    lru_size: int = 16
-    # 单用户单 Agent 的记忆条数上限（memory 工具新增时拦截；null/不配置走
-    # 工具内置默认 50。配置 None 语义=未设上限策略，由引擎默认兜底）
-    memory_limit_per_user_agent: int | None = None
-
-
-@dataclass
-class AgentConfig:
-    """agent feature 的 YAML 配置段。"""
-
-    sandbox: SandboxConfigYaml = field(default_factory=SandboxConfigYaml)
-    memory: AgentMemoryConfigYaml = field(default_factory=AgentMemoryConfigYaml)
-
-
-@dataclass
-class DeepResearchModeConfig:
-    """deep_research.modes.<mode> 段：单个深度研究模式的搜索深度与迭代轮数。"""
-    depth: int = 3
-    iterations: int = 5
-
-
-@dataclass
-class DeepResearchModesConfig:
-    """deep_research.modes 段：quick / standard / deep 三档深度研究模式参数。"""
-    quick: DeepResearchModeConfig = field(
-        default_factory=lambda: DeepResearchModeConfig(depth=2, iterations=3)
-    )
-    standard: DeepResearchModeConfig = field(
-        default_factory=lambda: DeepResearchModeConfig(depth=3, iterations=5)
-    )
-    deep: DeepResearchModeConfig = field(
-        default_factory=lambda: DeepResearchModeConfig(depth=5, iterations=7)
-    )
-
-
-@dataclass
-class DeepResearchConfig:
-    """deep_research 段：深度研究功能的模式配置集合。"""
-    modes: DeepResearchModesConfig = field(default_factory=DeepResearchModesConfig)
-
-
-@dataclass
 class KnowledgeOpsConfig:
     """知识运营（kb-ops）feature 的 YAML 配置段。"""
 
@@ -486,8 +406,6 @@ class AppConfig:
     asr: ASRConfig = field(default_factory=ASRConfig)
     ocr: OcrConfig = field(default_factory=OcrConfig)
     mineru: MineruConfig = field(default_factory=MineruConfig)
-    agent: AgentConfig = field(default_factory=AgentConfig)
-    deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
     knowledge_ops: KnowledgeOpsConfig = field(default_factory=KnowledgeOpsConfig)
     smtp: SmtpConfig = field(default_factory=SmtpConfig)

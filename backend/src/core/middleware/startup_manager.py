@@ -122,15 +122,6 @@ class AppLifespanManager:
         # 启动嵌入式 arq Worker（任务函数从各 feature tasks 收集注入；shared/mq 只提供通用运行时）
         try:
             from arq import cron
-            from novamind.features.agent.attachments.cleanup import cleanup_orphan_attachments
-            from novamind.features.agent.tasks.compaction_tasks import (
-                generate_compaction_summary_task,
-            )
-            from novamind.features.agent.tasks.memory_tasks import consolidate_memory_task
-            from novamind.features.app.tasks.resume_tasks import (
-                process_resume_task,
-                recover_orphan_resume_sessions,
-            )
             from novamind.features.knowledge_ops.tasks.attribution_worker import (
                 attribute_pending_events,
             )
@@ -161,15 +152,10 @@ class AppLifespanManager:
             await start_embedded_worker(
                 functions=[
                     process_document_task,
-                    process_resume_task,
                     process_wiki_ingest_task,
                     process_wiki_retract_task,
                     # 视频叙事文档合成（kb 开启 narrative_synthesis 或 API 按需触发）
                     process_narrative_task,
-                    # agent 压缩时记忆提取（agent.memory.on_turn_done 开关控制投递）
-                    consolidate_memory_task,
-                    # agent 压缩摘要生成（agent.memory.compaction_async 开关控制投递）
-                    generate_compaction_summary_task,
                     # kb-ops A1：失败问答归因（cron 驱动，见下）
                     attribute_pending_events,
                     # kb-ops A2：知识运营周报（cron 驱动，见下）
@@ -181,8 +167,6 @@ class AppLifespanManager:
                 ],
                 task_queue=config.task_queue,
                 cron_jobs=[
-                    # 孤儿聊天附件清理：每天 03:17（上传超 7 天且无消息引用）
-                    cron(cleanup_orphan_attachments, hour=3, minute=17),
                     # 孤儿分片暂存清理：每天 03:41（Redis TTL 丢失窗口兜底，mtime 超 2×TTL）
                     cron(cleanup_stale_parts, hour=3, minute=41),
                     # kb-ops A1 失败问答归因：每 30 分钟（回溯 7 天、批上限 50 条）
@@ -201,14 +185,6 @@ class AppLifespanManager:
             recovered_docs = await recover_orphan_documents()
             if recovered_docs:
                 self.logger.info("孤儿文档恢复完成", recovered=recovered_docs)
-
-            # 恢复孤儿简历会话（PARSING/ANALYZING/PROBING 状态重新入队）
-            try:
-                recovered_resumes = await recover_orphan_resume_sessions()
-                if recovered_resumes:
-                    self.logger.info("孤儿简历会话恢复完成", recovered=recovered_resumes)
-            except Exception as e:
-                self.logger.warning("孤儿简历会话恢复失败", error=str(e))
         except Exception as e:
             self.logger.warning("arq Worker 启动失败", error=str(e))
 
@@ -434,14 +410,6 @@ class AppLifespanManager:
             await close_arq_pool()
         except Exception as e:
             self.logger.warning("关闭 arq 连接池时出错", error=str(e))
-
-        # 关闭 MCP 连接
-        try:
-            if hasattr(self, '_app') and hasattr(self._app.state, 'agent_mcp_manager'):
-                await self._app.state.agent_mcp_manager.shutdown()
-                self.logger.info("MCP 连接已关闭")
-        except Exception as e:
-            self.logger.warning("关闭 MCP 连接时出错", error=str(e))
 
         # 关闭 agent_api MCP server（session_manager 生命周期）
         try:

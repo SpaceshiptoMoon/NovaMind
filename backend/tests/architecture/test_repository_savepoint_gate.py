@@ -41,29 +41,11 @@ KNOWN_COMMIT_METHODS: dict[str, dict[str, int]] = {
     "src/features/knowledge_space/repository/document_task_repository.py": {
         "DocumentTaskRepository.mark_failed_independent": 1,
     },
-    # 同上：resume 域逐字保真的独立连接 raw SQL 兜底（docstring 自证绕过约定）
-    "src/features/app/repository/resume_repository.py": {
-        "ResumeSessionRepository.mark_failed_independent": 1,
-    },
-    # 独立 session 写入后立即 commit：用量记录须在主事务回滚时留痕，且不得
-    # 连带提交请求主 session 的 pending 变更（docstring 引用约定文档，L31 同款）
-    "src/features/agent/repository/agent_usage_repository.py": {
-        "AgentUsageRepository.log_usage": 1,
-    },
 }
 
 # 白名单：rel_path → 允许的「写方法缺 begin_nested」数量上限（精确对账）。
 # 2026-11-12 实测基线；收敛批次每修一个 feature 就更新对应条目。
 KNOWN_SAVEPOINT_GAPS: dict[str, int] = {
-    "src/features/agent/attachments/repository.py": 1,
-    "src/features/agent/repository/agent_repository.py": 14,
-    "src/features/agent/repository/agent_usage_repository.py": 1,
-    "src/features/agent/repository/context_summary_repository.py": 1,
-    "src/features/agent/repository/group_repository.py": 4,
-    "src/features/agent/repository/memory_repository.py": 4,
-    "src/features/agent/repository/runner_repository.py": 1,
-    "src/features/app/repository/resume_repository.py": 3,
-    "src/features/deep_research/repository/research_repository.py": 8,
     "src/features/evaluation/repository/evaluation_repository.py": 8,
     "src/features/knowledge_space/repository/audit_repository.py": 3,
     "src/features/knowledge_space/repository/document_repository.py": 3,
@@ -74,7 +56,6 @@ KNOWN_SAVEPOINT_GAPS: dict[str, int] = {
     "src/features/knowledge_space/repository/space_repository.py": 6,
     "src/features/knowledge_space/repository/wiki_issue_repository.py": 1,
     "src/features/knowledge_space/repository/wiki_repository.py": 7,
-    "src/features/skill/repository/skill_repository.py": 10,
     "src/features/user/repository/model_config_repository.py": 4,
 }
 

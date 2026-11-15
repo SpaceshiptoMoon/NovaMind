@@ -41,27 +41,8 @@ def test_every_template_has_enum_entry():
     assert not orphans, f"注册表有模板但枚举无成员（孤儿模板）: {orphans}"
 
 
-def test_engine_templates_registered():
-    """agent_engine_* 10 键全部在册（引擎侧散落 prompt 收编的回归防线）。"""
-    from novamind.shared.prompts.prompt_manager import PromptManager
-
-    for key in (
-        "agent_engine_structured_summary",
-        "agent_engine_summary_merge",
-        "agent_engine_compaction_aligned_instruction",
-        "agent_engine_tag_convention",
-        "agent_engine_tool_discipline_default",
-        "agent_engine_model_adaptation_gpt",
-        "agent_engine_model_adaptation_gemini",
-        "agent_engine_plan_system",
-        "agent_engine_plan_finalize_system",
-        "agent_engine_subagent_system",
-    ):
-        assert PromptManager.is_registered(key), key
-
-
 def test_removed_drifted_keys_gone():
-    """已删除的漂移死键不得复活（qa 拆除 + agent_prompts 收编后的守卫）。"""
+    """已删除的漂移死键不得复活（qa 拆除 + 工作台剥离后的守卫）。"""
     from novamind.shared.prompts.prompt_manager import PromptManager
 
     for key in (
@@ -70,5 +51,10 @@ def test_removed_drifted_keys_gone():
         "agent_system_prompt",
         "agent_structured_summary",
         "agent_summary_merge",
+        "agent_engine_structured_summary",
+        "agent_long_term_memory",
+        "skill_security_review",
+        "resume_summary",
+        "research_plan",
     ):
         assert not PromptManager.is_registered(key), key

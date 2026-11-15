@@ -9,14 +9,9 @@ import yaml
 
 from .config import (
     AdminConfig,
-    AgentConfig,
-    AgentMemoryConfigYaml,
     AppConfig,
     ASRConfig,
     DatabaseConfig,
-    DeepResearchConfig,
-    DeepResearchModeConfig,
-    DeepResearchModesConfig,
     DuckDuckGoConfig,
     ElasticsearchConfig,
     ExternalSearchConfig,
@@ -34,7 +29,6 @@ from .config import (
     RedisConfig,
     RerankSettings,
     RetrievalConfig,
-    SandboxConfigYaml,
     SecurityConfig,
     SerpAPIConfig,
     SmtpConfig,
@@ -379,61 +373,6 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         tier=mineru.get("tier", "flash"),
         timeout=mineru.get("timeout", 600),
         extra_args=mineru.get("extra_args", []),
-    )
-
-    agent = data.get("agent", {})
-    sandbox = agent.get("sandbox", {})
-    memory = agent.get("memory", {})
-    config.agent = AgentConfig(
-        sandbox=SandboxConfigYaml(
-            enabled=sandbox.get("enabled", False),
-            max_memory_mb=sandbox.get("max_memory_mb", 256),
-            max_output_bytes=sandbox.get("max_output_bytes", 65536),
-            default_timeout=sandbox.get("default_timeout", 30),
-            max_timeout=sandbox.get("max_timeout", 120),
-            network_disabled=sandbox.get("network_disabled", True),
-            rebuild_interval=sandbox.get("rebuild_interval", 50),
-            container_prefix=sandbox.get("container_prefix", "agent_sandbox"),
-            images=sandbox.get(
-                "images",
-                {
-                    "python": "python:3.12-slim",
-                    "javascript": "node:20-slim",
-                    "shell": "bash:5",
-                },
-            ),
-        ),
-        memory=AgentMemoryConfigYaml(
-            backend=memory.get("backend", "builtin"),
-            es_collection=memory.get("es_collection", "novamind_mem0"),
-            history_size=memory.get("history_size", 5),
-            on_turn_done=memory.get("on_turn_done", False),
-            compaction_async=memory.get("compaction_async", False),
-            lru_size=memory.get("lru_size", 16),
-            memory_limit_per_user_agent=memory.get("memory_limit_per_user_agent"),
-        ),
-    )
-
-    dr = data.get("deep_research", {})
-    modes = dr.get("modes", {})
-    quick = modes.get("quick", {})
-    standard = modes.get("standard", {})
-    deep = modes.get("deep", {})
-    config.deep_research = DeepResearchConfig(
-        modes=DeepResearchModesConfig(
-            quick=DeepResearchModeConfig(
-                depth=quick.get("depth", 2),
-                iterations=quick.get("iterations", 3),
-            ),
-            standard=DeepResearchModeConfig(
-                depth=standard.get("depth", 3),
-                iterations=standard.get("iterations", 5),
-            ),
-            deep=DeepResearchModeConfig(
-                depth=deep.get("depth", 5),
-                iterations=deep.get("iterations", 7),
-            ),
-        )
     )
 
     vector_db = data.get("vector_db", {})

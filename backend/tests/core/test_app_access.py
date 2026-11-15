@@ -19,23 +19,15 @@ pytestmark = pytest.mark.unit
 
 
 class TestMatchAppCode:
-    def test_exact_and_subpath_match(self):
-        assert match_app_code("/api/v1/agent") == "agent"
-        assert match_app_code("/api/v1/agent/1/chat") == "agent"
-        assert match_app_code("/api/v1/skills") == "skill"
-        assert match_app_code("/api/v1/apps/resume") == "app"
-        assert match_app_code("/api/v1/agent/attachments/1/download") == "agent"
-
-    def test_segment_boundary_not_prefix(self):
-        # 段边界匹配：/api/v1/agentx 不能误命中 agent
-        assert match_app_code("/api/v1/agentx") is None
-        assert match_app_code("/api/v1/skillsx") is None
-        assert match_app_code("/api/v1/appsx/1") is None
+    def test_empty_registry_all_paths_pass(self):
+        """门禁表清空（工作台剥离后无可门禁应用）→ 任意路径不命中。"""
+        assert match_app_code("/api/v1/agent") is None
+        assert match_app_code("/api/v1/skills") is None
+        assert match_app_code("/api/v1/apps/resume") is None
 
     def test_ungated_paths_pass(self):
-        # 知识空间/深研究/测评/通知/用户管理不进应用门禁
+        # 知识空间/测评/通知/用户管理不进应用门禁
         assert match_app_code("/api/v1/spaces/1/knowledge-bases") is None
-        assert match_app_code("/api/v1/spaces/1/deep-research") is None
         assert match_app_code("/api/v1/notifications") is None
         assert match_app_code("/api/v1/user/users/me/permissions") is None
         assert match_app_code("/docs") is None
@@ -88,8 +80,20 @@ async def _noop_receive():
     return {"type": "http.request", "body": b"", "more_body": False}
 
 
+@pytest.fixture
+def _temp_gated_app(monkeypatch):
+    """注入临时门禁条目（现网门禁表为空），保住中间件分流逻辑的回归防线。"""
+    import novamind.core.authorization.app_codes as codes_mod
+
+    monkeypatch.setattr(
+        codes_mod,
+        "GATED_APP_PREFIXES",
+        {"testapp": ("/api/v1/testapp",)},
+    )
+
+
 @pytest.mark.asyncio
-async def test_gate_denied_http_403(monkeypatch):
+async def test_gate_denied_http_403(monkeypatch, _temp_gated_app):
     """被禁应用的 HTTP 请求 → 403 APP_ACCESS_DENIED，不进下游。"""
     from novamind.core.middleware.app_gate import AppGateMiddleware
 
@@ -130,7 +134,7 @@ async def test_gate_denied_http_403(monkeypatch):
 
     monkeypatch.setattr(cf_mod.ClientFactory, "get_redis_client", fail_redis)
 
-    await mw(_http_scope("/api/v1/agent/5", token="t"), _noop_receive, rec.send)
+    await mw(_http_scope("/api/v1/testapp/5", token="t"), _noop_receive, rec.send)
 
     assert not rec.called
     start = next(m for m in rec.sent if m["type"] == "http.response.start")
@@ -219,7 +223,7 @@ async def test_gate_fail_open_on_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gate_ws_denied(monkeypatch):
+async def test_gate_ws_denied(monkeypatch, _temp_gated_app):
     """被禁应用的 WS 握手被拒（websocket.close，不进下游）。"""
     from novamind.core.middleware.app_gate import AppGateMiddleware
 
@@ -260,7 +264,7 @@ async def test_gate_ws_denied(monkeypatch):
 
     monkeypatch.setattr(cf_mod.ClientFactory, "get_redis_client", fail_redis)
 
-    await mw(_ws_scope("/api/v1/agent/1/ws", token="t"), _noop_receive, rec.send)
+    await mw(_ws_scope("/api/v1/testapp/1/ws", token="t"), _noop_receive, rec.send)
 
     assert not rec.called
     close = next(m for m in rec.sent if m["type"] == "websocket.close")

@@ -39,35 +39,20 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 SRC = BACKEND_ROOT / "src"
 
 # 白名单：(rel_path, Service 名, 参数名) → 理由。新增豁免必须带注释。
-KNOWN_WIRING_GAPS: dict[tuple[str, str, str], str] = {
-    # lazy 兜底语义：服务内部 search_service_lazy 延后自建（deep_research_service.py:413），
-    # 装配点刻意不传以避免请求期依赖 ks
-    (
-        "src/features/deep_research/api/dependencies.py",
-        "DeepResearchService",
-        "search_service",
-    ): "服务内 lazy 兜底，装配点刻意延后",
-}
+KNOWN_WIRING_GAPS: dict[tuple[str, str, str], str] = {}
 
 # 语义必填表：签名带默认值（技术上可选）但业务上必须由装配点显式提供的参数——
 # 「漏传即静默降级」的历史断线形态（AttachmentService.document_processor 即原例）。
 # 漏传零容忍，无白名单：确属可选语义就从本表移除，不要加豁免。
-SEMANTIC_REQUIRED: set[tuple[str, str, str]] = {
-    (
-        "src/features/agent/api/dependencies.py",
-        "AttachmentService",
-        "document_processor",
-    ),
-}
+SEMANTIC_REQUIRED: set[tuple[str, str, str]] = set()
 
 # 类名后缀：本门禁只约束业务服务装配（Repository/工厂等装配面另行收敛）
 _SERVICE_SUFFIX = "Service"
 
 # 跳过基线：模块加载失败/getattr 失败/签名缺失的静默跳过计数上限（实测）。
 # 基线上涨 = 扫描退化（构造被改成函数内 import 等），先查原因再调基线。
-# 现有 13 处构成：wiki_routes 的 wiki 服务懒构造 ×13（WikiPageService 7/
-# WikiLintService 2/其余 4）、document_routes 4、knowledge_ops routes 3、
-# skill routes 2、agent/agent_api dependencies 各 1——均为存量懒 import 形态。
+# 2026-11-15 剥离工作台后：wiki_routes 懒构造、document_routes、knowledge_ops
+# routes、agent_api dependencies 各存量懒 import 形态。
 KNOWN_SKIPPED_BASELINE = 13
 
 

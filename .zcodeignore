@@ -1,0 +1,166 @@
+# ========================================
+# Python
+# ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+*.log
+.cache/
+.tmp/
+kb_typecheck.log
+
+# ========================================
+# Node.js
+# ========================================
+node_modules/
+dist-ssr/
+*.local
+
+# ========================================
+# 测试与覆盖率
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+test_data/
+
+# ========================================
+# 环境变量与配置（含敏感信息）
+# ========================================
+.env
+.env.*
+!.env.example
+backend/src/setting/yaml_config/yaml/default.yaml
+!*.example
+
+# ========================================
+# IDE
+# ========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ========================================
+# Claude Code
+# ========================================
+.claude/*
+# 例外：只随仓库分发 novamind-kb skill 与集成文档；其余 .claude 内容
+# （settings.local.json / 其他本地 skills / worktrees）仍忽略。
+# 注意：父目录被忽略时需先解禁目录本身，子项例外才生效。
+!.claude/
+!.claude/NOVAMIND-MCP.md
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/novamind-kb/
+!.claude/skills/novamind-kb/**
+# skill 本地配置含明文 API key，永不入库
+.claude/skills/novamind-kb/config.json
+backend/skills-lock.json
+
+# ========================================
+# ZCode 工作区配置（.zcode/config.json 含 MCP 密钥，勿提交；
+# .zcode/skills/ 为本地 skill 副本，源头在 .claude/skills/ 与 docs/skill-package/）
+# ========================================
+.zcode/
+
+# ========================================
+# OS
+# ========================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ========================================
+# 构建产物
+# ========================================
+*.tsbuildinfo
+.eslintcache
+
+# ========================================
+# 数据与日志目录
+# ========================================
+logs/
+data/
+uploads/
+
+# ========================================
+# 模型权重
+# ========================================
+backend/models/
+
+# ========================================
+# Docker
+# ========================================
+docker-compose.override.yml
+
+# ========================================
+# 测试媒体文件
+# ========================================
+backend/tests/*.mp3
+backend/tests/*.wav
+backend/.pytest_cache
+backend/.cache
+backend/.cache/
+backend/build
+backend/dist
+backend/tmp*.log
+backend/original_templates_backup.py
+
+
+# ========================================
+# 临时文件
+# ========================================
+*.tmp
+*.temp
+*.bak
+*.pid
+*.seed
+.git-backup-*
+
+# ========================================
+# 本地手动测试脚本（可能含真实凭证，勿提交）
+# ========================================
+test.http
+.mcp.json
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+site-packages/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

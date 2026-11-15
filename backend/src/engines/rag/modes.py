@@ -1,6 +1,6 @@
 """检索模式枚举（SearchMode）——检索查询契约的中立位。
 
-引擎（engines/agent 工具、engines/rag）与业务 schema 共用同一枚举；
+引擎（engines/rag）与业务 schema 共用同一枚举；
 定义在此避免 engines→features 反向 import。业务 schema（features/
 knowledge_space/schemas/search_schema.py）re-export 保持既有引用兼容。
 """

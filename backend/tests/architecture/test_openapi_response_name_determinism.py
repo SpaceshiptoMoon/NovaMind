@@ -28,19 +28,16 @@ _BARE_COLLIDING_NAMES = {
     "SessionListResponse",
 }
 
-# 8 个 feature 限定新名——必须全部出现在 openapi 组件中。
+# feature 限定新名——必须全部出现在 openapi 组件中。
 # 历史成员 ResearchLLMConfig / ChatSessionListResponse 随 ccd3ce4c QA 对话清退
 # 消亡（前者是 deep_research 请求体嵌套配置不直出响应，后者是 qa 死 schema），
-# 断言随宿主类移除。
+# 断言随宿主类移除；agent 侧 4 名（AgentMessageResponse/ChatAvailableModelsResponse/
+# AgentActionResponse/AgentSessionListResponse）随 2026-11-15 工作台剥离移除。
 _FEATURE_QUALIFIED_NAMES = {
     "UserMessageResponse",
-    "AgentMessageResponse",
     "ModelConfigAvailableModelsResponse",
-    "ChatAvailableModelsResponse",
     "MemberActionResponse",
-    "AgentActionResponse",
     "SearchLLMConfig",
-    "AgentSessionListResponse",
 }
 
 
@@ -52,7 +49,7 @@ def test_no_bare_colliding_response_names_in_openapi():
 
 
 def test_feature_qualified_response_names_present():
-    """10 个 feature 限定名必须出现在 openapi 组件中。"""
+    """现存 feature 限定名必须出现在 openapi 组件中。"""
     comps = _build_openapi_components()
     missing = _FEATURE_QUALIFIED_NAMES - comps
     assert not missing, f"feature 限定名缺失: {missing}"
