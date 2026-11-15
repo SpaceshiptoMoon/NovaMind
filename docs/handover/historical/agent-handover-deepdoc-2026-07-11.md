@@ -143,8 +143,8 @@ Shared pytest import bootstrap added:
 
 DeepDoc-specific docs now include:
 
-- [docs/deepdoc/deepdoc-integration.md](../deepdoc/deepdoc-integration.md)
-- [docs/deepdoc/deepdoc-acceptance-checklist.md](../deepdoc/deepdoc-acceptance-checklist.md)
+- [docs/deepdoc/deepdoc-integration.md](../../deepdoc/deepdoc-integration.md)
+- [docs/deepdoc/deepdoc-acceptance-checklist.md](../../deepdoc/deepdoc-acceptance-checklist.md)
 - `docs/superpowers/plans/2026-07-10-deepdoc-source-port.md` (historical path at handoff time)
 - `backend/src/shared/utils/deepdoc/README.md` (historical path at handoff time)
 - `backend/src/shared/utils/deepdoc/DEPLOYMENT.md` (historical path at handoff time)
@@ -342,8 +342,8 @@ If continuing this DeepDoc line, the next most valuable directions are:
 
 If a new agent has only a few minutes, start here:
 
-1. Read [docs/deepdoc/deepdoc-acceptance-checklist.md](../deepdoc/deepdoc-acceptance-checklist.md).
-2. Read [docs/deepdoc/deepdoc-integration.md](../deepdoc/deepdoc-integration.md).
+1. Read [docs/deepdoc/deepdoc-acceptance-checklist.md](../../deepdoc/deepdoc-acceptance-checklist.md).
+2. Read [docs/deepdoc/deepdoc-integration.md](../../deepdoc/deepdoc-integration.md).
 3. Inspect `backend/src/shared/utils/deepdoc/upstream.py` (historical path at handoff time).
 4. Run:
 

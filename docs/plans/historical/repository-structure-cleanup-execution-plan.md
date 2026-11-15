@@ -2,7 +2,7 @@
 
 > Historical note: this document is an execution-phase cleanup plan, not the canonical description of the current repository layout.
 > Some paths and actions below reflect planning-time assumptions or partially realized cleanup goals.
-> For current navigation, prefer [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+> For current navigation, prefer [`../README.md`](../README.md), [`../../project-structure-navigation.md`](../../project-structure-navigation.md), and [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md).
 
 ## Purpose
 

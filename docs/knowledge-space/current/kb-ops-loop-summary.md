@@ -1,7 +1,7 @@
 # 知识运营闭环（KB-OPS Loop）架构与收官总结
 
 > **文档性质**：正式总结——知识运营闭环全量落地后的系统现状（八批次 + 前端 + 收尾，2026-10-01 至 10-02 完成）。
-> **上游文档**：设计推演见 [`../process/knowledge-operations-loop-design.md`](../process/knowledge-operations-loop-design.md)（痛点→归因模型→三回路→调研）；执行计划见 [`../../plans/active/knowledge-operations-loop-plan.md`](../../plans/active/knowledge-operations-loop-plan.md)。本文回答「现在系统里有什么、在哪里、怎么用」。
+> **上游文档**：设计推演见 [`../process/knowledge-operations-loop-design.md`](../process/knowledge-operations-loop-design.md)（痛点→归因模型→三回路→调研）；执行计划见 [`../../plans/historical/knowledge-operations-loop-plan.md`](../../plans/historical/knowledge-operations-loop-plan.md)。本文回答「现在系统里有什么、在哪里、怎么用」。
 > **代码归属**：`backend/src/features/knowledge_ops/`（新 feature）+ 对 qa / knowledge_space / evaluation / notification 的增量接线。
 
 ---
@@ -21,13 +21,12 @@
 
 ## 二、系统全景（当前事实）
 
-> **⚠ 2026-10 后续架构变更（QA 对话链清退）**：本节成文后，qa feature（会话问答链）已整体清退，
-> 对话能力由 `features/agent/` 承接。对 kb-ops 的影响：① QueryReformulateDetector 检测类删除，
-> `query_reformulate` 事件不再产生；② citation-click 上报端点迁至 agent
-> （`POST /api/v1/agent/messages/{message_id}/citation-click`，EventRecorder 旁路不变）；
-> ③ `question_answers` 表成为 QA 存档只读（无新写入路径），归因/gap/周报链路仍消费该存档，
-> 但 agent 对话的失败信号（`agent_messages` + `agent_message_feedbacks`）当前不在归因扫批范围内。
-> 下文各组件行按当前代码状态标注。
+> **⚠ 2026-10/11 后续架构变更（QA 对话链清退 → agent 承接 → agent 亦剥离）**：qa feature（会话问答链）
+> 先整体清退，对话能力由 `features/agent/` 承接；2026-11-15 agent 工作台亦整体剥离（产品聚焦知识空间服务）。
+> 对 kb-ops 的当前事实：① QueryReformulateDetector 检测类删除，`query_reformulate` 事件不再产生；
+> ② citation-click 上报端点随 agent 剥离移除，失败信号现以搜索埋点为主（`instrumented_search_service` → kb_events）；
+> ③ `question_answers` 表为 QA 存档只读，归因/gap/周报链路仍消费该存档。
+> 下文各组件行按成文时状态标注，剥离后变化以本注记为准。
 
 ### 2.1 新 feature：`knowledge_ops`
 

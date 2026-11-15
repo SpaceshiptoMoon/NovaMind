@@ -88,8 +88,8 @@
 - `src/engines/wiki/`：Wiki 纯函数件（互链注入/候选去重/句柄表/slug 规范化/分类法）——wiki 持久化与编排仍留 knowledge_space
 - `src/engines/rag/`：检索引擎（RetrievalEngine/QueryRewriter/GradeRetrier/SearchMode）
 - `src/engines/eval/`、`src/engines/search/`：评估引擎/Web 搜索 provider（agent/deep_research/resume 引擎已随 2026-11-15 工作台剥离移除）
-- `src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 app/qa/knowledge_space 复用
-- `src/shared/document/validation/`：跨 feature 文件校验（FileInfo/FileValidator）——被 qa/knowledge_space 复用
+- `src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 knowledge_space 复用
+- `src/shared/document/validation/`：跨 feature 文件校验（FileInfo/FileValidator）——被 knowledge_space 复用
 
 **模块边界（2026-10-29 模块化治理后）**：engines/ 是通用能力层——零 features/ORM/setting import（含 TYPE_CHECKING，当前全域 grep 为零）；引擎接口签名只出现引擎自己消费的概念（LLM 客户端/客户端工厂/引擎自定义存储接口/纯 dataclass 配置），凭证解析、用户身份、数据库实现一律由业务层注入。接口归消费者：引擎依赖宿主能力时在引擎侧定义抽象接口（抽象接口在引擎侧定义），业务实现类显式继承。反例（禁止回退）：构造器收 `ModelConfigService`、签名带 `user_id`、引擎 import features 具体类。
 

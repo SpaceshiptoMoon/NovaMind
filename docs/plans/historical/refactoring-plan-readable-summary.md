@@ -97,6 +97,6 @@
 
 ## 今天如何使用这份历史材料
 
-- 如果你要理解当前知识空间结构，请优先看 [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md)。
+- 如果你要理解当前知识空间结构，请优先看 [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md)。
 - 如果你要理解后续 QA / RAG 管道如何继续演进，可看 [`../active/REFACTOR-qa-rag-pipeline.md`](../active/REFACTOR-qa-rag-pipeline.md)。
 - 如果你要追溯更早期“为什么要把文档处理拆成 Task / Config / 元数据三层”，这份摘要和原始历史文档可以提供背景。

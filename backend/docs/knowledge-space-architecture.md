@@ -286,7 +286,6 @@ REPROCESS 复用同一路径），由 `wiki_ingest_service.py` 四阶段 Map-Red
 - 并发：per-KB Redis 锁 + `TransientBusyError` 延后重入队；LLM 信号量只在
   `_call_llm_text/_call_llm_json` 单层获取（嵌套获取死锁教训见 `docs/knowledge-space/current/wiki-architecture.md`）
 - API：`api/wiki_routes.py`（注意 `:path` 路由遮蔽——带后缀的路由要注册在贪婪路由之前）
-- Agent 工具：`features/agent/tool/builtins/wiki_tools.py`（search / read / write / flag_issue）
 - 前端：`WikiBrowserView.vue` 三页签 + `WikiGraphPanel.vue` 图谱 + `KbWikiSection.vue` 配置段
 
 详见 `docs/knowledge-space/current/wiki-architecture.md`。

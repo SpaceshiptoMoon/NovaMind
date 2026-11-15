@@ -56,7 +56,7 @@ The main architectural and operational docs now reflect the canonical structure:
 - [knowledge-architecture-navigation.md](../current/knowledge-architecture-navigation.md)
 - [deepdoc-integration.md](../../deepdoc/deepdoc-integration.md)
 - [deepdoc-acceptance-checklist.md](../../deepdoc/deepdoc-acceptance-checklist.md)
-- [backend-shared-knowledge-restructure-finalization.md](../../plans/backend-shared-knowledge-restructure-finalization.md)
+- [backend-shared-knowledge-restructure-finalization.md](../../plans/historical/backend-shared-knowledge-restructure-finalization.md)
 
 Historical handover and archived planning notes may still mention removed paths as part of past-state capture, but they are no longer guidance documents for current development.
 

@@ -19,9 +19,7 @@
 | 持有点 | 位置 | 多 worker 下的故障 |
 |---|---|---|
 | `ConnectionManager()` | `core/ws/connection_manager.py:89` | WS 连接表按进程分片：HTTP/arq 侧 `send_notification` 路由不到其他进程的连接，通知静默丢失 |
-| `DETACHED_APPROVAL_ROUTES` | `features/agent/api/routes.py:86` | 审批决策内存路由表：attach 通道连到 B 进程，parked handler 在 A 进程，决策 120s 超时 fail-closed |
 | `model_config_service._key_locks` | `features/user/services/model_config_service.py:73` | 模型客户端 per-key 锁失去互斥语义，跨进程并发构造重复客户端 |
-| `_shared_document_processor` | `features/agent/api/dependencies.py` | 单例退化为每进程一份（功能无损，仅内存重复） |
 | `PromptManager._templates`（类级） | `shared/prompts/prompt_manager.py:15` | 模板表每进程一份（只读，无损） |
 | `ClientFactory._instances`（类级） | `shared/storage/client_factory.py:28` | 客户端单例每进程一份（无损，但失效广播只达本进程） |
 | 嵌入式 arq worker（`_worker_task`） | `shared/mq/worker.py:14` | **每个 API 进程都起任务 consumer**：同一任务被多进程争抢，cron 任务重复执行 |
@@ -30,7 +28,6 @@
 | `_limiter`（slowapi 内存计数器） | `core/middleware/rate_limit.py:65` | 限流阈值按进程分片，实际放行量 = 配置 × N |
 | `_engine`/`_session_factory` | `core/database/database.py:14` | 每进程独立连接池（正常，注意总连接数 = pool × workers） |
 | `_arq_pool` | `shared/mq/__init__.py:11` | 每进程独立连接池（同上） |
-| `app.state.agent_*`（工具注册表等） | `features/agent/api/startup.py:62` | 注册表每进程一份（只读，无损；但 MCP 长连接多份） |
 | `_config`/`_config_dict` | `setting/yaml_config/loader.py:488` | 配置缓存每进程一份（无损） |
 | `_default_encryption_key` | `shared/utils/crypto.py:19` | 启动注入每进程执行（同源无损） |
 

@@ -457,10 +457,11 @@ currently `full` only (see
 ## Resume Subpackage (removed)
 
 The vendored `deepdoc/parser/resume/` mirror was removed in the 2026-09
-cleanup. Production resume parsing runs through `engines/resume/`
-(LLM + shared document readers), which never consumed the mirror; the
-`refactor` entrypoint and its entity resource files are gone. Existing
-`SimpleSurnameHelper` compat helpers were removed alongside it.
+cleanup. Resume parsing itself was discontinued later (the `features/app`
+resume product and `engines/resume/` engine were removed in the 2026-11-15
+workbench strip-down); the `refactor` entrypoint and its entity resource
+files are gone, and `SimpleSurnameHelper` compat helpers were removed
+alongside the mirror.
 
 
 ## Snapshot Accuracy

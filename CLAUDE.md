@@ -125,9 +125,9 @@ feature 模块按以下结构组织：
 - `backend/src/engines/document/integrations/deepdoc/`：仅 DeepDoc 集成（vendored，自包含）
 - `backend/src/engines/question_generation/`：假设问题生成引擎（直收 LLM 客户端，凭证解析归业务）
 - `backend/src/engines/wiki/`：Wiki 纯函数件（互链/去重/句柄/slug/分类法）；wiki 持久化与编排留 knowledge_space
-- `backend/src/engines/rag|agent|eval|deep_research|search|resume/`：检索、Agent、评估、深度研究、Web 搜索、简历引擎——通用能力层，零 features/setting import
-- `backend/src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 app/qa/knowledge_space 复用
-- `backend/src/shared/document/validation/`：跨 feature 文件校验——被 qa/knowledge_space 复用
+- `backend/src/engines/rag|eval|search/`：检索、评估、Web 搜索引擎——通用能力层，零 features/setting import（agent/deep_research/resume 引擎已随 2026-11-15 工作台剥离移除）
+- `backend/src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 knowledge_space 复用
+- `backend/src/shared/document/validation/`：跨 feature 文件校验——被 knowledge_space 复用
 
 非知识库专属的通用辅助函数归属：
 

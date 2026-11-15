@@ -2,7 +2,7 @@
 
 > Historical note: this file is an implementation guide for a cleanup program, not the source of truth for the repository's current layout.
 > It may describe compatibility layers, target structures, or staged actions that were only partially completed.
-> For the current public-facing structure, start with [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+> For the current public-facing structure, start with [`../README.md`](../README.md), [`../../project-structure-navigation.md`](../../project-structure-navigation.md), and [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md).
 
 ## Purpose
 

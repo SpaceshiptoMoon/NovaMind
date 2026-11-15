@@ -1,7 +1,7 @@
 # 文档处理管道重构计划
 
 > 历史说明：这是 2026-07-06 形成的一份早期重构计划，属于历史方案文档，不是当前仓库结构或实现状态的正式事实来源。
-> 当前结构请优先查看 [`../../README.md`](../../README.md)、[`../project-structure-navigation.md`](../project-structure-navigation.md)、[`../knowledge-space/current/README.md`](../knowledge-space/current/README.md)。
+> 当前结构请优先查看 [`../../README.md`](../../README.md)、[`../../project-structure-navigation.md`](../../project-structure-navigation.md)、[`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md)。
 > 如果只想快速理解这份历史计划的核心结论，请优先阅读 [`refactoring-plan-readable-summary.md`](./refactoring-plan-readable-summary.md)。
 
 > 日期：2026-07-06
@@ -301,4 +301,4 @@
 - 如果你要理解当前仓库结构，不应以本文为准。
 - 如果你要追溯“为什么会出现 `DocumentTask`、配置分层、统一 Markdown 桥梁”这类设计方向，本文仍有价值。
 - 如果你只需要快速把握这份历史计划，请优先看 [`refactoring-plan-readable-summary.md`](./refactoring-plan-readable-summary.md)。
-- 如果你要理解当前知识空间正式结构，请回到 [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md)。
+- 如果你要理解当前知识空间正式结构，请回到 [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md)。

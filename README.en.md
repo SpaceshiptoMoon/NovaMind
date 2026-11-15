@@ -2,7 +2,7 @@
 
 # 🧠 NovaMind
 
-**An all-in-one intelligent knowledge platform: knowledge bases · multimodal parsing · RAG QA · deep research · agents**
+**A standalone knowledge service: knowledge bases · multimodal parsing · retrieval & wiki · MCP/OpenAI access for any agent host**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml/badge.svg)](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml)
@@ -26,7 +26,7 @@ English | [简体中文](./README.md)
 
 <div align="center">
 
-| RAG QA with citations | Hybrid retrieval · 9 modes |
+| Retrieval with citations | Hybrid retrieval · 9 modes |
 | :---: | :---: |
 | <img src="./assets/rag-chat.png" width="420"> | <img src="./assets/search.png" width="420"> |
 | **KB Wiki · knowledge graph** | **Document pipeline · task tracking** |
@@ -70,12 +70,12 @@ English | [简体中文](./README.md)
 Many knowledge-base projects only cover the "upload a document and chat" segment. NovaMind covers a more complete workflow:
 
 - From spaces, knowledge bases, and document upload to **multimodal parsing** (text / image / video / audio), splitting, vectorization, and indexing
-- From retrieval to RAG QA, and on to deep-research report generation
-- From plain chat to agents with tool-calling, MCP extensions, and a skill marketplace
+- From retrieval to knowledge-enhanced generation, and on to evaluation & operations loops
+- From a private knowledge base to an open knowledge service via MCP and an OpenAI-compatible gateway
 - From building capabilities to evaluation test sets, manual review, and result export
 - From raw documents to auto-generated structured wikis, knowledge graphs, and quality linting
 
-If you want to build more than a chat window — a system that can organize knowledge, execute tasks, and evaluate results — NovaMind is closer to a full workbench.
+If you want more than a document cabinet — a knowledge service that organizes knowledge, verifies quality continuously, and serves any agent host via MCP/OpenAI — NovaMind is exactly that.
 
 ## Core capabilities
 
@@ -104,16 +104,13 @@ If you want to build more than a chat window — a system that can organize know
   <img src="./assets/document-detail.png" alt="Document detail — parse result and chunk preview" width="760">
 </p>
 
-### 🤖 Intelligent apps
+### 🤖 Knowledge enhancement & open access
 
-- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing — click "locate source" on a PDF citation to jump to the exact page with bbox-level highlighting of the cited region; matched video chunks automatically carry the coherent chapter narrative summary as generation context
-- **Deep research**: combines internal KBs with external search (pluggable sources: Tavily / SerpAPI / DuckDuckGo), staged research-report generation
-- **Agents**: tool calling, MCP server integration, execution-trace replay
-- **Skill marketplace**: skill upload, review, install, and distribution
-- **App center**: scenario-packaged AI capabilities (e.g. resume mining)
+- **Knowledge service endpoints**: standard MCP server (kb_search retrieval tool) + OpenAI-compatible gateway (/v1/chat/completions) + API-key gating — Claude Code, Cursor, or any agent host can plug into your knowledge base directly
+- **Citation-level tracing**: retrieval results locate the exact source chunk; PDF citations jump to the exact page with bbox-level highlighting of the cited region; matched video chunks carry the coherent chapter narrative summary
 
 <p align="center">
-  <img src="./assets/agents.png" alt="Agent chat — knowledge retrieval assistant" width="760">
+  <img src="./assets/rag-chat.png" alt="Retrieval with citation tracing" width="760">
 </p>
 
 ### 🛡 Platform
@@ -167,7 +164,7 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 
 - **Frontend visualization**: wiki browser (page rendering + backlinks), force-directed knowledge graph (topic linking, node highlighting), issues panel (orphan pages / dead links / stale references / empty content and more — fix or ignore one by one, health score 0-100)
 - **Generated pages sync into the ES retrieval index** with boosted ranking — QA can hit wiki entries directly
-- **Agent integration**: QA agents can read wiki pages as a tool — "overview first, details second"
+- **Agent integration**: external agents can read wiki pages via MCP tools — "overview first, details second"
 - **Lifecycle management**: document updates / deletions reconcile automatically (reparse merges updates, source deletion retracts pages) — no dangling references
 
 <p align="center">
@@ -179,7 +176,7 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 - Teams or organizations that need an internal knowledge base with multi-space isolation and member permissions
 - Mixed document formats: scanned PDFs, images, meeting recordings, training videos — all in one retrieval system
 - A complete, observable, recoverable document pipeline: upload → parse → split → embed → retrieve → QA
-- Chaining RAG QA, deep research, and agent tool-calling into one workflow instead of scattered tools
+- Chaining knowledge governance, retrieval quality, and external agent-host consumption into one workflow instead of scattered tools
 - An evaluation system (test sets, auto eval, manual scoring) to verify KB effectiveness
 - Willing to run some infrastructure (MySQL, Redis, Elasticsearch, MinIO) in exchange for completeness and freedom
 
@@ -432,18 +429,18 @@ NovaMind/
 |  |- scripts/                      # model download scripts (DeepDoc / faster-whisper)
 |  |- src/
 |  |  |- core/                     # app factory, middleware, lifecycle, security
-|  |  |- engines/                  # engine layer: document / rag / agent / question_generation / wiki / video_narrative / eval / search / deep_research / resume
-|  |  |- features/                 # domain modules (user / knowledge_space / agent / agent_api / knowledge_ops / …)
+|  |  |- engines/                  # engine layer: document / rag / question_generation / wiki / video_narrative / eval / search
+|  |  |- features/                 # domain modules (user / knowledge_space / agent_api / knowledge_ops / evaluation / notification / …)
 |  |  |- setting/                  # YAML config loading
 |  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/document/…)
 |  `- tests/                       # layered by test target (architecture/core/shared/engines/features)
 |- frontend/                       # Vue 3 + TypeScript frontend
 |  |- src/
 |  |  |- api/                      # typed API clients grouped by domain
-|  |  |- components/               # domain components (knowledge/agent/chat/…)
+|  |  |- components/               # domain components (knowledge/common/…)
 |  |  |- router/
 |  |  |- stores/                   # Pinia
-|  |  `- views/                    # route-level pages (space/agent/research/skill/…)
+|  |  `- views/                    # route-level pages (space/user/…)
 |- docker/                         # Dockerfile, Nginx, Supervisord configs
 |- docs/                           # design docs and navigation docs
 |- docker-compose.yml
@@ -462,12 +459,8 @@ NovaMind/
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
 | Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
 | Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard & governance views |
-| Deep research | `/api/v1/spaces/{space_id}/deep-research` | multi-source search and research reports |
 | KB evaluation | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | test sets, eval tasks, export |
-| Agent | `/api/v1/agent` | agents, conversations (knowledge retrieval / attachments / skills / MCP tool calling) |
 | Agent API keys | `/api/v1/agent-api` | Agent API key management & OpenAI-compatible gateway |
-| Skill marketplace | `/api/v1/skills` | skill upload, review, install, browse |
-| App center | `/api/v1/apps` | scenario AI apps |
 | Notifications | `/api/v1/notifications` | in-app notifications and preferences |
 
 ## Configuration

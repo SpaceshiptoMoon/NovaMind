@@ -85,7 +85,9 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 
 **文档级反查**（2026-11，`api/document_routes.py`）：`GET /api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/wiki-references` —— 按 source_refs 反查引用该文档的存活页（复用 retract 反查 + 逐页精确项二次防御），文档详情页「已纳入 Wiki」反向条数据源。
 
-## Agent 工具（`features/agent/tool/builtins/wiki_tools.py`）
+## Agent 工具（已剥离）
+
+> 2026-11-15：`features/agent/`（含 wiki_tools 8 个工具）已随工作台整体剥离；wiki 的对外消费出口为 `agent_api` MCP（kb_search），wiki HTTP 端点保留。以下为历史设计存档。
 
 类名 `WikiTool`（非 Toolset），8 个工具：
 
@@ -116,6 +118,6 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 - 仓储：`backend/src/features/knowledge_space/repository/wiki_repository.py`、`wiki_issue_repository.py`
 - 路由：`backend/src/features/knowledge_space/api/wiki_routes.py`（`document_routes.py` 另含文档级 wiki-references 反查端点）
 - 任务：`backend/src/features/knowledge_space/tasks/wiki_tasks.py`
-- Agent：`backend/src/features/agent/tool/builtins/wiki_tools.py`
+- Agent（已剥离）：`backend/src/features/agent/tool/builtins/wiki_tools.py`（2026-11-15 移除；wiki HTTP 端点与 MCP kb_search 保留）
 - 提示词：`backend/src/features/knowledge_space/prompts/templates.py`（`wiki_` 前缀 9 个模板键：candidate_slug / chunk_citation / page_modify_system+user / summary_page / dedup / taxonomy_plan / index_intro / index_intro_update）
 - 前端：`frontend/src/views/space/WikiBrowserView.vue`、`frontend/src/views/space/DocumentDetailView.vue`、`frontend/src/api/knowledge/wiki.ts`、`frontend/src/api/knowledge/document.ts`（getWikiReferences）

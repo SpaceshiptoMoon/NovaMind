@@ -41,7 +41,7 @@
 
 - 超管与授权管理员的**唯一区别**是 `is_super_admin` 标记——授权管理员理论上可被另一管理员降级，超管不可。
 - 超管角色只能通过改 YAML `admin` 配置变更，管理端点一律 403（`PermissionDeniedError`）。
-- 权限码是封闭枚举（`core/authorization/permission_codes.py::SystemPermission`，5 个：user.manage / role.manage / skill.review / skill.config / agent.manage_system），admin 角色短路返回全部。
+- 权限码是封闭枚举（`core/authorization/permission_codes.py::SystemPermission`，2 个：user.manage / role.manage；skill.review / skill.config / agent.manage_system 已随 2026-11-15 工作台剥离移除），admin 角色短路返回全部。
 - **editor 角色已废弃**（2026-08-30）：三级模型下无位置，存量用户由 `_deprecate_editor_role` 迁移至 viewer 后删除。
 - 查询实现：`RbacPermissionService`（Redis 缓存 `rbac:user_perms:{uid}` TTL 5 分钟）。
 
@@ -56,9 +56,7 @@
 | 代码 | 应用 | 路由前缀 |
 |---|---|---|
 | `qa` | AI 对话 | /api/v1/qa、/api/v1/ai-chat、/api/v1/sessions |
-| `agent` | 智能体 | /api/v1/agent |
-| `skill` | 技能广场 | /api/v1/skills |
-| `app` | 应用中心（简历挖掘） | /api/v1/apps |
+| （空） | 可门禁应用已随 2026-11-15 工作台剥离清空，门禁恒放行；机制保留供未来应用接入 | — |
 
 **不进门禁**：知识空间（入口人人可见，内容由空间角色控制）、深研究/测评（空间功能）、通知/个人设置（人人可用）。新增 feature 或改挂载前缀时同步更新 `GATED_APP_PREFIXES`。
 

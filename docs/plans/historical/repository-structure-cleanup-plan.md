@@ -2,7 +2,7 @@
 
 > Historical note: this is a planning document rather than the source of truth for the current repository layout.
 > Some paths below reflect the planning-time structure or unrealized target states.
-> Current navigation should follow [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+> Current navigation should follow [`../README.md`](../README.md), [`../../project-structure-navigation.md`](../../project-structure-navigation.md), and [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md).
 
 ## Background
 

@@ -9,8 +9,8 @@
 
 ```
 [业务 feature]                              [notification feature]                 [前端]
-skill / knowledge_space /                   NotificationService                    stores/notification.ts
-deep_research / app / user  ──notify()──▶   ├─ 偏好过滤 (NotificationPreference)   ├─ WS 实时 prepend
+knowledge_space /                           NotificationService                    stores/notification.ts
+knowledge_ops / evaluation / user  ──notify()──▶ ├─ 偏好过滤 (NotificationPreference) ├─ WS 实时 prepend
               NotificationService.notify   ├─ DB 落库 (notifications 表)  ◀──30s 轮询──┤ (兜底收敛)
               （静态方法）                  ├─ WS 推送 (ConnectionManager) ───────▶├─ 铃铛徽标 (AppHeader)
                                             └─ 邮件 (EmailService, 默认关)         └─ 通知中心页 (NotificationView)
@@ -29,7 +29,7 @@ deep_research / app / user  ──notify()──▶   ├─ 偏好过滤 (Notif
   - HTTP 请求上下文：传 `db`（通知与主业务同事务，主业务回滚则通知一起回滚）
   - 后台任务/arq：传 `None`（每次 notify 开独立短会话，调用方 session 可能已 commit/关闭）
 - notify 内部吞掉一切异常（记 warning 日志）；服务层 helper 建议再兜一层（双保险，
-  见 `skill_marketplace_service._notify_review_result`）。
+  （示例发送方 skill_marketplace_service 已随剥离移除）。
 
 ### 2. ConnectionManager（WS 连接注册表）
 
@@ -66,7 +66,6 @@ flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通
 
 | type | 触发点 | 接收人 | link |
 |---|---|---|---|
-| skill_review | 后台审查三终态 + 异常转人工（`_do_review`）、管理员批准/拒绝 | 技能作者 | `/home/workspace/skills/{id}` |
 | space_invite | `invite_member`（带完整 invite_token）、`add_member_direct` | 被邀请/被直加人 | `/home/spaces/{id}/join?token=` 或 `/home/spaces/{id}` |
 | document_ready | 解析成功 / 用户取消 / 最终失败三终态（**重试中间态不发**） | 文档上传者 | `/home/spaces/{sid}/documents/{did}` |
 | research_done | 深度研究流式 + 非流式两条路径 commit 后（唯一执行入口是 agent 对话的 research 工具） | 发起用户 | `/home/workspace/chat` |

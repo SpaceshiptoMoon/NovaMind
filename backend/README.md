@@ -1,6 +1,6 @@
 # NovaMind 后端
 
-NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证、知识空间、知识库、文档处理、RAG 问答、深度研究、Agent、技能广场、通知中心和应用中心等能力。
+NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证、知识空间、知识库、文档处理、检索增强、评测、知识运营、通知中心，并经 MCP / OpenAI 兼容网关对外输出知识服务。
 
 后端代码按领域组织，而不是只按接口层拆分。业务模块位于 `src/features/`，共享基础设施和知识处理运行时位于 `src/core/`、`src/setting/` 和 `src/shared/`。
 
@@ -9,11 +9,10 @@ NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证�
 - `用户与认证`：登录、刷新令牌、密码流程、用户管理、模型配置
 - `知识空间`：空间、成员、权限、可见性、空间级默认配置
 - `知识库`：KB 配置、文档上传、解析、切分、索引、检索、评测
-- `RAG 与聊天`：会话管理、检索增强回答、流式聊天
-- `深度研究`：多源研究流程和报告生成
-- `Agent 平台`：Agent、MCP Server、工具编排、安全执行
-- `技能广场`：技能上传、审核、安装和元数据管理
-- `应用与通知`：场景应用、站内通知、偏好设置
+- `知识空间与文档`：多租户空间、多模态解析、检索增强、视频叙事
+- `评测与运营`：测试集、自动评测、事件归因、治理视图
+- `知识服务出口`：MCP server（kb_search）、OpenAI 兼容网关、API key 门禁
+- `通知`：站内通知、偏好设置
 
 ## 技术栈
 
@@ -37,27 +36,20 @@ backend/
 |- pyproject.toml
 |- src/
 |  |- core/                      # 应用工厂、中间件、数据库、安全
-|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/agent/question_generation/wiki/video_narrative/eval/…），零 feature/setting/core 依赖
-|  |  |- agent/                  # Agent 引擎（ReAct 循环、工具、记忆、MCP）
-|  |  |- deep_research/          # 深度研究引擎
+|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/question_generation/wiki/video_narrative/eval/search/…），零 feature/setting/core 依赖
 |  |  |- document/               # 文档处理引擎（pipeline/splitters/converters/media/deepdoc）
 |  |  |- eval/                   # 评测引擎（检索/生成/embedding/claim 评估器）
 |  |  |- question_generation/    # 假设问题生成引擎
-|  |  |- rag/                    # RAG 引擎（检索引擎、Grade→Retry、查询改写）
-|  |  |- resume/                 # 简历解析引擎
+|  |  |- rag/                    # 检索引擎（RetrievalEngine/SearchMode）
 |  |  |- search/                 # Web 搜索引擎组件（中立端口 + provider）
 |  |  |- video_narrative/        # 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档）
 |  |  `- wiki/                   # Wiki 纯函数件（互链/去重/句柄/slug/分类法）
 |  |- features/                  # 领域模块
-|  |  |- agent/
-|  |  |- agent_api/              # Agent API 密钥与 OpenAI 兼容网关
-|  |  |- app/
-|  |  |- deep_research/
+|  |  |- agent_api/              # 知识服务出口：API 密钥、MCP server、OpenAI 兼容网关
 |  |  |- evaluation/
 |  |  |- knowledge_ops/          # 知识运营（事件账本、归因、治理视图）
 |  |  |- knowledge_space/
 |  |  |- notification/
-|  |  |- skill/
 |  |  `- user/
 |  |- setting/                   # YAML 配置加载（单 default.yaml：凭据走 .env、连接参数带本地基线）
 |  `- shared/                    # 共享基础设施（storage/ai_models/cache/mq/prompts/document）
@@ -185,11 +177,8 @@ pytest -m "not slow"
 后端对外暴露的主要接口包括：
 
 - `/api/v1/user` — 认证、用户管理、RBAC 角色、模型配置、搜索配置、应用门禁
-- `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、视频叙事文档、深度研究、评测、空间运营洞察
-- `/api/v1/agent` — Agent、会话对话（知识检索 / 附件 / 技能 / MCP 工具调用）
-- `/api/v1/agent-api` — Agent API 密钥管理；`/v1` 挂 OpenAI 兼容网关
-- `/api/v1/skills` — 技能广场
-- `/api/v1/apps` — 应用中心（简历挖掘）
+- `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、视频叙事文档、评测、空间运营洞察
+- `/api/v1/agent-api` — API 密钥管理；`/mcp` 挂 MCP server（kb_search）；`/v1` 挂 OpenAI 兼容网关
 - `/api/v1/notifications` — 站内通知和偏好设置
 
 查看实时接口详情，请启动服务后访问：

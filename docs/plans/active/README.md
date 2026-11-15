@@ -10,10 +10,9 @@
 
 ## 当前文档
 
-- [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（E1-E4/E6/E7 已落地；E5 完整审批 UI、E8 OTel 观测、PlanningTool 二期待做；§9 checkbox 未回填）
-- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（G4-G7 待办有效：前端 MCP 管理 UI 缺失；G2/G3 已被 2026-08 用户决策推翻，仅保留参考价值）
+（暂无进行中的计划。）
 
-已归档至 [`../historical/`](../historical/)：ragflow 风格迁移两轮（2026-09-21 完成）、引擎抽库 6x 重组、QA RAG 管道重构（架构记录）、知识运营闭环计划（2026-10-02 八批次完成），以及 2026-07 的仓库结构清理四部曲与媒体问题修复记录。
+已归档至 [`../historical/`](../historical/)：ragflow 风格迁移两轮（2026-09-21 完成）、引擎抽库 6x 重组、QA RAG 管道重构（架构记录）、知识运营闭环计划（2026-10-02 八批次完成）、2026-07 的仓库结构清理四部曲与媒体问题修复记录，以及 Agent 能力增强/可插拔化/Mem0 集成三份计划（其宿主 agent 工作台已于 2026-11-15 整体剥离，计划随之失效归档）与工作台统一重构方案。
 
 ## 使用约定
 

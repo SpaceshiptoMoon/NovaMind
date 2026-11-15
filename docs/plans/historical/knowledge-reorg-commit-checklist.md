@@ -1,8 +1,8 @@
 # Knowledge Reorganization Commit Checklist
 
 > Historical note: this document is a migration-era staging checklist, not the canonical description of the current repository layout.
-> For the current knowledge-space structure, start with [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
-> For migration background and moved-file history, see [`../knowledge-space/process/README.md`](../knowledge-space/process/README.md).
+> For the current knowledge-space structure, start with [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md).
+> For migration background and moved-file history, see [`../../knowledge-space/process/README.md`](../../knowledge-space/process/README.md).
 
 ## Goal
 

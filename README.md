@@ -93,9 +93,9 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 2. **扫描件、公式、表格解析出来是乱码或空白。** 通用方案只抽 PDF 文字层，图片型 PDF 直接出空。NovaMind 内置 DeepDoc 解析引擎：版面分析 + 逐框文字层与 OCR 融合 + 公式识别 + 表格结构还原——解析质量决定 RAG 的下限。
 3. **上线两个月后弃用：「感觉答得不好，但说不清哪里不好」。** 没有反馈闭环的知识库会静默腐烂。NovaMind 把每条失败问答归因（内容缺口 / 检索失败 / 内容失效 / 权限边界），缺口清单可一键转成测试集——补完文档跑一遍回归就知道修没修好。
 
-在此基础上，NovaMind 覆盖完整工作流：空间 / 知识库 / 权限 → 多模态解析 → 切分 → 向量化 → 混合检索 → RAG 问答 / 深度研究 / Agent → 评测与运营闭环 → 自动生成结构化 Wiki 与知识图谱。
+在此基础上，NovaMind 覆盖完整工作流：空间 / 知识库 / 权限 → 多模态解析 → 切分 → 向量化 → 混合检索 → 知识增强与评测 → 运营闭环 → 自动生成结构化 Wiki 与知识图谱。
 
-如果你希望搭建的不只是一个聊天窗口，而是一套可组织知识、执行任务、评估效果的系统，NovaMind 更接近完整工作台。
+如果你希望搭建的不只是一个文档柜，而是一套可组织知识、持续验证效果、可经 MCP/OpenAI 接口被任何 agent 宿主消费的知识服务，NovaMind 就是这个定位。
 
 ## 核心能力
 
@@ -131,13 +131,10 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 - **假设问题增强**：可为分块自动生成假设问题并建立问题向量，提升问答召回
 - **知识库评测**：测试集管理、自动评测、人工打分、报告导出，验证知识库真实效果；QA 问答可一键沉淀进测试集，两次评测报告可对比查看用例级退化
 
-### 🤖 智能应用
+### 🤖 知识增强与开放接口
 
-- **RAG 问答**：基于知识库的多轮问答，支持会话配置与上下文压缩，答案带引用溯源——引用面板可定位原文分块，PDF 引用点击「原文定位」直达原文页并高亮命中区域（页码 + bbox 坐标级溯源）；命中视频分块时自动附带所在章节的连贯叙事摘要作为生成上下文
-- **深度研究**：联合内部知识库与外部搜索（数据源可插拔：Tavily / SerpAPI / DuckDuckGo），分步骤生成研究报告
-- **Agent**：工具调用（知识检索 / 附件 / Web 搜索）、MCP Server 接入、执行轨迹回放
-- **技能广场**：技能上传、审核、安装与市场化分发
-- **应用中心**：面向具体业务场景封装 AI 能力（如简历挖掘）
+- **知识服务出口**：标准 MCP server（kb_search 检索工具）+ OpenAI 兼容网关（/v1/chat/completions）+ API key 门禁——Claude Code、Cursor 等任何 agent 宿主可直接接入知识库
+- **引用级溯源**：检索结果可定位原文分块，PDF 引用直达原文页并高亮命中区域（页码 + bbox 坐标级溯源）；视频分块附所在章节的连贯叙事摘要
 
 ### 🛡 平台能力
 
@@ -361,7 +358,7 @@ Docker 部署模式：
 - 团队或组织内部知识库，文档形态多样：**扫描件 PDF、架构图、会议录音、产品演示视频**需要进同一个检索体系
 - 需要完整的文档处理链路：上传 → 解析 → 切分 → 向量化 → 检索 → 问答，且每一步可观测、可恢复
 - 需要多空间隔离和成员权限管理
-- 需要把 RAG 问答、深度研究、Agent 工具调用串成一条工作流，而不是零散的工具拼凑
+- 需要把知识治理、检索质量与外部 agent 宿主消费串成一条工作流，而不是零散的工具拼凑
 - 需要评测体系（测试集、自动评测、人工打分）来验证知识库效果
 - 愿意投入一些基础设施成本（MySQL、Redis、Elasticsearch、MinIO）来换取能力的完整性和自由度
 
@@ -489,7 +486,7 @@ src/features/{module}/           业务模块（领域层）
 |- models/                       ORM 模型
 `- schemas/                      Pydantic 请求/响应模型
 
-src/engines/{engine}/            可复用引擎（document/rag/agent/question_generation/wiki/video_narrative/…）——零 features/setting 依赖，客户端与存储由业务层注入
+src/engines/{engine}/            可复用引擎（document/rag/eval/question_generation/wiki/video_narrative/search/…）——零 features/setting 依赖，客户端与存储由业务层注入
 src/shared/                      模型客户端工厂 / 存储 / MQ / Prompt 注册表
 src/core/                        应用工厂 / 中间件 / 认证 / 生命周期
 ```
@@ -504,18 +501,18 @@ NovaMind/
 |  |- scripts/                      # 运维脚本（模型下载 / 检索质量回归基线）
 |  |- src/
 |  |  |- core/                     # 应用工厂、中间件、生命周期、安全
-|  |  |- engines/                  # 引擎层：document / rag / agent / question_generation / wiki / video_narrative / eval / search / deep_research / resume
-|  |  |- features/                 # 领域模块（user / knowledge_space / agent / agent_api / knowledge_ops / …）
+|  |  |- engines/                  # 引擎层：document / rag / question_generation / wiki / video_narrative / eval / search
+|  |  |- features/                 # 领域模块（user / knowledge_space / agent_api / knowledge_ops / evaluation / notification / …）
 |  |  |- setting/                  # YAML 配置加载
 |  |  `- shared/                   # 共享基础设施（storage/ai_models/mq/document/…）
 |  `- tests/                       # 按被测对象分层（architecture/core/shared/engines/features/integration）
 |- frontend/                       # Vue 3 + TypeScript 前端
 |  |- src/
 |  |  |- api/                      # 按领域分组的类型化 API 客户端
-|  |  |- components/               # 领域组件（knowledge/agent/chat/…）
+|  |  |- components/               # 领域组件（knowledge/common/…）
 |  |  |- router/
 |  |  |- stores/                   # Pinia
-|  |  `- views/                    # 路由级页面（space/agent/research/skill/…）
+|  |  `- views/                    # 路由级页面（space/user/…）
 |- docker/                         # Dockerfile、Nginx、Supervisord 配置
 |- docs/                           # 设计文档与导航文档
 |- docker-compose.yml
@@ -534,12 +531,8 @@ NovaMind/
 | 知识检索 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | 搜索模式、检索、Rerank |
 | 知识库 Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki 生成 / 浏览 / 图谱 / 质量巡检 |
 | 空间洞察 | `/api/v1/spaces/{space_id}/stats` | 问答量/点踩率/零命中/低分聚合，知识缺口看板与治理视图 |
-| 深度研究 | `/api/v1/spaces/{space_id}/deep-research` | 多源搜索和研究报告 |
 | 知识库评测 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | 测试集、评测任务、导出 |
-| Agent | `/api/v1/agent` | Agent、会话对话（知识检索 / 附件 / 技能 / MCP 工具调用） |
 | Agent API 密钥 | `/api/v1/agent-api` | Agent API 密钥管理与 OpenAI 兼容网关 |
-| 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、浏览 |
-| 应用中心 | `/api/v1/apps` | 场景化 AI 应用 |
 | 通知中心 | `/api/v1/notifications` | 站内通知和偏好设置 |
 
 ### 安全特性

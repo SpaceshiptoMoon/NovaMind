@@ -43,7 +43,7 @@ cd ../intelligent-agentA/backend
 
 worktree 只是把"文件系统静默覆盖"变成"git 可控合并";真正少冲突,靠任务边界清晰。
 
-- **按 feature / 目录边界切任务**:项目天然按 `backend/src/features/<domain>/` 切分,优先让一个 agent 独占一个 feature(`knowledge_space`、`agent`、`qa`、`evaluation`、`skill`、`user`…)。
+- **按 feature / 目录边界切任务**:项目天然按 `backend/src/features/<domain>/` 切分,优先让一个 agent 独占一个 feature(`knowledge_space`、`knowledge_ops`、`evaluation`、`user`、`agent_api`…)。
 - **单点共享文件串行化**:以下文件是跨 feature 单点,同一时间**只允许一个 agent 修改**,其余 agent 需要改时排队等前一个合并:
   - `src/shared/prompts/` 提示词注册表(参见记忆 [[prompt-registry-architecture]])
   - `src/features/*/manifest.py`(feature 声明入口:RouterSpec / init_hook / models_loader,同 feature 内路由变更都会触碰)
@@ -58,7 +58,7 @@ worktree 只是把"文件系统静默覆盖"变成"git 可控合并";真正少�
 
 - **频繁、原子提交**:完成一个可独立说明的小步就 commit,不要攒一大坨。小提交让合并冲突更易定位、更易 revert。
 - **不长期挂未提交改动**:每天结束前,工作区要么提交、要么 stash,别留半成品过夜——主工作目录尤其如此(它常被用来做集成合并)。
-- **提交信息**:遵循现有约定(`type(scope): subject`),如 `feat(knowledge_space): ...`、`fix(agent): ...`、`refactor(prompts): ...`。
+- **提交信息**:遵循现有约定(`type(scope): subject`),如 `feat(knowledge_space): ...`、`fix(auth): ...`、`refactor(prompts): ...`。
 - **遵守 Git 钩子**:禁止 `--no-verify` 跳过钩子(CLAUDE.md 已规定),钩子失败先修问题。
 
 ## 5. 合并回主干流程

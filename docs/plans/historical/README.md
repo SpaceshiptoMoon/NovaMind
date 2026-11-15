@@ -26,6 +26,8 @@
 - [`engine-restructure-6x-revert-and-reorganize.md`](./engine-restructure-6x-revert-and-reorganize.md)：引擎抽库方案变更与 6x 批次执行记录（engines/ 目录分层已落地）
 - [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
 - [`knowledge-operations-loop-plan.md`](./knowledge-operations-loop-plan.md)：知识运营闭环开发计划（✅ 2026-10-02 八批次全部完成——O1/O2/A1/A2/B1/B2/C/D + 前端批次；当前事实见 [`../../knowledge-space/current/kb-ops-loop-summary.md`](../../knowledge-space/current/kb-ops-loop-summary.md)）
+- [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md) / [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md) / [`agent-mem0-integration-plan.md`](./agent-mem0-integration-plan.md)：Agent 能力增强/可插拔化/Mem0 集成（2026-11-15 agent 工作台整体剥离后失效归档）
+- [`2026-10-07-workspace-unification-plan.md`](./2026-10-07-workspace-unification-plan.md)：工作台统一重构方案（其统一对话面已随 2026-11-15 剥离移除）
 
 ## 使用约定
 
