@@ -11,7 +11,7 @@ from novamind.features.knowledge_space.models.knowledge_space import (
 from novamind.features.knowledge_space.models.space_member import MemberStatus, SpaceMember
 from novamind.shared.storage.client_factory import get_redis_client
 from novamind.shared.utils.time_utils import now_china
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # 缓存 TTL 常量
@@ -247,6 +247,43 @@ class SpaceRepository:
             .order_by(SpaceMember.joined_at.desc())
             .offset(skip)
             .limit(limit)
+        )
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_accessible_spaces(self, user_id: int) -> list[KnowledgeSpace]:
+        """获取用户可检索的空间集合（活跃成员空间 ∪ 公开活跃空间）。
+
+        与空间内检索的权限语义对齐（成员或 PUBLIC）；全局检索的参与范围
+        取两者并集。PUBLIC 且非成员的空间无文档级隐藏清单——文档级权限
+        只作用于显式成员。
+
+        Args:
+            user_id: 用户 ID。
+
+        Returns:
+            可访问的知识空间列表（创建时间倒序）。
+        """
+        member_space_ids = (
+            select(SpaceMember.space_id)
+            .where(
+                SpaceMember.user_id == user_id,
+                SpaceMember.status == MemberStatus.ACTIVE,
+            )
+            .scalar_subquery()
+        )
+        query = (
+            select(KnowledgeSpace)
+            .where(
+                KnowledgeSpace.status == SpaceStatus.ACTIVE,
+                KnowledgeSpace.deleted_at.is_(None),
+                or_(
+                    KnowledgeSpace.id.in_(member_space_ids),
+                    KnowledgeSpace.visibility == SpaceVisibility.PUBLIC,
+                ),
+            )
+            .order_by(KnowledgeSpace.created_at.desc())
         )
 
         result = await self.session.execute(query)

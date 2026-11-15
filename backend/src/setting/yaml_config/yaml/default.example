@@ -180,6 +180,10 @@ knowledge_base:
     chunk_upload_max_chunk_mb: 32
     # 单用户并发分片上传会话数上限；防会话堆积占暂存盘。
     chunk_upload_max_sessions_per_user: 5
+  retrieval:
+    # 跨空间全局检索 fan-out 参与库上限：单次全局检索并发检索的库数量护栏。
+    # 超限库截断不参与（响应 skipped_kbs 注明 fan_out_limit），按空间/库规模调大。
+    global_search_max_kbs: 32
 
 smtp:
   enabled: false

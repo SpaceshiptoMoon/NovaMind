@@ -80,6 +80,34 @@ async def get_hidden_doc_ids_for_member(
     return extract_hidden_doc_ids(row)
 
 
+async def get_hidden_doc_ids_map(
+    session,
+    user_id: int,
+    space_ids: list[int],
+) -> dict[int, list[int]]:
+    """批量查用户在多个空间的隐藏文档清单（全局检索 DB 预取用）。
+
+    一次 IN 查询替代逐空间往返；无成员行的空间不入返回 map（缺键 = 空
+    清单 = 全可见）。单空间路径继续走 get_hidden_doc_ids_for_member。
+    """
+    if not space_ids:
+        return {}
+    from novamind.features.knowledge_space.models.space_member import (
+        MemberStatus,
+        SpaceMember,
+    )
+    from sqlalchemy import select
+
+    rows = (await session.execute(
+        select(SpaceMember.space_id, SpaceMember.custom_permissions).where(
+            SpaceMember.user_id == user_id,
+            SpaceMember.space_id.in_(space_ids),
+            SpaceMember.status == MemberStatus.ACTIVE,
+        ))
+    ).all()
+    return {space_id: extract_hidden_doc_ids(cp) for space_id, cp in rows}
+
+
 async def apply_document_permission_filter(
     session,
     *,

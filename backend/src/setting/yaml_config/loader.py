@@ -321,6 +321,7 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
                 vector_weight=hybrid.get("vector_weight", 0.7),
                 text_weight=hybrid.get("text_weight", 0.3),
             ),
+            global_search_max_kbs=retrieval.get("global_search_max_kbs", 32),
         ),
     )
 

@@ -166,6 +166,8 @@ class RetrievalConfig:
     score_threshold: float = 0.7
     rerank_enabled: bool = False
     hybrid_search: HybridSearchConfig = field(default_factory=HybridSearchConfig)
+    # 全局检索 fan-out 参与库上限（资源护栏：超限库截断并在响应 skipped_kbs 注明）
+    global_search_max_kbs: int = 32
 
 
 @dataclass

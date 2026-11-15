@@ -101,6 +101,34 @@ class KnowledgeBaseRepository:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_active_by_space_ids(self, space_ids: list[int]) -> list[KnowledgeBase]:
+        """批量获取多个空间的活跃知识库（全局检索 fan-out 目标解析用）。
+
+        仅取 ACTIVE 且未软删的库——归档库本就不参与召回，前置过滤与服务层
+        单库检索的归档拦截同语义。单查询避免逐空间 N+1。
+
+        Args:
+            space_ids: 空间 ID 列表（空列表直接返回空）。
+
+        Returns:
+            知识库列表（创建时间倒序）。
+        """
+        if not space_ids:
+            return []
+
+        query = (
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.space_id.in_(space_ids),
+                KnowledgeBase.deleted_at.is_(None),
+                KnowledgeBase.status == KnowledgeBaseStatus.ACTIVE,
+            )
+            .order_by(KnowledgeBase.created_at.desc())
+        )
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def get_by_name(
         self,
         space_id: int,

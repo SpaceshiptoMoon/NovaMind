@@ -3121,6 +3121,413 @@
         "title": "GapReportResponse",
         "type": "object"
       },
+      "GlobalSearchRequest": {
+        "description": "跨空间全局检索请求（门户/顶栏搜索直达的消费侧入口）。\n\n与单库 SearchRequest 的差异：无 space/kb 路径参数（范围 = 用户可访问\n空间的全部活跃库）；不支持 query_rewrite（改写是查询级 LLM 调用，fan-out\n下会放大 N 倍且合并语义未定义）与 weights/rerank/expansion 等专家参数。",
+        "properties": {
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchFilters"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "元数据过滤（tags OR 语义；带过滤的库内检索不走缓存）"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchLLMConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LLM 回答配置（启用时对合并 Top5 单次生成）"
+          },
+          "query": {
+            "description": "查询文本",
+            "examples": [
+              "跨空间的入职流程说明"
+            ],
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "score_threshold": {
+            "default": 0.0,
+            "description": "库内分数阈值（跨库分数来自不同模型，仅库内生效）",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score Threshold",
+            "type": "number"
+          },
+          "search_mode": {
+            "$ref": "#/components/schemas/SearchMode",
+            "default": "content_hybrid",
+            "description": "检索模式（逐库按能力回退：无问题生成的库降级 content_*，无 embedding 的库降级 BM25）"
+          },
+          "top_k": {
+            "default": 10,
+            "description": "合并后返回数量（每库按此抓取再 RRF 融合）",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "use_cache": {
+            "default": true,
+            "description": "是否使用库级检索缓存（缓存键按库分段，跨请求复用）",
+            "title": "Use Cache",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "GlobalSearchRequest",
+        "type": "object"
+      },
+      "GlobalSearchResponse": {
+        "description": "跨空间全局检索响应。",
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LLM 生成的回答（llm.enabled 时返回）",
+            "title": "Answer"
+          },
+          "answer_elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LLM 回答耗时（毫秒）",
+            "title": "Answer Elapsed Ms"
+          },
+          "answer_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "生成回答使用的模型名称",
+            "title": "Answer Model"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "总耗时（毫秒）",
+            "title": "Elapsed Ms"
+          },
+          "query": {
+            "description": "原始查询文本",
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "description": "RRF 融合排序后的结果列表",
+            "items": {
+              "$ref": "#/components/schemas/GlobalSearchResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "search_mode": {
+            "description": "请求的检索模式（逐库可能回退）",
+            "title": "Search Mode",
+            "type": "string"
+          },
+          "searched_kbs": {
+            "description": "实际参与检索的知识库数",
+            "title": "Searched Kbs",
+            "type": "integer"
+          },
+          "skipped_kbs": {
+            "description": "未参与的库及原因（截断/单库失败）",
+            "items": {
+              "$ref": "#/components/schemas/GlobalSearchSkippedKB"
+            },
+            "title": "Skipped Kbs",
+            "type": "array"
+          },
+          "top_k": {
+            "description": "请求的返回数量",
+            "title": "Top K",
+            "type": "integer"
+          },
+          "total": {
+            "description": "返回结果数",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "results",
+          "total",
+          "query",
+          "search_mode",
+          "top_k",
+          "searched_kbs"
+        ],
+        "title": "GlobalSearchResponse",
+        "type": "object"
+      },
+      "GlobalSearchResult": {
+        "description": "全局检索结果项：单库结果补空间/知识库来源信息。",
+        "properties": {
+          "chunk_id": {
+            "description": "分块 ID",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "chunk_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "分块索引",
+            "title": "Chunk Index"
+          },
+          "chunk_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "父子分块角色：parent（父块，理论不可召回）/child（子块）；其余 None",
+            "title": "Chunk Role"
+          },
+          "chunk_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "分块类型: text/image/video/audio",
+            "title": "Chunk Type"
+          },
+          "content": {
+            "description": "检索到的内容",
+            "title": "Content",
+            "type": "string"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "层级切分内容类型：text（正文锚点/正文）/table（表格）/code（代码块）；其余 None",
+            "title": "Content Type"
+          },
+          "document_id": {
+            "description": "文档 ID",
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "file_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文件信息",
+            "title": "File Info"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "图片预览 URL（已废弃，请使用 media_url）",
+            "title": "Image Url"
+          },
+          "kb_id": {
+            "description": "知识库 ID",
+            "title": "Kb Id",
+            "type": "integer"
+          },
+          "kb_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源知识库名称",
+            "title": "Kb Name"
+          },
+          "media_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "媒体文件预览 URL（图片/视频/音频）",
+            "title": "Media Url"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "分块元数据",
+            "title": "Metadata"
+          },
+          "narrative_chapter": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "视频叙事章节摘要（title/start_time/end_time/summary/overview）",
+            "title": "Narrative Chapter"
+          },
+          "questions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "该分块预生成的假设性问题列表",
+            "title": "Questions"
+          },
+          "score": {
+            "description": "融合分数",
+            "title": "Score",
+            "type": "number"
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "空间 ID（QA 引用回跳原文定位用）",
+            "title": "Space Id"
+          },
+          "space_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源空间名称",
+            "title": "Space Name"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "document_id",
+          "kb_id",
+          "content",
+          "score"
+        ],
+        "title": "GlobalSearchResult",
+        "type": "object"
+      },
+      "GlobalSearchSkippedKB": {
+        "description": "未参与全局检索的知识库及原因。",
+        "properties": {
+          "kb_id": {
+            "description": "知识库 ID",
+            "title": "Kb Id",
+            "type": "integer"
+          },
+          "kb_name": {
+            "description": "知识库名称",
+            "title": "Kb Name",
+            "type": "string"
+          },
+          "reason": {
+            "description": "跳过原因：fan_out_limit（超参与库上限被截断）/ error（单库检索失败）",
+            "title": "Reason",
+            "type": "string"
+          },
+          "space_id": {
+            "description": "所属空间 ID",
+            "title": "Space Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kb_id",
+          "kb_name",
+          "space_id",
+          "reason"
+        ],
+        "title": "GlobalSearchSkippedKB",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -11367,6 +11774,54 @@
         "summary": "标记通知为已读",
         "tags": [
           "通知"
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "post": {
+        "description": "跨空间全局检索：一次查询搜索当前用户可访问的全部空间（活跃成员空间 ∪ 公开空间）\n下的全部活跃知识库，各库结果经 RRF 融合排序。\n\n**检索范围**：无需指定空间/知识库；权限链与空间内检索一致（成员或 PUBLIC，\n成员的文档级隐藏清单逐空间生效）。\n\n**模式回退**（逐库自动，无需干预）：\n- 未启用问题生成的库：`question_*` / `all_*` 降级对应 `content_*`\n- 空间未配置 embedding（或模型不可用）的库：向量/混合模式降级 BM25\n\n**容错**：单库检索失败不炸全局，进 `skipped_kbs` 返回；参与库数量超\n`knowledge_base.retrieval.global_search_max_kbs` 上限的库截断并注明 `fan_out_limit`。\n\n**LLM 回答**：`llm.enabled=true` 时对合并后 Top5 单次生成（`answer` 字段）。",
+        "operationId": "global_search_api_v1_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlobalSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "跨空间全局检索",
+        "tags": [
+          "全局检索",
+          "全局检索"
         ]
       }
     },

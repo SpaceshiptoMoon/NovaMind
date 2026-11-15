@@ -5,12 +5,14 @@ embedding 模型从知识库字段获取，rerank 模型从请求参数获取，
 
 import hashlib
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.rag import (
     RetrievalEngine,
     RetrievalQuery,
+    RetrievalResult,
 )
 from novamind.engines.rag.errors import (
     EmbeddingError as RagEmbeddingError,
@@ -28,6 +30,7 @@ from novamind.features.knowledge_space.exceptions import (
     SearchError,
     SpaceAccessDeniedError,
 )
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
@@ -529,6 +532,153 @@ class SearchService:
                     break
         return results
 
+    async def retrieve_for_kb(
+        self,
+        kb: KnowledgeBase,
+        user_id: int,
+        request: SearchRequest,
+        *,
+        search_mode: str | None = None,
+        effective_query: str | None = None,
+        sub_queries: list[str] | None = None,
+        sub_query_merge_mode: str = "rrf",
+        space_lookup: Callable[[int], Awaitable[Any]] | None = None,
+        embedding_client_resolver=None,
+        rerank_client_resolver=None,
+    ) -> RetrievalResult:
+        """单库检索与结果富化（扩窗/叙事），空间内检索与全局 fan-out 的共用段。
+
+        权限过滤与 LLM 回答不在内（调用方职责）。默认懒解析 embedding/rerank
+        客户端（缓存命中不解析，对齐原内联段时序）；外部可注入预构建客户端
+        与空间查询函数——全局 fan-out 并发调用时不能经请求级 session 做懒
+        查询，须以预取数据闭合。上下文扩展先于权限过滤执行：扩展只取命中
+        同文档内容，先扩后滤与先滤后扩等价。
+
+        Args:
+            kb: 目标知识库（调用方已校验归属与状态）。
+            user_id: 触发用户（模型凭证解析与引擎缓存键分段用）。
+            request: 检索请求（query/top_k/weights/rerank/filters/expansion/use_cache）。
+            search_mode: 实际执行的模式（调用方已按 KB 能力回退；缺省取请求值）。
+            effective_query: 改写后的检索文本（无改写时缺省同请求 query）。
+            sub_queries: 子问题多路检索列表（改写策略产物，可空）。
+            sub_query_merge_mode: 子问题结果合并方式。
+            space_lookup: space_id → KnowledgeSpace 的异步查询（预取缓存，可空）。
+            embedding_client_resolver: 预构建 embedding 客户端解析器（可空）。
+            rerank_client_resolver: 预构建 rerank 客户端解析器（可空）。
+
+        Returns:
+            RetrievalResult（results 已含扩展与叙事富化，cached 透传）。
+
+        Raises:
+            EmbeddingError: 向量客户端解析或调用失败。
+            SearchError: 引擎检索失败。
+        """
+        mode = search_mode or (
+            str(request.search_mode.value)
+            if hasattr(request.search_mode, "value")
+            else str(request.search_mode)
+        )
+        rerank = request.rerank
+        rerank_enabled = rerank.enabled if rerank else False
+
+        # 客户端 resolver（懒解析：engine 仅在非缓存命中 / 有结果时才调用，
+        # 缓存命中不解析 embedding，避免配置缺失误报）
+        needs_vector = "vector" in mode or "hybrid" in mode
+        if embedding_client_resolver is None and needs_vector:
+            async def _resolve_embedding() -> BaseEmbedding | None:
+                if space_lookup is not None:
+                    space = await space_lookup(kb.space_id)
+                else:
+                    space = await self.space_repo.get_by_id(kb.space_id, use_cache=True)
+                embedding_model = space.embedding_model if space else None
+                return await self._get_embedding_client(user_id, embedding_model)
+            embedding_client_resolver = _resolve_embedding
+        if rerank_client_resolver is None and rerank_enabled:
+            rerank_model = rerank.model if rerank else None
+            async def _resolve_rerank() -> BaseRerank | None:
+                return await self._get_rerank_client(user_id, rerank_model)
+            rerank_client_resolver = _resolve_rerank
+
+        # wiki 页加权（对齐 WeKnora wiki_boost ×1.3）：KB 启用 wiki 且 KB 级
+        # 未显式关闭时生效；factor 入缓存键（见引擎 _generate_query_hash）
+        wiki_boost_factor = 1.0
+        try:
+            kb_cfg = kb.get_config() or {}
+            wiki_cfg = kb_cfg.get("wiki") or {}
+            if wiki_cfg.get("enabled") and wiki_cfg.get("boost_factor") is not None:
+                wiki_boost_factor = float(wiki_cfg.get("boost_factor") or 1.3)
+            elif wiki_cfg.get("enabled"):
+                wiki_boost_factor = 1.3
+        except Exception:
+            wiki_boost_factor = 1.0
+
+        # 标签过滤不入缓存：标签随时可改且缓存键未纳入 filters（改标后
+        # 旧缓存命中会给出未过滤结果），宁缺缓存保正确
+        doc_tags = (request.filters.tags or None) if request.filters else None
+
+        weights = request.weights
+        rq = RetrievalQuery(
+            space_id=kb.space_id,
+            kb_id=kb.id,
+            query=request.query,
+            effective_query=effective_query or request.query,
+            sub_queries=sub_queries,
+            sub_query_merge_mode=sub_query_merge_mode,
+            search_mode=mode,
+            top_k=request.top_k,
+            vector_weight=weights.vector_weight if weights else DEFAULT_VECTOR_WEIGHT,
+            bm25_weight=weights.bm25_weight if weights else 0.3,
+            content_weight=weights.content_weight if weights else 0.6,
+            question_weight=weights.question_weight if weights else 0.4,
+            rrf_k=weights.rrf_k if weights else 60,
+            score_threshold=request.score_threshold,
+            rerank_enabled=rerank_enabled,
+            rerank_top_k=rerank.top_k if rerank else 3,
+            rerank_model=rerank.model if rerank else None,
+            user_id=user_id,
+            wiki_boost_factor=wiki_boost_factor,
+            doc_tags=doc_tags,
+        )
+        # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
+        use_cache_for_engine = (
+            request.use_cache and request.query_rewrite is None and not doc_tags
+        )
+        # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
+        try:
+            result = await self.retrieval_engine.retrieve_raw(
+                rq,
+                embedding_client_resolver=embedding_client_resolver,
+                rerank_client_resolver=rerank_client_resolver,
+                use_cache=use_cache_for_engine,
+            )
+        except RagEmbeddingError as e:
+            raise EmbeddingError(str(e))
+        except RagSearchError as e:
+            raise SearchError(str(e))
+
+        # 检索期上下文扩展（sentence_window 扩窗 / parent_child 回带父块 /
+        # hierarchical 双向追加）：只对携带扩展元数据的命中生效，存量 chunk 零
+        # 成本直通；扩展取同文档内容，与权限过滤的命中同文档，无跨文档泄露
+        # 通路。窗口/父块文本替换 content（下游消费方零改动），原子块文本保留
+        # 进 metadata.expansion.retrieved_content。request.expansion 可整体关闭
+        # 或按扩展类型过滤（None = 全部启用，与存量行为一致）。
+        from novamind.features.knowledge_space.services.chunk_expansion_service import (
+            expand_search_results,
+        )
+
+        result.results = await expand_search_results(
+            self.es_client, kb.space_id, result.results,
+            expansion_config=request.expansion,
+        )
+
+        # 视频叙事分层消费：命中的视频块附加所在章节连贯摘要（碎片块负责
+        # 召回，章节摘要补充生成上下文——"这个视频讲了什么"类问题的答案质量层）
+        try:
+            result.results = await self._attach_narrative_chapters(result.results)
+        except Exception as e:
+            self.logger.warning("叙事章节附加失败（不影响检索结果）", error=str(e))
+        return result
+
     async def search(
         self,
         space_id: int,
@@ -576,8 +726,6 @@ class SearchService:
         search_mode = str(request.search_mode.value) if hasattr(request.search_mode, 'value') else str(request.search_mode)
         top_k = request.top_k
         fallback_on_unavailable = request.fallback_on_unavailable
-        use_cache = request.use_cache
-        score_threshold = request.score_threshold
 
         # 提取权重配置
         weights = request.weights
@@ -585,7 +733,6 @@ class SearchService:
         bm25_weight = weights.bm25_weight if weights else 0.3
         content_weight = weights.content_weight if weights else 0.6
         question_weight = weights.question_weight if weights else 0.4
-        rrf_k = weights.rrf_k if weights else 60
 
         # 校验算法权重：vector_weight + bm25_weight 必须等于 1.0
         # 仅 hybrid 模式实际使用这两个权重；纯 BM25/vector 模式不消费，跳过校验避免误拒
@@ -605,11 +752,7 @@ class SearchService:
                     reason=f"内容权重 ({content_weight}) 与问题权重 ({question_weight}) 之和必须等于 1.0，当前为 {content_weight + question_weight}",
                 )
 
-        # 提取 rerank 配置
-        rerank = request.rerank
-        rerank_enabled = rerank.enabled if rerank else False
-        rerank_top_k = rerank.top_k if rerank else 3
-        rerank_model = rerank.model if rerank else None
+        # 提取 rerank/改写所需的请求段由 retrieve_for_kb 统一消费
         start_time = time.time()
         original_mode = search_mode
         mode_fallback = False
@@ -692,78 +835,15 @@ class SearchService:
             if (sub_queries and request.query_rewrite) else "rrf"
         )
 
-        # 6. 客户端 resolver（懒解析：engine 仅在非缓存命中 / 有结果时才调用，
-        #    逐字对齐原 search 的懒解析时序——缓存命中不解析 embedding，避免配置缺失误报）
-        needs_vector = "vector" in search_mode or "hybrid" in search_mode
-        embedding_client_resolver = None
-        if needs_vector:
-            async def _resolve_embedding() -> BaseEmbedding | None:
-                space = await self.space_repo.get_by_id(kb.space_id, use_cache=True)
-                embedding_model = space.embedding_model if space else None
-                return await self._get_embedding_client(user_id, embedding_model)
-            embedding_client_resolver = _resolve_embedding
-        rerank_client_resolver = None
-        if rerank_enabled:
-            async def _resolve_rerank() -> BaseRerank | None:
-                return await self._get_rerank_client(user_id, rerank_model)
-            rerank_client_resolver = _resolve_rerank
-
-        # 7. 构造纯检索入参并委托引擎
-        # wiki 页加权（对齐 WeKnora wiki_boost ×1.3）：KB 启用 wiki 且 KB 级
-        # 未显式关闭时生效；factor 入缓存键（见引擎 _generate_query_hash）
-        wiki_boost_factor = 1.0
-        try:
-            kb_cfg = kb.get_config() or {}
-            wiki_cfg = kb_cfg.get("wiki") or {}
-            if wiki_cfg.get("enabled") and wiki_cfg.get("boost_factor") is not None:
-                wiki_boost_factor = float(wiki_cfg.get("boost_factor") or 1.3)
-            elif wiki_cfg.get("enabled"):
-                wiki_boost_factor = 1.3
-        except Exception:
-            wiki_boost_factor = 1.0
-
-        # 标签过滤不入缓存：标签随时可改且缓存键未纳入 filters（改标后
-        # 旧缓存命中会给出未过滤结果），宁缺缓存保正确
-        doc_tags = (request.filters.tags or None) if request.filters else None
-
-        rq = RetrievalQuery(
-            space_id=space_id,
-            kb_id=kb_id,
-            query=query,
+        # 6-7. 委托单库检索段（resolver 构造 → RetrievalQuery → 引擎检索 →
+        # 上下文扩展/视频叙事富化；权限过滤与 LLM 回答留在本方法）
+        result = await self.retrieve_for_kb(
+            kb, user_id, request,
+            search_mode=search_mode,
             effective_query=effective_query,
             sub_queries=sub_queries,
             sub_query_merge_mode=sub_query_merge_mode,
-            search_mode=search_mode,
-            top_k=top_k,
-            vector_weight=vector_weight,
-            bm25_weight=bm25_weight,
-            content_weight=content_weight,
-            question_weight=question_weight,
-            rrf_k=rrf_k,
-            score_threshold=score_threshold,
-            rerank_enabled=rerank_enabled,
-            rerank_top_k=rerank_top_k,
-            rerank_model=rerank_model,
-            user_id=user_id,
-            wiki_boost_factor=wiki_boost_factor,
-            doc_tags=doc_tags,
         )
-        # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
-        use_cache_for_engine = (
-            use_cache and request.query_rewrite is None and not doc_tags
-        )
-        # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
-        try:
-            result = await self.retrieval_engine.retrieve_raw(
-                rq,
-                embedding_client_resolver=embedding_client_resolver,
-                rerank_client_resolver=rerank_client_resolver,
-                use_cache=use_cache_for_engine,
-            )
-        except RagEmbeddingError as e:
-            raise EmbeddingError(str(e))
-        except RagSearchError as e:
-            raise SearchError(str(e))
 
         # 7.5 文档级权限过滤（kb-ops backlog：检索时权限生效——hidden_doc_ids
         # 剔除在宿主做，引擎不感知权限；缓存键已按 user_id 分段，跨用户不串。
@@ -777,29 +857,6 @@ class SearchService:
             result.results = await apply_document_permission_filter(
                 self.session, space_id=space_id, user_id=user_id, results=result.results,
             )
-
-        # 7.6 检索期上下文扩展（sentence_window 扩窗 / parent_child 回带父块 /
-        # hierarchical 双向追加）：只对携带扩展元数据的命中生效，存量 chunk 零
-        # 成本直通。挂在权限过滤后、LLM 前——cached/fresh/bypass 三路全覆盖；
-        # 扩展取同文档内容，与权限过滤的命中同文档，无跨文档泄露通路。窗口/
-        # 父块文本替换 content（下游 QA/agent/MCP 零改动），原子块文本保留进
-        # metadata.expansion.retrieved_content。request.expansion 可整体关闭或
-        # 按扩展类型过滤（None = 全部启用，与存量行为一致）。
-        from novamind.features.knowledge_space.services.chunk_expansion_service import (
-            expand_search_results,
-        )
-
-        result.results = await expand_search_results(
-            self.es_client, space_id, result.results,
-            expansion_config=request.expansion,
-        )
-
-        # 7b. 视频叙事分层消费：命中的视频块附加所在章节连贯摘要
-        # （碎片块负责召回，章节摘要补充生成上下文——"这个视频讲了什么"类问题的答案质量层）
-        try:
-            result.results = await self._attach_narrative_chapters(result.results)
-        except Exception as e:
-            self.logger.warning("叙事章节附加失败（不影响检索结果）", error=str(e))
 
         # 8. LLM 回答生成 + elapsed_ms 保真
         # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）

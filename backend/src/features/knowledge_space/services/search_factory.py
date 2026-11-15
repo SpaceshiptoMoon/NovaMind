@@ -27,6 +27,7 @@ async def build_search_service(
     model_config_service: ModelConfigService | None = None,
     instrumented: bool = True,
     retrieval_engine: RetrievalEngine | None = None,
+    service_cls: type[SearchService] | None = None,
 ) -> SearchService:
     """构造装配完成的检索服务。
 
@@ -40,9 +41,12 @@ async def build_search_service(
         retrieval_engine: 显式检索引擎（仅 FastAPI 权威装配点注入带
             RedisCache 的实例）；None 时 SearchService 内部惰性降级
             （LazyRedisCache，未装配时 no-op）。
+        service_cls: 自定义服务类（须为 SearchService 子类且构造签名兼容，
+            如全局检索的 GlobalSearchService）；与 instrumented=True 互斥
+            （埋点包装只对 search() 入口有意义，自定义类自带编排入口）。
 
     Returns:
-        SearchService（或其 Instrumented 子类——纯继承透传，调用方无感）。
+        SearchService（或其子类——调用方无感）。
     """
     if es_client is None:
         from novamind.shared.storage.client_factory import get_elasticsearch_client
@@ -62,6 +66,15 @@ async def build_search_service(
             model_config_service=model_config_service,
             retrieval_engine=retrieval_engine,
         )
+
+    if service_cls is not None:
+        return service_cls(
+            session=session,
+            es_client=es_client,
+            model_config_service=model_config_service,
+            retrieval_engine=retrieval_engine,
+        )
+
     from novamind.features.knowledge_space.services.search_service import SearchService
 
     return SearchService(

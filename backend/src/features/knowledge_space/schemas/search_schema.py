@@ -424,6 +424,101 @@ SEARCH_MODE_FALLBACK = {
 }
 
 
+# ========== 跨空间全局检索（消费侧入口） ==========
+
+class GlobalSearchRequest(BaseModel):
+    """跨空间全局检索请求（门户/顶栏搜索直达的消费侧入口）。
+
+    与单库 SearchRequest 的差异：无 space/kb 路径参数（范围 = 用户可访问
+    空间的全部活跃库）；不支持 query_rewrite（改写是查询级 LLM 调用，fan-out
+    下会放大 N 倍且合并语义未定义）与 weights/rerank/expansion 等专家参数。
+    """
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="查询文本",
+        examples=["跨空间的入职流程说明"],
+    )
+
+    search_mode: SearchMode = Field(
+        default=SearchMode.CONTENT_HYBRID,
+        description="检索模式（逐库按能力回退：无问题生成的库降级 content_*，无 embedding 的库降级 BM25）",
+    )
+
+    top_k: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="合并后返回数量（每库按此抓取再 RRF 融合）",
+    )
+
+    score_threshold: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="库内分数阈值（跨库分数来自不同模型，仅库内生效）",
+    )
+
+    llm: SearchLLMConfig | None = Field(
+        default=None,
+        description="LLM 回答配置（启用时对合并 Top5 单次生成）",
+    )
+
+    filters: SearchFilters | None = Field(
+        default=None,
+        description="元数据过滤（tags OR 语义；带过滤的库内检索不走缓存）",
+    )
+
+    use_cache: bool = Field(
+        default=True,
+        description="是否使用库级检索缓存（缓存键按库分段，跨请求复用）",
+    )
+
+
+class GlobalSearchSkippedKB(BaseModel):
+    """未参与全局检索的知识库及原因。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kb_id: int = Field(..., description="知识库 ID")
+    kb_name: str = Field(..., description="知识库名称")
+    space_id: int = Field(..., description="所属空间 ID")
+    reason: str = Field(
+        ...,
+        description="跳过原因：fan_out_limit（超参与库上限被截断）/ error（单库检索失败）",
+    )
+
+
+class GlobalSearchResult(SearchResult):
+    """全局检索结果项：单库结果补空间/知识库来源信息。"""
+
+    space_name: str | None = Field(None, description="来源空间名称")
+    kb_name: str | None = Field(None, description="来源知识库名称")
+
+
+class GlobalSearchResponse(BaseModel):
+    """跨空间全局检索响应。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    results: list[GlobalSearchResult] = Field(..., description="RRF 融合排序后的结果列表")
+    total: int = Field(..., description="返回结果数")
+    query: str = Field(..., description="原始查询文本")
+    search_mode: str = Field(..., description="请求的检索模式（逐库可能回退）")
+    top_k: int = Field(..., description="请求的返回数量")
+    searched_kbs: int = Field(..., description="实际参与检索的知识库数")
+    skipped_kbs: list[GlobalSearchSkippedKB] = Field(
+        default_factory=list,
+        description="未参与的库及原因（截断/单库失败）",
+    )
+    answer: str | None = Field(None, description="LLM 生成的回答（llm.enabled 时返回）")
+    answer_model: str | None = Field(None, description="生成回答使用的模型名称")
+    answer_elapsed_ms: float | None = Field(None, description="LLM 回答耗时（毫秒）")
+    elapsed_ms: float | None = Field(None, description="总耗时（毫秒）")
+
+
 # ========== 知识库模型配置 ==========
 
 class KnowledgeBaseModelConfigResponse(BaseModel):

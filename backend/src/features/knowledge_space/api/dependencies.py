@@ -3,7 +3,7 @@
 
 # ========== 请求级缓存 ==========
 import contextvars
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends
 from novamind.core.auth import get_current_user, get_current_user_optional
@@ -49,6 +49,11 @@ from novamind.shared.storage.client_factory import (
 )
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from novamind.features.knowledge_space.services.global_search_service import (
+        GlobalSearchService,
+    )
 
 # 使用 contextvars 实现请求级别的用户信息缓存
 _request_user_cache: contextvars.ContextVar[dict[int, Any]] = contextvars.ContextVar(
@@ -269,6 +274,43 @@ async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchServic
         es_client=es_client,
         instrumented=True,
         retrieval_engine=retrieval_engine,
+    )
+
+
+async def get_global_search_service(
+    db: AsyncSession = Depends(get_db),
+) -> "GlobalSearchService":
+    """获取跨空间全局检索服务。
+
+    装配与 get_search_service 同源（ES 客户端单例 + 检索引擎含 Redis 缓存），
+    仅服务类不同；不套 Instrumented 埋点——其包装只对 search() 入口有意义，
+    全局检索走 global_search() 编排入口，审计由路由层逐空间落账。
+
+    Args:
+        db: 请求级数据库会话（FastAPI Depends 注入）。
+
+    Returns:
+        装配完成的 GlobalSearchService。
+    """
+    from novamind.features.knowledge_space.services.global_search_service import (
+        GlobalSearchService,
+    )
+    from novamind.features.knowledge_space.services.search_factory import (
+        build_search_service,
+    )
+
+    es_client = await get_elasticsearch_client()
+    retrieval_engine = RetrievalEngine(
+        es_client,
+        get_logger("novamind.features.knowledge_space.services.search_service"),
+        cache_port=await get_redis_cache(),
+    )
+    return await build_search_service(
+        db,
+        es_client=es_client,
+        instrumented=False,
+        retrieval_engine=retrieval_engine,
+        service_cls=GlobalSearchService,
     )
 
 
