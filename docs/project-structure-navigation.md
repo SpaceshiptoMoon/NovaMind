@@ -56,10 +56,7 @@ schemas/
 | `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、Wiki 生成与浏览、视频叙事文档 |
 | `backend/src/features/knowledge_ops/` | 知识运营（事件账本、四分归因、gap 闭环、建议队列、治理视图） |
 | `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
-| `backend/src/features/deep_research/` | 深度研究读取面与执行编排（唯一入口是 agent 的 research 工具） |
-| `backend/src/features/agent/` | Agent、会话对话（知识检索/附件/技能）、MCP 集成、工具编排 |
-| `backend/src/features/agent_api/` | Agent API 密钥管理与 OpenAI 兼容网关 |
-| `backend/src/features/skill/` | 技能广场和审核 |
+| `backend/src/features/agent_api/` | 知识服务出口：API 密钥、MCP server（kb_search）、OpenAI 兼容网关 |
 | `backend/src/features/app/` | 应用中心（简历挖掘） |
 | `backend/src/features/notification/` | 通知和偏好设置 |
 
@@ -70,9 +67,7 @@ schemas/
 
 | 路径 | 内容 |
 | --- | --- |
-| `backend/src/engines/agent/` | Agent 引擎（ReAct 循环、工具、记忆、MCP、审批） |
 | `backend/src/engines/document/` | 文档处理引擎（pipeline / splitters / converters / media / deepdoc） |
-| `backend/src/engines/deep_research/` | 深度研究引擎 |
 | `backend/src/engines/eval/` | 评测引擎（retrieval / generation / embedding / claim 评估器） |
 | `backend/src/engines/question_generation/` | 假设问题生成引擎 |
 | `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry、查询改写） |
@@ -111,14 +106,10 @@ schemas/
 | --- | --- |
 | `frontend/src/views/auth/` | 登录、忘记密码、重置密码 |
 | `frontend/src/views/space/` | 空间、知识库、文档和配置流程 |
-| `frontend/src/views/chat/` | 工作台对话入口薄 view（欢迎页 / 会话直达分流） |
-| `frontend/src/views/agent/` | 工作台对话页（单聊 AgentChatView / 协作对话 GroupChatView） |
-| `frontend/src/views/skill/` | 技能广场和管理审核 |
-| `frontend/src/views/app/` | 应用中心 |
 | `frontend/src/views/user/` | 个人资料、模型、通知、用户管理 |
 
-工作台对话前端（侧栏会话中心、统一创建、共享聊天组件、右面板）的完整结构见
-[`agent/workspace-ui-architecture.md`](./agent/workspace-ui-architecture.md)。
+（2026-11-15 剥离工作台：agent 对话/技能广场/应用中心/深度研究前后端已移除，
+设计与交接文档归档于 `docs/agent/historical/` 与 `docs/plans/historical/`。）
 
 知识库相关 UI 主要集中在：
 

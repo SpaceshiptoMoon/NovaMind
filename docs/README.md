@@ -49,12 +49,11 @@
 - [`single-process-boundary-conventions.md`](./single-process-boundary-conventions.md)：单进程部署边界约定（进程内状态清单、多 worker 故障形态、水平扩展演进路径）
 - [`multi-agent-parallel-development-workflow.md`](./multi-agent-parallel-development-workflow.md)：多 Agent 并行开发的 worktree 工作流
 
-### Agent / Deep Research 子系统
+### 知识服务出口（agent_api）
 
-- [`agent/workspace-ui-architecture.md`](./agent/workspace-ui-architecture.md)：工作台对话前端架构（侧栏会话中心、统一创建入口、共享聊天组件、右面板与配套后端端点）
-- [`agent/tool-system.md`](./agent/tool-system.md)：Agent 工具体系（四层架构、工具清单与描述规范、注册/执行链路、条件注入、对账脚本）
-- [`agent/plan-and-execute-flow.md`](./agent/plan-and-execute-flow.md)：Plan-and-Execute 计划模式执行流（planning_flow + 前端事件协议）
-- [`deep-research/deep-research-deerflow-alignment.md`](./deep-research/deep-research-deerflow-alignment.md)：Deep Research 引擎与 deer-flow 的对齐说明（SearchSourcePort、计划反馈、引文抽取）
+- [`agent/claude-code-mcp-setup.md`](./agent/claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
+- [`agent/openai-gateway.md`](./agent/openai-gateway.md)：OpenAI 兼容网关使用指南（/v1/chat/completions）
+- （工作台对话产品的设计与交接文档已归档至 `agent/historical/`、`plans/historical/`，2026-11-15 剥离工作台后产品聚焦知识空间服务）
 
 ## 过程性文档
 

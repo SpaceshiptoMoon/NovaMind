@@ -24,7 +24,6 @@ This document describes the current canonical backend knowledge-base structure.
 - `backend/src/engines/question_generation/` — 假设问题生成引擎（直收 LLM 客户端）
 - `backend/src/engines/wiki/` — Wiki 纯函数件（linkify/dedup/handles/slug/taxonomy）
 - `backend/src/engines/rag/` — 检索引擎（RetrievalEngine/QueryRewriter/SearchMode）
-- `backend/src/engines/agent/` — Agent 引擎（ReAct/记忆/工具/subagent；memory 存储端口 IMemoryStore/IMemorySearch 定义于此）
 - 依赖方向（2026-10-29 模块化治理后）：R1 全图 import 无环（机器门禁 Tarjan SCC）；
   **engines 零 features/setting 引用**（含 TYPE_CHECKING），引擎接口签名不携带业务服务
   形状——客户端/客户端工厂/存储接口由业务层注入（R4 已反转，详见 backend/AGENTS.md）

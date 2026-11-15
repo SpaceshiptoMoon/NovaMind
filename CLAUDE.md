@@ -5,7 +5,7 @@
 NovaMind 是全栈智能知识库平台。
 
 - `backend/`：FastAPI 后端，领域服务、解析管道、检索、AI 集成
-- `frontend/`：Vue 3 + TypeScript 前端，工作台 UI、知识库 UI、智能体 UI
+- `frontend/`：Vue 3 + TypeScript 前端，知识空间 UI（空间/知识库/文档/Wiki/检索/运营区）
 - `docs/`：架构、设计决策、重构计划、交接笔记
 - `docker/`：容器构建与运行时资产
 
