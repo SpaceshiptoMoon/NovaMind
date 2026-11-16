@@ -237,6 +237,14 @@ const router = createRouter({
                   meta: { title: '知识运营' },
                 },
                 {
+                  // 运营工作台：五模块枢纽页（看板/质检/处置/验证/账本），
+                  // 从空间首页运营入口卡与收件箱互通进入
+                  path: 'workbench',
+                  name: 'SpaceOpsWorkbench',
+                  component: () => import('@/views/space/SpaceOpsWorkbenchView.vue'),
+                  meta: { title: '运营工作台' },
+                },
+                {
                   path: 'overview',
                   redirect: { name: 'SpaceOpsInbox' },
                 },

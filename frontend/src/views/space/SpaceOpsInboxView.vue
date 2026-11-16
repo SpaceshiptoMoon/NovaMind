@@ -50,6 +50,7 @@
           暂无行为数据：分数将在用户开始检索后积累；静态体检与待办已可用
         </span>
       </template>
+      <router-link class="bench-link" :to="`/home/spaces/${spaceId}/ops/workbench`">工作台</router-link>
       <el-button size="small" :icon="Refresh" :loading="loading" class="refresh-btn" @click="loadAll">
         刷新
       </el-button>
@@ -467,8 +468,20 @@ onMounted(() => {
   border-radius: var(--radius-lg);
 }
 
-.refresh-btn {
+.bench-link {
   margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.bench-link:hover {
+  text-decoration: underline;
+}
+
+.refresh-btn {
+  flex-shrink: 0;
 }
 
 .score-value {

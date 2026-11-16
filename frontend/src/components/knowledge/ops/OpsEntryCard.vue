@@ -12,7 +12,7 @@
         <span class="metric-label">{{ tile.label }}</span>
       </router-link>
     </div>
-    <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/overview`">进入工作台</router-link>
+    <router-link class="entry-cta" :to="`/home/spaces/${spaceId}/ops/workbench`">进入工作台</router-link>
   </section>
 </template>
 
