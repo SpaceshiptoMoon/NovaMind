@@ -154,7 +154,8 @@ function createKb() {
 }
 
 .register-filter {
-  padding: 0 var(--space-2) var(--space-1);
+  /* 与行左缘同一条 12px 对齐线 */
+  padding: 0 var(--space-3) var(--space-1);
 }
 
 /* 唯一滚动区：结构区块恒定，增长只发生在这里 */

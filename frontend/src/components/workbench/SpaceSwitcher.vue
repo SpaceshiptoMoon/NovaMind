@@ -303,8 +303,8 @@ async function handleBatchDeleteSpaces() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);

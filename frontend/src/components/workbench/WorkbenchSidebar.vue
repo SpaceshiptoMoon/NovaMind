@@ -1,8 +1,8 @@
 <template>
   <aside class="workbench-sidebar" :class="{ collapsed }" aria-label="工作台侧栏">
-    <!-- 品牌行：折叠态只显 Logo -->
+    <!-- 品牌行：折叠态只显 Logo；logo 收进 18px 字形列，品牌名与其余行文字同一条 38px 竖线 -->
     <div class="brand-row" :title="collapsed ? 'NovaMind' : undefined">
-      <UnicornIcon :size="24" />
+      <span class="brand-mark"><UnicornIcon :size="18" /></span>
       <span v-if="!collapsed" class="brand-name">NovaMind</span>
     </div>
 
@@ -205,6 +205,14 @@ onMounted(() => {
   padding: 0;
 }
 
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+}
+
 .brand-name {
   font-family: var(--font-display);
   font-size: var(--text-sm);
@@ -215,12 +223,15 @@ onMounted(() => {
 }
 
 /* ===== 切换器槽 ===== */
+/* ===== 切换器槽：横向零内边距——行自身 12px 左缘与全侧栏行对齐 ===== */
 .switcher-slot {
-  padding: var(--space-2) var(--space-2) 0;
+  padding: var(--space-2) 0 var(--space-2);
 }
 
 .collapsed .switcher-slot {
-  padding: var(--space-2) var(--space-1) 0;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0;
 }
 
 .collapsed-space,
@@ -267,20 +278,20 @@ onMounted(() => {
   flex: 0;
 }
 
-/* ===== 折叠钮 ===== */
+/* ===== 折叠钮：全宽行，与其余行同一缩进与右圆角语言 ===== */
 .collapse-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   height: 36px;
-  margin: var(--space-2);
+  margin: 0;
   padding: 0 var(--space-3);
   border: none;
   background: none;
   color: var(--color-text-faint);
   font-size: var(--text-xs);
   cursor: pointer;
-  border-radius: var(--radius-md);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   transition:
     color var(--transition-fast),
     background var(--transition-fast);
@@ -296,8 +307,10 @@ onMounted(() => {
   color: var(--color-text);
 }
 
+/* 字形列统一 18px 宽：折叠钮/系统项/KB 行的文字起点落在同一竖线 */
 .toggle-icon {
   flex-shrink: 0;
+  width: 18px;
 }
 
 .toggle-text {

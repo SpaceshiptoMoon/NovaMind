@@ -98,6 +98,12 @@ function isActive(item: SystemItem): boolean {
     background var(--transition-fast);
 }
 
+/* 字形列统一 18px 宽：与 KB 行/切换器的文字起点同一竖线 */
+.system-item .el-icon {
+  flex-shrink: 0;
+  width: 18px;
+}
+
 .system-item:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
