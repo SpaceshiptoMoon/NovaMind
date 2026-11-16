@@ -1,5 +1,21 @@
 <template>
   <div class="ops-inbox">
+    <!-- ⓪ 冷启动横幅：stage 未就绪时给检查清单，就绪后消失 -->
+    <div v-if="onboarding && onboarding.stage !== 'ready'" class="onboarding-banner" :class="`stage-${onboarding.stage}`">
+      <div class="ob-head">
+        <span class="ob-title">{{ ONBOARDING_TITLES[onboarding.stage] }}</span>
+        <span class="ob-next">{{ onboarding.next_step }}</span>
+      </div>
+      <div class="ob-checks">
+        <div v-for="check in onboarding.checks" :key="check.key" class="ob-check" :class="{ ok: check.ok }">
+          <span class="ob-check-dot">{{ check.ok ? '✓' : '○' }}</span>
+          <span class="ob-check-label">{{ check.label }}</span>
+          <span class="ob-check-detail">{{ check.detail }}</span>
+          <span v-if="!check.ok && check.action_hint" class="ob-check-hint">{{ check.action_hint }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ① 结论行：一行健康结论，不是一面墙（score=null 冷启动降级静态提示） -->
     <div class="conclusion-line">
       <template v-if="health && health.score !== null">
@@ -39,30 +55,38 @@
       </el-button>
     </div>
 
-    <!-- ② 待办流：混排三源，按影响度排序（清到零即无待办） -->
+    <!-- ② 待办流：统一端点一次取全（三源混排+影响度排序后端化） -->
     <div class="inbox">
       <div class="inbox-head">
         <span>待处理 {{ todoCount }}</span>
-        <span v-if="todoCount > 0 && todoCount === todos.length" class="inbox-empty">
-          按影响度排序
-        </span>
+        <span v-if="todoCount > 0" class="inbox-empty">按影响度排序</span>
       </div>
       <div class="inbox-list">
         <OpsTodoCard
-          v-for="todo in sortedTodos"
-          :key="todo.key"
+          v-for="todo in uiTodos"
+          :key="todo.todo_key"
           :kind="todo.kind"
           :title="todo.title"
           :impact="todo.impact"
-          :meta="todo.meta"
+          :meta="todo.meta ?? undefined"
           :actions="todo.actions"
-          :loop="ignoredKeys.has(todo.key) ? { state: 'ignored' } : undefined"
-          :busy="busyKey === todo.key"
+          :busy="busyKey === todo.todo_key"
           @action="(key) => handleAction(todo, key)"
         />
       </div>
       <div v-if="todoCount === 0 && !loading" class="inbox-zero">
         知识库当前没有待处理的运营信号
+      </div>
+
+      <!-- 忽略区：留痕可撤销（跨会话持久） -->
+      <div v-if="ignoredTodos.length" class="ignored-box">
+        <div class="ignored-title">已忽略 {{ ignoredTodos.length }}（留痕，可撤销）</div>
+        <div v-for="item in ignoredTodos" :key="item.todo_key" class="ignored-row">
+          <span class="ignored-kind">{{ KIND_LABELS[item.kind] ?? item.kind }}</span>
+          <span class="ignored-key">{{ item.todo_key }}</span>
+          <span v-if="item.reason" class="ignored-reason">{{ REASON_LABELS[item.reason] ?? item.reason }}</span>
+          <el-button link size="small" class="ignored-undo" @click="handleUnignore(item)">撤销</el-button>
+        </div>
       </div>
     </div>
 
@@ -102,16 +126,31 @@
         </div>
       </el-collapse-item>
     </el-collapse>
+
+    <!-- 忽略原因选择：判例是自动分诊的训练燃料 -->
+    <el-dialog v-model="ignoreDialogVisible" title="忽略这条待办" width="420px" append-to-body>
+      <div class="ignore-dialog-body">
+        <p class="ignore-target">{{ ignoreTarget?.title }}</p>
+        <p class="ignore-hint">选择忽略原因（留痕可撤销，帮助系统学会自动分诊）：</p>
+        <div class="reason-buttons">
+          <el-button @click="confirmIgnore('one_shot')">一次性提问</el-button>
+          <el-button @click="confirmIgnore('non_kb')">非知识需求</el-button>
+          <el-button @click="confirmIgnore('false_positive')">误报</el-button>
+        </div>
+        <el-button link size="small" class="skip-reason" @click="confirmIgnore(undefined)">
+          不选原因，直接忽略
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 运营收件箱（知识运营区默认子页）：结论行 + 待办流 + 折叠明细。
+ * 运营收件箱（知识运营区默认子页）：冷启动横幅 + 结论行 + 待办流 + 折叠明细。
  *
- * 三源待办混排（零命中缺口/复审到期/低分反馈）按影响度排序；内联动作：
- * 复审确认（顺延到期日）/ 归档 / 忽略留痕（事件账本，计入本周战果）/
- * 去归因下钻。健康分来自 health-report 端点（透明四维）。
+ * 待办来自统一端点（三源聚合/忽略过滤/影响度排序全部后端化）；忽略需选
+ * 原因（状态表持久 + 账本留痕，跨会话/跨用户可见），撤销删行恢复可见。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -121,13 +160,16 @@ import OpsTodoCard, { type TodoAction } from '@/components/knowledge/ops/OpsTodo
 import OpsTrendChart from '@/components/knowledge/ops/OpsTrendChart.vue'
 import { spaceStatsApi, documentApi } from '@/api/knowledge'
 import type {
-  KbOpsDueReview,
-  KbOpsGapItem,
+  IgnoredTodoItem,
   KbOpsHealthReport,
   KbOpsOverview,
   KbOpsTrends,
-  LowScoreMessageItem,
+  OpsOnboarding,
+  OpsTodoItem,
+  OpsTodoList,
 } from '@/api/types'
+
+type IgnoreReason = 'one_shot' | 'non_kb' | 'false_positive'
 
 const route = useRoute()
 const router = useRouter()
@@ -138,85 +180,35 @@ const loading = ref(false)
 const health = ref<KbOpsHealthReport | null>(null)
 const overview = ref<KbOpsOverview | null>(null)
 const trends = ref<KbOpsTrends | null>(null)
-const gapItems = ref<KbOpsGapItem[]>([])
-const lowScore = ref<LowScoreMessageItem[]>([])
-const ignoredKeys = ref(new Set<string>())
+const todoList = ref<OpsTodoList | null>(null)
+const onboarding = ref<OpsOnboarding | null>(null)
 const busyKey = ref<string | null>(null)
 const openedPanels = ref<string[]>([])
+const ignoreDialogVisible = ref(false)
+const ignoreTarget = ref<OpsTodoItem | null>(null)
 
-/** 待办统一形状（三源归一） */
-interface Todo {
-  key: string
-  kind: 'gap' | 'review' | 'feedback'
-  title: string
-  impact: { count: number | string; unit: string; tone: 'danger' | 'warning' | 'neutral' }
-  meta?: string
-  weight: number
-  actions: TodoAction[]
+/** 各类型待办的内联动作（按钮是交互层，数据/排序/过滤归后端） */
+const KIND_ACTIONS: Record<OpsTodoItem['kind'], TodoAction[]> = {
+  gap: [
+    { key: 'drill', label: '去归因', primary: true },
+    { key: 'ignore', label: '忽略' },
+  ],
+  review: [
+    { key: 'confirm', label: '确认有效', primary: true },
+    { key: 'archive', label: '归档', danger: true },
+    { key: 'ignore', label: '忽略' },
+  ],
+  feedback: [
+    { key: 'drill-doc', label: '回看文档', primary: true },
+    { key: 'ignore', label: '忽略' },
+  ],
 }
 
-const todos = computed<Todo[]>(() => {
-  const list: Todo[] = []
-  for (const g of gapItems.value) {
-    list.push({
-      key: `gap:${g.normalized}`,
-      kind: 'gap',
-      title: g.query,
-      impact: { count: g.hit_count, unit: '次搜索', tone: 'danger' },
-      meta: '内容缺口：用户在搜而知识库没有',
-      weight: g.hit_count * 10,
-      actions: [
-        { key: 'drill', label: '去归因', primary: true },
-        { key: 'ignore', label: '忽略' },
-      ],
-    })
-  }
-  for (const r of overview.value?.due_reviews.items ?? []) {
-    list.push({
-      key: `review:${r.document_id}`,
-      kind: 'review',
-      title: r.filename,
-      impact: {
-        count: r.overdue ? '已过期' : '临期',
-        unit: r.next_review_at.slice(0, 10),
-        tone: 'warning',
-      },
-      meta: `复审到期 · 知识库 #${r.kb_id}`,
-      weight: r.overdue ? 8 : 5,
-      actions: [
-        { key: 'confirm', label: '确认有效', primary: true },
-        { key: 'archive', label: '归档', danger: true },
-        { key: 'ignore', label: '忽略' },
-      ],
-    })
-  }
-  for (const m of lowScore.value.slice(0, 5)) {
-    list.push({
-      key: `feedback:${m.message_id}`,
-      kind: 'feedback',
-      title: m.answer_snippet.slice(0, 40),
-      impact: {
-        count: m.rating === 'down' ? '点踩' : '低分',
-        unit: m.max_score != null ? m.max_score.toFixed(2) : '—',
-        tone: 'danger',
-      },
-      meta: `检索得分低${m.created_at ? ` · ${m.created_at.slice(0, 10)}` : ''}`,
-      weight: 3,
-      actions: [
-        { key: 'drill-doc', label: '回看文档', primary: true },
-        { key: 'ignore', label: '忽略' },
-      ],
-    })
-  }
-  return list
-})
-
-/** 影响度排序（gap 的搜索影响 ×10 权重天然居前） */
-const sortedTodos = computed(() => {
-  const visible = todos.value.filter((t) => !ignoredKeys.value.has(t.key))
-  return [...visible].sort((a, b) => b.weight - a.weight)
-})
-const todoCount = computed(() => sortedTodos.value.length)
+const uiTodos = computed(() =>
+  (todoList.value?.items ?? []).map((t) => ({ ...t, actions: KIND_ACTIONS[t.kind] ?? [] })),
+)
+const todoCount = computed(() => uiTodos.value.length)
+const ignoredTodos = computed<IgnoredTodoItem[]>(() => todoList.value?.ignored ?? [])
 
 const trendLabels = computed(() => (trends.value?.series ?? []).map((s) => s.date.slice(5)))
 const trendSeries = computed(() => [
@@ -235,56 +227,67 @@ const SUB_LABELS: Record<string, string> = {
   order: '秩序',
 }
 
+const ONBOARDING_TITLES: Record<string, string> = {
+  empty: '运营未起步',
+  collecting: '行为数据采集期',
+}
+
+const KIND_LABELS: Record<string, string> = {
+  gap: '缺口',
+  review: '复审',
+  feedback: '反馈',
+}
+
+const REASON_LABELS: Record<string, string> = {
+  one_shot: '一次性提问',
+  non_kb: '非知识需求',
+  false_positive: '误报',
+}
+
 async function loadAll() {
   loading.value = true
   const sid = spaceId.value
-  const [healthR, overviewR, trendsR, gapR, kgR] = await Promise.allSettled([
+  const [healthR, overviewR, trendsR, todosR, onbR] = await Promise.allSettled([
     spaceStatsApi.getHealthReport(sid),
     spaceStatsApi.getOpsOverview(sid),
     spaceStatsApi.getTrends(sid, { days: 30 }),
-    spaceStatsApi.getGapReport(sid),
-    spaceStatsApi.getKnowledgeGap({ spaceId: sid }),
+    spaceStatsApi.getOpsTodos(sid),
+    spaceStatsApi.getOnboarding(sid),
   ])
   if (healthR.status === 'fulfilled') health.value = healthR.value
   if (overviewR.status === 'fulfilled') overview.value = overviewR.value
   if (trendsR.status === 'fulfilled') trends.value = trendsR.value
-  if (gapR.status === 'fulfilled') gapItems.value = (gapR.value.gap_items ?? []).slice(0, 10)
-  if (kgR.status === 'fulfilled') lowScore.value = kgR.value.low_score_messages ?? []
+  if (todosR.status === 'fulfilled') todoList.value = todosR.value
+  if (onbR.status === 'fulfilled') onboarding.value = onbR.value
   loading.value = false
 }
 
+/** 只重拉待办面（处置动作后的轻刷新） */
+async function reloadTodos() {
+  const sid = spaceId.value
+  const [todosR, onbR] = await Promise.allSettled([
+    spaceStatsApi.getOpsTodos(sid),
+    spaceStatsApi.getOnboarding(sid),
+  ])
+  if (todosR.status === 'fulfilled') todoList.value = todosR.value
+  if (onbR.status === 'fulfilled') onboarding.value = onbR.value
+}
+
 /** 收件箱动作分发 */
-async function handleAction(todo: Todo, action: string) {
+async function handleAction(todo: OpsTodoItem, action: string) {
   const sid = spaceId.value
   if (action === 'ignore') {
-    busyKey.value = todo.key
-    try {
-      await spaceStatsApi.recordTodoIgnored(sid, {
-        kind: todo.kind,
-        todo_key: todo.key,
-        query: todo.kind === 'gap' ? todo.title : undefined,
-      })
-      ignoredKeys.value = new Set([...ignoredKeys.value, todo.key])
-      ElMessage.success('已忽略（留痕，不再重复提醒）')
-    } catch {
-      ElMessage.error('忽略失败')
-    } finally {
-      busyKey.value = null
-    }
-    return
-  }
-  if (action === 'undo-ignore') {
-    ignoredKeys.value = new Set([...ignoredKeys.value].filter((k) => k !== todo.key))
+    ignoreTarget.value = todo
+    ignoreDialogVisible.value = true
     return
   }
   if (todo.kind === 'review' && action === 'confirm') {
-    const doc = (overview.value?.due_reviews.items ?? []).find(
-      (d: KbOpsDueReview) => `review:${d.document_id}` === todo.key,
-    )
-    if (!doc) return
-    busyKey.value = todo.key
+    const documentId = Number(todo.payload.document_id)
+    const kbId = Number(todo.payload.kb_id)
+    if (!documentId || !kbId) return
+    busyKey.value = todo.todo_key
     try {
-      await documentApi.confirmDocumentReview(sid, doc.kb_id, doc.document_id)
+      await documentApi.confirmDocumentReview(sid, kbId, documentId)
       ElMessage.success('已确认复审，到期日已顺延')
       await loadAll()
     } catch {
@@ -295,13 +298,12 @@ async function handleAction(todo: Todo, action: string) {
     return
   }
   if (todo.kind === 'review' && action === 'archive') {
-    const doc = (overview.value?.due_reviews.items ?? []).find(
-      (d: KbOpsDueReview) => `review:${d.document_id}` === todo.key,
-    )
-    if (!doc) return
-    busyKey.value = todo.key
+    const documentId = Number(todo.payload.document_id)
+    const kbId = Number(todo.payload.kb_id)
+    if (!documentId || !kbId) return
+    busyKey.value = todo.todo_key
     try {
-      await documentApi.transitionDocumentLifecycle(sid, doc.kb_id, doc.document_id, 'archive')
+      await documentApi.transitionDocumentLifecycle(sid, kbId, documentId, 'archive')
       ElMessage.success('已归档（退出检索召回）')
       await loadAll()
     } catch {
@@ -320,6 +322,45 @@ async function handleAction(todo: Todo, action: string) {
   }
 }
 
+/** 提交忽略（带原因或跳过），成功后重拉待办面 */
+async function confirmIgnore(reason?: IgnoreReason) {
+  const todo = ignoreTarget.value
+  if (!todo) return
+  const sid = spaceId.value
+  busyKey.value = todo.todo_key
+  try {
+    await spaceStatsApi.recordTodoIgnored(sid, {
+      kind: todo.kind,
+      todo_key: todo.todo_key,
+      query: todo.kind === 'gap' ? String(todo.payload.query ?? todo.title) : undefined,
+      reason,
+    })
+    ElMessage.success('已忽略（留痕，不再重复提醒）')
+    ignoreDialogVisible.value = false
+    ignoreTarget.value = null
+    await reloadTodos()
+  } catch {
+    ElMessage.error('忽略失败')
+  } finally {
+    busyKey.value = null
+  }
+}
+
+/** 撤销忽略：删状态行，待办恢复可见 */
+async function handleUnignore(item: IgnoredTodoItem) {
+  const sid = spaceId.value
+  try {
+    await spaceStatsApi.unignoreTodo(sid, {
+      kind: item.kind as 'gap' | 'review' | 'feedback',
+      todo_key: item.todo_key,
+    })
+    ElMessage.success('已撤销，待办恢复可见')
+    await reloadTodos()
+  } catch {
+    ElMessage.error('撤销失败')
+  }
+}
+
 onMounted(() => {
   void loadAll()
 })
@@ -330,6 +371,88 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+/* ⓪ 冷启动横幅 */
+.onboarding-banner {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-warning-subtle);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+}
+
+.onboarding-banner.stage-collecting {
+  background: var(--color-info-subtle);
+  border-color: var(--color-border);
+}
+
+.ob-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.ob-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-warning);
+}
+
+.stage-collecting .ob-title {
+  color: var(--color-text-secondary);
+}
+
+.ob-next {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.ob-checks {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ob-check {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  flex-wrap: wrap;
+}
+
+.ob-check.ok {
+  color: var(--color-text-faint);
+}
+
+.ob-check:not(.ok) {
+  color: var(--color-text);
+}
+
+.ob-check-dot {
+  font-size: var(--text-xs);
+  color: var(--color-success);
+}
+
+.ob-check:not(.ok) .ob-check-dot {
+  color: var(--color-text-faint);
+}
+
+.ob-check-label {
+  font-weight: var(--weight-medium);
+  min-width: 4em;
+}
+
+.ob-check-detail {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-check-hint {
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
 }
 
 /* ① 结论行：一行，非卡片墙 */
@@ -418,7 +541,7 @@ onMounted(() => {
 .inbox-empty {
   font-size: var(--text-sm);
   font-weight: var(--weight-normal);
-  color: var(--color-success);
+  color: var(--color-text-faint);
 }
 
 .inbox-list {
@@ -435,6 +558,52 @@ onMounted(() => {
   background: var(--color-bg-card);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-lg);
+}
+
+/* 忽略区 */
+.ignored-box {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-card);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.ignored-title {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  margin-bottom: var(--space-1);
+}
+
+.ignored-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  padding: var(--space-1) 0;
+}
+
+.ignored-kind {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.ignored-key {
+  color: var(--color-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ignored-reason {
+  color: var(--color-warning);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.ignored-undo {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ③ 折叠明细 */
@@ -500,6 +669,37 @@ onMounted(() => {
 
 .drill-links a:hover {
   text-decoration: underline;
+}
+
+/* 忽略原因弹窗 */
+.ignore-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ignore-target {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ignore-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.reason-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.skip-reason {
+  align-self: flex-start;
+  color: var(--color-text-faint);
 }
 
 @media (max-width: 900px) {

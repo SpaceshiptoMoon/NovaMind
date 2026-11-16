@@ -1143,6 +1143,56 @@ export interface TodoIgnorePayload {
   kind: 'gap' | 'review' | 'feedback'
   todo_key: string
   query?: string
+  /** 忽略原因（一次性提问/非知识需求/误报——自动分诊判例燃料） */
+  reason?: 'one_shot' | 'non_kb' | 'false_positive'
+}
+
+/** 撤销待办忽略载荷 */
+export interface TodoUnignorePayload {
+  kind: 'gap' | 'review' | 'feedback'
+  todo_key: string
+}
+
+/** 统一待办行（后端三源聚合同构 shape，影响度排序后端化） */
+export interface OpsTodoItem {
+  kind: 'gap' | 'review' | 'feedback'
+  todo_key: string
+  title: string
+  impact: { count: number | string; unit: string; tone: 'danger' | 'warning' | 'neutral' }
+  meta?: string | null
+  weight: number
+  payload: Record<string, unknown>
+}
+
+/** 已忽略待办（忽略区展示 + 撤销入口） */
+export interface IgnoredTodoItem {
+  kind: string
+  todo_key: string
+  reason?: string | null
+  ignored_at: string
+}
+
+/** 统一待办列表响应 */
+export interface OpsTodoList {
+  items: OpsTodoItem[]
+  ignored: IgnoredTodoItem[]
+  total: number
+}
+
+/** 冷启动单项检查 */
+export interface OnboardingCheck {
+  key: 'embedding' | 'documents' | 'query_volume'
+  label: string
+  ok: boolean
+  detail: string
+  action_hint?: string | null
+}
+
+/** 冷启动引导响应 */
+export interface OpsOnboarding {
+  stage: 'empty' | 'collecting' | 'ready'
+  checks: OnboardingCheck[]
+  next_step: string
 }
 
 

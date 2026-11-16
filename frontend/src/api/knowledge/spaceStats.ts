@@ -15,6 +15,9 @@ import type {
   KbOpsHealthReport,
   KbOpsTrends,
   TodoIgnorePayload,
+  TodoUnignorePayload,
+  OpsTodoList,
+  OpsOnboarding,
 } from '../types'
 
 /**
@@ -109,9 +112,24 @@ export const spaceStatsApi = {
     return request.get<KbOpsBadgeCounts>(`/kb-ops/spaces/${spaceId}/badge-counts`)
   },
 
-  /** 待办忽略留痕（收件箱处置动作，落事件账本） */
+  /** 待办忽略留痕（状态表持久 + 账本双写，带原因） */
   recordTodoIgnored(spaceId: number, data: TodoIgnorePayload) {
     return request.post<{ recorded: boolean }>(`/kb-ops/spaces/${spaceId}/events/todo-ignored`, data)
+  },
+
+  /** 撤销待办忽略（删状态行，待办恢复可见） */
+  unignoreTodo(spaceId: number, data: TodoUnignorePayload) {
+    return request.post<{ restored: boolean }>(`/kb-ops/spaces/${spaceId}/todos/unignore`, data)
+  },
+
+  /** 统一待办列表（三源聚合+忽略过滤+影响度排序，收件箱一次取全） */
+  getOpsTodos(spaceId: number) {
+    return request.get<OpsTodoList>(`/kb-ops/spaces/${spaceId}/todos`)
+  },
+
+  /** 运营冷启动引导（检查清单 + 阶段判定） */
+  getOnboarding(spaceId: number) {
+    return request.get<OpsOnboarding>(`/kb-ops/spaces/${spaceId}/onboarding`)
   },
 
   /** 结果引用点击埋点（价值榜/点击榜燃料；随溯源跳转接入） */
