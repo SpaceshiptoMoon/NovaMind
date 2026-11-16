@@ -184,6 +184,8 @@ onMounted(() => {
   flex-direction: column;
   background: var(--color-bg-sidebar);
   border-right: 1px solid var(--color-border-light);
+  /* 底部呼吸：系统组抬离视口底缘（主流侧栏惯例） */
+  padding-bottom: var(--space-3);
   overflow: hidden;
   transition: width var(--transition-base);
 }
