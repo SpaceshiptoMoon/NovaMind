@@ -27,10 +27,20 @@
       </button>
     </div>
 
-    <!-- 当前空间 KB 登记册（唯一滚动区；折叠态不显示——48px 辨识不了 KB） -->
-    <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
+    <!-- 折叠/展开钮：壳控制区（紧跟切换器，不沉底）——离用户的常用区近，不贴视口底缘 -->
+    <button
+      type="button"
+      class="collapse-toggle"
+      :title="collapsed ? '展开侧栏' : '收起侧栏'"
+      :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
+      @click="toggleCollapsed"
+    >
+      <el-icon :size="14" class="toggle-icon"><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
+      <span v-if="!collapsed" class="toggle-text">收起侧栏</span>
+    </button>
 
-    <div class="sidebar-flex-fill" />
+    <!-- 当前空间 KB 登记册（唯一滚动区，占满主体高度；折叠态不显示——48px 辨识不了 KB） -->
+    <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
 
     <!-- 系统组：折叠态收成单图标弹菜单 -->
     <SidebarSystemGroup v-if="!collapsed" />
@@ -42,18 +52,6 @@
       </template>
       <SidebarSystemGroup :collapsed="false" class="popover-system" />
     </el-popover>
-
-    <!-- 折叠/展开钮（底部 pinned） -->
-    <button
-      type="button"
-      class="collapse-toggle"
-      :title="collapsed ? '展开侧栏' : '收起侧栏'"
-      :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
-      @click="toggleCollapsed"
-    >
-      <el-icon :size="14" class="toggle-icon"><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
-      <span v-if="!collapsed" class="toggle-text">收起侧栏</span>
-    </button>
   </aside>
 </template>
 
@@ -234,6 +232,12 @@ onMounted(() => {
   padding: var(--space-2) 0;
 }
 
+/* 系统图标（popover reference 是 aside 直接子节点）：窄轨上与品牌/切换器同轴居中 */
+.collapsed-system {
+  align-self: center;
+  margin-top: var(--space-1);
+}
+
 .collapsed-space,
 .collapsed-system {
   display: flex;
@@ -268,17 +272,10 @@ onMounted(() => {
   color: var(--color-text-secondary);
 }
 
-/* 登记册的弹性补位：结构区块沉底 */
-.sidebar-flex-fill {
-  flex: 1;
-  min-height: 0;
-}
+/* KB 登记册（flex:1）独自占满主体高度，把系统组自然压到底——无需弹性补位
+   （历史教训：补位 div 若也是 flex:1 会与登记册平分高度，登记区被腰斩） */
 
-.collapsed .sidebar-flex-fill {
-  flex: 0;
-}
-
-/* ===== 折叠钮：全宽行，与其余行同一缩进与右圆角语言 ===== */
+/* ===== 折叠/展开钮：壳控制区行（切换器下方），与其余行同一缩进与右圆角语言 ===== */
 .collapse-toggle {
   display: flex;
   align-items: center;
@@ -297,9 +294,13 @@ onMounted(() => {
     background var(--transition-fast);
 }
 
+/* 折叠态：窄轨上居中的图标钮（全角圆角，与轨上其他图标同轴） */
 .collapsed .collapse-toggle {
   justify-content: center;
+  align-self: center;
+  width: 36px;
   padding: 0;
+  border-radius: var(--radius-md);
 }
 
 .collapse-toggle:hover {
