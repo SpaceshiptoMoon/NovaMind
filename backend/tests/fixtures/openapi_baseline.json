@@ -378,6 +378,37 @@
         "title": "AvailableModelsWithInfoResponse",
         "type": "object"
       },
+      "BadgeCountsResponse": {
+        "description": "运营徽标轻量计数（待办三列 + 缺口簇，供导航徽标与待办概览）。",
+        "properties": {
+          "due_reviews": {
+            "default": 0,
+            "description": "复审到期（提醒窗口内）文档数",
+            "title": "Due Reviews",
+            "type": "integer"
+          },
+          "failed_documents": {
+            "default": 0,
+            "description": "解析失败文档数",
+            "title": "Failed Documents",
+            "type": "integer"
+          },
+          "gap_clusters": {
+            "default": 0,
+            "description": "内容缺口簇数（近 7 天）",
+            "title": "Gap Clusters",
+            "type": "integer"
+          },
+          "open_suggestions": {
+            "default": 0,
+            "description": "待处置运营建议数",
+            "title": "Open Suggestions",
+            "type": "integer"
+          }
+        },
+        "title": "BadgeCountsResponse",
+        "type": "object"
+      },
       "Body_create_test_set_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_post": {
         "properties": {
           "file": {
@@ -995,6 +1026,62 @@
         "title": "ChunkUploadStatusResponse",
         "type": "object"
       },
+      "CitationClickRequest": {
+        "description": "结果引用点击埋点（检索消费侧信号，价值榜/点击榜燃料）。",
+        "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被点击的分块 ID",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被点击的文档 ID",
+            "title": "Document Id"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源知识库 ID（全局检索结果携带）",
+            "title": "Kb Id"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "触发本次检索的查询文本",
+            "title": "Query"
+          }
+        },
+        "title": "CitationClickRequest",
+        "type": "object"
+      },
       "DeepDocOnlyParsingConfig": {
         "description": "Excel/PPT/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，\n运行时报 Unsupported file type），仅支持 deepdoc。",
         "properties": {
@@ -1500,6 +1587,46 @@
         "title": "DocumentDetailResponse",
         "type": "object"
       },
+      "DocumentLifecycleActionRequest": {
+        "description": "生命周期手动动作（归档/恢复）。",
+        "properties": {
+          "action": {
+            "description": "动作：archive 归档下线 / reactivate 恢复召回",
+            "enum": [
+              "archive",
+              "reactivate"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "DocumentLifecycleActionRequest",
+        "type": "object"
+      },
+      "DocumentLifecycleActionResponse": {
+        "description": "生命周期动作结果。",
+        "properties": {
+          "document_id": {
+            "description": "文档 ID",
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "lifecycle_status": {
+            "description": "动作后的生命周期状态",
+            "title": "Lifecycle Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "lifecycle_status"
+        ],
+        "title": "DocumentLifecycleActionResponse",
+        "type": "object"
+      },
       "DocumentListResponse": {
         "description": "文档列表响应",
         "properties": {
@@ -1946,6 +2073,73 @@
           "has_active_task"
         ],
         "title": "DocumentResponse",
+        "type": "object"
+      },
+      "DocumentReviewResponse": {
+        "description": "文档复审状态（周期/下次复审时间/回退默认周期）。",
+        "properties": {
+          "document_id": {
+            "description": "文档 ID",
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "fallback_cycle_days": {
+            "description": "空间默认回退周期（天），配置面",
+            "title": "Fallback Cycle Days",
+            "type": "integer"
+          },
+          "next_review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "下次复审时间；None=未排期",
+            "title": "Next Review At"
+          },
+          "review_cycle_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档复审周期（天）；None=用空间默认",
+            "title": "Review Cycle Days"
+          }
+        },
+        "required": [
+          "document_id",
+          "fallback_cycle_days"
+        ],
+        "title": "DocumentReviewResponse",
+        "type": "object"
+      },
+      "DocumentReviewSettingsUpdateRequest": {
+        "description": "设置文档复审周期。",
+        "properties": {
+          "review_cycle_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "复审周期（天）；传 null 清除，回退空间默认",
+            "title": "Review Cycle Days"
+          }
+        },
+        "title": "DocumentReviewSettingsUpdateRequest",
         "type": "object"
       },
       "DocumentTagsUpdateRequest": {
@@ -3216,6 +3410,18 @@
             ],
             "description": "LLM 回答耗时（毫秒）",
             "title": "Answer Elapsed Ms"
+          },
+          "answer_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LLM 回答失败降级说明（生成失败/空回答时返回，检索结果不受影响）",
+            "title": "Answer Error"
           },
           "answer_model": {
             "anyOf": [
@@ -8644,6 +8850,74 @@
         "title": "TokenRefreshResponse",
         "type": "object"
       },
+      "TrendPoint": {
+        "description": "单日趋势点：检索量 / 零命中 / 引用点击。\n\n点踩趋势无源（qa_message_feedback 为历史归档表，无新写入路径），刻意不列。",
+        "properties": {
+          "citation_click": {
+            "default": 0,
+            "description": "结果引用点击量",
+            "title": "Citation Click",
+            "type": "integer"
+          },
+          "date": {
+            "description": "日期（ISO，本地时区）",
+            "title": "Date",
+            "type": "string"
+          },
+          "query_total": {
+            "default": 0,
+            "description": "检索总量（query 事件）",
+            "title": "Query Total",
+            "type": "integer"
+          },
+          "zero_hit": {
+            "default": 0,
+            "description": "零命中检索量",
+            "title": "Zero Hit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "TrendPoint",
+        "type": "object"
+      },
+      "TrendsResponse": {
+        "description": "运营趋势响应（指标全是趋势，支撑体检报告首页）。",
+        "properties": {
+          "end": {
+            "description": "窗口终点（ISO，非含）",
+            "title": "End",
+            "type": "string"
+          },
+          "series": {
+            "description": "按日序列（无事件的日子不出现）",
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "start": {
+            "description": "窗口起点（ISO）",
+            "title": "Start",
+            "type": "string"
+          },
+          "window_days": {
+            "description": "趋势窗口天数",
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "start",
+          "end"
+        ],
+        "title": "TrendsResponse",
+        "type": "object"
+      },
       "UnreadCountResponse": {
         "description": "未读数响应",
         "properties": {
@@ -10827,6 +11101,55 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/badge-counts": {
+      "get": {
+        "description": "一次调用返回导航徽标与待办概览所需四个计数：解析失败/复审到期/待处置建议/内容缺口簇。替代「为取两个数拉全量 gap 报告+全量建议列表」的浪费。",
+        "operationId": "get_space_badge_counts_api_v1_kb_ops_spaces__space_id__badge_counts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadgeCountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "运营徽标轻量计数",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/kb-ops/spaces/{space_id}/citation-stats": {
       "get": {
         "description": "kb-ops D3：citation_click 按文档聚合（哪些文档被点击核验最多——贡献者视图的数据面 + 「哪些文档最常支撑回答」）。空间成员可读。",
@@ -11146,6 +11469,67 @@
           }
         ],
         "summary": "空间运营事件列表",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/events/citation-click": {
+      "post": {
+        "description": "检索结果被点击时上报（旁路记账，失败不影响调用方）。价值榜/点击榜与趋势序列的燃料；全局检索结果携带来源空间逐条上报。",
+        "operationId": "record_citation_click_api_v1_kb_ops_spaces__space_id__events_citation_click_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CitationClickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Record Citation Click Api V1 Kb Ops Spaces  Space Id  Events Citation Click Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "结果引用点击埋点",
         "tags": [
           "知识运营",
           "知识运营"
@@ -11523,6 +11907,69 @@
           }
         ],
         "summary": "处置复审建议",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/trends": {
+      "get": {
+        "description": "按日聚合运营事件趋势：检索总量 / 零命中 / 引用点击。支撑体检报告首页的「指标全是趋势」；点踩无新事件源，刻意不列。空间成员可读。",
+        "operationId": "get_space_trends_api_v1_kb_ops_spaces__space_id__trends_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "趋势窗口天数",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "趋势窗口天数",
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "运营趋势（按日序列）",
         "tags": [
           "知识运营",
           "知识运营"
@@ -14474,6 +14921,89 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/lifecycle": {
+      "post": {
+        "description": "归档下线（archive：active/superseded → archived，退出检索召回）或恢复召回（reactivate：archived/superseded → active，误操作恢复）。新版替代（supersede）不经此端点——由运营建议队列 accept 触发，保持单一入口。权限：空间管理员或文档负责人。",
+        "operationId": "transition_document_lifecycle_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentLifecycleActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentLifecycleActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "生命周期手动动作",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/narrative": {
       "get": {
         "description": "读取章节化连贯叙事文档（梗概+章节列表）；未生成返回 404 语义的空对象。",
@@ -14911,6 +15441,233 @@
           }
         ],
         "summary": "重试文档处理",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/review": {
+      "get": {
+        "description": "返回文档复审周期、下次复审时间与空间默认回退周期。空间成员可读。",
+        "operationId": "get_document_review_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "查文档复审状态",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      },
+      "put": {
+        "description": "设置文档复审周期天数（传 null 清除，回退空间默认）。只改周期不顺延到期日——顺延发生在确认复审时。权限：空间管理员或文档负责人。",
+        "operationId": "update_document_review_settings_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__review_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentReviewSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置文档复审周期",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/review/confirm": {
+      "post": {
+        "description": "确认文档已复审：按文档周期（空则回退默认）顺延 next_review_at。这是复审提醒 cron 的闭环出口——确认前 cron 会每天重复提醒。权限：空间管理员或文档负责人。",
+        "operationId": "confirm_document_review_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__review_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "确认复审",
         "tags": [
           "文档管理",
           "文档管理"
