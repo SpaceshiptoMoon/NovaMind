@@ -9,8 +9,9 @@
       trigger="click"
     >
       <template #reference>
-        <!-- 切换器行：22px 首字墨块 + 空间名 + chevron；点击开注册面板 -->
-        <button type="button" class="switcher-row" :title="spaceName" @click="panelVisible = !panelVisible">
+        <!-- 切换器行：22px 首字墨块 + 空间名 + chevron；开关由 popover 的 trigger="click" 全权管理
+             （勿再手动翻转 panelVisible——与 trigger 双翻转会一次点击开即关） -->
+        <button type="button" class="switcher-row" :title="spaceName">
           <span v-if="currentSpace" class="switcher-avatar" :style="{ background: avatarColor(currentSpace.name) }">{{
             currentSpace.name.charAt(0)
           }}</span>
