@@ -224,6 +224,20 @@ class DocumentNotFoundError(KnowledgeSpaceError):
         self.document_id = document_id
 
 
+class DocumentLifecycleTransitionError(KnowledgeSpaceError):
+    """生命周期转换非法（状态机拒绝）"""
+    http_status_code: ClassVar[int] = 409
+    _serializable_attrs: ClassVar[list[str]] = ["current", "target"]
+
+    def __init__(self, current: str, target: str):
+        super().__init__(
+            message=f"非法生命周期转换: {current} → {target}",
+            code="DOCUMENT_LIFECYCLE_INVALID_TRANSITION",
+        )
+        self.current = current
+        self.target = target
+
+
 class DocumentObjectMissingError(KnowledgeSpaceError):
     """文档记录存在但 MinIO 对象缺失（原件或解析产物丢失）"""
 
@@ -604,6 +618,7 @@ __all__ = [
     "KnowledgeBaseArchivedError",
     "KnowledgeBaseLimitExceededError",
     "DocumentNotFoundError",
+    "DocumentLifecycleTransitionError",
     "DocumentAlreadyExistsError",
     "DocumentProcessingError",
     "LocalASRBusyError",

@@ -20,8 +20,10 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
     get_current_user_id,
     get_document_query_service,
+    get_document_review_service,
     get_document_task_service,
     get_document_upload_service,
+    get_lifecycle_service,
     validate_kb_access,
     validate_kb_writable,
     validate_space_editor,
@@ -40,7 +42,8 @@ from novamind.features.knowledge_space.exceptions import (
     ParsedTextNotFoundError,
     SpaceAccessDeniedError,
 )
-from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
 )
@@ -58,9 +61,13 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentBatchUploadResponse,
     DocumentCancelResponse,
     DocumentDetailResponse,
+    DocumentLifecycleActionRequest,
+    DocumentLifecycleActionResponse,
     DocumentListResponse,
     DocumentProcessResponse,
     DocumentResponse,
+    DocumentReviewResponse,
+    DocumentReviewSettingsUpdateRequest,
     DocumentTagsUpdateRequest,
     DocumentUploadResponse,
     FailedFileItem,
@@ -79,8 +86,10 @@ from novamind.features.knowledge_space.services.chunk_upload_service import (
 )
 from novamind.features.knowledge_space.services.document_file_types import SUPPORTED_FILE_TYPES
 from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
+from novamind.features.knowledge_space.services.document_review_service import DocumentReviewService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
 from novamind.features.knowledge_space.services.tag_service import DocumentTagService
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1469,4 +1478,175 @@ async def get_document_preview(
             "Content-Disposition": f'inline; filename="{encoded_filename}"',
             "Cache-Control": "private, max-age=3600",
         },
+    )
+
+
+# ========== 复审与生命周期（运营飞轮回补 2026-11-16：cron 重复提醒的闭环出口） ==========
+
+
+async def _get_reviewable_document(
+    document_id: int,
+    kb_id: int,
+    space_id: int,
+    document_query_service: DocumentQueryService,
+) -> Document:
+    """取文档并校验归属（存在 + 属于该空间与知识库），失败 404。"""
+    document = await document_query_service.get_document(document_id)
+    if not document or document.space_id != space_id or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+    return document
+
+
+def _ensure_review_operator(member: SpaceMember, document: Document, user_id: int) -> None:
+    """复审/生命周期操作权限：空间管理员或文档 owner（飞轮低摩擦——owner 可自查自证）。"""
+    if member.role < SpaceRole.ADMIN and document.owner_id != user_id:
+        raise SpaceAccessDeniedError(
+            document.space_id, user_id, "仅空间管理员或文档负责人可执行该操作"
+        )
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/review",
+    response_model=DocumentReviewResponse,
+    summary="查文档复审状态",
+    description="返回文档复审周期、下次复审时间与空间默认回退周期。空间成员可读。",
+)
+async def get_document_review(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+) -> DocumentReviewResponse:
+    """查文档复审状态（周期/下次复审/默认周期）。"""
+    document = await _get_reviewable_document(document_id, kb_id, space_id, document_query_service)
+    from novamind.features.knowledge_space.services.document_review_service import (
+        load_review_config,
+    )
+
+    return DocumentReviewResponse(
+        document_id=document.id,
+        review_cycle_days=document.review_cycle_days,
+        next_review_at=document.next_review_at,
+        fallback_cycle_days=load_review_config()["fallback_cycle_days"],
+    )
+
+
+@router.post(
+    "/{kb_id}/documents/{document_id}/review/confirm",
+    response_model=DocumentReviewResponse,
+    summary="确认复审",
+    description=(
+        "确认文档已复审：按文档周期（空则回退默认）顺延 next_review_at。"
+        "这是复审提醒 cron 的闭环出口——确认前 cron 会每天重复提醒。"
+        "权限：空间管理员或文档负责人。"
+    ),
+)
+async def confirm_document_review(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    review_service: DocumentReviewService = Depends(get_document_review_service),
+) -> DocumentReviewResponse:
+    """确认复审并顺延下次复审时间。"""
+    from novamind.features.knowledge_space.services.document_review_service import (
+        load_review_config,
+    )
+
+    document = await _get_reviewable_document(document_id, kb_id, space_id, document_query_service)
+    _ensure_review_operator(member, document, user_id)
+
+    next_at = await review_service.confirm_review(document)
+    return DocumentReviewResponse(
+        document_id=document.id,
+        review_cycle_days=document.review_cycle_days,
+        next_review_at=next_at,
+        fallback_cycle_days=load_review_config()["fallback_cycle_days"],
+    )
+
+
+@router.put(
+    "/{kb_id}/documents/{document_id}/review",
+    response_model=DocumentReviewResponse,
+    summary="设置文档复审周期",
+    description=(
+        "设置文档复审周期天数（传 null 清除，回退空间默认）。只改周期不顺延到期日——"
+        "顺延发生在确认复审时。权限：空间管理员或文档负责人。"
+    ),
+)
+async def update_document_review_settings(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    data: DocumentReviewSettingsUpdateRequest,
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    review_service: DocumentReviewService = Depends(get_document_review_service),
+) -> DocumentReviewResponse:
+    """设置文档复审周期。"""
+    from novamind.features.knowledge_space.services.document_review_service import (
+        load_review_config,
+    )
+
+    document = await _get_reviewable_document(document_id, kb_id, space_id, document_query_service)
+    _ensure_review_operator(member, document, user_id)
+
+    await review_service.update_settings(document, data.review_cycle_days)
+    return DocumentReviewResponse(
+        document_id=document.id,
+        review_cycle_days=document.review_cycle_days,
+        next_review_at=document.next_review_at,
+        fallback_cycle_days=load_review_config()["fallback_cycle_days"],
+    )
+
+
+@router.post(
+    "/{kb_id}/documents/{document_id}/lifecycle",
+    response_model=DocumentLifecycleActionResponse,
+    summary="生命周期手动动作",
+    description=(
+        "归档下线（archive：active/superseded → archived，退出检索召回）或"
+        "恢复召回（reactivate：archived/superseded → active，误操作恢复）。"
+        "新版替代（supersede）不经此端点——由运营建议队列 accept 触发，保持单一入口。"
+        "权限：空间管理员或文档负责人。"
+    ),
+)
+async def transition_document_lifecycle(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    data: DocumentLifecycleActionRequest,
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    lifecycle_service: LifecycleService = Depends(get_lifecycle_service),
+) -> DocumentLifecycleActionResponse:
+    """生命周期手动动作（归档/恢复），ES chunk 同步与检索缓存失效由 LifecycleService 承载。"""
+    from novamind.features.knowledge_space.exceptions import DocumentLifecycleTransitionError
+    from novamind.features.knowledge_space.services.lifecycle_service import (
+        DocumentLifecycleError,
+    )
+
+    document = await _get_reviewable_document(document_id, kb_id, space_id, document_query_service)
+    _ensure_review_operator(member, document, user_id)
+
+    service = lifecycle_service
+    try:
+        if data.action == "archive":
+            updated = await service.archive(document_id)
+        else:
+            updated = await service.reactivate(document_id)
+    except ValueError as e:
+        raise DocumentNotFoundError(document_id) from e
+    except DocumentLifecycleError as e:
+        raise DocumentLifecycleTransitionError(
+            current=document.lifecycle_status or "active", target=data.action
+        ) from e
+    return DocumentLifecycleActionResponse(
+        document_id=updated.id,
+        lifecycle_status=updated.lifecycle_status or "active",
     )

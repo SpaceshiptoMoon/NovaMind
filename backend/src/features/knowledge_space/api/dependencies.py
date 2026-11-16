@@ -51,9 +51,13 @@ from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from novamind.features.knowledge_space.services.document_review_service import (
+        DocumentReviewService,
+    )
     from novamind.features.knowledge_space.services.global_search_service import (
         GlobalSearchService,
     )
+    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
 
 # 使用 contextvars 实现请求级别的用户信息缓存
 _request_user_cache: contextvars.ContextVar[dict[int, Any]] = contextvars.ContextVar(
@@ -312,6 +316,24 @@ async def get_global_search_service(
         retrieval_engine=retrieval_engine,
         service_cls=GlobalSearchService,
     )
+
+
+async def get_document_review_service(
+    db: AsyncSession = Depends(get_db),
+) -> "DocumentReviewService":
+    """装配文档复审服务（确认复审/设置周期——运营飞轮复审环写入口）。"""
+    from novamind.features.knowledge_space.services.document_review_service import (
+        DocumentReviewService,
+    )
+
+    return DocumentReviewService(db)
+
+
+async def get_lifecycle_service(db: AsyncSession = Depends(get_db)) -> "LifecycleService":
+    """装配文档生命周期服务（归档/恢复手动动作，supersede 走建议队列单一入口）。"""
+    from novamind.features.knowledge_space.services.lifecycle_service import LifecycleService
+
+    return LifecycleService(db)
 
 
 async def get_audit_service(db: AsyncSession = Depends(get_db)) -> AuditService:

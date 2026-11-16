@@ -5,7 +5,7 @@
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
 
@@ -406,3 +406,42 @@ class DocumentBatchProcessResponse(BaseModel):
     success: int
     failed: int
     skipped: int
+
+
+# ========== 复审与生命周期（运营飞轮回补 2026-11-16） ==========
+
+class DocumentReviewResponse(BaseModel):
+    """文档复审状态（周期/下次复审时间/回退默认周期）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    document_id: int = Field(..., description="文档 ID")
+    review_cycle_days: int | None = Field(None, description="文档复审周期（天）；None=用空间默认")
+    next_review_at: datetime | None = Field(None, description="下次复审时间；None=未排期")
+    fallback_cycle_days: int = Field(..., description="空间默认回退周期（天），配置面")
+
+
+class DocumentReviewSettingsUpdateRequest(BaseModel):
+    """设置文档复审周期。"""
+
+    review_cycle_days: int | None = Field(
+        None,
+        ge=1,
+        le=3650,
+        description="复审周期（天）；传 null 清除，回退空间默认",
+    )
+
+
+class DocumentLifecycleActionRequest(BaseModel):
+    """生命周期手动动作（归档/恢复）。"""
+
+    action: Literal["archive", "reactivate"] = Field(..., description="动作：archive 归档下线 / reactivate 恢复召回")
+
+
+class DocumentLifecycleActionResponse(BaseModel):
+    """生命周期动作结果。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    document_id: int = Field(..., description="文档 ID")
+    lifecycle_status: str = Field(..., description="动作后的生命周期状态")

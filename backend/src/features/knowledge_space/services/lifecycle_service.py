@@ -176,9 +176,7 @@ class LifecycleService:
 
     async def _sync_es_chunks(self, space_id: int, doc_id: int, status: str) -> int:
         """update_by_query 批量同步该文档全部 chunk 的 lifecycle_status。"""
-        from novamind.features.knowledge_space.api.dependencies import (
-            get_elasticsearch_client,
-        )
+        from novamind.shared.storage.client_factory import get_elasticsearch_client
 
         es_client = await get_elasticsearch_client()
         index_name = es_client.generate_index_name(space_id)
