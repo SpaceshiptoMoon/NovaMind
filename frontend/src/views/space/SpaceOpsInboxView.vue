@@ -43,7 +43,9 @@
     <div class="inbox">
       <div class="inbox-head">
         <span>待处理 {{ todoCount }}</span>
-        <span v-if="todoCount === 0 && !loading" class="inbox-empty">全部处理完毕</span>
+        <span v-if="todoCount > 0 && todoCount === todos.length" class="inbox-empty">
+          按影响度排序
+        </span>
       </div>
       <div class="inbox-list">
         <OpsTodoCard
