@@ -1,21 +1,11 @@
 <template>
   <aside class="workbench-sidebar" :class="{ collapsed }" aria-label="工作台侧栏">
-    <!-- 品牌行即折叠控制位：展开态右缘是收起箭头（侧栏右上角，一眼可见）；
-         折叠态整行即展开钮（点 logo 展开） -->
-    <button
-      v-if="collapsed"
-      type="button"
-      class="brand-row brand-row--expand"
-      title="展开侧栏"
-      aria-label="展开侧栏"
-      @click="collapsed = false"
-    >
+    <!-- 品牌行：展开态右缘是收起箭头；折叠态下方紧跟显式展开钮（控件必须可见可点） -->
+    <div class="brand-row" :title="collapsed ? 'NovaMind' : undefined">
       <span class="brand-mark"><UnicornIcon :size="18" /></span>
-    </button>
-    <div v-else class="brand-row">
-      <span class="brand-mark"><UnicornIcon :size="18" /></span>
-      <span class="brand-name">NovaMind</span>
+      <span v-if="!collapsed" class="brand-name">NovaMind</span>
       <button
+        v-if="!collapsed"
         type="button"
         class="brand-collapse"
         title="收起侧栏"
@@ -25,6 +15,18 @@
         <el-icon :size="14"><Fold /></el-icon>
       </button>
     </div>
+
+    <!-- 折叠轨的展开钮（紧随 logo，与轨上图标同形态） -->
+    <button
+      v-if="collapsed"
+      type="button"
+      class="rail-expand"
+      title="展开侧栏"
+      aria-label="展开侧栏"
+      @click="collapsed = false"
+    >
+      <el-icon :size="16"><Expand /></el-icon>
+    </button>
 
     <!-- 空间切换器：折叠态退化为当前空间墨块（点击展开侧栏） -->
     <div class="switcher-slot">
@@ -80,7 +82,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Collection, Fold, Setting } from '@element-plus/icons-vue'
+import { Collection, Expand, Fold, Setting } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 import { useUserStore } from '@/stores/user'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
@@ -247,6 +249,13 @@ onMounted(() => {
   margin-top: var(--space-1);
 }
 
+/* 折叠轨的展开钮：与轨上图标钮同形态（36px 居中、hover 浅底） */
+.rail-expand {
+  align-self: center;
+  margin-top: var(--space-1);
+}
+
+.rail-expand,
 .collapsed-space,
 .collapsed-system {
   display: flex;
@@ -313,22 +322,6 @@ onMounted(() => {
 .brand-collapse:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
-}
-
-/* 折叠态：品牌行即展开钮（居中 logo + 整行 hover 反馈）；重置 button 原生样式 */
-.brand-row--expand {
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-bottom: 1px solid var(--color-border-light);
-  background: none;
-  font: inherit;
-  width: 100%;
-  cursor: pointer;
-}
-
-.brand-row--expand:hover {
-  background: var(--color-bg-hover);
 }
 
 /* 折叠态系统弹菜单内的系统组（去边线适配弹层） */
