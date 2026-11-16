@@ -43,6 +43,15 @@ class EvaluationConfig(BaseModel):
         description="启用的评分维度",
     )
 
+    # 归因分析（批次 E1：失败用例判根因，五阶段 15 类）
+    enable_attribution: bool = Field(
+        default=True, description="是否对失败用例做归因判定（重放为主，LLM 判定仅失败用例触发）"
+    )
+    attribution_deep_check: bool = Field(
+        default=False,
+        description="归因深检：对「上下文不含答案」类用例进一步判解析丢失 vs 源文档缺陷（额外 LLM 调用）",
+    )
+
 
 # ========== 测试集解析 Schema ==========
 

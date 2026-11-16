@@ -143,11 +143,17 @@ async def test_diagnose_embedding_gap_when_source_in_index():
 
 @pytest.mark.asyncio
 async def test_diagnose_index_missing():
-    """L3b：期望来源不在索引 → 索引缺失；chunk_id 型期望源走 chunk_exists。"""
+    """L3b：期望来源不在索引 → 新分类法细分（无任务表可判时兜底 S1 源数据缺失）。
+
+    批次 E1 起 index_missing 拆分为 P1/P4/S1：ES 无 chunk 时先查解析任务表
+    （analyzer 未注入 session 时不可判，落到兜底）；chunk_id 型期望源走
+    chunk_exists 的 embedding_gap 判定不变。
+    """
     service, _ = _make_svc([[], [], [], [], [], []])
     es = _FakeEsClient(doc_total=0)
     result = await _diagnose(service, es_client=es)
-    assert result["category"] == "index_missing"
+    assert result["category"] == "source_missing"
+    assert result["stage"] == "S"
 
     service2, _ = _make_svc([[], [], [], [], [], []])
     es2 = _FakeEsClient(doc_total=0, chunk_exists=True)

@@ -192,4 +192,64 @@ TEMPLATES = {
         "只判矛盾，不确定时输出 false；输出 JSON {{\"contradiction\": true/false, \"reason\": \"简短说明\"}}。"
         "内容 A：{text_a}\n内容 B：{text_b}"
     ),
+
+    # ==================== Attribution Analysis（批次 E1：失败用例归因判定） ====================
+    # 全部由 AttributionAnalyzer 消费；每步判定失败即降级，输出约定 JSON。
+    "eval_attr_scope_check": (
+        "你是知识库范围审查员。判断下面的问题是否属于该知识库应覆盖的范围。\n\n"
+        "判定规则：\n"
+        "- out_of_scope=true：问题明显超出知识库定位（如闲聊、无关业务），或问题本身歧义到无法判断在问什么\n"
+        "- out_of_scope=false：问题属于知识库应覆盖的领域（哪怕知识库暂时没有答案）\n"
+        "- 不确定时输出 false（宁可不拦，落后续判定）\n\n"
+        "知识库名称：{kb_name}\n问题：{question}\n\n"
+        "只输出 JSON：{{\"out_of_scope\": true/false, \"reason\": \"简短说明\"}}"
+    ),
+    "eval_attr_answer_compare": (
+        "你是答案质量评审员。对同一问题的两个回答，判断第二个（替换上下文后重新生成）"
+        "是否明显比第一个更符合期望答案。\n\n"
+        "判定规则：\n"
+        "- regenerated_better=true：第二个回答在事实与覆盖面上明显更接近期望答案\n"
+        "- regenerated_better=false：两者相当，或第二个并不更好\n"
+        "- 只依据期望答案判断，不引入外部知识\n\n"
+        "问题：{question}\n期望答案：{expected}\n原始回答：{original}\n重生成回答：{regenerated}\n\n"
+        "只输出 JSON：{{\"regenerated_better\": true/false, \"reason\": \"简短说明\"}}"
+    ),
+    "eval_attr_semantic_match": (
+        "你是答案语义评审员。判断生成回答与期望答案是否语义一致。\n\n"
+        "判定规则：\n"
+        "- semantically_equivalent=true：两者表达的事实与结论一致（措辞/详略不同可接受）\n"
+        "- semantically_equivalent=false：存在事实差异或结论不同\n"
+        "- 部分一致但缺少关键事实时输出 false\n\n"
+        "问题：{question}\n期望答案：{expected}\n生成回答：{generated}\n\n"
+        "只输出 JSON：{{\"semantically_equivalent\": true/false, \"reason\": \"简短说明\"}}"
+    ),
+    "eval_attr_faithfulness_check": (
+        "你是答案忠实度审查员。判断生成回答是否与提供的上下文矛盾（幻觉的快速判定）。\n\n"
+        "判定规则：\n"
+        "- contradicts=true：回答中的关键结论与上下文明确冲突（同一事实不同说法/数值）\n"
+        "- contradicts=false：回答忠于上下文，或仅是信息不完整（不完整不是矛盾）\n"
+        "- 只依据上下文判断，不用外部知识\n\n"
+        "生成回答：{generated}\n上下文：\n{context_text}\n\n"
+        "只输出 JSON：{{\"contradicts\": true/false, \"reason\": \"简短说明\"}}"
+    ),
+    "eval_attr_context_sufficiency": (
+        "你是上下文充分性审查员。判断提供的上下文是否包含回答该问题所需的关键信息。\n\n"
+        "判定规则：\n"
+        "- sufficient=true：上下文包含期望答案的核心信息（足以答对）\n"
+        "- sufficient=false：上下文缺少期望答案的关键信息（答不对情有可原）\n"
+        "- 部分包含但缺关键事实时输出 false\n\n"
+        "问题：{question}\n期望答案：{expected}\n上下文：\n{context_text}\n\n"
+        "只输出 JSON：{{\"sufficient\": true/false, \"reason\": \"简短说明\"}}"
+    ),
+    "eval_attr_source_compare": (
+        "你是解析质量审查员。问题所需信息未出现在命中的上下文中，判断这是"
+        "「信息在源文档里但被解析/切分弄丢」还是「源文档本来就没有该信息」。\n\n"
+        "判定规则：\n"
+        "- info_cut_by_parsing=true：上下文与问题主题相关、行文有承接感，但关键信息在"
+        "段落中间断裂（疑似表格被拆碎、句子被截断、跨页丢失）\n"
+        "- info_cut_by_parsing=false：上下文与所需信息无关或明显不完整主题（源文档未覆盖）\n"
+        "- 不确定时输出 false（宁归源文档缺陷，不冤枉解析）\n\n"
+        "问题：{question}\n期望答案：{expected}\n命中上下文：\n{context_text}\n\n"
+        "只输出 JSON：{{\"info_cut_by_parsing\": true/false, \"reason\": \"简短说明\"}}"
+    ),
 }

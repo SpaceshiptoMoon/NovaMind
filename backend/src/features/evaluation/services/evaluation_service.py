@@ -207,14 +207,17 @@ def _build_recommendations(
     """
     recommendations: list[dict[str, Any]] = []
 
-    # 1) 检索失败归因分组
+    # 1) 检索失败归因分组（attribution 优先——批次 E1 起统一归因落该键，
+    #    failure_diagnosis 为协程内旧落点，双读兼容）
     grouped: dict[str, dict[str, Any]] = {}
     for d in details:
-        diag = d.get("failure_diagnosis")
+        diag = d.get("attribution") or d.get("failure_diagnosis")
         if not diag:
             continue
         category = diag.get("category", "unknown")
-        entry = grouped.setdefault(category, {"count": 0, "targets": []})
+        entry = grouped.setdefault(
+            category, {"count": 0, "targets": [], "suggestion": diag.get("suggestion") or ""}
+        )
         entry["count"] += 1
         for source in (d.get("retrieval") or {}).get("expected_sources", []):
             if source not in entry["targets"]:
@@ -224,9 +227,8 @@ def _build_recommendations(
             {
                 "category": category,
                 "count": entry["count"],
-                "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS.get(
-                    category, "结合诊断明细排查该类检索失败"
-                ),
+                "suggestion": entry["suggestion"]
+                or RETRIEVAL_FAILURE_SUGGESTIONS.get(category, "结合诊断明细排查该类检索失败"),
                 "targets": entry["targets"][:10],
             }
         )
@@ -1283,6 +1285,20 @@ class EvaluationService:
                     sim_values = [v for v in sim_values if v is not None]
                     end_to_end["answer_similarity"] = round(sum(sim_values) / len(sim_values), 4) if sim_values else None
 
+                # 归因分析（批次 E1）：失败用例判根因（miss 协程内已判的复用，
+                # 生成侧在此补判），汇总五阶段分布
+                attribution_summary = None
+                if config.enable_attribution:
+                    attribution_summary = await self._run_attribution(
+                        details=details,
+                        cases=cases,
+                        test_set_obj=test_set_obj,
+                        config=config,
+                        user_id=user_id,
+                        session=session,
+                        llm_client=llm_client,
+                    )
+
                 result_data = {
                     "summary": {
                         "total_cases": len(cases),
@@ -1304,6 +1320,8 @@ class EvaluationService:
                     },
                     "details": details,
                 }
+                if attribution_summary:
+                    result_data["summary"]["attribution"] = attribution_summary
 
                 # ---- 检查点：汇总计算后、MinIO 上传前 ----
                 task = await task_repo.get_by_id(task_id)
@@ -1402,92 +1420,103 @@ class EvaluationService:
         svc: SearchService,
         es_client: Any = None,
     ) -> dict[str, Any] | None:
-        """多级重放归因：定位「该召回的没召回」败在哪一环。
+        """多级重放归因（薄委托）：判定逻辑统一在 AttributionAnalyzer。
 
-        判定链（逐级排除，命中即返回）：
-        L0 权限旁路重放命中 → permission_boundary；
-        L1 扩窗（top_k×3、阈值 0）命中 → ranking_issue；
-        L2 换候选检索模式命中 → mode_mismatch；
-        L3 期望来源在 ES 索引中存在 → embedding_gap（在索引但语义检索不到），
-        否则 → index_missing（索引缺失）。
+        判定链（逐级排除，命中即返回）：L0 权限 → L1 排序 → L2 模式 →
+        Q3 归一化重搜 → L3 索引直查（在索引 → embedding_gap；不在 →
+        P1/P4 解析任务判定）→ Q2 超范围 → S1 源数据缺失兜底。
 
         Args:
             es_client: 测试注入用；缺省经 shared 工厂懒加载真实 ES 客户端。
 
         Returns:
-            {category, evidence, suggestion}；诊断全程异常安全——
-            归因是锦上添花，任何一步失败只记 warning 并返回 None，绝不影响用例评估本身。
+            {stage, category, evidence, confidence, suggestion}；全程异常安全，
+            任何一步失败只记 warning 并返回 None，绝不影响用例评估本身。
         """
-        expected = {str(s) for s in expected_sources}
+        from novamind.features.evaluation.services.attribution_analyzer import (
+            AttributionAnalyzer,
+        )
+
+        analyzer = AttributionAnalyzer(svc=svc, es_client=es_client)
         try:
-            # L0 权限边界：同参数 + 权限旁路
-            chunks = await self._replay_search(
-                svc, test_set_obj, user_id, question, config, bypass=True,
+            return await analyzer._diagnose_miss(
+                {"question": question, "retrieval": {"hit": False}},
+                {"expected_sources": expected_sources},
+                test_set_obj,
+                config,
+                user_id,
             )
-            if any(_chunk_matches_expected(c, expected) for c in chunks):
-                return {
-                    "category": "permission_boundary",
-                    "evidence": "权限旁路重放命中目标来源",
-                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["permission_boundary"],
-                }
-
-            # L1 排序问题：扩窗 + 去阈值
-            wide_k = max(config.top_k * 3, 15)
-            chunks = await self._replay_search(
-                svc, test_set_obj, user_id, question, config, top_k=wide_k, threshold=0.0,
-            )
-            if any(_chunk_matches_expected(c, expected) for c in chunks):
-                return {
-                    "category": "ranking_issue",
-                    "evidence": f"扩窗重放（top_k={wide_k}，阈值 0）命中目标来源",
-                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["ranking_issue"],
-                }
-
-            # L2 检索模式：逐个候选模式重放（阈值 0，排除阈值干扰）
-            for mode in _REPLAY_FALLBACK_MODES:
-                if mode == config.search_mode:
-                    continue
-                chunks = await self._replay_search(
-                    svc, test_set_obj, user_id, question, config,
-                    mode=mode, threshold=0.0,
-                )
-                if any(_chunk_matches_expected(c, expected) for c in chunks):
-                    return {
-                        "category": "mode_mismatch",
-                        "evidence": f"切换检索模式 {mode} 后命中目标来源",
-                        "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["mode_mismatch"],
-                    }
-
-            # L3 索引存在性：期望源在索引里 = 语义缺口；不在 = 索引缺失
-            if es_client is None:
-                from novamind.shared.storage.client_factory import get_elasticsearch_client
-
-                es_client = await get_elasticsearch_client()
-            source_in_index = False
-            for source in expected:
-                if source.isdigit():
-                    if (await es_client.get_document_chunks(test_set_obj.space_id, int(source))).get("total", 0) > 0:
-                        source_in_index = True
-                        break
-                elif await es_client.chunk_exists(test_set_obj.space_id, source):
-                    source_in_index = True
-                    break
-            if source_in_index:
-                return {
-                    "category": "embedding_gap",
-                    "evidence": "目标来源已在索引中，但各级重放均未召回",
-                    "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["embedding_gap"],
-                }
-            return {
-                "category": "index_missing",
-                "evidence": "目标来源不在检索索引中",
-                "suggestion": RETRIEVAL_FAILURE_SUGGESTIONS["index_missing"],
-            }
         except Exception as e:
+            # 旧契约保持：诊断全程异常安全，失败返回 None 不影响用例评估
             logger.warning(
                 "检索失败归因诊断异常（跳过）", question=question[:50], error=str(e)
             )
             return None
+
+    async def _run_attribution(
+        self,
+        *,
+        details: list[dict[str, Any]],
+        cases: list[dict[str, Any]],
+        test_set_obj: Any,
+        config: EvaluationConfig,
+        user_id: int,
+        session: Any,
+        llm_client: Any = None,
+    ) -> dict[str, Any] | None:
+        """汇总段归因（批次 E1）：失败用例统一判根因并聚合五阶段分布。
+
+        miss 用例的检索侧判定已在协程内完成（failure_diagnosis，重放成本
+        已付），此处只补 stage 映射；生成侧失败与无硬基准 miss 在此补判。
+
+        Returns:
+            {attributed_cases, by_stage, by_category, deep_checked}；无可归因
+            用例时 None（summary 不带 attribution 键）。
+        """
+        from novamind.features.evaluation.services.attribution_analyzer import (
+            ATTR_STAGE_BY_CATEGORY,
+            AttributionAnalyzer,
+        )
+
+        analyzer = AttributionAnalyzer(
+            svc=await self._retrieval_factory(session),
+            session=session,
+            llm_client=llm_client,
+        )
+        by_stage: dict[str, int] = {}
+        by_category: dict[str, int] = {}
+        attributed = 0
+        for detail in details:
+            if "error" in detail or "cancelled" in detail:
+                continue
+            fd = detail.get("failure_diagnosis")
+            if fd:
+                # 协程内已判（miss 重放）——补 stage 复用，不重放
+                attr = {**fd, "stage": ATTR_STAGE_BY_CATEGORY.get(fd.get("category", ""), "?")}
+            else:
+                idx = detail.get("index")
+                raw = cases[idx] if isinstance(idx, int) and 0 <= idx < len(cases) else {}
+                attr = await analyzer.diagnose_case(
+                    case_detail=detail,
+                    raw_case=raw,
+                    test_set_obj=test_set_obj,
+                    config=config,
+                    user_id=user_id,
+                )
+            if not attr:
+                continue
+            detail["attribution"] = attr
+            attributed += 1
+            by_stage[attr["stage"]] = by_stage.get(attr["stage"], 0) + 1
+            by_category[attr["category"]] = by_category.get(attr["category"], 0) + 1
+        if not attributed:
+            return None
+        return {
+            "attributed_cases": attributed,
+            "by_stage": by_stage,
+            "by_category": by_category,
+            "deep_checked": bool(config.attribution_deep_check),
+        }
 
     async def _evaluate_single_case(
         self,
