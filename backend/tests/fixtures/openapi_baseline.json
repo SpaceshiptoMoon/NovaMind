@@ -3747,6 +3747,107 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthReportResponse": {
+        "description": "知识库健康报告：体检报告首页的「结论」数据面。",
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "环比变化（本期 − 上期）",
+            "title": "Delta"
+          },
+          "prev_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上期综合分",
+            "title": "Prev Score"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "综合健康分（0-100）；None = 冷启动无任何数据",
+            "title": "Score"
+          },
+          "subs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HealthSubScore"
+            },
+            "description": "四维子分：retrieval/freshness/feedback/order",
+            "title": "Subs",
+            "type": "object"
+          },
+          "weekly": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "本周战果：gap_converted/review_confirmed/todo_ignored 计数与零命中率变化",
+            "title": "Weekly",
+            "type": "object"
+          }
+        },
+        "required": [
+          "subs"
+        ],
+        "title": "HealthReportResponse",
+        "type": "object"
+      },
+      "HealthSubScore": {
+        "description": "健康子分项（透明规则：分数 + 环比 + 一句话构成说明）。",
+        "properties": {
+          "detail": {
+            "description": "构成规则一句话（前端点开可解释）",
+            "title": "Detail",
+            "type": "string"
+          },
+          "prev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上期子分；静态维度与本期同值",
+            "title": "Prev"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "子分（0-1）；None = 无数据维度",
+            "title": "Score"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "HealthSubScore",
+        "type": "object"
+      },
       "HumanScoreItem": {
         "description": "单条人工评分",
         "properties": {
@@ -8739,6 +8840,46 @@
         "title": "TextTypeParsingConfig",
         "type": "object"
       },
+      "TodoIgnoreRequest": {
+        "description": "待办忽略留痕（收件箱处置动作，落事件账本）。",
+        "properties": {
+          "kind": {
+            "description": "待办类型",
+            "enum": [
+              "gap",
+              "review",
+              "feedback"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "关联查询文本（gap 类待办携带）",
+            "title": "Query"
+          },
+          "todo_key": {
+            "description": "待办唯一键（查询词/文档 ID 等归一标识）",
+            "maxLength": 512,
+            "title": "Todo Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_key"
+        ],
+        "title": "TodoIgnoreRequest",
+        "type": "object"
+      },
       "Token": {
         "description": "认证令牌模型\n\n字段规范：\n- access_token: 访问令牌，JWT格式\n- token_type: 令牌类型，通常为\"bearer\"\n- refresh_token: 刷新令牌（可选）\n- expires_in: 访问令牌过期时间（秒）",
         "properties": {
@@ -11536,6 +11677,67 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/events/todo-ignored": {
+      "post": {
+        "description": "收件箱待办被显式忽略时落账（旁路记账）。忽略留痕让同一信号不再反复打扰，且计入本周战果——飞轮「有借有还」：忽略也是一种处置。",
+        "operationId": "record_todo_ignored_api_v1_kb_ops_spaces__space_id__events_todo_ignored_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoIgnoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Record Todo Ignored Api V1 Kb Ops Spaces  Space Id  Events Todo Ignored Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "待办忽略留痕",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/kb-ops/spaces/{space_id}/gap-report": {
       "get": {
         "description": "kb-ops A2：聚合时间窗内失败问答的归因分布 + 内容缺口清单（content_gap 按归一化查询聚类、频次降序）+ 待归因计数。与批次 2b 看板、A1 归因同源（question_answers.extra.attribution）。空间成员可读。",
@@ -11719,6 +11921,69 @@
           }
         ],
         "summary": "gap 条目转测试用例",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/health-report": {
+      "get": {
+        "description": "体检报告首页的「结论」：四维健康分（检索/新鲜/反馈/秩序，透明规则可点开）+ 环比 + 本周战果（缺口转化/复审确认/忽略留痕计数与零命中率变化）。冷启动（无任何数据）返回 score=null，前端降级静态体检。",
+        "operationId": "get_space_health_report_api_v1_kb_ops_spaces__space_id__health_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "趋势窗口天数（本期）",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "description": "趋势窗口天数（本期）",
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "知识库健康报告",
         "tags": [
           "知识运营",
           "知识运营"
