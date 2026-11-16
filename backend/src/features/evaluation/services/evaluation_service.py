@@ -189,6 +189,38 @@ def _compute_chunk_health(chunk_list: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _build_hotspot_documents(details: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """重灾文档聚合（批次 E2）：失败用例涉及的来源文档计数 Top5。
+
+    计数来源双通道：失败用例实际命中的 retrieved_chunks 文档（低质量内容源）
+    与期望来源文档（覆盖缺口所指）。纯统计零 LLM。
+
+    Returns:
+        [{document_id, document_name, failure_count}]，按 failure_count 降序。
+    """
+    counter: dict[str, dict[str, Any]] = {}
+    for d in details:
+        doc_ids: set[str] = set()
+        for chunk in d.get("retrieved_chunks", []) or []:
+            doc_id = chunk.get("document_id")
+            if doc_id is not None:
+                doc_ids.add(str(doc_id))
+        for source in (d.get("retrieval") or {}).get("expected_sources", []) or []:
+            if str(source).isdigit():
+                doc_ids.add(str(source))
+        for doc_id in doc_ids:
+            entry = counter.setdefault(doc_id, {"document_id": doc_id, "document_name": "", "failure_count": 0})
+            entry["failure_count"] += 1
+            name = next(
+                (c.get("document_name") for c in d.get("retrieved_chunks", []) or [] if str(c.get("document_id")) == doc_id and c.get("document_name")),
+                entry["document_name"],
+            )
+            if name:
+                entry["document_name"] = name
+    ranked = sorted(counter.values(), key=lambda e: e["failure_count"], reverse=True)
+    return [{**e, "document_id": int(e["document_id"])} for e in ranked[:5]]
+
+
 def _build_recommendations(
     details: list[dict[str, Any]],
     chunk_health: dict[str, int] | None,
@@ -1515,6 +1547,10 @@ class EvaluationService:
             "attributed_cases": attributed,
             "by_stage": by_stage,
             "by_category": by_category,
+            # 重灾文档（批次 E2）：失败用例涉及的来源文档计数 Top5，处置定位用
+            "hotspot_documents": _build_hotspot_documents(
+                [d for d in details if d.get("attribution")]
+            ),
             "deep_checked": bool(config.attribution_deep_check),
         }
 

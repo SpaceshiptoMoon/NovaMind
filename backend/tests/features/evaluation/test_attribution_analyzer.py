@@ -357,3 +357,41 @@ async def test_category_stage_table_complete():
     assert set(ATTRIBUTION_SUGGESTIONS) == set(ATTR_STAGE_BY_CATEGORY)
     stages = set(ATTR_STAGE_BY_CATEGORY.values())
     assert stages == {"S", "P", "R", "G", "Q"}
+
+
+def test_hotspot_documents_aggregation():
+    """重灾文档聚合：retrieved + expected 双通道计数，Top5 降序。"""
+    from novamind.features.evaluation.services.evaluation_service import (
+        _build_hotspot_documents,
+    )
+
+    details = [
+        {
+            "attribution": {"category": "source_defect"},
+            "retrieved_chunks": [
+                {"chunk_id": "1_0", "content": "c", "document_id": 1, "document_name": "文档A"},
+                {"chunk_id": "1_1", "content": "c", "document_id": 1, "document_name": "文档A"},
+            ],
+            "retrieval": {"expected_sources": ["1"]},
+        },
+        {
+            "attribution": {"category": "source_missing"},
+            "retrieved_chunks": [{"chunk_id": "2_0", "content": "c", "document_id": 2, "document_name": "文档B"}],
+            "retrieval": {"expected_sources": ["9"]},
+        },
+        {
+            "attribution": {"category": "source_defect"},
+            "retrieved_chunks": [{"chunk_id": "2_1", "content": "c", "document_id": 2, "document_name": "文档B"}],
+            "retrieval": {"expected_sources": []},
+        },
+    ]
+    ranked = _build_hotspot_documents(details)
+    assert len(ranked) == 3
+    # 单 case 内同文档去重（文档1 在 case1 只计 1 次）、跨 case 累计（文档2 两次）
+    assert ranked[0]["document_id"] == 2
+    assert ranked[0]["failure_count"] == 2
+    assert ranked[0]["document_name"] == "文档B"
+    by_id = {r["document_id"]: r for r in ranked}
+    assert by_id[1]["failure_count"] == 1
+    assert by_id[1]["document_name"] == "文档A"
+    assert by_id[9]["failure_count"] == 1  # 纯 expected_sources 的覆盖缺口文档

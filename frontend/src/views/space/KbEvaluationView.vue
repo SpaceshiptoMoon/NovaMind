@@ -481,6 +481,48 @@
                 class="compare-error"
               />
 
+              <!-- 归因分析（批次 E2）：五阶段根因分布 + 类别明细 + 重灾文档 -->
+              <div v-if="attribution" class="attr-section">
+                <div class="attr-header">
+                  <span class="attr-title">归因分析</span>
+                  <span class="attr-hint">
+                    {{ attribution.attributed_cases }} 条失败用例已定位根因（五阶段：源数据 → 解析 → 检索 → 生成 → 问题侧）
+                  </span>
+                </div>
+                <div class="attr-stage-bar">
+                  <div
+                    v-for="stage in ATTR_STAGES"
+                    :key="stage.key"
+                    class="attr-stage"
+                    :class="{ zero: !attrStageCount(stage.key) }"
+                  >
+                    <b class="attr-stage-num">{{ attrStageCount(stage.key) }}</b>
+                    <span class="attr-stage-label">{{ stage.label }}</span>
+                  </div>
+                </div>
+                <div class="attr-categories">
+                  <el-tag
+                    v-for="(count, category) in attribution.by_category"
+                    :key="category"
+                    size="small"
+                    :type="ATTR_STAGE_TAG[attrCategoryStage(String(category))]"
+                    effect="plain"
+                  >
+                    {{ diagnosisLabel(String(category)) }} × {{ count }}
+                  </el-tag>
+                </div>
+                <div v-if="attribution.hotspot_documents?.length" class="attr-hotspots">
+                  <span class="hotspot-label">重灾文档</span>
+                  <span
+                    v-for="doc in attribution.hotspot_documents"
+                    :key="doc.document_id"
+                    class="hotspot-doc"
+                  >
+                    {{ doc.document_name || `文档 ${doc.document_id}` }}（{{ doc.failure_count }} 次）
+                  </span>
+                </div>
+              </div>
+
               <!-- 诊断建议（批次 4 闭环行动腿） -->
               <div v-if="reportData.summary?.recommendations?.length" class="recommend-section">
                 <div class="recommend-header">
@@ -1663,9 +1705,57 @@ const DIAGNOSIS_LABELS: Record<string, string> = {
   mode_mismatch: '检索模式问题',
   embedding_gap: '语义缺口',
   index_missing: '索引缺失',
+  // 批次 E1 五阶段 15 类
+  source_missing: '源数据缺失',
+  source_defect: '源数据缺陷',
+  parse_failed: '解析失败',
+  parse_defect: '解析质量缺陷',
+  chunk_fragmentation: '切分问题',
+  index_sync_missing: '索引同步缺失',
+  context_underuse: '上下文利用不足',
+  hallucination: '幻觉',
+  case_label_error: '用例标注错误',
+  case_out_of_scope: '用例超范围',
+  query_quality: '表述问题',
   fragmentation: '切分碎片',
   boundary_cut: '切分边界',
   low_generation: '生成质量',
+}
+
+// 五阶段中文与 tag 色（归因分析区用）
+const ATTR_STAGES: Array<{ key: string; label: string; tag: 'primary' | 'warning' | 'danger' | 'success' | 'info' }> = [
+  { key: 'S', label: '源数据', tag: 'danger' },
+  { key: 'P', label: '解析入库', tag: 'warning' },
+  { key: 'R', label: '检索', tag: 'primary' },
+  { key: 'G', label: '生成', tag: 'success' },
+  { key: 'Q', label: '问题侧', tag: 'info' },
+]
+
+const ATTR_STAGE_TAG: Record<string, 'primary' | 'warning' | 'danger' | 'success' | 'info'> = {
+  S: 'danger',
+  P: 'warning',
+  R: 'primary',
+  G: 'success',
+  Q: 'info',
+}
+
+/** 报告归因段（批次 E2）：summary.attribution */
+const attribution = computed(() => reportData.value?.summary?.attribution ?? null)
+
+function attrStageCount(stage: string): number {
+  return attribution.value?.by_stage?.[stage] ?? 0
+}
+
+function attrCategoryStage(category: string): string {
+  // 类别→阶段的轻映射（展示 tag 色用）：S/P 前缀语义见后端 ATTR_STAGE_BY_CATEGORY
+  const map: Record<string, string> = {
+    source_missing: 'S', source_defect: 'S',
+    parse_failed: 'P', parse_defect: 'P', chunk_fragmentation: 'P', index_sync_missing: 'P',
+    ranking_issue: 'R', mode_mismatch: 'R', embedding_gap: 'R', permission_boundary: 'R',
+    context_underuse: 'G', hallucination: 'G',
+    case_label_error: 'Q', case_out_of_scope: 'Q', query_quality: 'Q',
+  }
+  return map[category] ?? 'R'
 }
 
 function diagnosisLabel(category: string): string {
@@ -1844,6 +1934,96 @@ onUnmounted(() => {
 }
 
 /* ===== 诊断建议（批次 4） ===== */
+/* 归因分析区（批次 E2） */
+.attr-section {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-bg-card-elevated);
+}
+
+.attr-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-3);
+}
+
+.attr-title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.attr-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.attr-stage-bar {
+  display: flex;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+
+.attr-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  border-left: 1px solid var(--color-border-light);
+}
+
+.attr-stage:first-child {
+  border-left: none;
+}
+
+.attr-stage.zero {
+  opacity: 0.45;
+}
+
+.attr-stage-num {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.attr-stage-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.attr-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.attr-hotspots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.hotspot-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.hotspot-doc {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 .recommend-section {
   border: 1px solid var(--color-border);
   border-radius: 12px;

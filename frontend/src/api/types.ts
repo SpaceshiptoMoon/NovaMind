@@ -1563,6 +1563,18 @@ export interface EvaluationSummary {
     suggestion: string
     targets: string[]
   }>
+  /** 归因分析（批次 E1/E2）：失败用例五阶段根因分布 + 重灾文档 */
+  attribution?: {
+    attributed_cases: number
+    by_stage: Record<string, number>
+    by_category: Record<string, number>
+    hotspot_documents?: Array<{
+      document_id: number
+      document_name: string
+      failure_count: number
+    }>
+    deep_checked: boolean
+  }
 }
 
 export interface RetrievedChunk {
