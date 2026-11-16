@@ -47,19 +47,22 @@
       </button>
     </div>
 
-    <!-- 当前空间 KB 登记册（唯一滚动区，占满主体高度；折叠态不显示——48px 辨识不了 KB） -->
-    <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
+    <!-- 主体滚动区：KB 登记册 + 系统组按内容流排列（系统组紧跟登记册内容，
+         不钉死视口底缘）；列表超长时本区整体滚动，品牌/切换器保持固定 -->
+    <div class="sidebar-scroll">
+      <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
 
-    <!-- 系统组：折叠态收成单图标弹菜单 -->
-    <SidebarSystemGroup v-if="!collapsed" />
-    <el-popover v-else placement="right-start" :width="180" :show-arrow="false" trigger="click">
-      <template #reference>
-        <button type="button" class="collapsed-system" title="系统" aria-label="系统菜单">
-          <el-icon :size="16"><Setting /></el-icon>
-        </button>
-      </template>
-      <SidebarSystemGroup :collapsed="false" class="popover-system" />
-    </el-popover>
+      <!-- 系统组：折叠态收成单图标弹菜单 -->
+      <SidebarSystemGroup v-if="!collapsed" />
+      <el-popover v-else placement="right-start" :width="180" :show-arrow="false" trigger="click">
+        <template #reference>
+          <button type="button" class="collapsed-system" title="系统" aria-label="系统菜单">
+            <el-icon :size="16"><Setting /></el-icon>
+          </button>
+        </template>
+        <SidebarSystemGroup :collapsed="false" class="popover-system" />
+      </el-popover>
+    </div>
   </aside>
 </template>
 
@@ -278,8 +281,16 @@ onMounted(() => {
   color: var(--color-text-secondary);
 }
 
-/* KB 登记册（flex:1）独自占满主体高度，把系统组自然压到底——无需弹性补位
-   （历史教训：补位 div 若也是 flex:1 会与登记册平分高度，登记区被腰斩） */
+/* 主体滚动区：登记册按内容自然高度，系统组紧跟其后；超长整体滚动 */
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* KB 登记册按内容高度（不拉伸）——系统组才会贴着内容排而不是被推到底 */
 
 /* ===== 品牌行的收起箭头（展开态右缘）/ 折叠态整行为展开钮 ===== */
 .brand-collapse {

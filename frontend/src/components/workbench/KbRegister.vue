@@ -111,9 +111,8 @@ function createKb() {
 </script>
 
 <style scoped>
+/* 按内容自然高度：滚动由外层 sidebar-scroll 整体承接（系统组紧跟内容排） */
 .kb-register {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -158,11 +157,8 @@ function createKb() {
   padding: 0 var(--space-3) var(--space-1);
 }
 
-/* 唯一滚动区：结构区块恒定，增长只发生在这里 */
+/* 登记册列表：自然高度，超长由外层滚动 */
 .register-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   padding-bottom: var(--space-2);
 }
 
