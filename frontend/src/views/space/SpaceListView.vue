@@ -33,9 +33,12 @@
         />
       </div>
 
-      <!-- 子路由内容 -->
+      <!-- 子路由内容：key 含 kbId——同空间两个 KB 直跳（侧栏登记册）时强制重挂载，
+           否则组件实例被复用、onMounted 拉取不重跑，右侧内容停在旧库 -->
       <div v-if="selectedSpaceId" class="content-body">
-        <router-view :key="`${route.params.id || ''}-${kbRefreshKey}`" />
+        <router-view
+          :key="`${route.params.id || ''}-${route.params.kbId || (route.query.kbId as string) || ''}-${kbRefreshKey}`"
+        />
       </div>
 
       <!-- 未选择空间时的欢迎页（始终显示，不依赖 loading 避免白屏） -->
