@@ -1,5 +1,22 @@
 <template>
   <div class="ops-inbox">
+    <!-- ⓪ 五模块条：运营平台骨架直接展开（导航+计数，处置即本页高亮） -->
+    <nav class="module-bar">
+      <component
+        :is="mod.to ? 'router-link' : 'span'"
+        v-for="mod in modules"
+        :key="mod.key"
+        class="mod"
+        :class="{ 'is-here': mod.here, 'is-flat': !mod.to }"
+        :to="mod.to"
+        :title="mod.hint"
+      >
+        <span class="mod-dot" :style="{ background: mod.color }"></span>
+        <span class="mod-name">{{ mod.name }}</span>
+        <b class="mod-count" :class="{ 'num-bad': mod.bad }">{{ mod.count ?? '—' }}</b>
+      </component>
+    </nav>
+
     <!-- ⓪ 冷启动横幅：stage 未就绪时给检查清单，就绪后消失 -->
     <div v-if="onboarding && onboarding.stage !== 'ready'" class="onboarding-banner" :class="`stage-${onboarding.stage}`">
       <div class="ob-head">
@@ -50,7 +67,6 @@
           暂无行为数据：分数将在用户开始检索后积累；静态体检与待办已可用
         </span>
       </template>
-      <router-link class="bench-link" :to="`/home/spaces/${spaceId}/ops/workbench`">工作台</router-link>
       <el-button size="small" :icon="Refresh" :loading="loading" class="refresh-btn" @click="loadAll">
         刷新
       </el-button>
@@ -162,6 +178,7 @@ import OpsTrendChart from '@/components/knowledge/ops/OpsTrendChart.vue'
 import { spaceStatsApi, documentApi } from '@/api/knowledge'
 import type {
   IgnoredTodoItem,
+  KbOpsBadgeCounts,
   KbOpsHealthReport,
   KbOpsOverview,
   KbOpsTrends,
@@ -183,10 +200,75 @@ const overview = ref<KbOpsOverview | null>(null)
 const trends = ref<KbOpsTrends | null>(null)
 const todoList = ref<OpsTodoList | null>(null)
 const onboarding = ref<OpsOnboarding | null>(null)
+const badges = ref<KbOpsBadgeCounts | null>(null)
+const eventTotal = ref<number | null>(null)
 const busyKey = ref<string | null>(null)
 const openedPanels = ref<string[]>([])
 const ignoreDialogVisible = ref(false)
 const ignoreTarget = ref<OpsTodoItem | null>(null)
+
+/** 五模块条：平台骨架直接展开在主页（导航+计数，处置即本页） */
+const modules = computed(() => {
+  const base = `/home/spaces/${spaceId.value}/ops`
+  const h = health.value
+  const b = badges.value
+  const qcTotal = b ? b.due_reviews + b.open_suggestions + b.failed_documents : null
+  const harvest = h
+    ? (h.weekly.gap_converted ?? 0) + (h.weekly.review_confirmed ?? 0) + (h.weekly.todo_ignored ?? 0)
+    : null
+  return [
+    {
+      key: 'board',
+      name: '看板',
+      color: 'var(--color-primary)',
+      count: h ? (h.score !== null ? Math.round(h.score) : null) : null,
+      to: `${base}/health`,
+      hint: '统计监控：健康分与趋势',
+      here: false,
+      bad: false,
+    },
+    {
+      key: 'qc',
+      name: '质检',
+      color: 'var(--color-warning)',
+      count: qcTotal,
+      to: `${base}/queue`,
+      hint: '内容诊断：缺口/复审/建议/解析失败',
+      here: false,
+      bad: (qcTotal ?? 0) > 0,
+    },
+    {
+      key: 'dispose',
+      name: '处置',
+      color: 'var(--color-danger)',
+      count: todoList.value?.total ?? null,
+      to: `${base}`,
+      hint: '待办行动：本页处置',
+      here: true,
+      bad: (todoList.value?.total ?? 0) > 0,
+    },
+    {
+      key: 'verify',
+      name: '验证',
+      color: 'var(--color-success)',
+      count: harvest,
+      to: undefined,
+      hint: '效果闭环：本周战果（干预回看随下批次接入）',
+      here: false,
+      bad: false,
+    },
+    {
+      key: 'ledger',
+      name: '账本',
+      color: 'var(--color-text-muted)',
+      count: eventTotal.value,
+      to: undefined,
+      hint: '事件底座：累计事件数（口径唯一）',
+      here: false,
+      bad: false,
+    },
+  ]
+})
 
 /** 各类型待办的内联动作（按钮是交互层，数据/排序/过滤归后端） */
 const KIND_ACTIONS: Record<OpsTodoItem['kind'], TodoAction[]> = {
@@ -248,18 +330,22 @@ const REASON_LABELS: Record<string, string> = {
 async function loadAll() {
   loading.value = true
   const sid = spaceId.value
-  const [healthR, overviewR, trendsR, todosR, onbR] = await Promise.allSettled([
+  const [healthR, overviewR, trendsR, todosR, onbR, badgeR, eventsR] = await Promise.allSettled([
     spaceStatsApi.getHealthReport(sid),
     spaceStatsApi.getOpsOverview(sid),
     spaceStatsApi.getTrends(sid, { days: 30 }),
     spaceStatsApi.getOpsTodos(sid),
     spaceStatsApi.getOnboarding(sid),
+    spaceStatsApi.getBadgeCounts(sid),
+    spaceStatsApi.getEvents(sid, { limit: 1 }),
   ])
   if (healthR.status === 'fulfilled') health.value = healthR.value
   if (overviewR.status === 'fulfilled') overview.value = overviewR.value
   if (trendsR.status === 'fulfilled') trends.value = trendsR.value
   if (todosR.status === 'fulfilled') todoList.value = todosR.value
   if (onbR.status === 'fulfilled') onboarding.value = onbR.value
+  if (badgeR.status === 'fulfilled') badges.value = badgeR.value
+  if (eventsR.status === 'fulfilled') eventTotal.value = eventsR.value.total ?? null
   loading.value = false
 }
 
@@ -374,6 +460,75 @@ onMounted(() => {
   gap: var(--space-4);
 }
 
+/* ⓪ 五模块条：一行五段（色点+名+计数），兼作运营区导航 */
+.module-bar {
+  display: flex;
+  align-items: stretch;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+}
+
+.mod {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  text-decoration: none;
+  border-left: 1px solid var(--color-border-light);
+  flex: 1;
+  min-width: fit-content;
+  white-space: nowrap;
+}
+
+.mod:first-child {
+  border-left: none;
+}
+
+a.mod {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+a.mod:hover {
+  background: var(--color-bg-hover);
+}
+
+.mod.is-here {
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.mod.is-flat {
+  color: inherit;
+  cursor: default;
+}
+
+.mod-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mod-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.mod-count {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.mod-count.num-bad {
+  color: var(--color-danger);
+}
+
 /* ⓪ 冷启动横幅 */
 .onboarding-banner {
   padding: var(--space-3) var(--space-4);
@@ -466,18 +621,6 @@ onMounted(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-}
-
-.bench-link {
-  margin-left: auto;
-  font-size: var(--text-sm);
-  color: var(--color-primary);
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.bench-link:hover {
-  text-decoration: underline;
 }
 
 .refresh-btn {
