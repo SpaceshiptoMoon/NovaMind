@@ -71,7 +71,31 @@ class SuggestionResolveService:
             # 矛盾建议 accept = 通知两位文档 owner 人工对齐；平台永不自动改写/删除
             await self._notify_contradiction_owners(suggestion)
         await self.session.commit()
+        # 处置动作统一登记（旁路，只进动作表——账本不登记此类型）
+        await self._record_action(suggestion, action, user_id, superseded_doc_id)
         return resolved, superseded_doc_id
+
+    async def _record_action(self, suggestion, action: str, user_id: int, superseded_doc_id: int | None) -> None:
+        """建议处置动作登记（失败仅告警，不影响已提交的处置结果）。"""
+        try:
+            from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
+
+            await OpsActionService().record(
+                action="suggestion_accepted" if action == STATUS_ACCEPTED else "suggestion_dismissed",
+                target_kind="suggestion",
+                target_id=suggestion.id,
+                actor_id=user_id,
+                space_id=suggestion.space_id,
+                kb_id=suggestion.kb_id,
+                context_snapshot={
+                    "suggestion_type": suggestion.suggestion_type,
+                    "superseded_doc_id": superseded_doc_id,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "建议处置动作登记失败（跳过）", suggestion_id=suggestion.id, error=str(e)
+            )
 
     async def _notify_contradiction_owners(self, suggestion) -> None:
         """矛盾建议 accept：通知双方文档 owner 人工对齐内容（通知失败仅告警）。"""

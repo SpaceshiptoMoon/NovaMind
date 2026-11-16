@@ -124,20 +124,23 @@ class GapToTestSetService:
     async def _record_action_event(
         self, user_id: int, space_id: int, kb_id: int, test_set_id: int, added: int
     ) -> None:
-        """缺口转化动作落事件账本（本周战果数据源，旁路失败静默）。"""
+        """缺口转化动作统一登记（动作表 + 账本双写，旁路失败静默）。"""
         try:
-            from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+            from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
 
-            await EventRecorder().record(
-                event_type="gap_converted",
-                user_id=user_id,
+            await OpsActionService().record(
+                action="gap_converted",
+                target_kind="gap",
+                target_id=f"kb:{kb_id}",
+                actor_id=user_id,
                 space_id=space_id,
                 kb_id=kb_id,
                 extra={"test_set_id": test_set_id, "added_cases": added},
+                context_snapshot={"test_set_id": test_set_id, "added_cases": added},
             )
         except Exception as e:
             from novamind.core.middleware.structured_logging import get_logger
 
             get_logger(__name__).warning(
-                "缺口转化事件落账失败（跳过）", test_set_id=test_set_id, error=str(e)
+                "缺口转化动作登记失败（跳过）", test_set_id=test_set_id, error=str(e)
             )

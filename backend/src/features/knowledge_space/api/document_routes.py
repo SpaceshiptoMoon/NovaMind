@@ -1561,19 +1561,22 @@ async def confirm_document_review(
 
     next_at = await review_service.confirm_review(document)
 
-    # 飞轮动作落账（旁路）：本周战果「复审确认」计数的数据源
+    # 飞轮动作统一登记（旁路）：动作表（战果/回看数据源）+ 账本双写
     try:
-        from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+        from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
 
-        await EventRecorder().record(
-            event_type="review_confirmed",
-            user_id=user_id,
+        await OpsActionService().record(
+            action="review_confirmed",
+            target_kind="document",
+            target_id=document_id,
+            actor_id=user_id,
             space_id=space_id,
             kb_id=kb_id,
             extra={"document_id": document_id, "next_review_at": next_at.isoformat()},
+            context_snapshot={"next_review_at": next_at.isoformat()},
         )
     except Exception:
-        pass  # EventRecorder 内部已全吞；此处兜底防 import 期异常影响主流程
+        pass  # OpsActionService 内部已全吞；此处兜底防 import 期异常影响主流程
 
     return DocumentReviewResponse(
         document_id=document.id,
@@ -1661,6 +1664,21 @@ async def transition_document_lifecycle(
         raise DocumentLifecycleTransitionError(
             current=document.lifecycle_status or "active", target=data.action
         ) from e
+    # 生命周期动作统一登记（旁路，只进动作表——账本不登记此类型）
+    try:
+        from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
+
+        await OpsActionService().record(
+            action=f"doc_{data.action}",
+            target_kind="document",
+            target_id=document_id,
+            actor_id=user_id,
+            space_id=space_id,
+            kb_id=kb_id,
+            context_snapshot={"lifecycle_status": updated.lifecycle_status or "active"},
+        )
+    except Exception:
+        pass  # 旁路兜底：登记失败不影响生命周期变更本身
     return DocumentLifecycleActionResponse(
         document_id=updated.id,
         lifecycle_status=updated.lifecycle_status or "active",

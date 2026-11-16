@@ -14,6 +14,10 @@ def _import_models() -> None:
     from novamind.features.knowledge_ops.models.message_feedback import (
         MessageFeedback,  # noqa: F401
     )
+    from novamind.features.knowledge_ops.models.ops_action import OpsAction  # noqa: F401
+    from novamind.features.knowledge_ops.models.ops_todo_disposition import (  # noqa: F401
+        OpsTodoDisposition,
+    )
     from novamind.features.knowledge_ops.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.knowledge_ops.models.session_config import SessionConfig  # noqa: F401
 

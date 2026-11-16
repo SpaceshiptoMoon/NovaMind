@@ -220,8 +220,79 @@ class HealthReportResponse(BaseModel):
 
 
 class TodoIgnoreRequest(BaseModel):
-    """待办忽略留痕（收件箱处置动作，落事件账本）。"""
+    """待办忽略留痕（收件箱处置动作，落状态表 + 事件账本）。"""
 
     kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
     todo_key: str = Field(..., max_length=512, description="待办唯一键（查询词/文档 ID 等归一标识）")
     query: str | None = Field(None, max_length=2000, description="关联查询文本（gap 类待办携带）")
+    reason: Literal["one_shot", "non_kb", "false_positive"] | None = Field(
+        None, description="忽略原因：一次性提问/非知识需求/误报（自动分诊判例燃料）"
+    )
+
+
+class TodoUnignoreRequest(BaseModel):
+    """撤销待办忽略（删处置行，待办恢复可见）。"""
+
+    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    todo_key: str = Field(..., max_length=512, description="待办唯一键")
+
+
+class TodoImpactSchema(BaseModel):
+    """待办影响度（数量 + 单位 + 语义色调，对齐前端 OpsTodoCard.impact）。"""
+
+    count: int | str = Field(..., description="影响数量（或文案，如「超期 47 天」的天数）")
+    unit: str = Field(..., description="数量单位（次/天等）")
+    tone: Literal["danger", "warning", "neutral"] = Field(..., description="语义色调")
+
+
+class OpsTodoItem(BaseModel):
+    """统一待办行（三源聚合成同构 shape，影响度排序后端化）。"""
+
+    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    todo_key: str = Field(..., max_length=512, description="待办唯一键（忽略写入同键）")
+    title: str = Field(..., description="待办主文案")
+    impact: TodoImpactSchema = Field(..., description="影响度")
+    meta: str | None = Field(None, description="次行元信息（最近出现/责任人等）")
+    weight: int = Field(..., ge=0, description="影响度排序权重（降序展示）")
+    payload: dict[str, Any] = Field(
+        default_factory=dict, description="源特定字段（document_id/kb_id/message_id 等，动作路由用）"
+    )
+
+
+class IgnoredTodoItem(BaseModel):
+    """已忽略待办（忽略区展示 + 撤销入口）。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    kind: str
+    todo_key: str
+    reason: str | None = None
+    ignored_at: datetime
+
+
+class OpsTodoListResponse(BaseModel):
+    """统一待办列表：三源混排 + 忽略区。"""
+
+    items: list[OpsTodoItem] = Field(default_factory=list, description="未忽略待办（按影响度降序）")
+    ignored: list[IgnoredTodoItem] = Field(default_factory=list, description="已忽略待办（可撤销）")
+    total: int = Field(..., ge=0, description="未忽略待办数")
+
+
+class OnboardingCheck(BaseModel):
+    """冷启动单项检查（透明规则：结果 + 现状 + 下一步）。"""
+
+    key: Literal["embedding", "documents", "query_volume"] = Field(..., description="检查项标识")
+    label: str = Field(..., description="检查项名称")
+    ok: bool = Field(..., description="是否通过")
+    detail: str = Field(..., description="现状描述（如「412 次 / 近 7 天」）")
+    action_hint: str | None = Field(None, description="未通过时的下一步建议")
+
+
+class OpsOnboardingResponse(BaseModel):
+    """空间运营冷启动引导：检查清单 + 阶段判定。"""
+
+    stage: Literal["empty", "collecting", "ready"] = Field(
+        ..., description="empty=未起步（无内容或不可检索）/collecting=采集期/ready=可运营"
+    )
+    checks: list[OnboardingCheck] = Field(default_factory=list)
+    next_step: str = Field(..., description="当前阶段的下一步行动文案")

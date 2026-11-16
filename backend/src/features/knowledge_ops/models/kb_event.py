@@ -8,7 +8,8 @@
 - attribution：归因写回（A1；实际写 question_answers.extra，未落本账本——注释存档）
 - gap_converted：缺口转测试用例（运营飞轮动作，本周战果数据源）
 - review_confirmed：确认复审（运营飞轮动作，本周战果数据源）
-- todo_ignored：待办忽略留痕（收件箱处置动作）
+- todo_ignored：待办忽略留痕（收件箱处置动作，状态落 ops_todo_dispositions）
+- todo_unignored：待办撤销忽略（删处置行，恢复待办可见）
 
 系统内部检索重放（kb-ops 归因 worker、evaluation 重放）不产生 query 事件
 ——它们直接用 SearchService，只有用户触发的检索走 InstrumentedSearchService。

@@ -25,10 +25,13 @@ from novamind.features.knowledge_ops.schemas import (
     HealthReportResponse,
     KbEventListResponse,
     KbReviewSuggestionListResponse,
+    OpsOnboardingResponse,
+    OpsTodoListResponse,
     SpaceOverviewResponse,
     SuggestionResolveRequest,
     SuggestionResolveResponse,
     TodoIgnoreRequest,
+    TodoUnignoreRequest,
     TrendPoint,
     TrendsResponse,
 )
@@ -453,8 +456,9 @@ async def get_space_health_report(
     "/spaces/{space_id}/events/todo-ignored",
     summary="待办忽略留痕",
     description=(
-        "收件箱待办被显式忽略时落账（旁路记账）。忽略留痕让同一信号不再反复"
-        "打扰，且计入本周战果——飞轮「有借有还」：忽略也是一种处置。"
+        "收件箱待办被显式忽略时落状态表 + 账本（旁路记账）。忽略态跨会话/"
+        "跨用户可见——同一信号不再反复打扰；带原因（一次性提问/非知识需求/"
+        "误报）的判例是后续自动分诊的训练燃料。"
     ),
 )
 async def record_todo_ignored(
@@ -462,15 +466,94 @@ async def record_todo_ignored(
     data: TodoIgnoreRequest,
     current_user: dict = Depends(get_current_user),
     member: SpaceMember = Depends(validate_space_member),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """待办忽略事件落账本（旁路语义，200 恒返）。"""
-    from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
-
-    await EventRecorder().record(
-        event_type="todo_ignored",
-        user_id=current_user["id"],
-        space_id=space_id,
-        query_text=data.query,
-        extra={"kind": data.kind, "todo_key": data.todo_key},
+    """待办忽略：状态行 + 账本双写（旁路语义，200 恒返）。"""
+    from novamind.features.knowledge_ops.services.todo_disposition_service import (
+        TodoDispositionService,
     )
-    return {"recorded": True}
+
+    recorded = await TodoDispositionService(db).ignore(
+        space_id=space_id,
+        kind=data.kind,
+        todo_key=data.todo_key,
+        operator_id=current_user["id"],
+        reason=data.reason,
+        query_text=data.query,
+    )
+    return {"recorded": recorded}
+
+
+@router.post(
+    "/spaces/{space_id}/todos/unignore",
+    summary="撤销待办忽略",
+    description="删除忽略状态行并落 todo_unignored 留痕，待办在下一次收件箱聚合中恢复可见。",
+)
+async def undo_todo_ignore(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    data: TodoUnignoreRequest,
+    current_user: dict = Depends(get_current_user),
+    member: SpaceMember = Depends(validate_space_member),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """撤销待办忽略（幂等：无忽略态时 returned=False）。"""
+    from novamind.features.knowledge_ops.services.todo_disposition_service import (
+        TodoDispositionService,
+    )
+
+    restored = await TodoDispositionService(db).undo(
+        space_id=space_id,
+        kind=data.kind,
+        todo_key=data.todo_key,
+        operator_id=current_user["id"],
+    )
+    return {"restored": restored}
+
+
+@router.get(
+    "/spaces/{space_id}/todos",
+    response_model=OpsTodoListResponse,
+    summary="统一待办列表（收件箱一次取全）",
+    description=(
+        "三源（缺口聚簇/到期复审/低分反馈）即时聚合为同构待办行，"
+        "按影响度降序；忽略态持久过滤并随忽略区返回（可撤销）。"
+        "todo_key 是忽略/撤销的回写键，与各源生成约定一致。"
+    ),
+)
+async def list_space_todos(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OpsTodoListResponse:
+    """统一待办列表（收件箱数据面）。"""
+    from novamind.features.knowledge_ops.services.ops_todo_service import OpsTodoService
+
+    data = await OpsTodoService(db).list_todos(space_id)
+    return OpsTodoListResponse(**data)
+
+
+@router.get(
+    "/spaces/{space_id}/onboarding",
+    response_model=OpsOnboardingResponse,
+    summary="运营冷启动引导",
+    description=(
+        "新空间从零到飞轮转起来的检查清单：检索能力（embedding 生效语义："
+        "显式配置或用户默认）/内容沉淀（≥10 篇）/行为数据（近 7 天 ≥30 次检索）。"
+        "stage 三态：empty 未起步、collecting 采集期（健康分未生效，静态体检可用）、"
+        "ready 可运营。"
+    ),
+)
+async def get_space_onboarding(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OpsOnboardingResponse:
+    """运营冷启动检查清单。"""
+    from novamind.features.knowledge_ops.services.ops_onboarding_service import (
+        OpsOnboardingService,
+    )
+
+    data = await OpsOnboardingService(db).get_onboarding(space_id)
+    return OpsOnboardingResponse(**data)

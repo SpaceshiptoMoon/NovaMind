@@ -8,12 +8,16 @@ question_answer/message_feedback/session_config 为 QA 对话归档的历史表
 from .kb_event import KbEvent
 from .kb_review_suggestion import KbReviewSuggestion
 from .message_feedback import MessageFeedback
+from .ops_action import OpsAction
+from .ops_todo_disposition import OpsTodoDisposition
 from .question_answer import QuestionAnswer
 from .session_config import SessionConfig
 
 __all__ = [
     "KbEvent",
     "KbReviewSuggestion",
+    "OpsAction",
+    "OpsTodoDisposition",
     "QuestionAnswer",
     "SessionConfig",
     "MessageFeedback",
