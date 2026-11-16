@@ -77,24 +77,29 @@ class SuggestionResolveService:
 
     async def _record_action(self, suggestion, action: str, user_id: int, superseded_doc_id: int | None) -> None:
         """建议处置动作登记（失败仅告警，不影响已提交的处置结果）。"""
+        # 字段先取再进 try：异常分支不再触碰原对象（测试桩可能是 SimpleNamespace）
+        suggestion_id = getattr(suggestion, "id", None)
+        space_id = getattr(suggestion, "space_id", None)
+        kb_id = getattr(suggestion, "kb_id", None)
+        suggestion_type = getattr(suggestion, "suggestion_type", None)
         try:
             from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
 
             await OpsActionService().record(
                 action="suggestion_accepted" if action == STATUS_ACCEPTED else "suggestion_dismissed",
                 target_kind="suggestion",
-                target_id=suggestion.id,
+                target_id=suggestion_id if suggestion_id is not None else "unknown",
                 actor_id=user_id,
-                space_id=suggestion.space_id,
-                kb_id=suggestion.kb_id,
+                space_id=space_id,
+                kb_id=kb_id,
                 context_snapshot={
-                    "suggestion_type": suggestion.suggestion_type,
+                    "suggestion_type": suggestion_type,
                     "superseded_doc_id": superseded_doc_id,
                 },
             )
         except Exception as e:
             logger.warning(
-                "建议处置动作登记失败（跳过）", suggestion_id=suggestion.id, error=str(e)
+                "建议处置动作登记失败（跳过）", suggestion_id=suggestion_id, error=str(e)
             )
 
     async def _notify_contradiction_owners(self, suggestion) -> None:

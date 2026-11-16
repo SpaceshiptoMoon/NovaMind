@@ -36,6 +36,11 @@ from novamind.features.knowledge_ops.schemas import (
     TrendsResponse,
 )
 from novamind.features.knowledge_ops.services.gap_report_service import GapReportService
+from novamind.features.knowledge_ops.services.ops_onboarding_service import OpsOnboardingService
+from novamind.features.knowledge_ops.services.ops_todo_service import OpsTodoService
+from novamind.features.knowledge_ops.services.todo_disposition_service import (
+    TodoDispositionService,
+)
 from novamind.features.knowledge_space.api.dependencies import (
     validate_space_admin,
     validate_space_member,
@@ -469,10 +474,6 @@ async def record_todo_ignored(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """待办忽略：状态行 + 账本双写（旁路语义，200 恒返）。"""
-    from novamind.features.knowledge_ops.services.todo_disposition_service import (
-        TodoDispositionService,
-    )
-
     recorded = await TodoDispositionService(db).ignore(
         space_id=space_id,
         kind=data.kind,
@@ -497,10 +498,6 @@ async def undo_todo_ignore(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """撤销待办忽略（幂等：无忽略态时 returned=False）。"""
-    from novamind.features.knowledge_ops.services.todo_disposition_service import (
-        TodoDispositionService,
-    )
-
     restored = await TodoDispositionService(db).undo(
         space_id=space_id,
         kind=data.kind,
@@ -527,8 +524,6 @@ async def list_space_todos(
     db: AsyncSession = Depends(get_db),
 ) -> OpsTodoListResponse:
     """统一待办列表（收件箱数据面）。"""
-    from novamind.features.knowledge_ops.services.ops_todo_service import OpsTodoService
-
     data = await OpsTodoService(db).list_todos(space_id)
     return OpsTodoListResponse(**data)
 
@@ -551,9 +546,5 @@ async def get_space_onboarding(
     db: AsyncSession = Depends(get_db),
 ) -> OpsOnboardingResponse:
     """运营冷启动检查清单。"""
-    from novamind.features.knowledge_ops.services.ops_onboarding_service import (
-        OpsOnboardingService,
-    )
-
     data = await OpsOnboardingService(db).get_onboarding(space_id)
     return OpsOnboardingResponse(**data)

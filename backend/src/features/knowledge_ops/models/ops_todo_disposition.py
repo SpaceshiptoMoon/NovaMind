@@ -5,7 +5,7 @@
 撤销忽略 = 删行（事件账本已有 todo_ignored/todo_unignored 留痕，无需软删）。
 """
 from novamind.core.database.base import BaseModel
-from sqlalchemy import BigInteger, Column, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, Index, String, UniqueConstraint
 
 
 class OpsTodoDisposition(BaseModel):

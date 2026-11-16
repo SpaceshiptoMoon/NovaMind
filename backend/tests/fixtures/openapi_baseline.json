@@ -3925,6 +3925,42 @@
         "title": "HumanScoreResponse",
         "type": "object"
       },
+      "IgnoredTodoItem": {
+        "description": "已忽略待办（忽略区展示 + 撤销入口）。",
+        "properties": {
+          "ignored_at": {
+            "format": "date-time",
+            "title": "Ignored At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "todo_key": {
+            "title": "Todo Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_key",
+          "ignored_at"
+        ],
+        "title": "IgnoredTodoItem",
+        "type": "object"
+      },
       "ImageParsingConfig": {
         "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。\n- \"external_ocr\": 外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字\n  再走文本 Embedding 索引（无需 VLM 模型，需配置 api_key）。PDF 走\n  document_parsing 整本直传（带版面结构），图片走 multi_lan 单图识别。",
         "properties": {
@@ -6040,6 +6076,184 @@
           "max"
         ],
         "title": "NumericLimit",
+        "type": "object"
+      },
+      "OnboardingCheck": {
+        "description": "冷启动单项检查（透明规则：结果 + 现状 + 下一步）。",
+        "properties": {
+          "action_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "未通过时的下一步建议",
+            "title": "Action Hint"
+          },
+          "detail": {
+            "description": "现状描述（如「412 次 / 近 7 天」）",
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "description": "检查项标识",
+            "enum": [
+              "embedding",
+              "documents",
+              "query_volume"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "检查项名称",
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "description": "是否通过",
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "ok",
+          "detail"
+        ],
+        "title": "OnboardingCheck",
+        "type": "object"
+      },
+      "OpsOnboardingResponse": {
+        "description": "空间运营冷启动引导：检查清单 + 阶段判定。",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/OnboardingCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "next_step": {
+            "description": "当前阶段的下一步行动文案",
+            "title": "Next Step",
+            "type": "string"
+          },
+          "stage": {
+            "description": "empty=未起步（无内容或不可检索）/collecting=采集期/ready=可运营",
+            "enum": [
+              "empty",
+              "collecting",
+              "ready"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "next_step"
+        ],
+        "title": "OpsOnboardingResponse",
+        "type": "object"
+      },
+      "OpsTodoItem": {
+        "description": "统一待办行（三源聚合成同构 shape，影响度排序后端化）。",
+        "properties": {
+          "impact": {
+            "$ref": "#/components/schemas/TodoImpactSchema",
+            "description": "影响度"
+          },
+          "kind": {
+            "description": "待办类型",
+            "enum": [
+              "gap",
+              "review",
+              "feedback"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "次行元信息（最近出现/责任人等）",
+            "title": "Meta"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "源特定字段（document_id/kb_id/message_id 等，动作路由用）",
+            "title": "Payload",
+            "type": "object"
+          },
+          "title": {
+            "description": "待办主文案",
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_key": {
+            "description": "待办唯一键（忽略写入同键）",
+            "maxLength": 512,
+            "title": "Todo Key",
+            "type": "string"
+          },
+          "weight": {
+            "description": "影响度排序权重（降序展示）",
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_key",
+          "title",
+          "impact",
+          "weight"
+        ],
+        "title": "OpsTodoItem",
+        "type": "object"
+      },
+      "OpsTodoListResponse": {
+        "description": "统一待办列表：三源混排 + 忽略区。",
+        "properties": {
+          "ignored": {
+            "description": "已忽略待办（可撤销）",
+            "items": {
+              "$ref": "#/components/schemas/IgnoredTodoItem"
+            },
+            "title": "Ignored",
+            "type": "array"
+          },
+          "items": {
+            "description": "未忽略待办（按影响度降序）",
+            "items": {
+              "$ref": "#/components/schemas/OpsTodoItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "description": "未忽略待办数",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "OpsTodoListResponse",
         "type": "object"
       },
       "ParsingConfig-Input": {
@@ -8841,7 +9055,7 @@
         "type": "object"
       },
       "TodoIgnoreRequest": {
-        "description": "待办忽略留痕（收件箱处置动作，落事件账本）。",
+        "description": "待办忽略留痕（收件箱处置动作，落状态表 + 事件账本）。",
         "properties": {
           "kind": {
             "description": "待办类型",
@@ -8866,6 +9080,23 @@
             "description": "关联查询文本（gap 类待办携带）",
             "title": "Query"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "one_shot",
+                  "non_kb",
+                  "false_positive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "忽略原因：一次性提问/非知识需求/误报（自动分诊判例燃料）",
+            "title": "Reason"
+          },
           "todo_key": {
             "description": "待办唯一键（查询词/文档 ID 等归一标识）",
             "maxLength": 512,
@@ -8878,6 +9109,72 @@
           "todo_key"
         ],
         "title": "TodoIgnoreRequest",
+        "type": "object"
+      },
+      "TodoImpactSchema": {
+        "description": "待办影响度（数量 + 单位 + 语义色调，对齐前端 OpsTodoCard.impact）。",
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "影响数量（或文案，如「超期 47 天」的天数）",
+            "title": "Count"
+          },
+          "tone": {
+            "description": "语义色调",
+            "enum": [
+              "danger",
+              "warning",
+              "neutral"
+            ],
+            "title": "Tone",
+            "type": "string"
+          },
+          "unit": {
+            "description": "数量单位（次/天等）",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "unit",
+          "tone"
+        ],
+        "title": "TodoImpactSchema",
+        "type": "object"
+      },
+      "TodoUnignoreRequest": {
+        "description": "撤销待办忽略（删处置行，待办恢复可见）。",
+        "properties": {
+          "kind": {
+            "description": "待办类型",
+            "enum": [
+              "gap",
+              "review",
+              "feedback"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_key": {
+            "description": "待办唯一键",
+            "maxLength": 512,
+            "title": "Todo Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_key"
+        ],
+        "title": "TodoUnignoreRequest",
         "type": "object"
       },
       "Token": {
@@ -11679,7 +11976,7 @@
     },
     "/api/v1/kb-ops/spaces/{space_id}/events/todo-ignored": {
       "post": {
-        "description": "收件箱待办被显式忽略时落账（旁路记账）。忽略留痕让同一信号不再反复打扰，且计入本周战果——飞轮「有借有还」：忽略也是一种处置。",
+        "description": "收件箱待办被显式忽略时落状态表 + 账本（旁路记账）。忽略态跨会话/跨用户可见——同一信号不再反复打扰；带原因（一次性提问/非知识需求/误报）的判例是后续自动分诊的训练燃料。",
         "operationId": "record_todo_ignored_api_v1_kb_ops_spaces__space_id__events_todo_ignored_post",
         "parameters": [
           {
@@ -11990,6 +12287,55 @@
         ]
       }
     },
+    "/api/v1/kb-ops/spaces/{space_id}/onboarding": {
+      "get": {
+        "description": "新空间从零到飞轮转起来的检查清单：检索能力（embedding 生效语义：显式配置或用户默认）/内容沉淀（≥10 篇）/行为数据（近 7 天 ≥30 次检索）。stage 三态：empty 未起步、collecting 采集期（健康分未生效，静态体检可用）、ready 可运营。",
+        "operationId": "get_space_onboarding_api_v1_kb_ops_spaces__space_id__onboarding_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsOnboardingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "运营冷启动引导",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
     "/api/v1/kb-ops/spaces/{space_id}/overview": {
       "get": {
         "description": "聚合空间资产概览：文档生命周期四态计数、解析失败文档（最新任务行 FAILED 探针）、待复审文档（next_review_at 提醒窗口内）。工作台首页异常区与资产健康页的数据面。空间成员可读。",
@@ -12172,6 +12518,116 @@
           }
         ],
         "summary": "处置复审建议",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/todos": {
+      "get": {
+        "description": "三源（缺口聚簇/到期复审/低分反馈）即时聚合为同构待办行，按影响度降序；忽略态持久过滤并随忽略区返回（可撤销）。todo_key 是忽略/撤销的回写键，与各源生成约定一致。",
+        "operationId": "list_space_todos_api_v1_kb_ops_spaces__space_id__todos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsTodoListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "统一待办列表（收件箱一次取全）",
+        "tags": [
+          "知识运营",
+          "知识运营"
+        ]
+      }
+    },
+    "/api/v1/kb-ops/spaces/{space_id}/todos/unignore": {
+      "post": {
+        "description": "删除忽略状态行并落 todo_unignored 留痕，待办在下一次收件箱聚合中恢复可见。",
+        "operationId": "undo_todo_ignore_api_v1_kb_ops_spaces__space_id__todos_unignore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoUnignoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undo Todo Ignore Api V1 Kb Ops Spaces  Space Id  Todos Unignore Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "撤销待办忽略",
         "tags": [
           "知识运营",
           "知识运营"
