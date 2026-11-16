@@ -65,7 +65,7 @@ export interface TodoLoop {
 }
 
 const props = defineProps<{
-  kind: 'gap' | 'review' | 'feedback'
+  kind: 'gap' | 'review' | 'feedback' | 'evaluation'
   title: string
   impact: TodoImpact
   meta?: string
@@ -77,7 +77,10 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'action', key: string): void }>()
 
 const kindLabel = computed(
-  () => ({ gap: '零命中', review: '复审到期', feedback: '反馈异常' })[props.kind],
+  () =>
+    ({ gap: '零命中', review: '复审到期', feedback: '反馈异常', evaluation: '评测归因' })[
+      props.kind
+    ],
 )
 
 const visibleActions = computed(() =>
@@ -148,6 +151,11 @@ const loop = computed(() => props.loop ?? { state: 'none' as const })
 .kind-feedback {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
+}
+
+.kind-evaluation {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
 }
 
 .todo-title {

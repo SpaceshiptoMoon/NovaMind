@@ -255,3 +255,42 @@ def test_unignore_endpoint(monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json() == {"restored": True}
+
+
+def test_attribution_probe_generates_evaluation_todos(monkeypatch):
+    """第四探针（批次 E3）：评测归因 S/P 类生成待办，todo_key 含任务 ID 幂等。"""
+    from novamind.features.knowledge_ops.services import ops_todo_service as svc_mod
+
+    fake_attribution = {
+        "task_id": 88,
+        "kb_id": 6,
+        "attribution": {
+            "attributed_cases": 5,
+            "by_stage": {"S": 3, "P": 2},
+            "by_category": {"source_defect": 2, "source_missing": 1, "parse_failed": 2, "ranking_issue": 7},
+            "hotspot_documents": [{"document_id": 9, "document_name": "退货政策", "failure_count": 2}],
+            "deep_checked": False,
+        },
+    }
+    monkeypatch.setattr(
+        svc_mod.OpsTodoService, "_latest_eval_attribution", AsyncMock(return_value=fake_attribution)
+    )
+    factory, engine = _make_factory()
+
+    async def body():
+        async with factory() as session:
+            return await svc_mod.OpsTodoService(session).list_todos(1)
+
+    data = asyncio.run(body())
+    eval_todos = [t for t in data["items"] if t["kind"] == "evaluation"]
+    # ranking_issue（R 组）不生成待办；S/P 四类各一条
+    assert sorted(t["todo_key"] for t in eval_todos) == [
+        "eval:88:parse_failed",
+        "eval:88:source_defect",
+        "eval:88:source_missing",
+    ]
+    top = next(t for t in eval_todos if t["todo_key"] == "eval:88:source_defect")
+    assert top["weight"] == 6
+    assert "重灾：退货政策" in top["meta"]
+    assert top["payload"]["task_id"] == 88
+    asyncio.run(engine.dispose())

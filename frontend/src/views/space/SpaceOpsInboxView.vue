@@ -285,6 +285,10 @@ const KIND_ACTIONS: Record<OpsTodoItem['kind'], TodoAction[]> = {
     { key: 'drill-doc', label: '回看文档', primary: true },
     { key: 'ignore', label: '忽略' },
   ],
+  evaluation: [
+    { key: 'drill-eval', label: '查看报告', primary: true },
+    { key: 'ignore', label: '忽略' },
+  ],
 }
 
 const uiTodos = computed(() =>
@@ -319,6 +323,7 @@ const KIND_LABELS: Record<string, string> = {
   gap: '缺口',
   review: '复审',
   feedback: '反馈',
+  evaluation: '评测',
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -406,6 +411,13 @@ async function handleAction(todo: OpsTodoItem, action: string) {
   }
   if (action === 'drill-doc') {
     void router.push(`/home/spaces/${sid}/knowledge-bases`)
+    return
+  }
+  if (action === 'drill-eval') {
+    const kbId = Number(todo.payload.kb_id)
+    if (kbId) {
+      void router.push(`/home/spaces/${sid}/knowledge-bases/${kbId}/evaluation`)
+    }
   }
 }
 

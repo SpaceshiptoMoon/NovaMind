@@ -50,3 +50,23 @@ class OpsActionRepository:
         )
         result = await self.session.execute(query)
         return int(result.scalar() or 0)
+
+    async def exists_by_action_target(self, action: str, target_kind: str, target_id: str) -> bool:
+        """判定某目标是否已登记过某动作（回归告警消化幂等用）。
+
+        Args:
+            action: 动作类型（如 baseline_regression）。
+            target_kind: 目标类别。
+            target_id: 目标标识。
+        """
+        query = (
+            select(func.count(OpsAction.id))
+            .where(
+                OpsAction.action == action,
+                OpsAction.target_kind == target_kind,
+                OpsAction.target_id == str(target_id),
+            )
+            .limit(1)
+        )
+        result = await self.session.execute(query)
+        return int(result.scalar() or 0) > 0

@@ -2637,6 +2637,12 @@
       "EvaluationConfig": {
         "description": "测评配置",
         "properties": {
+          "attribution_deep_check": {
+            "default": false,
+            "description": "归因深检：对「上下文不含答案」类用例进一步判解析丢失 vs 源文档缺陷（额外 LLM 调用）",
+            "title": "Attribution Deep Check",
+            "type": "boolean"
+          },
           "correctness_strategy": {
             "default": "llm",
             "description": "正确性评估策略: llm / embedding / hybrid",
@@ -2659,6 +2665,12 @@
             "default": true,
             "description": "是否启用 Answer Similarity",
             "title": "Enable Answer Similarity",
+            "type": "boolean"
+          },
+          "enable_attribution": {
+            "default": true,
+            "description": "是否对失败用例做归因判定（重放为主，LLM 判定仅失败用例触发）",
+            "title": "Enable Attribution",
             "type": "boolean"
           },
           "enable_context_precision": {
@@ -6173,7 +6185,8 @@
             "enum": [
               "gap",
               "review",
-              "feedback"
+              "feedback",
+              "evaluation"
             ],
             "title": "Kind",
             "type": "string"
@@ -9062,7 +9075,8 @@
             "enum": [
               "gap",
               "review",
-              "feedback"
+              "feedback",
+              "evaluation"
             ],
             "title": "Kind",
             "type": "string"
@@ -9158,7 +9172,8 @@
             "enum": [
               "gap",
               "review",
-              "feedback"
+              "feedback",
+              "evaluation"
             ],
             "title": "Kind",
             "type": "string"

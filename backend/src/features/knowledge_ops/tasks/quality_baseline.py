@@ -73,6 +73,85 @@ def judge_regression(
     return regressions
 
 
+async def _digest_regression(db, service, space_id: int, kb_id: int, same_fingerprint: list) -> None:
+    """消化上一轮跑批的回归对比（批次 E3：judge_regression 从零调用接线）。
+
+    latest（最近完成）vs prev（更早一个）跑 judge_regression，关键指标降幅
+    超阈时：通知空间管理员 + 落 baseline_regression 动作。同一 latest 任务
+    只消化一次（ops_actions 存在性判幂等）。失败仅告警，不影响跑批主流程。
+    """
+    from novamind.features.knowledge_ops.repository.ops_action_repository import (
+        OpsActionRepository,
+    )
+
+    latest, prev = same_fingerprint[0], same_fingerprint[1]
+    try:
+        repo = OpsActionRepository(db)
+        if await repo.exists_by_action_target("baseline_regression", "evaluation_task", latest.id):
+            return  # 已消化
+        latest_report = await service.get_report(latest.id)
+        prev_report = await service.get_report(prev.id)
+        regressions = judge_regression(
+            (prev_report or {}).get("summary") or {},
+            (latest_report or {}).get("summary") or {},
+        )
+        if not regressions:
+            return
+        detail = "；".join(
+            f"{r['key']} {r['baseline']}→{r['current']}（{r['delta']:.0%}）" for r in regressions
+        )
+        from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
+
+        await OpsActionService().record(
+            action="baseline_regression",
+            target_kind="evaluation_task",
+            target_id=latest.id,
+            actor_id=space_id,  # cron 系统行为，与发起跑批同口径
+            space_id=space_id,
+            kb_id=kb_id,
+            context_snapshot={"regressions": regressions, "baseline_task_id": prev.id},
+        )
+        await _notify_regression(db, space_id, kb_id, latest.id, detail)
+        logger.warning(
+            "质量基线回归告警", space_id=space_id, kb_id=kb_id, task_id=latest.id, regressions=regressions
+        )
+    except Exception as e:
+        logger.warning("回归消化失败（跳过）", kb_id=kb_id, task_id=latest.id, error=str(e))
+
+
+async def _notify_regression(db, space_id: int, kb_id: int, task_id: int, detail: str) -> None:
+    """回归告警通知空间管理员（失败仅告警）。"""
+    try:
+        from novamind.features.knowledge_space.models.space_member import SpaceMember
+        from novamind.features.notification.models.notification import NotificationType
+        from novamind.features.notification.services.notification_service import (
+            NotificationService,
+        )
+        from sqlalchemy import select
+
+        admins = (
+            await db.execute(
+                select(SpaceMember.user_id).where(
+                    SpaceMember.space_id == space_id, SpaceMember.role >= 2
+                )
+            )
+        ).scalars().all()
+        notifier = NotificationService(db)
+        for user_id in admins or []:
+            try:
+                await notifier.send_notification(
+                    user_id=user_id,
+                    type=NotificationType.KB_BASELINE_REGRESSION.value,
+                    title=f"知识库质量基线回归（跑批 #{task_id}）",
+                    content=f"关键指标降幅超阈值：{detail}。请在效果评估页查看归因明细并处置。",
+                    link=f"/home/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation",
+                )
+            except Exception as e:
+                logger.warning("回归通知单管理员失败（跳过）", user_id=user_id, error=str(e))
+    except Exception as e:
+        logger.warning("回归通知发送失败（跳过）", space_id=space_id, error=str(e))
+
+
 async def run_quality_baseline(ctx: dict | None = None) -> dict[str, Any]:
     """质量基线 cron（每周）：逐 KB 取最近测试集 → 同指纹最近 completed 为基线 →
     发起新跑批（后台协程）→ 登记对比意图。
@@ -124,10 +203,17 @@ async def run_quality_baseline(ctx: dict | None = None) -> dict[str, Any]:
                     .order_by(EvaluationTask.id.desc())
                     .limit(10)
                 )).scalars().all()
-                baseline = next(
-                    (t for t in completed if compute_config_fingerprint(t.config) == fingerprint),
-                    None,
-                )
+                same_fingerprint = [
+                    t for t in completed if compute_config_fingerprint(t.config) == fingerprint
+                ]
+
+                # 回归消化（批次 E3 接线）：上一轮跑批 vs 更早基线的对比——
+                # judge_regression 判回归则通知空间管理员 + 落动作（幂等：
+                # 同一 latest 任务只消化一次）
+                if len(same_fingerprint) >= 2:
+                    await _digest_regression(db, service, row.space_id, row.kb_id, same_fingerprint)
+
+                baseline = same_fingerprint[0] if same_fingerprint else None
                 if baseline is None:
                     logger.info(
                         "质量基线：无同指纹基线，本轮跑批建立首个基线点",

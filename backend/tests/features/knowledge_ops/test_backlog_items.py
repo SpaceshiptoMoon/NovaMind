@@ -184,3 +184,66 @@ def test_judge_regression_improvement_no_alert():
     assert judge_regression(
         {"retrieval": {"mrr": 0.8}}, {"retrieval": {"mrr": 0.95}},
     ) == []
+
+
+@pytest.mark.asyncio
+async def test_digest_regression_idempotent(monkeypatch):
+    """回归消化（批次 E3 接线）：判回归落动作+通知；已消化（exists）则跳过。"""
+    from types import SimpleNamespace as NS
+    from unittest.mock import AsyncMock
+
+    from novamind.features.knowledge_ops.tasks import quality_baseline as qb
+
+    latest, prev = NS(id=31), NS(id=30)
+    reports = {
+        31: {"summary": {"retrieval": {"mrr": 0.4, "hit_rate": 0.5}, "generation": {"overall": 6.0}}},
+        30: {"summary": {"retrieval": {"mrr": 0.8, "hit_rate": 0.9}, "generation": {"overall": 8.0}}},
+    }
+    service = NS(get_report=AsyncMock(side_effect=lambda tid: reports[tid]))
+    db = NS(
+        execute=AsyncMock(return_value=NS(scalars=lambda: NS(all=lambda: [1, 2]))),  # 管理员 1/2
+        # exists_by_action_target 由 repo mock 承担
+    )
+
+    recorded = []
+    notified = []
+
+    class _Repo:
+        def __init__(self, exists):
+            self.exists = exists
+
+        async def exists_by_action_target(self, *a, **k):
+            return self.exists
+
+    async def _fake_record(self, **kwargs):
+        recorded.append(kwargs)
+
+    async def _fake_notify(db_, space_id, kb_id, task_id, detail):
+        notified.append((task_id, detail))
+
+    import novamind.features.knowledge_ops.services.ops_action_service as oas_mod
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_ops.repository.ops_action_repository.OpsActionRepository",
+        lambda session: _Repo(exists=False),
+    )
+    monkeypatch.setattr(oas_mod.OpsActionService, "record", _fake_record)
+    monkeypatch.setattr(qb, "_notify_regression", _fake_notify)
+
+    # 首轮：判出回归 → 落动作 + 通知
+    await qb._digest_regression(db, service, space_id=1, kb_id=6, same_fingerprint=[latest, prev])
+    assert len(recorded) == 1
+    assert recorded[0]["action"] == "baseline_regression"
+    assert recorded[0]["target_id"] == 31
+    assert len(notified) == 1
+    assert "mrr" in notified[0][1]
+
+    # 二轮（已消化标记）：exists=True → 全部跳过
+    recorded.clear()
+    notified.clear()
+    monkeypatch.setattr(
+        "novamind.features.knowledge_ops.repository.ops_action_repository.OpsActionRepository",
+        lambda session: _Repo(exists=True),
+    )
+    await qb._digest_regression(db, service, space_id=1, kb_id=6, same_fingerprint=[latest, prev])
+    assert not recorded and not notified

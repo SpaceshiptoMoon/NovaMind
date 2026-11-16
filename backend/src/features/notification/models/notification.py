@@ -20,6 +20,8 @@ class NotificationType(str, Enum):
     # 运营飞轮闭环回报（2026-11-16）：矛盾确认（原裸字符串补登记）+ 缺口转测试集半闭环
     KB_CONTRADICTION_CONFIRMED = "kb_contradiction_confirmed"
     KB_GAP_RESOLVED = "kb_gap_resolved"
+    # 质量基线回归告警（批次 E3）：关键指标降幅超阈，通知空间管理员
+    KB_BASELINE_REGRESSION = "kb_baseline_regression"
 
 
 class Notification(BaseModel):

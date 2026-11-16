@@ -222,7 +222,7 @@ class HealthReportResponse(BaseModel):
 class TodoIgnoreRequest(BaseModel):
     """待办忽略留痕（收件箱处置动作，落状态表 + 事件账本）。"""
 
-    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    kind: Literal["gap", "review", "feedback", "evaluation"] = Field(..., description="待办类型")
     todo_key: str = Field(..., max_length=512, description="待办唯一键（查询词/文档 ID 等归一标识）")
     query: str | None = Field(None, max_length=2000, description="关联查询文本（gap 类待办携带）")
     reason: Literal["one_shot", "non_kb", "false_positive"] | None = Field(
@@ -233,7 +233,7 @@ class TodoIgnoreRequest(BaseModel):
 class TodoUnignoreRequest(BaseModel):
     """撤销待办忽略（删处置行，待办恢复可见）。"""
 
-    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    kind: Literal["gap", "review", "feedback", "evaluation"] = Field(..., description="待办类型")
     todo_key: str = Field(..., max_length=512, description="待办唯一键")
 
 
@@ -248,7 +248,7 @@ class TodoImpactSchema(BaseModel):
 class OpsTodoItem(BaseModel):
     """统一待办行（三源聚合成同构 shape，影响度排序后端化）。"""
 
-    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    kind: Literal["gap", "review", "feedback", "evaluation"] = Field(..., description="待办类型")
     todo_key: str = Field(..., max_length=512, description="待办唯一键（忽略写入同键）")
     title: str = Field(..., description="待办主文案")
     impact: TodoImpactSchema = Field(..., description="影响度")

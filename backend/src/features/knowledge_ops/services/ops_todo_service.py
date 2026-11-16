@@ -28,6 +28,24 @@ FEEDBACK_WEIGHT = 3
 REVIEW_WEIGHT_OVERDUE = 8
 REVIEW_WEIGHT_DUE = 5
 GAP_WEIGHT_FACTOR = 10
+# 评测归因源（批次 E3）：S/P 类进待办（内容侧/管道侧可处置），R/G/Q 归
+# 检索配置/模型侧不生成待办；权重按「修内容收益」定档
+ATTR_TODO_CATEGORIES = {
+    "source_defect": 6,
+    "parse_defect": 6,
+    "source_missing": 4,
+    "parse_failed": 4,
+    "chunk_fragmentation": 4,
+    "index_sync_missing": 4,
+}
+ATTR_CATEGORY_LABELS = {
+    "source_missing": "源数据缺失",
+    "source_defect": "源数据缺陷",
+    "parse_failed": "解析失败",
+    "parse_defect": "解析质量缺陷",
+    "chunk_fragmentation": "切分问题",
+    "index_sync_missing": "索引同步缺失",
+}
 
 
 class OpsTodoService:
@@ -53,6 +71,7 @@ class OpsTodoService:
         todos.extend(await self._gap_todos(space_id))
         todos.extend(await self._review_todos(space_id))
         todos.extend(await self._feedback_todos(space_id))
+        todos.extend(await self._attribution_todos(space_id))
 
         visible = [t for t in todos if t["todo_key"] not in ignored_keys]
         visible.sort(key=lambda t: t["weight"], reverse=True)
@@ -161,3 +180,105 @@ class OpsTodoService:
                 }
             )
         return items
+
+    async def _attribution_todos(self, space_id: int) -> list[dict[str, Any]]:
+        """评测归因源（批次 E3）：最近一次完成跑批的 S/P 类根因生成待办。
+
+        数据面：evaluation 任务表（models 直查，跨 feature 公共面规则）+
+        结果 JSON 的 summary.attribution（MinIO 轻量下载）。todo_key 含任务
+        ID 天然幂等——同一次跑批刷新不重复生成，新跑批自然替换。
+        """
+        try:
+            report_summary = await self._latest_eval_attribution(space_id)
+        except Exception as e:
+            logger.warning("待办评测归因源聚合失败（跳过）", space_id=space_id, error=str(e))
+            return []
+        if not report_summary:
+            return []
+        attribution = report_summary.get("attribution") or {}
+        by_category = attribution.get("by_category") or {}
+        hotspots = attribution.get("hotspot_documents") or []
+        task_id = report_summary.get("task_id")
+        kb_id = report_summary.get("kb_id")
+        if not task_id:
+            return []
+        items = []
+        for category, weight in ATTR_TODO_CATEGORIES.items():
+            count = int(by_category.get(category) or 0)
+            if count <= 0:
+                continue
+            from novamind.features.evaluation.services.attribution_analyzer import (
+                ATTRIBUTION_SUGGESTIONS,
+            )
+
+            label = ATTR_CATEGORY_LABELS.get(category, category)
+            fix_hint = ATTRIBUTION_SUGGESTIONS.get(category, "见评测报告归因明细")
+            related_docs = [h for h in hotspots][:3]
+            doc_hint = (
+                "　重灾：" + "、".join(
+                    h.get("document_name") or f"文档 {h.get('document_id')}" for h in related_docs
+                )
+                if related_docs
+                else ""
+            )
+            items.append(
+                {
+                    "kind": "evaluation",
+                    "todo_key": f"eval:{task_id}:{category}",
+                    "title": f"评测归因：{label} {count} 例（跑批 #{task_id}）",
+                    "impact": {"count": count, "unit": "例", "tone": "warning"},
+                    "meta": f"处置方向：{fix_hint}{doc_hint}",
+                    "weight": weight,
+                    "payload": {
+                        "task_id": task_id,
+                        "kb_id": kb_id,
+                        "category": category,
+                        "hotspot_documents": hotspots,
+                    },
+                }
+            )
+        return items
+
+    async def _latest_eval_attribution(self, space_id: int) -> dict[str, Any] | None:
+        """拉空间最近一次完成评测任务的归因摘要（含任务/KB 标识）。
+
+        Returns:
+            {task_id, kb_id, attribution}；无完成任务/无归因段/下载失败时 None。
+        """
+        import json as _json
+
+        from novamind.features.evaluation.models.evaluation_task import (
+            EvaluationStatus,
+            EvaluationTask,
+            EvaluationTestSet,
+        )
+        from sqlalchemy import select
+
+        row = (
+            await self.session.execute(
+                select(EvaluationTask, EvaluationTestSet.kb_id)
+                .join(EvaluationTestSet, EvaluationTestSet.id == EvaluationTask.test_set_id)
+                .where(
+                    EvaluationTestSet.space_id == space_id,
+                    EvaluationTask.status == EvaluationStatus.COMPLETED,
+                )
+                .order_by(EvaluationTask.id.desc())
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return None
+        task, kb_id = row
+        bucket = task.get_result_minio_bucket()
+        object_name = task.get_result_minio_object_name()
+        if not bucket or not object_name:
+            return None
+        from novamind.shared.storage.client_factory import get_minio_client
+
+        minio_client = await get_minio_client()
+        content = await minio_client.download_document(bucket, object_name)
+        result_data = _json.loads(content.decode("utf-8"))
+        attribution = (result_data.get("summary") or {}).get("attribution")
+        if not attribution:
+            return None
+        return {"task_id": task.id, "kb_id": kb_id, "attribution": attribution}

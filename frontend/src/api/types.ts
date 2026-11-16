@@ -1140,7 +1140,7 @@ export interface DocumentReviewInfo {
 
 /** 待办忽略留痕载荷 */
 export interface TodoIgnorePayload {
-  kind: 'gap' | 'review' | 'feedback'
+  kind: 'gap' | 'review' | 'feedback' | 'evaluation'
   todo_key: string
   query?: string
   /** 忽略原因（一次性提问/非知识需求/误报——自动分诊判例燃料） */
@@ -1149,13 +1149,13 @@ export interface TodoIgnorePayload {
 
 /** 撤销待办忽略载荷 */
 export interface TodoUnignorePayload {
-  kind: 'gap' | 'review' | 'feedback'
+  kind: 'gap' | 'review' | 'feedback' | 'evaluation'
   todo_key: string
 }
 
 /** 统一待办行（后端三源聚合同构 shape，影响度排序后端化） */
 export interface OpsTodoItem {
-  kind: 'gap' | 'review' | 'feedback'
+  kind: 'gap' | 'review' | 'feedback' | 'evaluation'
   todo_key: string
   title: string
   impact: { count: number | string; unit: string; tone: 'danger' | 'warning' | 'neutral' }
