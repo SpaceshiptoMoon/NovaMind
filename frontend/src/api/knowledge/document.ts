@@ -13,6 +13,7 @@ import type {
   ChunkPositionResponse,
   VideoNarrativeResponse,
   VideoNarrativeTriggerResponse,
+  DocumentReviewInfo,
 } from '../types'
 
 /**
@@ -298,5 +299,45 @@ export const documentApi = {
       { params: { start, end }, responseType: 'blob' },
     )
     return window.URL.createObjectURL(response.data as Blob)
+  },  // ===== 运营飞轮：复审与生命周期（消费方为运营收件箱） =====
+
+  /** 查文档复审状态（周期/下次复审/默认周期） */
+  getDocumentReview(spaceId: number, kbId: number, documentId: number) {
+    return request.get<DocumentReviewInfo>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${documentId}/review`,
+    )
+  },
+
+  /** 确认复审：顺延下次复审时间（复审提醒 cron 的闭环出口） */
+  confirmDocumentReview(spaceId: number, kbId: number, documentId: number) {
+    return request.post<DocumentReviewInfo>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${documentId}/review/confirm`,
+    )
+  },
+
+  /** 设置文档复审周期（null 清除回退默认） */
+  updateDocumentReviewSettings(
+    spaceId: number,
+    kbId: number,
+    documentId: number,
+    data: { review_cycle_days: number | null },
+  ) {
+    return request.put<DocumentReviewInfo>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${documentId}/review`,
+      data,
+    )
+  },
+
+  /** 生命周期手动动作：archive 归档下线 / reactivate 恢复召回 */
+  transitionDocumentLifecycle(
+    spaceId: number,
+    kbId: number,
+    documentId: number,
+    action: 'archive' | 'reactivate',
+  ) {
+    return request.post<{ document_id: number; lifecycle_status: string }>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${documentId}/lifecycle`,
+      { action },
+    )
   },
 }

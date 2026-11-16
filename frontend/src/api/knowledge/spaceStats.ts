@@ -11,6 +11,10 @@ import type {
   KbOpsCitationStats,
   KbOpsContradictionScan,
   KbOpsEventList,
+  KbOpsBadgeCounts,
+  KbOpsHealthReport,
+  KbOpsTrends,
+  TodoIgnorePayload,
 } from '../types'
 
 /**
@@ -90,5 +94,31 @@ export const spaceStatsApi = {
     params?: { event_type?: string; start?: string; end?: string; limit?: number; offset?: number },
   ) {
     return request.get<KbOpsEventList>(`/kb-ops/spaces/${spaceId}/events`, params)
+  },  /** 知识库健康报告：四维健康分+环比+本周战果（体检报告结论行） */
+  getHealthReport(spaceId: number, params?: { days?: number }) {
+    return request.get<KbOpsHealthReport>(`/kb-ops/spaces/${spaceId}/health-report`, params)
+  },
+
+  /** 运营趋势按日序列（检索量/零命中/引用点击） */
+  getTrends(spaceId: number, params?: { days?: number }) {
+    return request.get<KbOpsTrends>(`/kb-ops/spaces/${spaceId}/trends`, params)
+  },
+
+  /** 徽标轻量计数（待办四数单请求） */
+  getBadgeCounts(spaceId: number) {
+    return request.get<KbOpsBadgeCounts>(`/kb-ops/spaces/${spaceId}/badge-counts`)
+  },
+
+  /** 待办忽略留痕（收件箱处置动作，落事件账本） */
+  recordTodoIgnored(spaceId: number, data: TodoIgnorePayload) {
+    return request.post<{ recorded: boolean }>(`/kb-ops/spaces/${spaceId}/events/todo-ignored`, data)
+  },
+
+  /** 结果引用点击埋点（价值榜/点击榜燃料；随溯源跳转接入） */
+  recordCitationClick(
+    spaceId: number,
+    data: { kb_id?: number | null; document_id?: number | null; chunk_id?: string | null; query?: string },
+  ) {
+    return request.post<{ recorded: boolean }>(`/kb-ops/spaces/${spaceId}/events/citation-click`, data)
   },
 }

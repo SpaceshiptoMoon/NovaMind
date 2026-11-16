@@ -1084,6 +1084,68 @@ export interface ZeroHitQueryItem {
   last_seen?: string | null
 }
 
+// ========== 运营飞轮（健康报告/趋势/徽标/收件箱处置） ==========
+
+/** 健康子分项（透明规则：分数 + 环比 + 一句话构成说明） */
+export interface KbOpsHealthSub {
+  score: number | null
+  prev: number | null
+  detail: string
+}
+
+/** 知识库健康报告：体检报告「结论」数据面 */
+export interface KbOpsHealthReport {
+  score: number | null
+  prev_score: number | null
+  delta: number | null
+  subs: Record<'retrieval' | 'freshness' | 'feedback' | 'order', KbOpsHealthSub>
+  weekly: {
+    gap_converted?: number
+    review_confirmed?: number
+    todo_ignored?: number
+    zero_hit_rate?: number
+    zero_hit_delta_pt?: number
+  }
+}
+
+/** 趋势单日点 */
+export interface KbOpsTrendPoint {
+  date: string
+  query_total: number
+  zero_hit: number
+  citation_click: number
+}
+
+export interface KbOpsTrends {
+  window_days: number
+  start: string
+  end: string
+  series: KbOpsTrendPoint[]
+}
+
+export interface KbOpsBadgeCounts {
+  failed_documents: number
+  due_reviews: number
+  open_suggestions: number
+  gap_clusters: number
+}
+
+/** 文档复审状态（周期/下次复审/默认周期） */
+export interface DocumentReviewInfo {
+  document_id: number
+  review_cycle_days: number | null
+  next_review_at: string | null
+  fallback_cycle_days: number
+}
+
+/** 待办忽略留痕载荷 */
+export interface TodoIgnorePayload {
+  kind: 'gap' | 'review' | 'feedback'
+  todo_key: string
+  query?: string
+}
+
+
 export interface LowScoreMessageItem {
   message_id: number
   session_id: string
