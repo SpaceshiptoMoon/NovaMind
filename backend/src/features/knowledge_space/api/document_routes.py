@@ -1560,6 +1560,21 @@ async def confirm_document_review(
     _ensure_review_operator(member, document, user_id)
 
     next_at = await review_service.confirm_review(document)
+
+    # 飞轮动作落账（旁路）：本周战果「复审确认」计数的数据源
+    try:
+        from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+        await EventRecorder().record(
+            event_type="review_confirmed",
+            user_id=user_id,
+            space_id=space_id,
+            kb_id=kb_id,
+            extra={"document_id": document_id, "next_review_at": next_at.isoformat()},
+        )
+    except Exception:
+        pass  # EventRecorder 内部已全吞；此处兜底防 import 期异常影响主流程
+
     return DocumentReviewResponse(
         document_id=document.id,
         review_cycle_days=document.review_cycle_days,

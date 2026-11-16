@@ -68,6 +68,55 @@ class SpaceOverviewRepository:
             .where(KnowledgeBase.space_id == space_id, KnowledgeBase.deleted_at.is_(None))
         )).scalar_one())
 
+    async def freshness_and_order_stats(self, space_id: int, *, fresh_days: int = 90) -> dict:
+        """active 文档的新鲜度与秩序聚合（健康分静态维的数据面，冷启动可算）。
+
+        Args:
+            space_id: 空间 ID（权限域）。
+            fresh_days: 新鲜阈值天数（updated_at 距今小于该值视为新鲜）。
+
+        Returns:
+            {active_total, fresh_count, ordered_count}；ordered = 有 owner 且
+            （未排期 next_review_at 或复审未到期）的 active 文档数。
+        """
+        from datetime import datetime, timedelta
+
+        from novamind.features.knowledge_space.models.document import (
+            Document,
+            DocumentLifecycleStatus,
+        )
+        from sqlalchemy import case
+
+        fresh_line = datetime.now() - timedelta(days=fresh_days)
+        row = (await self._db.execute(
+            select(
+                func.count(),
+                func.sum(case((Document.updated_at >= fresh_line, 1), else_=0)),
+                func.sum(
+                    case(
+                        (
+                            (Document.owner_id.isnot(None))
+                            & (
+                                (Document.next_review_at.is_(None))
+                                | (Document.next_review_at > func.now())
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+            ).where(
+                Document.space_id == space_id,
+                Document.deleted_at.is_(None),
+                Document.lifecycle_status == DocumentLifecycleStatus.ACTIVE,
+            )
+        )).one()
+        return {
+            "active_total": int(row[0] or 0),
+            "fresh_count": int(row[1] or 0),
+            "ordered_count": int(row[2] or 0),
+        }
+
     async def failed_documents(self, space_id: int, limit: int = FAILED_DOC_SAMPLE_LIMIT) -> dict:
         """解析失败文档清单：每文档最新任务行为 FAILED 的文档。
 

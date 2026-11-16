@@ -193,3 +193,35 @@ class CitationClickRequest(BaseModel):
     document_id: int | None = Field(None, description="被点击的文档 ID")
     chunk_id: str | None = Field(None, description="被点击的分块 ID")
     query: str | None = Field(None, max_length=2000, description="触发本次检索的查询文本")
+
+
+class HealthSubScore(BaseModel):
+    """健康子分项（透明规则：分数 + 环比 + 一句话构成说明）。"""
+
+    score: float | None = Field(None, description="子分（0-1）；None = 无数据维度")
+    prev: float | None = Field(None, description="上期子分；静态维度与本期同值")
+    detail: str = Field(..., description="构成规则一句话（前端点开可解释）")
+
+
+class HealthReportResponse(BaseModel):
+    """知识库健康报告：体检报告首页的「结论」数据面。"""
+
+    score: float | None = Field(None, description="综合健康分（0-100）；None = 冷启动无任何数据")
+    prev_score: float | None = Field(None, description="上期综合分")
+    delta: float | None = Field(None, description="环比变化（本期 − 上期）")
+    subs: dict[str, HealthSubScore] = Field(
+        ...,
+        description="四维子分：retrieval/freshness/feedback/order",
+    )
+    weekly: dict[str, float] = Field(
+        default_factory=dict,
+        description="本周战果：gap_converted/review_confirmed/todo_ignored 计数与零命中率变化",
+    )
+
+
+class TodoIgnoreRequest(BaseModel):
+    """待办忽略留痕（收件箱处置动作，落事件账本）。"""
+
+    kind: Literal["gap", "review", "feedback"] = Field(..., description="待办类型")
+    todo_key: str = Field(..., max_length=512, description="待办唯一键（查询词/文档 ID 等归一标识）")
+    query: str | None = Field(None, max_length=2000, description="关联查询文本（gap 类待办携带）")

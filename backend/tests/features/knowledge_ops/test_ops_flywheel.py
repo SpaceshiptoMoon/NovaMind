@@ -39,6 +39,7 @@ from novamind.features.knowledge_ops.repository.suggestion_repository import (
     SuggestionRepository,
 )
 from novamind.features.knowledge_space.api.dependencies import validate_space_member
+from novamind.features.knowledge_space.models.document import Document
 
 pytestmark = pytest.mark.unit
 
@@ -323,3 +324,71 @@ def test_gap_to_testset_notify_failure_is_bypass():
         return "ok"
 
     assert _run(run()) == "ok"
+
+
+# ========== 6. 健康报告（B-0） ==========
+
+def test_health_report_cold_start_all_none():
+    """冷启动：无事件无文档 → score=None，前端降级静态体检（不硬造分数）。"""
+    from novamind.features.knowledge_ops.services.health_report_service import (
+        HealthReportService,
+    )
+
+    async def run():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                lambda c: Base.metadata.create_all(c, tables=[KbEvent.__table__, Document.__table__])
+            )
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        async with maker() as session:
+            svc = HealthReportService(session)
+            # 静态维查文档表（空表 → 占比 None）
+            report = await svc.get_health_report(1)
+        await engine.dispose()
+        return report
+
+    report = _run(run())
+    assert report["score"] is None
+    assert all(v["score"] is None for v in report["subs"].values())
+
+
+def test_health_report_retrieval_and_weekly():
+    """有事件数据：检索维与反馈维可算，战果计数来自飞轮动作事件。"""
+    from novamind.features.knowledge_ops.services.health_report_service import (
+        HealthReportService,
+    )
+
+    async def run():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                lambda c: Base.metadata.create_all(c, tables=[KbEvent.__table__, Document.__table__])
+            )
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        async with maker() as session:
+            # 本期窗口（近 30 天内，留 0.5 天防终点非含压线）：4 检索 1 零命中，低分 1
+            session.add_all([
+                _event("query", extra={"results_count": 0, "max_score": 0.0}, days_ago=0.5),
+                _event("query", extra={"results_count": 5, "max_score": 0.8}, days_ago=0.5),
+                _event("query", extra={"results_count": 3, "max_score": 0.9}, days_ago=0.5),
+                _event("query", extra={"results_count": 2, "max_score": 0.2}, days_ago=0.5),
+                # 战果动作（近 7 天）
+                _event("gap_converted", extra={"added_cases": 3}, days_ago=1),
+                _event("review_confirmed", extra={"document_id": 9}, days_ago=2),
+            ])
+            await session.commit()
+            report = await HealthReportService(session).get_health_report(1)
+        await engine.dispose()
+        return report
+
+    report = _run(run())
+    subs = report["subs"]
+    assert subs["retrieval"]["score"] == 0.75  # 1 − 1/4 零命中
+    assert subs["feedback"]["score"] == 0.5    # 1 − 2/4 低分（0.0 与 0.2 < 0.35）
+    assert report["score"] is not None and 0 < report["score"] <= 100
+    weekly = report["weekly"]
+    assert weekly["gap_converted"] == 1
+    assert weekly["review_confirmed"] == 1
+    # 上期窗口无事件 → prev 零命中率为 None，本周不写 delta 键（诚实降级）
+    assert "zero_hit_delta_pt" not in weekly

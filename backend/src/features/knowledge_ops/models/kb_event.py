@@ -1,11 +1,14 @@
 """知识运营事件模型：跨会话/用户行为的运营信号账本。
 
 事件类型（新增在此登记）：
-- query_reformulate：会话内提问改写（O1）
-- citation_click：用户点击回答引用（O2）
+- query_reformulate：会话内提问改写（O1；原生产者已随工作台剥离，类型保留待新源）
+- citation_click：用户点击回答引用（O2；生产者随批次 B 溯源跳转接入）
 - query：检索发生（InstrumentedSearchService 总线级埋点；含 results_count/
   max_score 载荷，零命中/低分是归因流水线核心信号）
-- attribution：归因写回（A1）
+- attribution：归因写回（A1；实际写 question_answers.extra，未落本账本——注释存档）
+- gap_converted：缺口转测试用例（运营飞轮动作，本周战果数据源）
+- review_confirmed：确认复审（运营飞轮动作，本周战果数据源）
+- todo_ignored：待办忽略留痕（收件箱处置动作）
 
 系统内部检索重放（kb-ops 归因 worker、evaluation 重放）不产生 query 事件
 ——它们直接用 SearchService，只有用户触发的检索走 InstrumentedSearchService。

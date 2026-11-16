@@ -22,11 +22,13 @@ from novamind.features.knowledge_ops.schemas import (
     BadgeCountsResponse,
     CitationClickRequest,
     GapReportResponse,
+    HealthReportResponse,
     KbEventListResponse,
     KbReviewSuggestionListResponse,
     SpaceOverviewResponse,
     SuggestionResolveRequest,
     SuggestionResolveResponse,
+    TodoIgnoreRequest,
     TrendPoint,
     TrendsResponse,
 )
@@ -416,5 +418,59 @@ async def record_citation_click(
             }.items()
             if v is not None
         },
+    )
+    return {"recorded": True}
+
+
+@router.get(
+    "/spaces/{space_id}/health-report",
+    response_model=HealthReportResponse,
+    summary="知识库健康报告",
+    description=(
+        "体检报告首页的「结论」：四维健康分（检索/新鲜/反馈/秩序，透明规则可点开）"
+        "+ 环比 + 本周战果（缺口转化/复审确认/忽略留痕计数与零命中率变化）。"
+        "冷启动（无任何数据）返回 score=null，前端降级静态体检。"
+    ),
+)
+async def get_space_health_report(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    days: Annotated[int, Query(ge=1, le=90, description="趋势窗口天数（本期）")] = 30,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> HealthReportResponse:
+    """健康报告（体检报告首页结论行数据面）。"""
+    from novamind.features.knowledge_ops.services.health_report_service import (
+        HealthReportService,
+    )
+
+    return HealthReportResponse(
+        **await HealthReportService(db).get_health_report(space_id, days=days)
+    )
+
+
+@router.post(
+    "/spaces/{space_id}/events/todo-ignored",
+    summary="待办忽略留痕",
+    description=(
+        "收件箱待办被显式忽略时落账（旁路记账）。忽略留痕让同一信号不再反复"
+        "打扰，且计入本周战果——飞轮「有借有还」：忽略也是一种处置。"
+    ),
+)
+async def record_todo_ignored(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    data: TodoIgnoreRequest,
+    current_user: dict = Depends(get_current_user),
+    member: SpaceMember = Depends(validate_space_member),
+) -> dict:
+    """待办忽略事件落账本（旁路语义，200 恒返）。"""
+    from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+    await EventRecorder().record(
+        event_type="todo_ignored",
+        user_id=current_user["id"],
+        space_id=space_id,
+        query_text=data.query,
+        extra={"kind": data.kind, "todo_key": data.todo_key},
     )
     return {"recorded": True}

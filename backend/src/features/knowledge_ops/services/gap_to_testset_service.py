@@ -76,7 +76,12 @@ class GapToTestSetService:
             action = "已创建"
         await self.session.commit()
 
-        # 飞轮半闭环回报（旁路，失败静默）：缺口 → 用例的链路对处理人显形；
+        # 飞轮动作落账（旁路）：本周战果「缺口转化」计数的数据源
+        await self._record_action_event(
+            user_id=user_id, space_id=space_id, kb_id=kb_id,
+            test_set_id=test_set_obj.id, added=len(cases),
+        )
+        # 半闭环回报（旁路，失败静默）：缺口 → 用例的链路对处理人显形；
         # 「回归通过」全闭环回报需测试集 ↔ 缺口 ↔ 处理人溯源，随批次 B 补齐
         await self._notify_operator(
             user_id=user_id, space_id=space_id, kb_id=kb_id,
@@ -114,4 +119,25 @@ class GapToTestSetService:
 
             get_logger(__name__).warning(
                 "缺口转用例通知发送失败（跳过）", test_set_id=test_set_id, error=str(e)
+            )
+
+    async def _record_action_event(
+        self, user_id: int, space_id: int, kb_id: int, test_set_id: int, added: int
+    ) -> None:
+        """缺口转化动作落事件账本（本周战果数据源，旁路失败静默）。"""
+        try:
+            from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+            await EventRecorder().record(
+                event_type="gap_converted",
+                user_id=user_id,
+                space_id=space_id,
+                kb_id=kb_id,
+                extra={"test_set_id": test_set_id, "added_cases": added},
+            )
+        except Exception as e:
+            from novamind.core.middleware.structured_logging import get_logger
+
+            get_logger(__name__).warning(
+                "缺口转化事件落账失败（跳过）", test_set_id=test_set_id, error=str(e)
             )
