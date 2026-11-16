@@ -75,9 +75,43 @@ class GapToTestSetService:
             )
             action = "已创建"
         await self.session.commit()
+
+        # 飞轮半闭环回报（旁路，失败静默）：缺口 → 用例的链路对处理人显形；
+        # 「回归通过」全闭环回报需测试集 ↔ 缺口 ↔ 处理人溯源，随批次 B 补齐
+        await self._notify_operator(
+            user_id=user_id, space_id=space_id, kb_id=kb_id,
+            test_set_id=test_set_obj.id, added=len(cases), action=action,
+        )
         return {
             "test_set_id": test_set_obj.id,
             "total_cases": test_set_obj.total_cases,
             "added_cases": len(cases),
             "message": f"gap 条目转测试用例{action}",
         }
+
+    async def _notify_operator(
+        self, user_id: int, space_id: int, kb_id: int, test_set_id: int, added: int, action: str
+    ) -> None:
+        """转换成功通知操作人（kb_gap_resolved 半闭环态）。"""
+        try:
+            from novamind.features.notification.models.notification import NotificationType
+            from novamind.features.notification.services.notification_service import (
+                NotificationService,
+            )
+
+            await NotificationService(self.session).send_notification(
+                user_id=user_id,
+                type=NotificationType.KB_GAP_RESOLVED.value,
+                title=f"{added} 条内容缺口已转测试用例",
+                content=(
+                    f"缺口用例{action}于测试集 #{test_set_id}。质量基线跑批后，"
+                    "可在知识运营的质量基线页查看回归结果——修复是否生效由回归说了算。"
+                ),
+                link=f"/home/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation",
+            )
+        except Exception as e:
+            from novamind.core.middleware.structured_logging import get_logger
+
+            get_logger(__name__).warning(
+                "缺口转用例通知发送失败（跳过）", test_set_id=test_set_id, error=str(e)
+            )

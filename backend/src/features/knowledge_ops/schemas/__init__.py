@@ -152,3 +152,44 @@ class SpaceOverviewResponse(BaseModel):
     kb_count: int = Field(default=0, description="未软删知识库数量")
     failed_documents: FailedDocumentsSummary
     due_reviews: DueReviewsSummary
+
+
+# ========== 趋势聚合与轻量计数（运营飞轮 2026-11-16） ==========
+
+class TrendPoint(BaseModel):
+    """单日趋势点：检索量 / 零命中 / 引用点击。
+
+    点踩趋势无源（qa_message_feedback 为历史归档表，无新写入路径），刻意不列。
+    """
+
+    date: str = Field(..., description="日期（ISO，本地时区）")
+    query_total: int = Field(0, description="检索总量（query 事件）")
+    zero_hit: int = Field(0, description="零命中检索量")
+    citation_click: int = Field(0, description="结果引用点击量")
+
+
+class TrendsResponse(BaseModel):
+    """运营趋势响应（指标全是趋势，支撑体检报告首页）。"""
+
+    window_days: int = Field(..., description="趋势窗口天数")
+    start: str = Field(..., description="窗口起点（ISO）")
+    end: str = Field(..., description="窗口终点（ISO，非含）")
+    series: list[TrendPoint] = Field(default_factory=list, description="按日序列（无事件的日子不出现）")
+
+
+class BadgeCountsResponse(BaseModel):
+    """运营徽标轻量计数（待办三列 + 缺口簇，供导航徽标与待办概览）。"""
+
+    failed_documents: int = Field(0, description="解析失败文档数")
+    due_reviews: int = Field(0, description="复审到期（提醒窗口内）文档数")
+    open_suggestions: int = Field(0, description="待处置运营建议数")
+    gap_clusters: int = Field(0, description="内容缺口簇数（近 7 天）")
+
+
+class CitationClickRequest(BaseModel):
+    """结果引用点击埋点（检索消费侧信号，价值榜/点击榜燃料）。"""
+
+    kb_id: int | None = Field(None, description="来源知识库 ID（全局检索结果携带）")
+    document_id: int | None = Field(None, description="被点击的文档 ID")
+    chunk_id: str | None = Field(None, description="被点击的分块 ID")
+    query: str | None = Field(None, max_length=2000, description="触发本次检索的查询文本")

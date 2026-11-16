@@ -19,12 +19,16 @@ from novamind.features.knowledge_ops.repository.suggestion_repository import (
     SuggestionRepository,
 )
 from novamind.features.knowledge_ops.schemas import (
+    BadgeCountsResponse,
+    CitationClickRequest,
     GapReportResponse,
     KbEventListResponse,
     KbReviewSuggestionListResponse,
     SpaceOverviewResponse,
     SuggestionResolveRequest,
     SuggestionResolveResponse,
+    TrendPoint,
+    TrendsResponse,
 )
 from novamind.features.knowledge_ops.services.gap_report_service import GapReportService
 from novamind.features.knowledge_space.api.dependencies import (
@@ -304,3 +308,113 @@ async def get_citation_stats(
     stats = await repo.citation_stats_by_document(space_id, limit=limit)
     support = await repo.support_stats_by_document(space_id, limit=limit)
     return {"items": stats, "support_stats": support, "total": len(stats)}
+
+
+# ========== 趋势聚合 / 轻量计数 / 引用点击埋点（运营飞轮 2026-11-16） ==========
+
+
+@router.get(
+    "/spaces/{space_id}/trends",
+    response_model=TrendsResponse,
+    summary="运营趋势（按日序列）",
+    description=(
+        "按日聚合运营事件趋势：检索总量 / 零命中 / 引用点击。"
+        "支撑体检报告首页的「指标全是趋势」；点踩无新事件源，刻意不列。"
+        "空间成员可读。"
+    ),
+)
+async def get_space_trends(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    days: Annotated[int, Query(ge=1, le=90, description="趋势窗口天数")] = 30,
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TrendsResponse:
+    """运营趋势按日序列（kb-ops 飞轮感知环）。"""
+    from datetime import timedelta
+
+    end = datetime.now()
+    start = end - timedelta(days=days)
+    repo = KbEventRepository(db)
+
+    query_buckets = await repo.query_stats_by_day([space_id], start, end)
+    type_rows = await repo.aggregate_by_day([space_id], start, end)
+
+    # 引用点击按日（类型聚合的 SQL 结果透传），与 query 分桶按日期对齐合并
+    clicks = {d: c for d, t, c in type_rows if t == "citation_click"}
+    points: dict[str, TrendPoint] = {}
+    for bucket in query_buckets:
+        day = bucket["date"]
+        points[day] = TrendPoint(
+            date=day,
+            query_total=bucket["query_total"],
+            zero_hit=bucket["zero_hit"],
+            citation_click=clicks.get(day, 0),
+        )
+    for day, count in clicks.items():
+        if day not in points:
+            points[day] = TrendPoint(date=day, citation_click=count)
+
+    series = [points[day] for day in sorted(points)]
+    return TrendsResponse(
+        window_days=days,
+        start=start.isoformat(),
+        end=end.isoformat(),
+        series=series,
+    )
+
+
+@router.get(
+    "/spaces/{space_id}/badge-counts",
+    response_model=BadgeCountsResponse,
+    summary="运营徽标轻量计数",
+    description=(
+        "一次调用返回导航徽标与待办概览所需四个计数：解析失败/复审到期/"
+        "待处置建议/内容缺口簇。替代「为取两个数拉全量 gap 报告+全量建议列表」的浪费。"
+    ),
+)
+async def get_space_badge_counts(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BadgeCountsResponse:
+    """徽标轻量计数（复用 overview/gap 的底层聚合查询）。"""
+    from novamind.features.knowledge_ops.services.ops_badge_service import OpsBadgeService
+
+    return BadgeCountsResponse(**await OpsBadgeService(db).get_badge_counts(space_id))
+
+
+@router.post(
+    "/spaces/{space_id}/events/citation-click",
+    summary="结果引用点击埋点",
+    description=(
+        "检索结果被点击时上报（旁路记账，失败不影响调用方）。"
+        "价值榜/点击榜与趋势序列的燃料；全局检索结果携带来源空间逐条上报。"
+    ),
+)
+async def record_citation_click(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    data: CitationClickRequest,
+    current_user: dict = Depends(get_current_user),
+    member: SpaceMember = Depends(validate_space_member),
+) -> dict:
+    """引用点击事件落账本（旁路语义，200 恒返）。"""
+    from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
+
+    await EventRecorder().record(
+        event_type="citation_click",
+        user_id=current_user["id"],
+        space_id=space_id,
+        kb_id=data.kb_id,
+        query_text=data.query,
+        extra={
+            k: v
+            for k, v in {
+                "document_id": data.document_id,
+                "chunk_id": data.chunk_id,
+            }.items()
+            if v is not None
+        },
+    )
+    return {"recorded": True}

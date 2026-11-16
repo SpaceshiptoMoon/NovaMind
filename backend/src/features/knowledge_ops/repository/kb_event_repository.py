@@ -84,3 +84,93 @@ class KbEventRepository:
         query = select(func.count(KbEvent.id)).where(*conditions)
         result = await self.session.execute(query)
         return int(result.scalar() or 0)
+
+    # ========== 趋势聚合（运营飞轮：指标全是趋势，不是当期快照） ==========
+
+    async def aggregate_by_day(
+        self,
+        space_ids: list[int],
+        start: datetime,
+        end: datetime,
+    ) -> list[tuple[str, str, int]]:
+        """按日×事件类型聚合计数（跨库安全的纯 SQL 分组）。
+
+        Args:
+            space_ids: 权限域空间集合（空集返回空）。
+            start: 窗口起点（含）。
+            end: 窗口终点（不含）。
+
+        Returns:
+            [(日期 ISO, 事件类型, 计数)]，按日期升序。
+        """
+        if not space_ids:
+            return []
+        day = func.date(KbEvent.created_at)
+        query = (
+            select(day, KbEvent.event_type, func.count(KbEvent.id))
+            .where(
+                KbEvent.space_id.in_(space_ids),
+                KbEvent.created_at >= start,
+                KbEvent.created_at < end,
+            )
+            .group_by(day, KbEvent.event_type)
+            .order_by(day)
+        )
+        rows = (await self.session.execute(query)).all()
+        return [(str(d), t, int(c)) for d, t, c in rows]
+
+    async def query_stats_by_day(
+        self,
+        space_ids: list[int],
+        start: datetime,
+        end: datetime,
+    ) -> list[dict]:
+        """query 事件按日分桶：总量与零命中（extra.results_count == 0）。
+
+        零命中判定依赖 JSON 载荷，跨库 JSON 条件不可靠（MySQL JSON_EXTRACT /
+        SQLite json_extract 方言差异 + JSON 列在部分驱动返回 str），故取
+        (created_at, extra) 轻列集在 Python 侧分桶。量级依据：单空间窗口内
+        query 事件行数与检索量同阶（演示环境日均百级），索引 (space_id,
+        event_type, created_at) 走覆盖前缀；检索量上到日均万级再物化。
+
+        Args:
+            space_ids: 权限域空间集合。
+            start: 窗口起点（含）。
+            end: 窗口终点（不含）。
+
+        Returns:
+            [{date, query_total, zero_hit}]，按日期升序。
+        """
+        import json as _json
+
+        if not space_ids:
+            return []
+        query = (
+            select(KbEvent.created_at, KbEvent.extra)
+            .where(
+                KbEvent.space_id.in_(space_ids),
+                KbEvent.event_type == "query",
+                KbEvent.created_at >= start,
+                KbEvent.created_at < end,
+            )
+            .order_by(KbEvent.created_at)
+        )
+        rows = (await self.session.execute(query)).all()
+
+        buckets: dict[str, dict] = {}
+        for created_at, extra in rows:
+            day = created_at.date().isoformat()
+            bucket = buckets.setdefault(day, {"query_total": 0, "zero_hit": 0})
+            bucket["query_total"] += 1
+            # JSON 列在部分驱动/方言下返回原始 str（历史坑），双形态解析
+            if isinstance(extra, str):
+                try:
+                    extra = _json.loads(extra)
+                except (ValueError, TypeError):
+                    extra = None
+            results_count = (extra or {}).get("results_count")
+            if results_count == 0:
+                bucket["zero_hit"] += 1
+        return [
+            {"date": day, **buckets[day]} for day in sorted(buckets)
+        ]

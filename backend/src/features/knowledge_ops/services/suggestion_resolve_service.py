@@ -76,6 +76,7 @@ class SuggestionResolveService:
     async def _notify_contradiction_owners(self, suggestion) -> None:
         """矛盾建议 accept：通知双方文档 owner 人工对齐内容（通知失败仅告警）。"""
         from novamind.features.knowledge_space.models.document import Document
+        from novamind.features.notification.models.notification import NotificationType
         from novamind.features.notification.services.notification_service import (
             NotificationService,
         )
@@ -92,7 +93,7 @@ class SuggestionResolveService:
             try:
                 await NotificationService(self.session).send_notification(
                     user_id=row.owner_id,
-                    type="kb_contradiction_confirmed",
+                    type=NotificationType.KB_CONTRADICTION_CONFIRMED.value,
                     title=f"文档「{row.filename}」被确认与其他内容存在矛盾",
                     content=(
                         f"管理员确认了内容矛盾：{suggestion.reason or ''}"

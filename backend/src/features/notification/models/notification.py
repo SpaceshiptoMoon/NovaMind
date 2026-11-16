@@ -17,6 +17,9 @@ class NotificationType(str, Enum):
     WIKI_READY = "wiki_ready"
     KB_OPS_WEEKLY_DIGEST = "kb_ops_weekly_digest"
     KB_REVIEW_DUE = "kb_review_due"
+    # 运营飞轮闭环回报（2026-11-16）：矛盾确认（原裸字符串补登记）+ 缺口转测试集半闭环
+    KB_CONTRADICTION_CONFIRMED = "kb_contradiction_confirmed"
+    KB_GAP_RESOLVED = "kb_gap_resolved"
 
 
 class Notification(BaseModel):

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_ops.models.kb_review_suggestion import KbReviewSuggestion
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -99,6 +99,19 @@ class SuggestionRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_open(self, space_id: int, suggestion_type: str | None = None) -> int:
+        """空间内 open 建议计数（徽标轻量路径，不取行）。"""
+        conditions = [
+            KbReviewSuggestion.space_id == space_id,
+            KbReviewSuggestion.status == STATUS_OPEN,
+        ]
+        if suggestion_type:
+            conditions.append(KbReviewSuggestion.suggestion_type == suggestion_type)
+        result = await self.session.execute(
+            select(func.count(KbReviewSuggestion.id)).where(and_(*conditions))
+        )
+        return int(result.scalar() or 0)
 
     async def get_by_id(self, suggestion_id: int) -> KbReviewSuggestion | None:
         """按 ID 取建议。"""
