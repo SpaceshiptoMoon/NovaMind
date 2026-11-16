@@ -1,9 +1,29 @@
 <template>
   <aside class="workbench-sidebar" :class="{ collapsed }" aria-label="工作台侧栏">
-    <!-- 品牌行：折叠态只显 Logo；logo 收进 18px 字形列，品牌名与其余行文字同一条 38px 竖线 -->
-    <div class="brand-row" :title="collapsed ? 'NovaMind' : undefined">
+    <!-- 品牌行即折叠控制位：展开态右缘是收起箭头（侧栏右上角，一眼可见）；
+         折叠态整行即展开钮（点 logo 展开） -->
+    <button
+      v-if="collapsed"
+      type="button"
+      class="brand-row brand-row--expand"
+      title="展开侧栏"
+      aria-label="展开侧栏"
+      @click="collapsed = false"
+    >
       <span class="brand-mark"><UnicornIcon :size="18" /></span>
-      <span v-if="!collapsed" class="brand-name">NovaMind</span>
+    </button>
+    <div v-else class="brand-row">
+      <span class="brand-mark"><UnicornIcon :size="18" /></span>
+      <span class="brand-name">NovaMind</span>
+      <button
+        type="button"
+        class="brand-collapse"
+        title="收起侧栏"
+        aria-label="收起侧栏"
+        @click="collapsed = true"
+      >
+        <el-icon :size="14"><Fold /></el-icon>
+      </button>
     </div>
 
     <!-- 空间切换器：折叠态退化为当前空间墨块（点击展开侧栏） -->
@@ -26,18 +46,6 @@
         <el-icon v-else :size="16"><Collection /></el-icon>
       </button>
     </div>
-
-    <!-- 折叠/展开钮：壳控制区（紧跟切换器，不沉底）——离用户的常用区近，不贴视口底缘 -->
-    <button
-      type="button"
-      class="collapse-toggle"
-      :title="collapsed ? '展开侧栏' : '收起侧栏'"
-      :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
-      @click="toggleCollapsed"
-    >
-      <el-icon :size="14" class="toggle-icon"><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
-      <span v-if="!collapsed" class="toggle-text">收起侧栏</span>
-    </button>
 
     <!-- 当前空间 KB 登记册（唯一滚动区，占满主体高度；折叠态不显示——48px 辨识不了 KB） -->
     <KbRegister v-if="!collapsed && sidebarSpaceId" :space-id="sidebarSpaceId" />
@@ -69,7 +77,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Collection, Expand, Fold, Setting } from '@element-plus/icons-vue'
+import { Collection, Fold, Setting } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 import { useUserStore } from '@/stores/user'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
@@ -104,10 +112,6 @@ watch(collapsed, (value) => {
     /* 存储不可用时仅本次会话生效 */
   }
 })
-
-function toggleCollapsed() {
-  collapsed.value = !collapsed.value
-}
 
 const routeSpaceId = computed(() => {
   const raw = route.params.id
@@ -275,47 +279,43 @@ onMounted(() => {
 /* KB 登记册（flex:1）独自占满主体高度，把系统组自然压到底——无需弹性补位
    （历史教训：补位 div 若也是 flex:1 会与登记册平分高度，登记区被腰斩） */
 
-/* ===== 折叠/展开钮：壳控制区行（切换器下方），与其余行同一缩进与右圆角语言 ===== */
-.collapse-toggle {
-  display: flex;
+/* ===== 品牌行的收起箭头（展开态右缘）/ 折叠态整行为展开钮 ===== */
+.brand-collapse {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  height: 36px;
-  margin: 0;
-  padding: 0 var(--space-3);
+  justify-content: center;
   border: none;
   background: none;
   color: var(--color-text-faint);
-  font-size: var(--text-xs);
   cursor: pointer;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-radius: var(--radius-sm);
   transition:
     color var(--transition-fast),
     background var(--transition-fast);
 }
 
-/* 折叠态：窄轨上居中的图标钮（全角圆角，与轨上其他图标同轴） */
-.collapsed .collapse-toggle {
-  justify-content: center;
-  align-self: center;
-  width: 36px;
-  padding: 0;
-  border-radius: var(--radius-md);
-}
-
-.collapse-toggle:hover {
+.brand-collapse:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
-/* 字形列统一 18px 宽：折叠钮/系统项/KB 行的文字起点落在同一竖线 */
-.toggle-icon {
-  flex-shrink: 0;
-  width: 18px;
+/* 折叠态：品牌行即展开钮（居中 logo + 整行 hover 反馈）；重置 button 原生样式 */
+.brand-row--expand {
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  background: none;
+  font: inherit;
+  width: 100%;
+  cursor: pointer;
 }
 
-.toggle-text {
-  white-space: nowrap;
+.brand-row--expand:hover {
+  background: var(--color-bg-hover);
 }
 
 /* 折叠态系统弹菜单内的系统组（去边线适配弹层） */
