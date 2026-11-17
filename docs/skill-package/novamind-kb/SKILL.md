@@ -1,7 +1,7 @@
 ---
 name: novamind-kb
-description: NovaMind 知识库检索。配置一次（api_key + space_id + kb_id）后，用户问知识库相关问题就直接检索回答。MCP 已注册时用 mcp__novamind-kb__kb_search，否则跑 scripts/kb_search.py（读 config.json，零参数）。当用户要求查询 NovaMind 知识库、检索公司文档、问知识库问题、或提到 novamind-kb/kb_search 时使用。
-allowed-tools: mcp__novamind-kb__kb_search, Skill(novamind-kb)
+description: NovaMind 知识库检索。配置一次（api_key + space_id + kb_id）后，用户问知识库/公司文档/制度政策流程相关问题就直接检索回答（含 MCP 与脚本双通道）。当用户要求查询 NovaMind 知识库、检索公司文档或制度、问知识库问题、或提到 novamind-kb/kb_search 时使用。
+allowed-tools: mcp__novamind-kb__kb_search, Bash(python *novamind-kb*kb_search.py*), Read
 ---
 
 # NovaMind 知识库检索
@@ -35,7 +35,8 @@ python <skill目录>/scripts/kb_search.py "用户的问题关键词"
 
 space_id/kb_id 已在配置里，**只传 query 即可**。仅当用户明确要求换范围/调参数时
 才传额外参数：`--space-id` `--kb-id` `--top-k` `--search-mode` `--score-threshold`
-`--vector-weight` `--bm25-weight` `--no-cache`（MCP 对应 camelCase 同名参数）。
+`--vector-weight` `--bm25-weight` `--no-cache`（MCP 参数同名 snake_case：`--top-k`
+对应 `top_k`）。
 
 ## 检索参数速查（默认值已够用，勿主动堆参数）
 
@@ -52,14 +53,26 @@ space_id/kb_id 已在配置里，**只传 query 即可**。仅当用户明确要
 - `results[].score` 为 0~1 相关度，<0.3 的片段参考价值低；
 - `snippet` 是 300 字符截断预览，不够时换更具体的 query 重查；
 - 综合答案用 `[Source N]`（N=rank）标注出处；
-- 脚本退出码 `3`（多空间候选）或 MCP 返回候选清单：从候选中选最相关的，
-  按其 space_id 重试一次；确实无法判断再问用户；
+- 脚本退出码 `3`（多空间候选）：从候选中选最相关的，按其 space_id 重试一次；
+  确实无法判断再问用户；退出码 `4`（其他 tool 错误，如未加入空间/无知识库）：
+  stderr 文本已说明原因，如实转告、不重试；
+- HTTP 401 / INVALID_API_KEY：key 已失效或吊销——**不重试**，告知用户需换 key
+  （更新 config.json 的 api_key 或 MCP 注册 header，创建方法见下方配置引导第 1 步）；
 - 检索无结果：换措辞或放宽关键词重试一次，仍无结果如实告知。
 
 ## 配置引导（仅首次，用户要求接入时执行）
 
-1. 创建 API key（明文 `nvm_` 开头仅返回一次），方法见
-   `docs/agent/claude-code-mcp-setup.md` 第一节（登录拿 JWT → POST keys）；
+1. 创建 API key（明文 `nvm_` 开头仅返回一次，妥善保存）：
+   ```bash
+   # 登录拿 JWT（无 jq 时从响应 JSON 手工复制 access_token）
+   TOKEN=$(curl -s -X POST http://127.0.0.1:8100/api/v1/user/users/login \
+     -H "Content-Type: application/json" \
+     -d '{"username": "<用户名>", "password": "<密码>"}' | jq -r .access_token)
+   # 创建 key，响应里 api_key 字段即凭证（base_url 非本机时替换 host）
+   curl -s -X POST http://127.0.0.1:8100/api/v1/agent-api/keys \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"name": "claude-code"}'
+   ```
 2. 确定默认空间与知识库：列出用户的空间让用户选（或用户直接报名字，调
    kb_search 不带 space_id 会返回候选清单可利用）；
 3. 二选一接入：

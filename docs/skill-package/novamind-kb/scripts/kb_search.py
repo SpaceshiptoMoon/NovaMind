@@ -14,7 +14,7 @@
 环境变量等价物：NOVAMIND_API_KEY / NOVAMIND_MCP_URL / NOVAMIND_SPACE_ID / NOVAMIND_KB_ID
 依赖：仅 Python 标准库（urllib），无需安装任何包。
 输出：stdout 打印检索结果 JSON（total/results）；错误输出到 stderr 并以非零退出
-（0 成功 / 2 缺凭证 / 3 多空间候选待指定 / 1 其他错误）。
+（0 成功 / 2 缺凭证 / 3 多空间候选待指定 / 4 其他不可自愈 tool 错误 / 1 协议层错误）。
 """
 from __future__ import annotations
 
@@ -180,8 +180,10 @@ def call_kb_search(args: argparse.Namespace, settings: dict) -> dict:
     if body.get("result", {}).get("isError"):
         message = text.removeprefix("Error executing tool kb_search: ")
         print(f"错误：{message}", file=sys.stderr)
-        # 多空间候选属可自愈错误：按候选清单在配置或 --space-id 中固定后重试
-        sys.exit(3)
+        # 多空间候选（消息含候选清单）属可自愈错误：退出码 3 让调用方选
+        # space_id 重试；其余 tool 错误（未加入空间/无知识库等）不可自愈，
+        # 退出码 4 原样转告即可
+        sys.exit(3 if "候选" in message else 4)
 
     return json.loads(text)
 

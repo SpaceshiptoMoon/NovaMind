@@ -9,7 +9,9 @@ NovaMind 知识库的 Claude Code skill。装好并配置一次（api_key + spac
 ## 前置条件
 
 1. NovaMind 后端已部署并运行（你或管理员知道其地址，如 `http://<nova主机>:8100`）；
-2. 本机已安装 Claude Code。
+2. 本机已安装 Claude Code；
+3. 本机 Python ≥ 3.9（脚本仅标准库，无需装包）；创建 API key 一步用到 `jq`
+   （无 jq 时从响应 JSON 里手工复制 `access_token` 亦可）。
 
 ## 安装（三步）
 
