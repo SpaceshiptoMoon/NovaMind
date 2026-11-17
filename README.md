@@ -133,7 +133,8 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 
 ### 🤖 知识增强与开放接口
 
-- **知识服务出口**：标准 MCP server（kb_search 检索工具）+ OpenAI 兼容网关（/v1/chat/completions）+ API key 门禁——Claude Code、Cursor 等任何 agent 宿主可直接接入知识库
+- **知识服务出口**：标准 MCP server（kb_search 检索工具）+ OpenAI 兼容网关（/v1/chat/completions）+ API key 门禁——Claude Code、Cursor 等任何 agent 宿主可直接接入知识库；三个消费面配置同源、同一种 key、继承创建者权限链。契约与参数见[对外 API 使用参考](./docs/agent/api-reference.md)
+- **Claude Code skill 分发包**：`novamind-kb` skill——配置一次（api_key + space_id + kb_id）后直接自然语言问知识库，MCP / 脚本双通道（与 MCP server 同源 key），见 [`docs/skill-package/novamind-kb/`](./docs/skill-package/novamind-kb/)
 - **引用级溯源**：检索结果可定位原文分块，PDF 引用直达原文页并高亮命中区域（页码 + bbox 坐标级溯源）；视频分块附所在章节的连贯叙事摘要
 
 ### 🛡 平台能力
@@ -703,6 +704,7 @@ Docker 一键部署后，用户名 `admin`，初始密码在根目录 `.env` 的
 项目处于积极开发期：多模态解析、混合检索与 RAG 问答等核心链路已稳定；评测归因与知识运营闭环的骨架已建成（四源统一待办 / 事件账本 / 冷启动引导 / 15 类归因 / 回归告警），进入真实使用验证期。近期重点：
 
 - 运营飞轮真实数据验证：冷启动引导接入真实空间、打开质量基线跑批、跑通「缺口 → 补文档 → 转测试集 → 评测归因 → 待办处置 → 回归验证」完整一圈
+- 对外消费面真实接入验证：MCP / OpenAI 网关 / Claude Code skill 在真实 agent 宿主工作流中的使用打磨
 - 多模态解析深度与常用格式覆盖的持续增强
 - 前端真实业务测试补齐，而不是只停留在最小基线
 
@@ -716,6 +718,7 @@ Docker 一键部署后，用户名 `admin`，初始密码在根目录 `.env` 的
 - 知识处理链路详解：[`docs/knowledge-space/current/document-processing-flow.md`](./docs/knowledge-space/current/document-processing-flow.md)
 - Wiki 架构：[`docs/knowledge-space/current/wiki-architecture.md`](./docs/knowledge-space/current/wiki-architecture.md)
 - 知识库配置结构：[`docs/knowledge-space/current/knowledge-config-structure-design.md`](./docs/knowledge-space/current/knowledge-config-structure-design.md)
+- 对外 API 使用参考：[`docs/agent/api-reference.md`](./docs/agent/api-reference.md)（MCP / OpenAI 网关 / API key 管理三消费面；Claude Code 接入指南与 skill 分发包在同目录）
 - 后端说明：[`backend/README.md`](./backend/README.md)（API 参考在 [`backend/docs/api/`](./backend/docs/api/)）
 - 前端说明：[`frontend/README.md`](./frontend/README.md)
 - 贡献指南：[`CONTRIBUTING.md`](./CONTRIBUTING.md)

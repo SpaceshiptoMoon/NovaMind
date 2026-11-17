@@ -106,7 +106,8 @@ If you want more than a document cabinet — a knowledge service that organizes 
 
 ### 🤖 Knowledge enhancement & open access
 
-- **Knowledge service endpoints**: standard MCP server (kb_search retrieval tool) + OpenAI-compatible gateway (/v1/chat/completions) + API-key gating — Claude Code, Cursor, or any agent host can plug into your knowledge base directly
+- **Knowledge service endpoints**: standard MCP server (kb_search retrieval tool) + OpenAI-compatible gateway (/v1/chat/completions) + API-key gating — Claude Code, Cursor, or any agent host can plug into your knowledge base directly; the three surfaces share one config, one key, and the creator's permission chain. Contracts and parameters: [external API reference](./docs/agent/api-reference.md)
+- **Claude Code skill package**: the `novamind-kb` skill — configure once (api_key + space_id + kb_id), then ask about the knowledge base in natural language; MCP/script dual channel (same key as the MCP server), see [`docs/skill-package/novamind-kb/`](./docs/skill-package/novamind-kb/)
 - **Citation-level tracing**: retrieval results locate the exact source chunk; PDF citations jump to the exact page with bbox-level highlighting of the cited region; matched video chunks carry the coherent chapter narrative summary
 
 <p align="center">
@@ -633,6 +634,7 @@ When a space already has completed documents, changing the embedding config is b
 The repo has completed the baseline entry-point work needed for a public release. The skeletons of evaluation attribution and the knowledge-operations loop (four-source unified todos / event ledger / cold-start onboarding / 15-category attribution / regression alerts) are built, and the focus now shifts to validating them with real usage:
 
 - Run the ops flywheel on real data: onboard a real space via cold-start guidance, enable the quality-baseline cron, and walk the full loop (gap → fix docs → convert to test set → eval attribution → todo disposition → regression verification)
+- Validate the external consumption surfaces with real agent hosts: MCP / OpenAI gateway / Claude Code skill usage polish in real workflows
 - Continue stabilizing the KB main pipeline and task model
 - Add real business tests for the frontend, beyond a minimal baseline
 
@@ -646,6 +648,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 - Document processing flow: [`docs/knowledge-space/current/document-processing-flow.md`](./docs/knowledge-space/current/document-processing-flow.md)
 - Wiki architecture: [`docs/knowledge-space/current/wiki-architecture.md`](./docs/knowledge-space/current/wiki-architecture.md)
 - KB config structure: [`docs/knowledge-space/current/knowledge-config-structure-design.md`](./docs/knowledge-space/current/knowledge-config-structure-design.md)
+- External API reference: [`docs/agent/api-reference.md`](./docs/agent/api-reference.md) — MCP / OpenAI gateway / key management (Claude Code setup guide & skill package in the same folder)
 - Backend notes: [`backend/README.md`](./backend/README.md) (API reference in [`backend/docs/api/`](./backend/docs/api/))
 - Frontend notes: [`frontend/README.md`](./frontend/README.md)
 - Contributing: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
