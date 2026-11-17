@@ -52,6 +52,7 @@
 
 ### 知识服务出口（agent_api）
 
+- [`agent/api-reference.md`](./agent/api-reference.md)：**对外 API 使用总参考**——三个消费面（MCP kb_search / OpenAI 兼容网关 / API key 管理）的认证、契约、参数与错误格式
 - [`agent/claude-code-mcp-setup.md`](./agent/claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
 - [`agent/openai-gateway.md`](./agent/openai-gateway.md)：OpenAI 兼容网关使用指南（/v1/chat/completions）
 - （工作台对话产品的设计与交接文档已归档至 `agent/historical/`、`plans/historical/`，2026-11-15 剥离工作台后产品聚焦知识空间服务）

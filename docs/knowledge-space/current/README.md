@@ -15,7 +15,9 @@
 - [`knowledge-config-structure-design.md`](./knowledge-config-structure-design.md)：知识库配置结构、保留字段和设计边界
 - [`wiki-architecture.md`](./wiki-architecture.md)：Wiki 自动生成与浏览的架构（管道、版本、Agent 工具、图谱）
 - [`evaluation-guide.md`](./evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读、使用指南
+- [`evaluation-attribution-design.md`](./evaluation-attribution-design.md)：评测归因分析——五阶段 15 类错误分类法、判定链与运营闭环出口
 - [`kb-ops-loop-summary.md`](./kb-ops-loop-summary.md)：知识运营闭环收官总结——事件账本/归因/gap 闭环/生命周期/建议队列/质量基线/治理视图的组件归属、API 面与关键教训
+- [`ops-platform-design.md`](./ops-platform-design.md)：知识运营平台终态蓝图——五模块/三岗位/干预回看设计与批次状态
 
 ## 使用约定
 
