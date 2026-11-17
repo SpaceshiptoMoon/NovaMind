@@ -84,7 +84,7 @@ If you want more than a document cabinet — a knowledge service that organizes 
 - **Spaces & knowledge bases**: multi-space isolation, member collaboration (OWNER / ADMIN / EDITOR / VIEWER roles), per-KB parsing config, full document lifecycle
 - **Hybrid retrieval**: vector, BM25, hybrid, rerank, query rewriting, and multi-level fallbacks — 9 retrieval modes
 - **Hypothetical-question augmentation**: optionally generate hypothetical questions per chunk and index them as question vectors to improve recall
-- **KB evaluation**: test-set management, automated evaluation, manual scoring, report export; distill QA messages into test sets in one click, and compare two reports to spot per-case regressions
+- **KB evaluation & failure attribution**: test-set management, automated evaluation, manual scoring, report export; distill QA messages into test sets in one click, and compare two reports to spot per-case regressions. Failed cases are auto-attributed across five stages (source data / parsing / retrieval / generation / query) into 15 root-cause categories via multi-level replay + LLM judging (replay-first to control cost); the report page shows the root-cause distribution and hotspot documents, and source/parsing issues automatically become ops todos
 
 <p align="center">
   <img src="./assets/documents.png" alt="Document management — demo KB “AI Knowledge Handbook”" width="760">
@@ -117,7 +117,7 @@ If you want more than a document cabinet — a knowledge service that organizes 
 
 - **Task system**: ARQ-based async task orchestration — batch processing, per-step progress, cancel / retry, zombie-task cleanup, crash recovery for orphaned tasks
 - **Realtime notifications**: WebSocket push with polling fallback; parse completion / failure / cancel events
-- **Space insights**: aggregated dashboard of QA thumbs-up/down, zero-hit and low-score queries — pinpoint knowledge gaps to guide document coverage
+- **Knowledge operations platform**: an inbox-style ops page whose top module bar (Dashboard / QC / Disposition / Verification / Ledger) is the platform skeleton — 4-dimension health report (retrieval / freshness / feedback / order, transparent rules), a unified todo center (gaps / due reviews / low-score feedback / eval-attribution, four sources ranked by impact; ignoring requires a reason and is persisted & undoable), an event ledger plus action registry (single source of truth, traceable dispositions), cold-start onboarding (three checks: retrieval readiness / content / behavioral data), and quality-baseline regression alerts
 - **Multi-model access**: LLM / Embedding / Rerank / VLM / ASR — anything OpenAI-compatible plugs in; connection testing and encrypted key storage
 
 ## Document processing pipeline
@@ -459,7 +459,8 @@ NovaMind/
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
 | Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
 | Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard & governance views |
-| KB evaluation | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | test sets, eval tasks, export |
+| Knowledge ops | `/api/v1/kb-ops` | health report, unified todos (4 sources), event ledger & action registry, cold-start onboarding, contradiction / duplicate / contribution governance views |
+| KB evaluation | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | test sets, eval tasks, five-stage failure attribution, report comparison & export |
 | Agent API keys | `/api/v1/agent-api` | Agent API key management & OpenAI-compatible gateway |
 | Notifications | `/api/v1/notifications` | in-app notifications and preferences |
 
@@ -629,11 +630,11 @@ When a space already has completed documents, changing the embedding config is b
 
 ## Project status
 
-The repo has completed the baseline entry-point work needed for a public release. The focus going forward is:
+The repo has completed the baseline entry-point work needed for a public release. The skeletons of evaluation attribution and the knowledge-operations loop (four-source unified todos / event ledger / cold-start onboarding / 15-category attribution / regression alerts) are built, and the focus now shifts to validating them with real usage:
 
+- Run the ops flywheel on real data: onboard a real space via cold-start guidance, enable the quality-baseline cron, and walk the full loop (gap → fix docs → convert to test set → eval attribution → todo disposition → regression verification)
 - Continue stabilizing the KB main pipeline and task model
 - Add real business tests for the frontend, beyond a minimal baseline
-- Keep the boundary between formal design docs and historical process docs clear
 
 See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 
