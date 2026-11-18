@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> 本文件是 Claude Code 的工作区指令，与 `AGENTS.md`（ZCode 工作区指令）内容镜像并行维护，
+> 改规则时请同步更新两处。
+
 ## 项目概述
 
 NovaMind 是全栈智能知识库平台。
@@ -56,13 +59,13 @@ docker-compose.yml
 
 多个 agent 窗口（或开发者）并发操作本仓库时，每个隔离在自己的 git worktree、自己的分支里。绝不让多个 agent 编辑同一工作目录——重叠修改会在 git 介入之前就被文件系统层静默覆盖，且无法恢复或归因。
 
-- **一个 agent = 一个 worktree = 一个分支。** 启动时创建：`git worktree add ../intelligent-<scope> -b feat/<scope>-<desc>`，然后在其内工作；或让 Claude Code 用内置命令创建 worktree。
+- **一个 agent = 一个 worktree = 一个分支。** 启动时创建：`git worktree add ../intelligent-<scope> -b feat/<scope>-<desc>`，然后在其内工作；或让 agent 用内置命令创建 worktree。
 - **worktree 放在仓库外**（不要放 `src/`、`backend/` 或其他被扫描的源码目录内）。从干净基线（`main` 或当前主干）拉分支——另一工作目录的未提交修改不会带过来，这正是隔离的意义。
 - **按 feature 边界**（`backend/src/features/<domain>/`）划分任务。单点共享文件同一时间只能由一个 agent 编辑；其余排队：
   - `backend/src/shared/prompts/`（prompt 注册表）
   - `backend/src/features/*/manifest.py`（feature 路由/init/依赖声明，见硬规则）
   - `backend/src/core/middleware/router_manager.py` 与 `startup_manager.py`（manifest 聚合与启动编排）
-  - `*.example` 配置模板、`CLAUDE.md`、`docs/` 架构文档、DB 模型
+  - `*.example` 配置模板、`AGENTS.md`/`CLAUDE.md`、`docs/` 架构文档、DB 模型
 - **频繁且原子地提交。** 不要把未提交修改留过夜；停工前 commit 或 stash。
 - **从干净主干合并回来：** `git checkout main` → `git merge feat/<scope>-<desc>`。每次合并后、开始下一项前跑相关测试。
 - **合并后清理：** `git worktree remove ../intelligent-<scope>` + `git branch -d feat/<scope>-<desc>` + `git worktree prune`。
@@ -118,6 +121,9 @@ feature 模块按以下结构组织：
 知识库相关代码使用以下权威位置：
 
 - `backend/src/features/knowledge_space/`：知识库领域行为、任务、API、schema、repository
+- `backend/src/features/knowledge_ops/`：知识运营平台（健康报告、统一待办、事件账本、冷启动引导、质量基线）
+- `backend/src/features/evaluation/`：知识库评测与失败归因（测试集、评测任务、五阶段 15 类归因）
+- `backend/src/features/agent_api/`：知识服务出口（API key 管理、MCP server `/mcp`、OpenAI 兼容网关 `/v1`）
 - `backend/src/engines/document/pipeline/`：文本与文档解析管道（DocumentLoader/DocumentProcessor）——可复用的文档处理引擎
 - `backend/src/engines/document/splitters/`：分块切分器
 - `backend/src/engines/document/converters/`：文档格式转换器
@@ -125,6 +131,7 @@ feature 模块按以下结构组织：
 - `backend/src/engines/document/integrations/deepdoc/`：仅 DeepDoc 集成（vendored，自包含）
 - `backend/src/engines/question_generation/`：假设问题生成引擎（直收 LLM 客户端，凭证解析归业务）
 - `backend/src/engines/wiki/`：Wiki 纯函数件（互链/去重/句柄/slug/分类法）；wiki 持久化与编排留 knowledge_space
+- `backend/src/engines/video_narrative/`：视频叙事合成引擎（碎片帧描述合成章节化连贯叙事文档）
 - `backend/src/engines/rag|eval|search/`：检索、评估、Web 搜索引擎——通用能力层，零 features/setting import（agent/deep_research/resume 引擎已随 2026-11-15 工作台剥离移除）
 - `backend/src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 knowledge_space 复用
 - `backend/src/shared/document/validation/`：跨 feature 文件校验——被 knowledge_space 复用
@@ -195,12 +202,17 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 
 ## 验证工作流
 
+### 全栈
+
+- 仓库级脚本一键起 Docker 全栈：`bash deploy.sh` 或 `.\deploy.ps1`
+
 ### 后端
 
-- 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 运行时依赖齐全，test/dev 为开发测试 extras。公式模型 INT8 量化等部署增强见 pyproject `deepdoc-vision` extra）
-- 开发服务器：`python main.py --reload`
-- 跑测试：`pytest`
+- 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 即全部运行时依赖，test/dev 为开发测试 extras；uv.lock 已入库。公式模型 INT8 量化等部署增强见 pyproject `deepdoc-vision` extra，Docker 镜像构建时启用）
+- 开发服务器：`python main.py --reload`（单一模式，无环境名参数）
+- 跑测试：`pytest`（发现模式 `test_*.py` 与 `*_test.py`）；可用标记定向跑，如 `pytest -m unit`、`pytest -m "not slow"`
 - 触碰解析、文档任务、检索或共享基础设施时，优先跑针对性测试
+- 测试放在所覆盖 feature 旁，命名明确（如 `test_knowledge_space_api.py`）
 
 ### 前端
 
@@ -209,7 +221,15 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - 类型检查：`npm run type-check`
 - Lint：`npm run lint`
 - 格式化：`npm run format`
-- 构建：`npm run build`
+- 单元测试：Vitest（jsdom 环境），`npm run test:unit`
+- 构建：`npm run build`，预览：`npm run preview`
+
+## 提交与 PR 规范
+
+- Conventional Commits，可选 scope：`feat(knowledge): ...`、`fix: ...`、`docs: ...`；commit subject 用祈使句、一个提交一件事、中文描述动机
+- **commit message 保持简短**（2026-11-15 用户要求）：标题一行（约 40 字内），正文默认不写、必要时最多 1-2 行；细节归 diff 与文档，不写长篇正文
+- PR 需含：简要总结、影响面（backend/frontend/docker/config）、关联 issue；UI/契约改动附截图或 API 示例
+- 新增环境变量、schema 变更、迁移步骤必须在 PR 描述中显式标注
 
 ## 变更规则
 
@@ -218,7 +238,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - 重组目录时，文档与 import 路径在同一变更中更新。
 - 解析管道改动，运行时代码与样例夹具都要验证（仓库根 `test_data/` 存在则用之，否则 `backend/tests/fixtures/`）。
 - 知识库配置改动，后端 schema、前端表单、持久化配置结构三者保持对齐。
-- commit message 保持简短：标题一行（约 40 字内），正文默认不写、必要时最多 1-2 行；细节归 diff 与文档（2026-11-15 用户要求）。
+- `logs/` 与 `test_data/output/` 视为生成产物，不提交；新增样例夹具前先脱敏。
 
 ## 硬规则
 
@@ -241,7 +261,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - **路由注册：** 新路由在所属 feature 的 `manifest.py` 里以 `RouterSpec` 声明（含前缀与 `route_order`）；`manifest_loader` 自动扫描 `features/*/manifest.py`，`router_manager.py` 按声明聚合挂载——不存在也不需要 router_manager 手动登记。
 - **模块 init：** 新模块建 `manifest.py` 提供 `manifest()`（`FeatureManifest`：routers/`depends_on`/`init_hook`/`models_loader`）；ORM 建表经 `models_loader` 导入模型，启动钩子经 `init_hook`，由 `startup_manager` 按 `get_sorted_manifests()` 顺序驱动。
 - **配置文件：** 所有 `*.yaml` 都被 gitignore；只提交 `*.example` 模板。
-- **import 依赖规则（ragflow 务实单体风格）：** 分层间允许任意方向 import（含 engines→features、core→features），硬约束是整个 `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/CLAUDE.md`。**engines→features/setting 禁止**（2026-10-29 模块化治理后全域清零含 TYPE_CHECKING，约定不回退；引擎接口签名不携带业务服务形状——凭证解析/用户身份/数据库实现由业务层注入，接口归引擎侧定义如 IMemoryStore）；core→features 维持允许。
+- **import 依赖规则（ragflow 务实单体风格，2026-10-29 模块化治理后）：** `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。**engines→features/setting 禁止**（全域清零含 TYPE_CHECKING，约定不回退；引擎接口签名不携带业务服务形状——凭证解析/用户身份/数据库实现由业务层注入，接口归引擎侧定义如 IMemoryStore）；core→features 维持允许。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/CLAUDE.md`。
 
 ### 前端编码规则
 

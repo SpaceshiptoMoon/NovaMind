@@ -37,12 +37,13 @@
 
 - [`deepdoc/deepdoc-integration.md`](./deepdoc/deepdoc-integration.md)：DeepDoc 集成说明
 - [`deepdoc/deepdoc-acceptance-checklist.md`](./deepdoc/deepdoc-acceptance-checklist.md)：DeepDoc 验收清单
+- [`deepdoc/ragflow-deepdoc-analysis.md`](./deepdoc/ragflow-deepdoc-analysis.md)：RAGFlow DeepDoc 深度解析与 NovaMind 对比（2026-07 时点调研，历史文档）
 
 ### 平台级架构
 
 - [`splitting-strategy-matrix.md`](./splitting-strategy-matrix.md)：切分策略实测矩阵（8 切分器 × 参数组合的行为层与检索质量 A/B 数据、回归门禁用法）
 - [`parsing-test-matrix.md`](./parsing-test-matrix.md)：解析模块测试矩阵（组合空间全覆盖清单与执行记录：文本/图片/音频/视频全模态）
-- [`claude-code-mcp-setup.md`](./agent/claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
+- [`parsing-oss-landscape-2026-10.md`](./parsing-oss-landscape-2026-10.md)：全模态解析开源项目对标调研（2026-10-27：MinerU/docling/marker/RAGFlow 等源码级对标，为 `engines/document` 演进提供输入）
 - [`notification-architecture.md`](./notification-architecture.md)：通知系统架构（NotificationService.notify、WS 推送、轮询兜底）
 - [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）
 - [`transaction-boundary-conventions.md`](./transaction-boundary-conventions.md)：仓储写操作 `begin_nested()` 事务边界约定
@@ -50,18 +51,24 @@
 - [`workbench-stripdown-and-knowledge-service-pivot.md`](./workbench-stripdown-and-knowledge-service-pivot.md)：工作台剥离与知识服务定位转型全档（2026-11-15 决策动机、实施过程、教训与最终形态）
 - [`multi-agent-parallel-development-workflow.md`](./multi-agent-parallel-development-workflow.md)：多 Agent 并行开发的 worktree 工作流
 
+### UI 设计
+
+- [`ui-design-guidelines.md`](./ui-design-guidelines.md)：前端设计规范——去「AI 味」的视觉 token 使用说明（token 权威值为 `frontend/src/assets/base.css`）
+- [`ui-reference-sites.md`](./ui-reference-sites.md)：UI 参考网站清单（2026-10-02 逐站实测的设计参考来源与免费边界）
+
 ### 知识服务出口（agent_api）
 
 - [`agent/api-reference.md`](./agent/api-reference.md)：**对外 API 使用总参考**——三个消费面（MCP kb_search / OpenAI 兼容网关 / API key 管理）的认证、契约、参数与错误格式
 - [`agent/claude-code-mcp-setup.md`](./agent/claude-code-mcp-setup.md)：Claude Code 直连 NovaMind 知识库（MCP）配置指南——API key 创建、注册、使用与 key 管理
 - [`agent/openai-gateway.md`](./agent/openai-gateway.md)：OpenAI 兼容网关使用指南（/v1/chat/completions）
+- [`skill-package/novamind-kb/SKILL.md`](./skill-package/novamind-kb/SKILL.md)：NovaMind 知识库检索 Claude Code Skill 包（MCP kb_search / 脚本双通道，安装见同目录 [`INSTALL.md`](./skill-package/novamind-kb/INSTALL.md)）
 - （工作台对话产品的设计与交接文档已归档至 `agent/historical/`、`plans/historical/`，2026-11-15 剥离工作台后产品聚焦知识空间服务）
 
 ## 过程性文档
 
 以下目录更多用于保留研发背景，不建议作为首次阅读入口：
 
-- `handover/`：阶段性交接记录（均已归档至 [`handover/historical/`](./handover/historical/)），入口见 [`handover/README.md`](./handover/README.md)
+- `handover/`：阶段性交接记录（[`cache-optimization-handover-2026-11-14.md`](./handover/cache-optimization-handover-2026-11-14.md) 在 handover/ 根目录，本批次已全部完成落地；其余已归档至 [`handover/historical/`](./handover/historical/)），入口见 [`handover/README.md`](./handover/README.md)
 - `plans/`：重构、清理和执行计划，入口见 [`plans/README.md`](./plans/README.md)，并已分为 `active/` 与 `historical/`
 - `superpowers/`：专项实验与方案草稿
 - `knowledge-space/process/`：知识模块重组和改造过程文档

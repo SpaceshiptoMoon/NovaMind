@@ -23,12 +23,12 @@
 | `PromptManager._templates`（类级） | `shared/prompts/prompt_manager.py:15` | 模板表每进程一份（只读，无损） |
 | `ClientFactory._instances`（类级） | `shared/storage/client_factory.py:28` | 客户端单例每进程一份（无损，但失效广播只达本进程） |
 | 嵌入式 arq worker（`_worker_task`） | `shared/mq/worker.py:14` | **每个 API 进程都起任务 consumer**：同一任务被多进程争抢，cron 任务重复执行 |
-| `_asr_executor`（ProcessPoolExecutor 1 worker） | `engines/document/media/audio/audio_utils.py:251` | ASR 串行化租约失效：多进程各持 executor，GPU/CPU 过载 |
+| `_asr_executor`（ProcessPoolExecutor 1 worker） | `engines/document/media/audio/audio_utils.py:246` | ASR 串行化租约失效：多进程各持 executor，GPU/CPU 过载 |
 | `asr_lease._holder_token` | `engines/document/media/audio/asr_lease.py:35` | Redis 租约失败时的进程内退化语义跨进程失效 |
 | `_limiter`（slowapi 内存计数器） | `core/middleware/rate_limit.py:65` | 限流阈值按进程分片，实际放行量 = 配置 × N |
 | `_engine`/`_session_factory` | `core/database/database.py:14` | 每进程独立连接池（正常，注意总连接数 = pool × workers） |
 | `_arq_pool` | `shared/mq/__init__.py:11` | 每进程独立连接池（同上） |
-| `_config`/`_config_dict` | `setting/yaml_config/loader.py:488` | 配置缓存每进程一份（无损） |
+| `_config`/`_config_dict` | `setting/yaml_config/loader.py:429` | 配置缓存每进程一份（无损） |
 | `_default_encryption_key` | `shared/utils/crypto.py:19` | 启动注入每进程执行（同源无损） |
 
 **判读口径**：标注「无损」的项只是内存重复；标注「故障」的项在多 worker 下产生
@@ -37,14 +37,15 @@
 
 ## 水平扩展演进路径（仅声明，未排期）
 
-真要多 worker 时按依赖顺序补三件事，缺一不可：
+真要多 worker 时按依赖顺序补两件事，缺一不可：
 
 1. **WS 跨进程广播**：ConnectionManager 的进程内表换成 Redis pub/sub fan-out
    （前端协议不变，服务端 `send_notification` 改经 Redis 频道广播到各进程本地投递）。
-2. **审批路由外置**：`DETACHED_APPROVAL_ROUTES` 的决策回传改经 Redis（parked
-   handler 在 Redis 上等决策，attach 通道任意进程接收后发布）。
-3. **任务 worker 拆分**：嵌入式 arq consumer 关闭（`--workers > 1` 时禁用），
+2. **任务 worker 拆分**：嵌入式 arq consumer 关闭（`--workers > 1` 时禁用），
    任务消费交给独立 worker 进程（arq 原生多进程安全，依赖 Redis 锁）。
+
+（原第 2 项「审批路由外置：`DETACHED_APPROVAL_ROUTES` 决策回传改经 Redis」已随
+2026-11-15 agent 模块剥离作废——该符号现全仓不存在。）
 
 完成后仍需审计上表「无损」项的失效广播语义（ClientFactory 缓存失效目前是进程内
 事件，跨进程需要 pub/sub 通道）。

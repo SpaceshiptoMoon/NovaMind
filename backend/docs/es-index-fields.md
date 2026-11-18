@@ -1,7 +1,7 @@
 # Elasticsearch 知识空间索引字段定义
 
 > 来源代码：
-> - Mapping 定义：`backend/src/shared/storage/elasticsearch_client.py` — `create_index()`
+> - Mapping 定义：`backend/src/shared/storage/index_schema.py` — `DefaultIndexSchema.build_create_body`（由 `elasticsearch_client.py` 消费）
 > - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/pipeline_steps.py` — `build_es_chunks()`（统一构造器，三模态共用），`prepare_es_chunks()`（旧签名薄 shim，保留兼容）
 > - 图片 chunk 写入：`backend/src/features/knowledge_space/services/document_pipeline.py` — `_process_image_document_static()`
 > - 搜索模式：`backend/src/shared/storage/elasticsearch_client.py` — `search_by_mode()`
@@ -10,9 +10,10 @@
 
 # 当前字段（代码现状）
 
-## 一、Mapping 定义（`es_client.py:124-184`）
+## 一、Mapping 定义（`index_schema.py` — `DefaultIndexSchema.build_create_body`）
 
-创建索引时所有空间共有的 15 个字段：
+创建索引时所有空间共有的字段（2026-11-18 对账；完整逐字段说明见同目录
+`elasticsearch-index-structure.md`）：
 
 ```python
 properties = {
@@ -25,14 +26,39 @@ properties = {
     "embedding":            {"type": "dense_vector", ...}, # dims=1024默认, cosine
     "questions":            {"type": "text", ...},         # 假设问题
     "question_embeddings":  {"type": "nested", ...},       # {vector: dense_vector}
-    "chunk_type":           {"type": "keyword"},           # "text" | "image"
+    "chunk_type":           {"type": "keyword"},           # text | image | video | audio | wiki_page ...
+    "lifecycle_status":     {"type": "keyword"},           # 文档生命周期（kb-ops），检索排除 superseded/archived
     "image_url":            {"type": "keyword"},
+    "media_url":            {"type": "keyword"},           # 音/视频原文 URL
     "metadata": {
         "page_number":      {"type": "integer"},
         "section_title":    {"type": "text"},
         "char_start":       {"type": "integer"},
         "char_end":         {"type": "integer"},
         "content_hash":     {"type": "keyword"},
+        "wiki_slug":        {"type": "keyword"},           # wiki 页同步（chunk_type=wiki_page）
+        "wiki_title":       {"type": "keyword"},
+        "wiki_page_type":   {"type": "keyword"},
+        "start_time":       {"type": "float"},             # 音视频时间轴（秒）
+        "end_time":         {"type": "float"},
+        "duration":         {"type": "float"},
+        "speaker_id":       {"type": "keyword"},           # ASR 说话人分离
+        "confidence":       {"type": "float"},             # ASR 转写置信度 0~1
+        "frame_paths":      {"type": "keyword"},           # 视频帧图路径列表
+        "frame_indices":    {"type": "integer"},
+        "doc_tags":         {"type": "text", "fields": {"keyword": ...}},  # 用户自定义标签
+        "chunk_pages":      {"type": "integer"},           # 引用溯源页码列表
+        "chunk_entry_source_ids": {"type": "keyword"},
+        "chunk_entry_kinds":      {"type": "keyword"},
+        "chunk_entry_count":      {"type": "integer"},
+        "figure_image_links":     {"type": "nested", ...}, # PDF figure 图片链接
+        "figure_image_count":     {"type": "integer"},
+        "chunk_role":       {"type": "keyword"},           # 句窗口/父子分块角色
+        "parent_chunk_id":  {"type": "keyword"},
+        "expansion_type":   {"type": "keyword"},
+        "expansion_window_size": {"type": "integer"},
+        "content_type":     {"type": "keyword"},
+        "section_anchor_chunk_id": {"type": "keyword"},
     },
     "file_info": {
         "filename":         {"type": "keyword"},

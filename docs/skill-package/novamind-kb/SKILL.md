@@ -14,7 +14,7 @@ allowed-tools: mcp__novamind-kb__kb_search, Bash(python *novamind-kb*kb_search.p
 按顺序检查，任一就绪即可用：
 
 1. MCP：`mcp__novamind-kb__kb_search` 在可用工具列表里 → 直接用（推荐）；
-2. 脚本配置：`<skill目录>/config.json` 存在且含 `api_key` → 直接跑脚本（零参数）；
+2. 脚本配置：`<skill目录>/config.json` 存在且含 `api_key` → 直接跑脚本（只需传 query，零配置参数）；
 3. 都没有 → 引导用户完成一次配置（见下方「配置引导」），**不要**反复询问。
 
 ## 日常使用（配置就绪后）

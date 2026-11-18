@@ -42,7 +42,7 @@ docker compose up -d --build
 - Use Conventional Commits when possible.
 - Good examples:
   - `feat(knowledge): add document retry status filter`
-  - `fix(agent): guard missing tool call payload`
+  - `fix(knowledge_space): 修复分页查询总数错误`
   - `docs: update docker setup guide`
 
 ## Pull Request Checklist

@@ -57,7 +57,6 @@ schemas/
 | `backend/src/features/knowledge_ops/` | 知识运营（事件账本、四分归因、gap 闭环、建议队列、治理视图） |
 | `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
 | `backend/src/features/agent_api/` | 知识服务出口：API 密钥、MCP server（kb_search）、OpenAI 兼容网关 |
-| `backend/src/features/app/` | 应用中心（简历挖掘） |
 | `backend/src/features/notification/` | 通知和偏好设置 |
 
 ### 引擎层（engines/）
@@ -70,8 +69,7 @@ schemas/
 | `backend/src/engines/document/` | 文档处理引擎（pipeline / splitters / converters / media / deepdoc） |
 | `backend/src/engines/eval/` | 评测引擎（retrieval / generation / embedding / claim 评估器） |
 | `backend/src/engines/question_generation/` | 假设问题生成引擎 |
-| `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry、查询改写） |
-| `backend/src/engines/resume/` | 简历解析引擎 |
+| `backend/src/engines/rag/` | RAG 引擎（RetrievalEngine 检索引擎、9 种 SearchMode 检索模式） |
 | `backend/src/engines/search/` | Web 搜索引擎组件（中立端口 WebSearchPort + 中立异常；401/403 凭证错误抛 `WebSearchProviderAuthError` 传播，5xx 降级空结果） |
 | `backend/src/engines/video_narrative/` | 视频叙事合成引擎（碎片块描述 Map-Reduce 合成章节化连贯文档：全片梗概 + 章节时间轴） |
 | `backend/src/engines/wiki/` | Wiki 纯函数件（互链/去重/句柄/slug/分类法） |

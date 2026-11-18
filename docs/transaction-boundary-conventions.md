@@ -1,7 +1,7 @@
 # 事务边界规范（后端）
 
 > 2026-07-17 知识库模块审计后沉淀；**2026-10-03 修订**：落地解读已按现行代码实践更新。
-> CLAUDE.md 规则「Repository 写操作必须使用 `begin_nested()` (SAVEPOINT)，不要直接 commit」的字面要求自 2026-09 起已成为全仓主流实践（notification/agent_api/qa/knowledge_ops/user/search_config/wiki 等新 repo 均为 `begin_nested + flush` 写法，多个 docstring 自证为硬规则）。本文初版「repo 单步写不必包 SAVEPOINT、flush-only」的解读描述的是 2026-07 时点的知识库存量代码，已被实践超越，仅作历史背景保留。
+> CLAUDE.md 规则「Repository 写操作必须使用 `begin_nested()` (SAVEPOINT)，不要直接 commit」的字面要求自 2026-09 起已成为全仓主流实践（notification/agent_api/qa/knowledge_ops/user/search_config/wiki 等新 repo 均为 `begin_nested + flush` 写法，多个 docstring 自证为硬规则；其中 qa 已随 2026-11-15 剥离移除）。本文初版「repo 单步写不必包 SAVEPOINT、flush-only」的解读描述的是 2026-07 时点的知识库存量代码，已被实践超越，仅作历史背景保留。
 
 ## 规则本意（现行版）
 
@@ -17,7 +17,7 @@ CLAUDE.md 规则拆成两条不变式：
 ### Repository 层（现行约定）
 - 写方法统一 `async with session.begin_nested():` 包裹 + `flush()`（拿到主键/时间戳可再 `refresh()`），**不 `commit()`**。标准样例：`agent_api/repository/api_key_repository.py`、`notification/repository/notification_repository.py`。
 - 2026-07 存量的 flush-only 写法（knowledge_space 早期 repo）不要求全量改造——它们同样满足「零 commit」不变式，改动触及时顺手对齐即可。
-- 已知刻意例外：`knowledge_space/repository/document_task_repository.py` 的 `mark_failed_independent`（紧急兜底：ORM session 不可用时独立连接 raw SQL + 直接 commit）有注释自证（紧急路径，勿动）。同款：`app/repository/resume_repository.py` 的 `mark_failed_independent`（2026-11-12 登记）、`agent/repository/agent_usage_repository.py` 的 `log_usage`（独立 session 立即 commit，用量留痕不随主事务回滚，L31 同款精神）。
+- 已知刻意例外（现存仅此一条）：`knowledge_space/repository/document_task_repository.py:334` 的 `mark_failed_independent`（紧急兜底：ORM session 不可用时独立连接 raw SQL + 直接 commit，L367）有注释自证（紧急路径，勿动）。原同款 `app/repository/resume_repository.py` 的 `mark_failed_independent`、`agent/repository/agent_usage_repository.py` 的 `log_usage` 已随 2026-11-15 剥离删除，不再存在。
 - **机器化执行（2026-11-12 起）**：`backend/tests/architecture/test_repository_savepoint_gate.py` AST 门禁——repository 写方法必须含 `begin_nested`、文件零 commit；存量 flush-only 写法锁定在 `KNOWN_SAVEPOINT_GAPS` 白名单（2026-11-12 实测 96 处基线），改动触及顺手对齐时同步削减白名单条目，白名单过期自检防漂移。
 
 ### Service 层

@@ -1,5 +1,7 @@
 # 知识库项目重组方案
 
+> 历史归档：本文为 2026-09 知识库重组计划的时间快照，路径与模块名以成文时为准；重组已落地，现行结构规范见 [`../current/knowledge-architecture-navigation.md`](../current/knowledge-architecture-navigation.md)。
+
 ## 目标
 
 本次重组的目标不是单纯调整目录外观，而是把知识库相关代码的组织方式，从“按历史实现堆叠”调整为“按能力域分组”。

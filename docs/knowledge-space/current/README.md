@@ -12,6 +12,7 @@
 
 - [`knowledge-architecture-navigation.md`](./knowledge-architecture-navigation.md)：知识模块的后端结构导航
 - [`document-processing-flow.md`](./document-processing-flow.md)：文档上传、解析、切分、入库的运行流程
+- [`audio-asr-pipeline.md`](./audio-asr-pipeline.md)：音频 ASR 全链路（模型解析链、参数优先级、转写产物清理与配置快照失效）
 - [`knowledge-config-structure-design.md`](./knowledge-config-structure-design.md)：知识库配置结构、保留字段和设计边界
 - [`wiki-architecture.md`](./wiki-architecture.md)：Wiki 自动生成与浏览的架构（管道、版本、Agent 工具、图谱）
 - [`evaluation-guide.md`](./evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读、使用指南

@@ -1,5 +1,7 @@
 # Agent Handover - 2026-07-09
 
+> 历史归档：本文为 2026-07-09 知识空间文档管道重构交接的时间快照，路径与模块名以成文时为准；现行规范见 [`../../knowledge-space/current/README.md`](../../knowledge-space/current/README.md) 与 [`../../README.md`](../../README.md)。
+
 ## Context
 
 This repository went through a substantial refactor around the knowledge-space document processing pipeline, task model split, and frontend task list UX.

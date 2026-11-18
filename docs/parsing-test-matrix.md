@@ -110,7 +110,8 @@ openai_video 后已还原）：
   agent 工具注册基线×2（`test_baseline_tools_registered`/
   `test_all_builtin_tools_pass_registration_validation`，10-19 工具工程化批次
   cc97c5ef 起基线漂移：features/agent 的 consult_member/todo/group_messaging/
-  local_workspace 等入册未同步基线，与本轮改动无关，归属 agent 模块待修）。
+  local_workspace 等入册未同步基线，与本轮改动无关，归属 agent 模块待修；
+  已随 2026-11-15 agent 模块剥离作废，不再是遗留失败项）。
 
 **2026-10-27（上）配置矩阵端到端真测**（真实服务全链：建 KB→上传→arq worker→ES 索引→BM25 检索命中；
 runner：`backend/test_data/_probe/probe_config_matrix.py`，结果 JSON 同目录）——35 组合 34 PASS：
@@ -328,7 +329,7 @@ zip 压缩包与 eml/msg 邮件附件的容器递归解析（`engines/document/p
 
 **大文件 4**：68s 长音频（TTS 10 句全转写）、1080p 90s 视频 ×2、57MB 分片上传闭环（服务端 chunk_size_hint 契约自洽）、**Sintel 1080p mkv 1.1GB / 14min48s / 40 片分片上传**——实测出 `max_frames` 封顶行为：抽帧抽满即停不均匀采样全片，**长视频必须显式调大 max_frames**（89 块全片覆盖需 300 帧 / 3s 间隔）。
 
-**视频叙事合成端到端**：Sintel 89 块 → Map-Reduce → 8 章节连贯文档（跨段推理"黑龙=当年幼龙"正确）；检索命中视频块自动附回章节摘要；Agent 检索工具输出章节上下文（3677563a）与前端生成入口（1f7a440b）落地后真机冒烟全绿。
+**视频叙事合成端到端**：Sintel 89 块 → Map-Reduce → 8 章节连贯文档（跨段推理"黑龙=当年幼龙"正确）；检索命中视频块自动附回章节摘要；Agent 检索工具输出章节上下文（3677563a，该工具已随 2026-11-15 agent 模块剥离移除）与前端生成入口（1f7a440b）落地后真机冒烟全绿。
 
 遗留观察项：whisper 中文繁体随机输出（待产品决策）；simple 策略短视频块缺时间锚（长视频链路有）；video_native 完整链路依赖公网 MinIO（部署项）；m4a 双清单（魔数/扩展名）不一致待收口。
 

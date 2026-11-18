@@ -86,7 +86,7 @@
 - `src/engines/document/integrations/deepdoc/`：DeepDoc 专有实现（vendored，自包含）
 - `src/engines/question_generation/`：假设问题生成引擎（纯「文本进、问题出」；LLM 客户端由业务层解析后直收）
 - `src/engines/wiki/`：Wiki 纯函数件（互链注入/候选去重/句柄表/slug 规范化/分类法）——wiki 持久化与编排仍留 knowledge_space
-- `src/engines/rag/`：检索引擎（RetrievalEngine/QueryRewriter/GradeRetrier/SearchMode）
+- `src/engines/rag/`：检索引擎（RetrievalEngine/SearchMode）
 - `src/engines/eval/`、`src/engines/search/`：评估引擎/Web 搜索 provider（agent/deep_research/resume 引擎已随 2026-11-15 工作台剥离移除）
 - `src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 knowledge_space 复用
 - `src/shared/document/validation/`：跨 feature 文件校验（FileInfo/FileValidator）——被 knowledge_space 复用

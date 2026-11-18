@@ -11,14 +11,15 @@ NovaMind 前端是一个基于 Vue 3 + TypeScript 的应用，为知识空间、
 - Vue Router
 - Element Plus
 - Vitest
-- ESLint + Prettier
+- ESLint + oxlint + Prettier
 
 ## 主要页面域
 
 当前前端主要包含这些区域：
 
 - `auth`：登录、忘记密码、重置密码
-- `space`：空间列表、知识库、KB 配置、文档、任务批次、检索、评测、空间设置；文档详情含视频叙事文档区块（按需生成/查看章节化连贯叙事）
+- `space`：空间列表、知识库、KB 配置、文档、任务批次、检索、评测、Wiki、知识运营（ops）、空间设置；文档详情含视频叙事文档区块（按需生成/查看章节化连贯叙事）；另有加入空间入口
+- `search`：跨空间全局检索（`src/views/search/GlobalSearchView.vue`）
 - `user`：个人资料、通知、修改密码、模型配置、API 密钥、用户管理
 
 ## 目录结构
@@ -31,6 +32,7 @@ frontend/
 |  |- assets/        # 本地资源
 |  |- components/    # 复用 UI 组件
 |  |- composables/   # Vue composables
+|  |- directives/    # 自定义指令（如 permission.ts 权限指令）
 |  |- layouts/       # 页面布局
 |  |- router/        # 路由定义和守卫
 |  |- stores/        # Pinia 状态管理
@@ -90,6 +92,8 @@ npm run preview
 
 - `/`、`/login`、`/register`、`/forgot-password`、`/reset-password`
 - `/home` — 个人资料、通知、修改密码、模型设置
+- `/home/search` — 跨空间全局检索
+- `/home/settings/api-keys` — API 密钥管理
 - `/home/admin/users`、`/home/admin/roles` — 用户管理与角色授权（管理员）
 - `/home/spaces` — 空间、知识库、KB 配置、文档、任务、评测、检索
 - `/403` — 无权限页

@@ -30,7 +30,7 @@ NovaMind includes components that need careful production hardening:
 - Put the application behind HTTPS and a managed reverse proxy in production.
 - Restrict access to MySQL, Redis, MinIO, and Elasticsearch to private networks.
 - Review file upload and code-execution related features before exposing them to untrusted users.
-- Review Agent, MCP, and terminal-like capabilities with a least-privilege mindset.
+- Review the external-facing AI surfaces with a least-privilege mindset: the MCP server (`/mcp`) and the OpenAI-compatible gateway (`/v1`), both gated by API keys (`agent_api`). Terminal-like and agent-workbench capabilities were removed in the 2026-11-15 workbench stripdown and are no longer part of the attack surface.
 
 ## Scope
 

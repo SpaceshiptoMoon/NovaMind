@@ -27,6 +27,9 @@
 - `src/components/knowledge/`
 - `src/views/space/`
 
+全局工作台外壳（登记簿式侧栏：空间切换器/KB 登记册/系统区）在 `src/components/workbench/`；
+`layouts/WorkspaceLayout.vue` = 侧栏 + 右列（瘦身顶栏 + 内容），`SpaceListView` 只剩子路由壳。
+
 能留在知识领域内部的知识库表单逻辑，不要散落到无关的通用目录。
 
 ## 组件边界

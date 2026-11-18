@@ -1,5 +1,7 @@
 ﻿# Knowledge Reorganization Migration Summary
 
+> 历史归档：本文为 2026-09 知识库重组迁移记录的时间快照，路径与模块名以成文时为准；现行结构规范见 [`../current/knowledge-architecture-navigation.md`](../current/knowledge-architecture-navigation.md)。
+
 ## Scope
 
 This note summarizes the repository moves already landed for the knowledge-base reorganization work.

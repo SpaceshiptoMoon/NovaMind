@@ -1,5 +1,7 @@
 # Knowledge Config Handoff
 
+> 历史归档：本文为知识库配置清理交接的时间快照，路径与模块名以成文时为准（文中 services 旧路径已随重构变动）；现行规范见 [`../../knowledge-space/current/knowledge-config-structure-design.md`](../../knowledge-space/current/knowledge-config-structure-design.md)。
+
 ## Scope
 
 This handoff covers the recent knowledge-base config cleanup and runtime wiring work in the `knowledge_space` module.

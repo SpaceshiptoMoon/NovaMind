@@ -415,7 +415,7 @@ src/features/{module}/           business modules (domain layer)
 |- models/                       ORM models
 `- schemas/                      Pydantic request/response models
 
-src/engines/{engine}/            reusable engines (document/rag/agent/question_generation/wiki/video_narrative/…) — zero features/setting imports, clients & storage injected by the business layer
+src/engines/{engine}/            reusable engines (document/rag/eval/question_generation/wiki/video_narrative/search/…) — zero features/setting imports, clients & storage injected by the business layer
 src/shared/                      model client factories / storage / MQ / prompt registry
 src/core/                        app factory / middleware / auth / lifecycle
 ```

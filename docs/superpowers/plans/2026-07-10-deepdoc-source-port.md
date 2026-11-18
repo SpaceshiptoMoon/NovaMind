@@ -1,5 +1,7 @@
 # RAGFlow DeepDoc Source Port Implementation Plan
 
+> **状态（历史归档）：本计划已实施完成。** 本文为 2026-07 DeepDoc 源码移植实施计划的时间快照，路径与模块名以成文时为准（vendored deepdoc 现位于 `backend/src/engines/document/integrations/deepdoc/`）；现行说明见 [`../../deepdoc/deepdoc-integration.md`](../../deepdoc/deepdoc-integration.md)。
+
 > **For agentic workers:** Execute this plan inline and verify every migrated module against RAGFlow commit `4060cd144003602dd227d8aab2b1dc1b9d740cdc`.
 
 **Goal:** Vendor the real RAGFlow DeepDoc source, adapt its internal dependencies, expose it as a standalone parsing module, and route the knowledge-base document pipeline through it.

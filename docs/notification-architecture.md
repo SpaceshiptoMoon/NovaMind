@@ -21,13 +21,13 @@ knowledge_ops / evaluation / user  ──notify()──▶ ├─ 偏好过滤 (
 
 ## 三层基础设施
 
-### 1. NotificationService.notify（跨 feature 公共入口）
+### 1. NotificationService（跨 feature 公共入口）
 
 - `backend/src/features/notification/services/notification_service.py`：
-  `@staticmethod async notify(db=None, *, user_id, type, title, content, link, extra_data)`。
-  **会话策略由调用点选择**：
+  静态 `notify(db=None, *, user_id, type, title, content, link, extra_data)` 与实例方法
+  `send_notification(...)`（同参数）两个入口并存：
   - HTTP 请求上下文：传 `db`（通知与主业务同事务，主业务回滚则通知一起回滚）
-  - 后台任务/arq：传 `None`（每次 notify 开独立短会话，调用方 session 可能已 commit/关闭）
+  - 后台任务/arq：传 `None`（每次 notify 开独立短会话，调用方 session 可能已 commit/关闭）；knowledge_ops 的周报/复审/质量基线/矛盾确认走实例方法 `NotificationService(db).send_notification(...)`，语义相同
 - notify 内部吞掉一切异常（记 warning 日志）；服务层 helper 建议再兜一层（双保险，
   （示例发送方 skill_marketplace_service 已随剥离移除）。
 
@@ -62,19 +62,22 @@ knowledge_ops / evaluation / user  ──notify()──▶ ├─ 偏好过滤 (
 调用点铁律：**必须在业务 commit 之后调 `NotificationService.notify`**——repo.create 只是
 flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通知。
 
-## 已接线事件（10 种 NotificationType 全部生效）
+## 已接线事件（现行 NotificationType 枚举 10 种全部生效）
 
 | type | 触发点 | 接收人 | link |
 |---|---|---|---|
 | space_invite | `invite_member`（带完整 invite_token）、`add_member_direct` | 被邀请/被直加人 | `/home/spaces/{id}/join?token=` 或 `/home/spaces/{id}` |
 | document_ready | 解析成功 / 用户取消 / 最终失败三终态（**重试中间态不发**） | 文档上传者 | `/home/spaces/{sid}/documents/{did}` |
-| research_done | 深度研究流式 + 非流式两条路径 commit 后（唯一执行入口是 agent 对话的 research 工具） | 发起用户 | `/home/workspace/chat` |
-| resume_completed | 简历成功 / 最终失败 / 前置取消 | 发起用户 | `/home/apps/resume/session/{id}` 或 `/home/apps/resume/history` |
 | password_reset | `forgot_password`（link=None，防枚举语义不变） | 请求重置者 | — |
 | wiki_ready | Wiki 生成任务完成/失败（`wiki_tasks`） | 文档上传者 | `/home/spaces/{sid}/knowledge-bases/{kid}/wiki` |
 | kb_ops_weekly_digest | 知识库运营周报任务（`knowledge_ops/tasks/weekly_digest.py`） | 空间成员 | `/space/{sid}/kb-ops/gap-report` |
 | kb_review_due | 知识库复审到期提醒任务（`knowledge_ops/tasks/review_reminder.py`） | 文档 owner | `/home/spaces/documents/{id}` |
+| kb_contradiction_confirmed | 矛盾建议确认后通知相关文档 owner（`suggestion_resolve_service.py`） | 文档 owner | `/home/spaces/{sid}/documents/{did}` |
+| kb_gap_resolved | 内容缺口转测试用例完成（`gap_to_testset_service.py`） | 发起用户 | `/home/spaces/{sid}/knowledge-bases/{kid}/evaluation` |
+| kb_baseline_regression | 质量基线跑批关键指标回归告警（`tasks/quality_baseline.py`） | 空间管理员 | `/home/spaces/{sid}/knowledge-bases/{kid}/evaluation` |
 | system | 预留 | — | — |
+
+> 2026-11-15 工作台剥离移除了 `research_done` / `resume_completed` / `skill_review` 三类型（历史通知行由清理脚本回收）。
 
 新增事件的步骤：调 `NotificationService.notify(...)` 即可，link 对照
 `frontend/src/router/index.ts` 实际路由；测试 stub `NotificationService.notify` 断言参数。

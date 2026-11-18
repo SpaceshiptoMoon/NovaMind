@@ -13,21 +13,27 @@
 
 1. [`current/knowledge-architecture-navigation.md`](./current/knowledge-architecture-navigation.md)：知识模块结构导航
 2. [`current/document-processing-flow.md`](./current/document-processing-flow.md)：文档上传到处理的运行流程
-3. [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)：知识库配置结构与设计边界
-4. [`current/wiki-architecture.md`](./current/wiki-architecture.md)：Wiki 自动生成与浏览架构
-5. [`current/evaluation-guide.md`](./current/evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读
-6. [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)：知识运营闭环总结（事件账本/归因/生命周期/建议队列/质量基线/治理视图，2026-10 收官）
-7. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
+3. [`current/audio-asr-pipeline.md`](./current/audio-asr-pipeline.md)：音频 ASR 全链路（模型解析链、参数优先级、转写产物清理与配置快照失效）
+4. [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)：知识库配置结构与设计边界
+5. [`current/wiki-architecture.md`](./current/wiki-architecture.md)：Wiki 自动生成与浏览架构
+6. [`current/evaluation-guide.md`](./current/evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读
+7. [`current/evaluation-attribution-design.md`](./current/evaluation-attribution-design.md)：评测归因分析（五阶段 15 类错误分类法、判定链与运营闭环出口）
+8. [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)：知识运营闭环总结（事件账本/归因/生命周期/建议队列/质量基线/治理视图，2026-10 收官）
+9. [`current/ops-platform-design.md`](./current/ops-platform-design.md)：知识运营平台终态蓝图（五模块/三岗位/干预回看设计与批次状态）
+10. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
 
 ## 当前正式文档
 
 - [`current/README.md`](./current/README.md)：当前有效文档索引
 - [`current/knowledge-architecture-navigation.md`](./current/knowledge-architecture-navigation.md)
 - [`current/document-processing-flow.md`](./current/document-processing-flow.md)
+- [`current/audio-asr-pipeline.md`](./current/audio-asr-pipeline.md)：音频 ASR 全链路设计
 - [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)
 - [`current/wiki-architecture.md`](./current/wiki-architecture.md)
 - [`current/evaluation-guide.md`](./current/evaluation-guide.md)
+- [`current/evaluation-attribution-design.md`](./current/evaluation-attribution-design.md)：评测归因分析设计
 - [`current/kb-ops-loop-summary.md`](./current/kb-ops-loop-summary.md)
+- [`current/ops-platform-design.md`](./current/ops-platform-design.md)：知识运营平台终态蓝图
 
 ## 过程与历史文档
 

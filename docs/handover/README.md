@@ -12,7 +12,8 @@
 
 ## 分层入口
 
-- [`historical/`](./historical/)：已归档 handover（`agent-handover-2026-07-09.md`、`agent-handover-deepdoc-2026-07-11.md`、`knowledge-config-handoff.md`、`agent-handover-kb-chunk-frame-thumbs-2026-11-11.md`）。当前无活跃 handover；新的阶段性交接归档时直接放入 `historical/`。
+- 根目录：[`cache-optimization-handover-2026-11-14.md`](./cache-optimization-handover-2026-11-14.md)：缓存优化交接（五批次已全部实施完成，2026-11-18 状态更新见文首注记）
+- [`historical/`](./historical/)：已归档 handover（`agent-handover-2026-07-09.md`、`agent-handover-deepdoc-2026-07-11.md`、`knowledge-config-handoff.md`、`agent-handover-kb-chunk-frame-thumbs-2026-11-11.md`）。新的阶段性交接完成并归档时放入 `historical/`。
 
 ## 如何使用这些记录
 

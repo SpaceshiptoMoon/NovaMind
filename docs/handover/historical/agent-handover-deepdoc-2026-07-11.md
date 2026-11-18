@@ -1,5 +1,7 @@
 # DeepDoc Agent Handoff
 
+> 历史归档：本文为 2026-07-11 DeepDoc vendoring 交接的时间快照，路径与模块名以成文时为准（文中大量 `test_deepdoc_*.py` 路径已随重构变动）；现行规范见 [`../../deepdoc/deepdoc-integration.md`](../../deepdoc/deepdoc-integration.md)。
+
 ## Scope
 
 This handoff is for the RAGFlow DeepDoc vendoring and integration work that was

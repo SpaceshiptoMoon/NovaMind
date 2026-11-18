@@ -25,6 +25,7 @@
 > 先整体清退，对话能力由 `features/agent/` 承接；2026-11-15 agent 工作台亦整体剥离（产品聚焦知识空间服务）。
 > 对 kb-ops 的当前事实：① QueryReformulateDetector 检测类删除，`query_reformulate` 事件不再产生；
 > ② citation-click 上报端点随 agent 剥离移除，失败信号现以搜索埋点为主（`instrumented_search_service` → kb_events）；
+>   kb-ops 自身的搜索引用点击埋点端点（/spaces/{id}/events/citation-click）不受影响，仍在线；
 > ③ `question_answers` 表为 QA 存档只读，归因/gap/周报链路仍消费该存档。
 > 下文各组件行按成文时状态标注，剥离后变化以本注记为准。
 

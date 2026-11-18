@@ -804,8 +804,8 @@ Authorization: Bearer <access_token>
 - Content-Type：`multipart/form-data`
 - 权限要求：编辑者（EDITOR）及以上
 
-> 仅存储到 MinIO，不触发解析。需要通过 3.8 接口触发解析。
-> 支持单文件和多文件批量上传（最多 20 个文件）。
+> 仅存储到 MinIO，不触发解析。需要通过 3.9 批量接口触发解析。
+> 支持单文件和多文件批量上传（最多 200 个文件）。
 >
 > **文档复活**：如果上传的文件与同知识库内某个已删除文档内容完全相同（SHA256 一致），系统会自动"复活"该文档记录，复用原有的文档 ID。复活时会更新上传人、文件名等信息，并重新上传 MinIO 文件。返回的 `document_id` 与之前删除的文档相同。
 
@@ -820,7 +820,7 @@ Authorization: Bearer <access_token>
 
 | 参数名 | 类型 | 必填 | 位置 | 说明 |
 |--------|------|------|------|------|
-| files | file[] | 是 | form | 文档文件（支持多个同名字段，最多 20 个） |
+| files | file[] | 是 | form | 文档文件（支持多个同名字段，最多 200 个） |
 
 **单文件上传响应参数**
 
@@ -845,7 +845,7 @@ Authorization: Bearer <access_token>
 
 **批量上传响应参数**
 
-当上传多个文件（2-20 个）时，返回以下格式：
+当上传多个文件（2-200 个）时，返回以下格式：
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
@@ -892,7 +892,7 @@ Authorization: Bearer <access_token>
 |--------|------------|------|
 | DOCUMENT_INVALID_TYPE | 400 | 不支持的文件类型 |
 | DOCUMENT_SIZE_EXCEEDED | 400 | 文件大小超限（最大 100MB） |
-| DOCUMENT_COUNT_EXCEEDED | 400 | 文件数量超限（最多 20 个） |
+| DOCUMENT_COUNT_EXCEEDED | 400 | 文件数量超限（最多 200 个） |
 | KNOWLEDGE_BASE_NOT_FOUND | 404 | 知识库不存在 |
 
 ---
@@ -1116,57 +1116,6 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.8 触发文档拆分解析
-
-**请求**
-- 方法：`POST`
-- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/process`
-- Content-Type：`application/json`
-- 权限要求：编辑者（EDITOR）及以上
-- 状态码：`202 Accepted`
-
-> 仅处理 UPLOADED 或 FAILED 状态的文档。
-
-**路径参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| space_id | integer | 是 | 空间 ID（> 0） |
-| kb_id | integer | 是 | 知识库 ID（> 0） |
-| document_id | integer | 是 | 文档 ID（> 0） |
-
-**请求参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| enable_question_generation | boolean | 否 | 是否为分块生成假设问题（默认 false）。传 `true` 时直接生效，无需知识库配置中额外开启；不传时回退到知识库配置中的 `question_generation.enabled` 设置 |
-| question_count | integer | 否 | 每个分块生成的问题数量（1-10，默认 5） |
-
-**请求示例**
-```json
-{
-  "enable_question_generation": true,
-  "question_count": 5
-}
-```
-
-**响应参数**
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| document_id | integer | 文档 ID |
-| status | string | 状态（固定值 "processing"） |
-| message | string | 消息（固定值 "文档已开始处理"） |
-
-**错误码**
-
-| 错误码 | HTTP 状态码 | 说明 |
-|--------|------------|------|
-| DOCUMENT_NOT_FOUND | 404 | 文档不存在 |
-| DOCUMENT_ALREADY_PROCESSING | 409 | 文档正在处理中 |
-
----
-
 ### 3.9 批量触发文档拆分解析
 
 **请求**
@@ -1175,6 +1124,8 @@ Authorization: Bearer <access_token>
 - Content-Type：`application/json`
 - 权限要求：编辑者（EDITOR）及以上
 - 状态码：`202 Accepted`
+
+> 单文档触发已并入批量接口（`document_ids` 传单个 id 即可）。
 
 **路径参数**
 
@@ -1188,14 +1139,11 @@ Authorization: Bearer <access_token>
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | document_ids | integer[] | 否 | 文档 ID 列表（最多 100 个，为空则处理全部未处理文档） |
-| enable_question_generation | boolean | 否 | 是否为分块生成假设问题（默认 false）。传 `true` 时直接生效，无需知识库配置中额外开启；不传时回退到知识库配置中的 `question_generation.enabled` 设置 |
-| question_count | integer | 否 | 每个分块生成的问题数量（1-10，默认 5） |
 
 **请求示例**
 ```json
 {
-  "document_ids": [1, 2, 3],
-  "enable_question_generation": false
+  "document_ids": [1, 2, 3]
 }
 ```
 
@@ -1211,39 +1159,9 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.10 重新解析文档
+### 3.10 重新解析文档（已并入重试接口）
 
-**请求**
-- 方法：`POST`
-- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/reprocess`
-- Content-Type：`application/json`
-- 权限要求：编辑者（EDITOR）及以上
-- 状态码：`202 Accepted`
-
-> 清除旧 chunk，按当前知识库配置重新切分。
-
-**路径参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| space_id | integer | 是 | 空间 ID（> 0） |
-| kb_id | integer | 是 | 知识库 ID（> 0） |
-| document_id | integer | 是 | 文档 ID（> 0） |
-
-**请求参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| enable_question_generation | boolean | 否 | 是否为分块生成假设问题（默认 false）。传 `true` 时直接生效，无需知识库配置中额外开启；不传时回退到知识库配置中的 `question_generation.enabled` 设置 |
-| question_count | integer | 否 | 每个分块生成的问题数量（1-10，默认 5） |
-
-**响应参数**
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| document_id | integer | 文档 ID |
-| status | string | 状态（固定值 "processing"） |
-| message | string | 消息（固定值 "文档已开始处理"） |
+> 原重新解析接口 `POST .../documents/{document_id}/reprocess` 已移除。该能力并入 3.12 重试接口：对 COMPLETED 状态的文档调用重试，即可清除旧分块并按当前知识库配置重新解析。
 
 ---
 
@@ -1326,24 +1244,15 @@ Authorization: Bearer <access_token>
 
 **请求参数**
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| enable_question_generation | boolean | 否 | 是否为分块生成假设问题（默认 false） |
-| question_count | integer | 否 | 每个分块生成的问题数量（1-10，默认 5） |
-
-**请求示例**
-```json
-{
-  "enable_question_generation": true,
-  "question_count": 5
-}
-```
+无请求体（重试沿用文档现有解析配置）。
 
 **响应参数**
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | document_id | integer | 文档 ID |
+| task_id | integer | 新建处理任务 ID |
+| task_item_id | integer | 任务子项 ID |
 | status | string | 状态（固定值 "processing"） |
 | message | string | 消息（固定值 "文档重试已开始处理"） |
 
@@ -1351,6 +1260,8 @@ Authorization: Bearer <access_token>
 ```json
 {
   "document_id": 1,
+  "task_id": 431,
+  "task_item_id": 1024,
   "status": "processing",
   "message": "文档重试已开始处理"
 }
@@ -1732,6 +1643,7 @@ Authorization: Bearer <access_token>
 | fallback_on_unavailable | boolean | 否 | 模式不可用时是否自动降级（默认 true） |
 | filters | object | 否 | 额外过滤条件 |
 | use_cache | boolean | 否 | 是否使用缓存（默认 true） |
+| expansion | object | 否 | 检索期上下文扩展配置（None = 全部启用，等价 ExpansionConfig() 默认值） |
 
 **search_mode 可选值**
 
@@ -1783,6 +1695,17 @@ Authorization: Bearer <access_token>
 | sub_query_count | integer | 否 | 子问题拆分数量（2-5，默认 3，strategy=sub_query 时生效） |
 | sub_query_merge_mode | string | 否 | 子问题结果合并方式：`rrf`（加权融合，默认）/`score`（分数取最大） |
 | llm_model | string | 否 | 查询改写使用的 LLM 模型（为空使用用户默认） |
+
+**expansion 对象**
+
+检索期上下文扩展是元数据驱动的后处理：命中块携带扩展元数据（sentence_window 扩窗 / parent_child 回带父块 / hierarchical 双向追加）时自动拼接上下文；全部关闭后返回的恒是原始检索单元（原子块/子块），不拼接任何邻居/父块/章节内容。
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| enabled | boolean | 否 | 是否启用检索期上下文扩展（默认 true，与存量行为一致） |
+| include_window | boolean | 否 | 允许句子窗口扩窗（仅 strategy=sentence_window 的文档产出该元数据，默认 true） |
+| include_parent | boolean | 否 | 允许父子分块回带父块（仅 strategy=parent_child 的文档产出该元数据，默认 true） |
+| include_hierarchical | boolean | 否 | 允许层级切分双向扩展（仅 strategy=hierarchical 的文档产出该元数据，默认 true） |
 
 > **策略说明**：
 > - **hyde**：用 LLM 生成一段假设性回答文档，再用该文档的向量进行检索，缩小查询与文档的语义鸿沟
@@ -1849,14 +1772,19 @@ Authorization: Bearer <access_token>
 | results[].chunk_id | string | 分块 ID |
 | results[].document_id | integer | 文档 ID |
 | results[].kb_id | integer | 知识库 ID |
+| results[].space_id | integer \| null | 空间 ID（QA 引用回跳原文定位用） |
 | results[].content | string | 检索到的内容 |
 | results[].score | float | 融合分数 |
 | results[].chunk_index | integer \| null | 分块索引 |
+| results[].chunk_role | string \| null | 父子分块角色：`parent`（父块，理论不可召回）/`child`（子块）；其余为 null |
+| results[].content_type | string \| null | 层级切分内容类型：`text`（正文锚点/正文）/`table`（表格）/`code`（代码块）；其余为 null |
 | results[].questions | string[] \| null | 该分块预生成的假设性问题列表（分块有预生成问题时返回，无问题时为 null，由前端决定是否展示） |
+| results[].narrative_chapter | object \| null | 视频叙事章节摘要（title/start_time/end_time/summary/overview；命中的视频块附加其所在章节的连贯摘要与时间范围） |
 | results[].metadata | object \| null | 分块元数据 |
 | results[].file_info | object \| null | 文件信息 |
-| results[].chunk_type | string \| null | 分块类型：`"text"`（文本）/ `"image"`（图片） |
+| results[].chunk_type | string \| null | 分块类型：`text`（文本）/`image`（图片）/`video`（视频）/`audio`（音频）/`wiki_page`（Wiki 页）等 |
 | results[].image_url | string \| null | 图片预签名 URL（仅 `chunk_type="image"` 时有值） |
+| results[].media_url | string \| null | 媒体文件预签名 URL（图片/视频/音频） |
 | total | integer | 结果总数 |
 | query | string | 原始查询文本 |
 | search_mode | string | 实际使用的检索模式 |
@@ -1865,6 +1793,10 @@ Authorization: Bearer <access_token>
 | top_k | integer | 请求的返回数量 |
 | vector_weight | float \| null | 向量检索权重 |
 | bm25_weight | float \| null | BM25 检索权重 |
+| content_weight | float \| null | 内容字段权重（回显入参） |
+| question_weight | float \| null | 问题字段权重（回显入参） |
+| rrf_k | integer \| null | RRF 平滑参数（回显入参） |
+| score_threshold | float \| null | 最低分数阈值（回显入参） |
 | answer | string \| null | LLM 生成的回答（启用时返回） |
 | answer_model | string \| null | 生成回答使用的模型 |
 | answer_elapsed_ms | float \| null | LLM 回答耗时（毫秒） |
@@ -2096,16 +2028,14 @@ Authorization: Bearer <access_token>
 | 2.5 | DELETE | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}` | 删除知识库 | ADMIN |
 | 2.6 | GET | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/config` | 获取知识库配置 | VIEWER |
 | 2.7 | PATCH | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/config` | 更新知识库配置 | EDITOR |
-| 3.1 | POST | `.../knowledge-bases/{kb_id}/documents` | 上传文档（支持批量，最多20个） | EDITOR |
+| 3.1 | POST | `.../knowledge-bases/{kb_id}/documents` | 上传文档（支持批量，最多200个） | EDITOR |
 | 3.2 | GET | `.../knowledge-bases/{kb_id}/documents` | 获取文档列表 | VIEWER |
 | 3.3 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}` | 获取文档详情 | VIEWER |
 | 3.4 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/chunks` | 获取文档分块 | VIEWER |
 | 3.5 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/download` | 下载文档 | VIEWER |
 | 3.6 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/image` | 获取文档图片 | VIEWER |
 | 3.7 | DELETE | `.../knowledge-bases/{kb_id}/documents/{document_id}` | 删除文档 | EDITOR |
-| 3.8 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/process` | 触发文档拆分解析 | EDITOR |
-| 3.9 | POST | `.../knowledge-bases/{kb_id}/documents/process` | 批量触发拆分解析 | EDITOR |
-| 3.10 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/reprocess` | 重新解析文档 | EDITOR |
+| 3.9 | POST | `.../knowledge-bases/{kb_id}/documents/process` | 批量触发拆分解析（含单文档） | EDITOR |
 | 3.11 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/cancel` | 取消文档处理 | EDITOR |
 | 3.12 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/retry` | 重试文档处理（FAILED/COMPLETED） | EDITOR |
 | 4.1 | GET | `/api/v1/spaces/{space_id}/members` | 获取成员列表 | 空间成员 |

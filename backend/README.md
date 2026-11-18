@@ -36,7 +36,7 @@ backend/
 |- pyproject.toml
 |- src/
 |  |- core/                      # 应用工厂、中间件、数据库、安全
-|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/question_generation/wiki/video_narrative/eval/search/…），零 feature/setting/core 依赖
+|  |- engines/                   # 引擎层：纯逻辑组件（document/rag/question_generation/wiki/video_narrative/eval/search/…），零 features/setting 依赖（core 仅限 structured_logging 等无业务基础设施例外）
 |  |  |- document/               # 文档处理引擎（pipeline/splitters/converters/media/deepdoc）
 |  |  |- eval/                   # 评测引擎（检索/生成/embedding/claim 评估器）
 |  |  |- question_generation/    # 假设问题生成引擎
@@ -178,6 +178,8 @@ pytest -m "not slow"
 
 - `/api/v1/user` — 认证、用户管理、RBAC 角色、模型配置、搜索配置、应用门禁
 - `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、视频叙事文档、评测、空间运营洞察
+- `POST /api/v1/search` — 跨空间全局检索（knowledge_space manifest 独立挂载）
+- `/api/v1/kb-ops` — 知识运营（运营事件查询、运营概览、知识缺口报告与复审建议）
 - `/api/v1/agent-api` — API 密钥管理；`/mcp` 挂 MCP server（kb_search）；`/v1` 挂 OpenAI 兼容网关
 - `/api/v1/notifications` — 站内通知和偏好设置
 

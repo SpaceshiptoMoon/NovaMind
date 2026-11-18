@@ -10,7 +10,7 @@
 ├─ 全局层：你在平台是什么身份  → 三级：超管 / 授权管理员 / 普通用户（features/user）
 ├─ 应用层：哪些应用对你开放    → deny-list 门禁（user_disabled_apps + AppGateMiddleware）
 ├─ 空间资源面：你能动什么资源  → 空间成员角色（features/knowledge_space）
-└─ 对外集成：程序/外部身份     → 暂无（API Key / OIDC 未实现）
+└─ 对外集成：程序/外部身份     → API Key 已实现（features/agent_api：MCP / OpenAI 网关）；OIDC 未实现
 ```
 
 各层只回答一个问题，不互相替代。一次请求的完整执行顺序：
@@ -47,7 +47,7 @@
 
 ## 应用层：deny-list 门禁
 
-**语义**：默认全开放，管理员可禁用普通用户的具体应用；应用相互隔离（禁 agent 不影响 qa）；未记录 = 可用。
+**语义**：默认全开放，管理员可禁用普通用户的具体应用；应用相互隔离（禁一个不影响其他）；未记录 = 可用。
 
 **数据**：`user_disabled_apps(user_id, app_code, created_by)`，联合唯一 `(user_id, app_code)`。表通常接近空——新用户/存量用户零迁移天然全开。
 
@@ -55,10 +55,9 @@
 
 | 代码 | 应用 | 路由前缀 |
 |---|---|---|
-| `qa` | AI 对话 | /api/v1/qa、/api/v1/ai-chat、/api/v1/sessions |
-| （空） | 可门禁应用已随 2026-11-15 工作台剥离清空，门禁恒放行；机制保留供未来应用接入 | — |
+| （空） | 可门禁应用已随 2026-11-15 工作台剥离清空（qa/agent 等已删），门禁恒放行；机制保留供未来应用接入 | — |
 
-**不进门禁**：知识空间（入口人人可见，内容由空间角色控制）、深研究/测评（空间功能）、通知/个人设置（人人可用）。新增 feature 或改挂载前缀时同步更新 `GATED_APP_PREFIXES`。
+**不进门禁**：知识空间（入口人人可见，内容由空间角色控制）、通知/个人设置（人人可用）。新增 feature 或改挂载前缀时同步更新 `GATED_APP_PREFIXES`。
 
 **执行点**：`core/middleware/app_gate.py::AppGateMiddleware`（纯 ASGI，app_factory 注册于 CORS 内层）：
 
@@ -96,20 +95,23 @@
 ## 前端权限控制
 
 - `stores/permission.ts`：登录后拉 `/users/me/permissions`（含 `disabled_apps`）；`hasPermission()` 与 `hasApp()` 都对 `isAdmin` 短路全过
-- 路由守卫：`meta.requiresAuth` / `meta.requiresPermission` / `meta.requiresApp`（被禁应用 403）
-- 导航过滤：工作台侧边栏频道、顶部「应用」导航、应用中心卡片按 `hasApp` 过滤；research 属空间功能常驻
+- 路由守卫：`meta.requiresAuth` / `meta.requiresPermission`（`meta.requiresApp` 分支已随 2026-11-15 剥离删除——可门禁应用清空后无消费方）
+- 导航过滤：当前无可门禁应用，`hasApp` 保留在 store 供未来接入（现行导航无按应用过滤的入口）
 - 用户管理页：「应用权限」勾选弹窗（勾=可用，提交转被禁集合）、「设为角色」弹窗；超管行打标签且危险操作按钮禁用
 - 前端权限只是展示层优化，强制执行在后端依赖链与中间件
 
 ## 对外集成现状
 
-当前**没有任何对外集成机制**：无 OAuth/OIDC/LDAP/SSO，无 API Key/PAT，无服务间认证。外部系统接入的既定方向（未实现）：
+**API Key 通道已实现**（2026-11-16 起，`features/agent_api`）：外部程序持 API key（`nvm_` 前缀，加密存储）代表创建者用户访问，权限链与创建者完全一致（空间成员资格、文档可见性按创建者校验）。两个消费面：
 
-1. **外部程序代表用户访问**（RPA/机器人/脚本）→ API Key 中间件换用户上下文后走现有权限链（复用 `encrypt_api_key_async` 加密存储）
-2. **身份来自企业 IdP**（AD/钉钉/企微）→ OIDC 登录 + `external_identities` 映射表，映射不到按注册流程建 viewer
-3. **NovaMind 调外部系统** → 已有：model_config 的 api_key 加密存储
+1. **MCP server**（`POST /mcp`，Streamable HTTP）：门禁只认 `X-API-Key` 头，按次鉴权
+2. **OpenAI 兼容网关**（`/v1/chat/completions`、`/v1/models`）：`Authorization: Bearer nvm_...` 优先，回落 `X-API-Key`
 
-在上述机制落地前，不要给外部系统共享用户密码。
+key 管理走站内 JWT（`/api/v1/agent-api/keys` CRUD）。契约细节见 `docs/agent/api-reference.md`。
+
+仍未实现：OAuth/OIDC/LDAP/SSO（企业 IdP 身份联邦）、PAT 细粒度授权、服务间认证。OIDC 的既定方向：OIDC 登录 + `external_identities` 映射表，映射不到按注册流程建 viewer。
+
+在 OIDC 等机制落地前，不要给外部系统共享用户密码。
 
 ## 范围外（已决策未实施）
 

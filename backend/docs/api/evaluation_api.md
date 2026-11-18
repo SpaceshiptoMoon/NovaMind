@@ -508,6 +508,86 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 
 ---
 
+### 1.7 从用例列表创建测试集
+
+前端手头已有 QA 消息全文时，直接送 `{question, expected_answer}` 列表创建测试集：后端生成 JSON 文件走与上传测试集相同的持久化路径，无需先落盘文件再上传。
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/test-sets/from-cases`
+- Content-Type：`application/json`
+- 权限：编辑者（EDITOR）及以上
+- 成功状态码：**201 Created**
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 约束 | 说明 |
+|--------|------|------|------|------|
+| space_id | integer | 是 | > 0 | 知识空间 ID |
+| kb_id | integer | 是 | > 0 | 知识库 ID |
+
+**请求参数（Body）**
+
+| 参数名 | 类型 | 必填 | 约束 | 说明 |
+|--------|------|------|------|------|
+| name | string | 是 | 1-200 字符 | 测试集名称 |
+| cases | array | 是 | 1-500 项 | 用例列表 |
+| cases[].question | string | 是 | ≥ 1 字符 | 问题 |
+| cases[].expected_answer | string | 是 | ≥ 1 字符 | 期望答案 |
+
+**请求示例**
+
+```json
+{
+  "name": "客服问答沉淀集",
+  "cases": [
+    {
+      "question": "如何重置密码？",
+      "expected_answer": "在登录页点击「忘记密码」，通过注册邮箱接收重置链接。"
+    },
+    {
+      "question": "支持哪些付款方式？",
+      "expected_answer": "支持微信支付、支付宝与对公转账。"
+    }
+  ]
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| test_set_id | int | 测试集 ID |
+| name | string | 测试集名称 |
+| filename | string | 后端生成的文件名 |
+| file_type | string | 文件类型（`json`） |
+| file_size | int | 文件大小（字节） |
+| total_cases | int | 测试用例数量 |
+| message | string | 提示信息（默认值：`"测试集已创建"`） |
+
+**响应示例**
+
+```json
+{
+  "test_set_id": 5,
+  "name": "客服问答沉淀集",
+  "filename": "客服问答沉淀集.json",
+  "file_type": "json",
+  "file_size": 512,
+  "total_cases": 2,
+  "message": "测试集已创建"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| EVALUATION_ACCESS_DENIED | 403 | 无权操作（需要编辑者权限） |
+| `VALIDATION_ERROR` | 422 | 请求体校验失败（name 超长 / cases 为空或超 500 项等） |
+
+---
+
 ## 二、测评任务管理
 
 路由前缀：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/tasks`
@@ -560,6 +640,8 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 | enable_context_recall | bool | `true` | — | 是否启用 Context Recall |
 | enable_answer_similarity | bool | `true` | — | 是否启用 Answer Similarity |
 | scoring_dimensions | string[] | `["correctness","faithfulness","relevance","quality"]` | — | 启用的评分维度 |
+| enable_attribution | bool | `true` | — | 是否对失败用例做归因判定（重放为主，LLM 判定仅失败用例触发） |
+| attribution_deep_check | bool | `false` | — | 归因深检：对「上下文不含答案」类用例进一步判解析丢失 vs 源文档缺陷（额外 LLM 调用） |
 
 **请求示例**
 
@@ -1118,6 +1200,107 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 
 ---
 
+### 2.10 对比测评报告
+
+将当前任务与基线任务做回归对比：summary 逐项 delta + 按归一化 question 文本 join 的逐用例差异（delta 降序，退化最明显的排前面）。要求两次任务在同一测试集上且均已完成。归一化规则：去除首尾空白、连续空白折叠为单空格、转小写（不用 index 对齐——测试集可被追加，index 会漂移）。
+
+**请求**
+- 方法：`GET`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/tasks/{task_id}/report/compare`
+- 权限：成员（MEMBER）及以上（两个任务均要求本人创建或是空间管理员）
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 约束 | 说明 |
+|--------|------|------|------|------|
+| space_id | integer | 是 | > 0 | 知识空间 ID |
+| kb_id | integer | 是 | > 0 | 知识库 ID |
+| task_id | integer | 是 | > 0 | 当前任务 ID |
+
+**查询参数**
+
+| 参数名 | 类型 | 必填 | 约束 | 说明 |
+|--------|------|------|------|------|
+| baseline_task_id | integer | 是 | > 0 | 基线任务 ID |
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| task_id | int | 当前任务 ID |
+| baseline_task_id | int | 基线任务 ID |
+| same_test_set | bool | 是否同一测试集（恒为 `true`，不同测试集直接报错） |
+| metrics | array | summary 逐项对比列表 |
+| metrics[].key | string | 指标键名（嵌套指标以 `.` 连接，如 `retrieval.mrr`） |
+| metrics[].baseline | float \| null | 基线值 |
+| metrics[].current | float \| null | 当前值 |
+| metrics[].delta | float \| null | 差值（current - baseline，保留 4 位小数；仅一侧存在时为 null） |
+| cases | array | 逐用例对比列表（delta 降序） |
+| cases[].question | string | 用例问题 |
+| cases[].status | string | `ok`（正常）/`error`（当前执行出错）/`removed`（仅基线存在，已被删除或解析失败） |
+| cases[].baseline_score | float \| null | 基线综合分（generation_scores.overall 优先，缺失取各 generation 均值） |
+| cases[].current_score | float \| null | 当前综合分 |
+| cases[].delta | float \| null | 综合分差值（保留 2 位小数） |
+| cases[].baseline_retrieval | float \| null | 基线检索分（precision_at_k） |
+| cases[].current_retrieval | float \| null | 当前检索分 |
+| summary | object | 汇总统计 |
+| summary.improved | int | 综合分提升的用例数 |
+| summary.degraded | int | 综合分退化的用例数 |
+| summary.unchanged | int | 综合分不变的用例数 |
+| summary.baseline_only | int | 仅基线存在的用例数 |
+
+**请求示例**
+
+```
+GET /api/v1/spaces/1/knowledge-bases/3/evaluation/tasks/12/report/compare?baseline_task_id=8
+```
+
+**响应示例**
+
+```json
+{
+  "task_id": 12,
+  "baseline_task_id": 8,
+  "same_test_set": true,
+  "metrics": [
+    {
+      "key": "generation.faithfulness",
+      "baseline": 0.85,
+      "current": 0.9,
+      "delta": 0.05
+    }
+  ],
+  "cases": [
+    {
+      "question": "如何重置密码？",
+      "status": "ok",
+      "baseline_score": 6.5,
+      "current_score": 8.0,
+      "delta": 1.5,
+      "baseline_retrieval": 1.0,
+      "current_retrieval": 1.0
+    }
+  ],
+  "summary": {
+    "improved": 1,
+    "degraded": 0,
+    "unchanged": 3,
+    "baseline_only": 0
+  }
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| EVALUATION_TASK_NOT_FOUND | 404 | 当前或基线任务不存在，或不属于指定的 space_id/kb_id |
+| EVALUATION_TASK_NOT_COMPLETED | 409 | 当前或基线任务尚未完成（仅已完成任务有完整报告） |
+| EVALUATION_TASK_NOT_COMPARABLE | 409 | 两次任务不可对比（不在同一测试集上） |
+| EVALUATION_ACCESS_DENIED | 403 | 无权查看（仅任务创建者或空间管理员） |
+
+---
+
 ## 典型使用流程
 
 ```
@@ -1162,5 +1345,6 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 | EVALUATION_TASK_NOT_FOUND | 404 | 测评任务不存在 |
 | EVALUATION_TASK_PENDING | 409 | 任务正在执行中或等待执行，无法删除/导出 |
 | EVALUATION_TASK_NOT_CANCELLABLE | 409 | 非 pending/running 状态的任务不可取消 |
-| EVALUATION_TASK_NOT_COMPLETED | 409 | 非 completed 状态不允许操作（如提交评分） |
+| EVALUATION_TASK_NOT_COMPLETED | 409 | 非 completed 状态不允许操作（如提交评分、报告对比） |
+| EVALUATION_TASK_NOT_COMPARABLE | 409 | 两次任务不可对比（不在同一测试集上） |
 | EVALUATION_ERROR | 500 | 测评模块内部错误 |

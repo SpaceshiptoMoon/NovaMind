@@ -84,7 +84,7 @@
 
 - **素材量**：4,300+ 站（Portfolio ~980、Personal ~803、Agency ~757…）
 - **免费**：完全免费、无登录墙；条目页含桌面 + iPhone 双截图直出
-- **适合**：极简风参考（对齐本项目 Neutral Minimal 设计语言）
+- **适合**：极简风参考（对齐本项目 Ink & Bone（墨与骨白）设计语言；原 Neutral Minimal，已按 ui-design-guidelines.md 定稿更名）
 
 ### 其他（免费但优先级低）
 
@@ -175,4 +175,4 @@
 
 1. 后台页面改版：去 SaaSFrame 按 Dashboard/Settings/Billing 分类找参照 → 截图丢给 Claude Code 复刻 + 抽 tokens 到 `base.css`（唯一权威 token 源，light/dark 成对改）
 2. 装两个免费 Skill：`taste-skill`（design-taste-frontend + minimalist-ui 两个子技能最贴合本项目）+ `emilkowalski/skills`（animate）
-3. 去 AI 味硬约束已沉淀为正式规范：见 [ui-design-guidelines.md](./ui-design-guidelines.md)（黑名单 / Neutral Minimal token 规则 / 工作流 / 交付自查清单）
+3. 去 AI 味硬约束已沉淀为正式规范：见 [ui-design-guidelines.md](./ui-design-guidelines.md)（黑名单 / Ink & Bone（墨与骨白，原 Neutral Minimal）token 规则 / 工作流 / 交付自查清单）

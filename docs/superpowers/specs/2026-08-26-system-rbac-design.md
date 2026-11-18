@@ -1,6 +1,6 @@
 # 系统级 RBAC 鉴权设计
 
-> 状态：设计已与用户确认，待 spec review 后进入实施计划
+> 状态：已实施并合并进 main（2026-10-07 回填，见姊妹 plan 文档状态行）
 > 日期：2026-08-26
 > 范围：backend 系统级 RBAC + 前端权限层；`knowledge_space` 域资源级 RBAC 保持现状
 

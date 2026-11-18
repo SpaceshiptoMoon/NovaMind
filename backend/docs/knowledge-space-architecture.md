@@ -1,6 +1,6 @@
 # 知识库后端组件架构（知识空间模块）
 
-> 最后更新：2026-09-18
+> 最后更新：2026-11-18
 
 ---
 
@@ -8,14 +8,19 @@
 
 ```
 backend/src/features/knowledge_space/
+├── manifest.py                   # feature 声明（RouterSpec / init_hook / models_loader）
+├── exceptions.py                 # feature 专属 BaseAPIError 子类
+├── prompts/                      # feature 本地 prompt 模板
 ├── api/                          # 路由层
 │   ├── space_router.py           # 空间 CRUD + 配置（/api/v1/spaces）
 │   ├── knowledge_base_routes.py  # 知识库 CRUD + 配置
 │   ├── document_routes.py        # 文档上传/处理/下载
-│   ├── search_routes.py          # 文本搜索
+│   ├── search_routes.py          # KB 内文本搜索
+│   ├── global_search_routes.py   # 跨空间全局搜索
+│   ├── space_stats_routes.py     # 空间统计
 │   ├── member_routes.py          # 空间成员管理
-│   ├── dependencies.py           # DI 工厂 + 权限校验
 │   ├── wiki_routes.py            # Wiki 只读/编辑/版本/回滚/图谱/lint API
+│   ├── dependencies.py           # DI 工厂 + 权限校验
 │   └── startup.py                # 模块初始化 + 异常注册
 ├── models/                       # ORM 模型
 │   ├── knowledge_space.py        # KnowledgeSpace（主模型）
@@ -26,6 +31,7 @@ backend/src/features/knowledge_space/
 │   ├── document_task_item.py     # DocumentTaskItem（批次成员）
 │   ├── space_member.py           # SpaceMember（成员关系）
 │   ├── space_audit_log.py        # SpaceAuditLog（审计日志）
+│   ├── video_narrative.py        # 视频叙事章节
 │   └── wiki.py                   # WikiPage / WikiPageRevision / WikiPageIssue / WikiIngestRecord
 ├── schemas/                      # Pydantic v2 Schema
 │   ├── space_schema.py           # SpaceConfig / SpaceCreate / SpaceUpdate
@@ -34,29 +40,49 @@ backend/src/features/knowledge_space/
 │   ├── search_schema.py          # SearchRequest
 │   ├── document_task_schema.py   # 任务/批次 schema
 │   ├── wiki_schema.py            # WikiPage / Revision / Issue / Graph 等 schema
-│   └── member_schema.py          # Member / Invite
+│   ├── member_schema.py          # Member / Invite
+│   ├── space_stats_schema.py     # 空间统计 schema
+│   └── enums.py                  # 共享枚举
 ├── services/                     # 业务逻辑
 │   ├── space_service.py          # 空间创建/配置/ES索引管理
 │   ├── knowledge_base_service.py # 知识库 CRUD
+│   ├── access_service.py / space_lookup_service.py / permission_service.py / member_service.py  # 访问与成员权限
+│   ├── audit_service.py          # 审计日志
 │   ├── document_file_types.py    # 文件类型常量与模态映射（中立，三方共用）
 │   ├── document_pipeline.py      # 文档处理管道执行（execute_document_pipeline + 助手群）
-│   ├── document_upload_service.py # 文档上传校验 + MinIO 落库
-│   ├── document_task_service.py  # 文档任务/批次编排（入队/取消/状态）
-│   ├── document_query_service.py # 文档 CRUD/下载/级联删除
-│   ├── search_service.py         # 检索服务（9 种模式）
-│   ├── media_processing.py       # 音频/视频/图片多模态处理
-│   ├── question_generation_service.py  # 假设问题生成
+│   ├── pipeline_steps.py         # 后置尾 helper（split/embedded/question_generation/indexed）
 │   ├── pipeline_snapshots.py     # 解析管道指纹快照（断点续跑）
+│   ├── document_upload_service.py / chunk_upload_service.py  # 文档上传校验 + MinIO 落库（含分片上传）
+│   ├── document_task_service.py / document_task_tracking.py  # 任务/批次编排与进度追踪
+│   ├── document_query_service.py # 文档 CRUD/下载/级联删除
+│   ├── document_review_service.py # 文档评审
+│   ├── document_permission_filter.py # 检索文档级权限过滤
+│   ├── search_service.py         # 检索服务（宿主：权限/改写/组装，纯检索委托引擎）
+│   ├── search_factory.py         # RetrievalEngine 装配
+│   ├── instrumented_search_service.py # 搜索埋点（kb_events）
+│   ├── lazy_cache.py             # LazyRedisCache 缓存端口
+│   ├── chunk_expansion_service.py # 检索上下文扩展（sentence_window/parent_child/hierarchical）
+│   ├── media_processing.py       # 音频/视频/图片多模态处理
+│   ├── video_narrative_service.py # 视频叙事合成
+│   ├── question_generation_service.py  # 假设问题生成
+│   ├── global_search_service.py  # 跨空间全局搜索聚合
+│   ├── space_stats_service.py    # 空间统计聚合
+│   ├── tag_service.py            # 文档标签
+│   ├── lifecycle_service.py      # 空间/知识库生命周期（归档等）
 │   ├── wiki_ingest_service.py    # Wiki 四阶段生成管道（候选→引文→写页→收链）
-│   ├── member_service.py         # 成员管理
-│   ├── permission_service.py     # RBAC 权限
-│   └── audit_service.py          # 审计日志
+│   ├── wiki_es_sync.py           # Wiki published 页入 ES（chunk_type=wiki_page）
+│   └── wiki_page_service.py / wiki_query_service.py / wiki_graph_service.py / wiki_lint_service.py / wiki_access_service.py / wiki_retract_service.py  # Wiki 页面/查询/图谱/lint/访问/撤回
+├── tasks/                        # 后台任务（arq）
+│   ├── document_tasks.py         # 文档处理任务
+│   ├── wiki_tasks.py             # Wiki 生成任务
+│   └── video_narrative_task.py   # 视频叙事任务
 └── repository/                   # 数据访问
     ├── space_repository.py       # 空间（Redis 缓存）
     ├── knowledge_base_repository.py  # 知识库
     ├── document_repository.py    # 文档（Redis 缓存）
     ├── member_repository.py      # 成员
     ├── document_task_repository.py / document_task_batch_repository.py  # 任务与批次
+    ├── space_stats_repository.py # 空间统计
     ├── wiki_repository.py        # WikiPage / Revision（快照、乐观锁、两级裁剪）
     ├── wiki_issue_repository.py  # WikiPageIssue
     └── audit_repository.py       # 审计
@@ -87,7 +113,7 @@ backend/src/
 │       └── templates.py              # PromptTemplate 枚举
 └── engines/document/                 # 文档处理引擎（纯逻辑层）
     ├── pipeline/                     # DocumentLoader / DocumentProcessor / DocumentRegistry
-    ├── splitters/                    # 切片器（recursive/fixed/markdown/semantic）
+    ├── splitters/                    # 切片器（recursive/fixed_size/markdown/semantic/delimiter/sentence_window/parent_child/hierarchical）
     ├── converters/                   # 文档格式转换器
     ├── media/                        # 音频 ASR / 视频抽帧 / VLM / OCR
     └── integrations/deepdoc/         # DeepDoc（vendored，自包含）
@@ -148,18 +174,26 @@ arq Worker → process_document_task()（tasks/document_tasks.py）
 
 ```
 前端 POST /api/v1/spaces/{id}/knowledge-bases/{kb_id}/search
-  → search_routes.py → SearchService.search()
-    → 1. 权限校验 + 知识库验证
-    → 2. 检查缓存（RetrievalEngine，Redis，key: search:{kb_id}:{search_type}[:u{uid}]:{query_hash}，TTL 1h）
-    → 3. 查询改写（HyDE / Sub Query—可选）
-    → 4. 生成查询向量（SearchService._get_embedding_client，经 ModelConfigService）
-    → 5. es_client.search_by_mode() 路由到对应搜索模式
-    → 6. _enrich_results() 补充结果详情
-    → 7. _normalize_scores() Min-Max 归一化
-    → 8. score_threshold 过滤
-    → 9. Rerank 重排序（可选）
-    → 10. 缓存结果（可选）
-    → 11. LLM 回答生成（可选）
+  → search_routes.py → SearchService.search() → _search_via_engine()
+    （services/search_service.py:682-712，宿主编排 + 引擎纯检索两段式）
+    → 1. 知识库存在/归属校验 + 归档库拦截（宿主）
+    → 2. 成员/公开空间权限校验（宿主）
+    → 3. 检索模式可用性校验（不可用时按 fallback_on_unavailable 自动降级）
+    → 4. 查询改写（LLM，可选：HyDE / Sub Query；改写结果非确定，不进缓存）
+    → 5. retrieve_for_kb() 组装 RetrievalQuery：embedding/rerank 客户端懒解析
+       resolver（经 ModelConfigService）、wiki 页加权（wiki_boost，默认 ×1.3）
+    → 6. RetrievalEngine.retrieve_raw()（engines/rag/retrieval_engine.py）纯检索段：
+       缓存读（get_or_load 助手 + LazyRedisCache 缓存端口，key:
+       search:{kb_id}:{search_type}[:u{uid}]:{query_hash}，TTL 1h；仅 use_cache
+       且无 query_rewrite、无标签过滤时读写）→ 查询向量生成 →
+       es_client.search_by_mode()（单查询 / Sub Query RRF 合并）→ 补充分块详情 →
+       分数归一化（0~1，跨模式阈值一致）→ score_threshold 过滤 →
+       Rerank 重排序（可选，rerank 后重新归一化）→ 缓存写
+    → 7. chunk_expansion 上下文扩展（sentence_window 扩窗 / parent_child 回带父块 /
+       hierarchical 双向追加，只对带扩展元数据的命中生效）
+    → 8. 视频叙事章节摘要附加（命中的视频块）
+    → 9. 文档级权限过滤（hidden_doc_ids，宿主侧；bypass 供归因 worker 重放）
+    → 10. LLM 回答生成（可选）+ 帧图 URL 预签名 + 响应组装
 ```
 
 ---
@@ -295,4 +329,4 @@ REPROCESS 复用同一路径），由 `wiki_ingest_service.py` 四阶段 Map-Red
 - Wiki 架构：`docs/knowledge-space/current/wiki-architecture.md`
 - 知识配置结构：`docs/knowledge-space/current/knowledge-config-structure-design.md`
 - 事务边界约定：`docs/transaction-boundary-conventions.md`
-- ES 索引结构：`docs/elasticsearch-index-structure.md`
+- ES 索引结构：`backend/docs/elasticsearch-index-structure.md`（与本文同目录）

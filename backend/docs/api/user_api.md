@@ -4,6 +4,16 @@
 
 用户管理模块提供用户注册、认证、信息管理和模型配置等功能。所有接口的基础路径为 `/api/v1/user`。
 
+### 覆盖范围声明
+
+本文覆盖认证（登录/登出/刷新令牌）、用户管理（创建/查询/更新）与模型配置核心面。以下同前缀端点**未在本文覆盖**，以 OpenAPI 文档（后端 `/docs`）为准：
+
+- RBAC 角色管理：`/api/v1/user/roles`（及角色-权限映射相关）
+- 搜索配置：`/api/v1/user/search-configs`
+- 应用门禁：`/api/v1/user/users/{user_id}/app-access`
+- 开放注册：`POST /api/v1/user/users/register`
+- 我的权限：`GET /api/v1/user/users/me/permissions`
+
 ### 认证方式
 
 除登录和刷新令牌接口外，所有接口均需要在请求头中携带 JWT 访问令牌：
@@ -91,7 +101,9 @@ Authorization: Bearer <access_token>
 | username | string | 用户名 |
 | email | string | 邮箱地址 |
 | phone | string \| null | 手机号码 |
-| is_admin | boolean | 是否管理员，默认 false |
+| role | object | 用户系统角色：`code`（角色唯一编码）与 `name`（角色显示名称） |
+| is_admin | boolean | 是否管理员（从 role.code 派生），默认 false |
+| is_super_admin | boolean | 是否最高管理员（YAML 配置的初始账号），默认 false |
 | status | integer | 用户状态，1 为正常 |
 | last_login_at | string \| null | 最后登录时间（ISO 8601 格式） |
 | created_at | string | 创建时间（ISO 8601 格式） |
@@ -105,7 +117,12 @@ Authorization: Bearer <access_token>
   "username": "zhangsan",
   "email": "zhangsan@example.com",
   "phone": "13800138000",
+  "role": {
+    "code": "viewer",
+    "name": "普通用户"
+  },
   "is_admin": false,
+  "is_super_admin": false,
   "status": 1,
   "last_login_at": null,
   "created_at": "2026-04-15T10:30:00",

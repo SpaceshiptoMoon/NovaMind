@@ -27,7 +27,7 @@
   "space_id": 1,
   "kb_id": 3,
   "document_id": 42,
-  "chunk_id": "doc_42_chunk_5",
+  "chunk_id": "42_5",
   "chunk_index": 5,
   "chunk_type": "text",
   "content": "FastAPI 是一个高性能的 Python Web 框架，支持异步编程...",
@@ -76,7 +76,9 @@
       "chunk_id": { "type": "keyword" },
       "chunk_index": { "type": "integer" },
       "chunk_type": { "type": "keyword" },
+      "lifecycle_status": { "type": "keyword" },
       "image_url": { "type": "keyword" },
+      "media_url": { "type": "keyword" },
       "content": {
         "type": "text",
         "analyzer": "<动态>",
@@ -110,7 +112,42 @@
           "section_title": { "type": "text" },
           "char_start": { "type": "integer" },
           "char_end": { "type": "integer" },
-          "content_hash": { "type": "keyword" }
+          "content_hash": { "type": "keyword" },
+          "wiki_slug": { "type": "keyword" },
+          "wiki_title": { "type": "keyword" },
+          "wiki_page_type": { "type": "keyword" },
+          "start_time": { "type": "float" },
+          "end_time": { "type": "float" },
+          "duration": { "type": "float" },
+          "speaker_id": { "type": "keyword" },
+          "confidence": { "type": "float" },
+          "frame_paths": { "type": "keyword" },
+          "frame_indices": { "type": "integer" },
+          "doc_tags": {
+            "type": "text",
+            "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+          },
+          "chunk_pages": { "type": "integer" },
+          "chunk_entry_source_ids": { "type": "keyword" },
+          "chunk_entry_kinds": { "type": "keyword" },
+          "chunk_entry_count": { "type": "integer" },
+          "figure_image_links": {
+            "type": "nested",
+            "properties": {
+              "artifact_id": { "type": "keyword" },
+              "minio_object_name": { "type": "keyword" },
+              "image_url": { "type": "keyword" },
+              "page": { "type": "integer" },
+              "caption": { "type": "text" }
+            }
+          },
+          "figure_image_count": { "type": "integer" },
+          "chunk_role": { "type": "keyword" },
+          "parent_chunk_id": { "type": "keyword" },
+          "expansion_type": { "type": "keyword" },
+          "expansion_window_size": { "type": "integer" },
+          "content_type": { "type": "keyword" },
+          "section_anchor_chunk_id": { "type": "keyword" }
         }
       },
       "file_info": {
@@ -142,9 +179,9 @@
 | `space_id` | long | 所属空间 ID（索引级隔离） |
 | `kb_id` | long | 所属知识库 ID（term 过滤隔离） |
 | `document_id` | long | 所属文档 ID |
-| `chunk_id` | keyword | 分块唯一标识（格式：`doc_{document_id}_chunk_{index}`） |
+| `chunk_id` | keyword | 分块唯一标识（格式：`{document_id}_{index}`，如 `42_5`） |
 | `chunk_index` | integer | 分块序号（从 0 开始） |
-| `chunk_type` | keyword | 分块类型：`"text"`（文本）或 `"image"`（图片） |
+| `chunk_type` | keyword | 分块类型：`text` / `image` / `video` / `audio` / `wiki_page` 等（随模态与 wiki 同步扩展） |
 | `image_url` | keyword | 图片 URL（MinIO 路径），仅图片分块有值 |
 | `content` | text | 分块原文，用于 BM25 全文检索 |
 | `embedding` | dense_vector | 内容向量，用于向量检索 |

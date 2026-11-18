@@ -14,11 +14,11 @@ NovaMind 对外暴露的接口共三个消费面，全部收敛在 `agent_api` f
 
 ## 认证
 
-**消费面（MCP / 网关）用 API key**：明文 `nvm_` 开头，仅创建时返回一次。两种凭证头等价，Bearer 优先：
+**消费面（MCP / 网关）用 API key**：明文 `nvm_` 开头，仅创建时返回一次。凭证头按消费面区分：
 
 ```
-Authorization: Bearer nvm_xxxx
-X-API-Key: nvm_xxxx
+MCP（/mcp）：   仅认 X-API-Key: nvm_xxxx（Bearer 头不参与 MCP 门禁）
+网关（/v1）：   Authorization: Bearer nvm_xxxx 优先，回落 X-API-Key（两者等价）
 ```
 
 key 继承创建者的完整权限链（空间成员资格、文档可见性都按创建者校验），吊销即全部消费面立即拒绝。
@@ -33,7 +33,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8100/api/v1/user/users/login \
   -H "Content-Type: application/json" \
   -d '{"username": "<用户名>", "password": "<密码>"}' | jq -r .access_token)
 
-# 2. 创建 key（明文 api_key 仅此一次返回）
+# 2. 创建 key（明文 api_key 仅此一次返回；每用户上限 20 个，超限返回 409 API_KEY_LIMIT_EXCEEDED）
 curl -s -X POST http://127.0.0.1:8100/api/v1/agent-api/keys \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name": "my-agent"}'
@@ -64,7 +64,7 @@ curl -s -X POST http://127.0.0.1:8100/mcp \
 | 参数 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `query` | string | 必填 | 检索文本 |
-| `space_id` / `kb_id` | int | 配置默认 / 返回候选清单 | 定位目标；不传且用户有多空间时返回候选让调用方选择后重试 |
+| `space_id` / `kb_id` | int | 配置默认 / 自动选首个 ACTIVE KB | 定位目标；`space_id` 不传且用户有多空间时返回候选清单让调用方选择后重试；`kb_id` 缺省自动选该空间第一个 ACTIVE KB |
 | `top_k` | int | 5 | 返回条数 |
 | `search_mode` | string | `content_hybrid` | 9 种检索模式；概念性查询用 `question_*`、精确术语用 `content_bm25`、兜底 `all_hybrid` |
 | `score_threshold` | float | 不过滤 | 结果噪声多时 0.3~0.5 |
@@ -103,19 +103,29 @@ r = await client.chat.completions.create(
 
 ## 错误格式与状态码
 
-消费面错误统一为 **OpenAI 错误信封**（外部 SDK 只认该格式）：
+两个消费面的错误形态不同，分开表述：
+
+**网关面（/v1）**：统一 **OpenAI 错误信封**（外部 SDK 只认该格式）：
 
 ```json
 {"error": {"message": "API key 无效或已吊销", "type": "invalid_request_error", "param": null, "code": "..."}}
 ```
 
-| 状态码 | 含义 |
+| 状态码 | 含义（网关面） |
 |---|---|
 | 401 | key 缺失 / 无效 / 已吊销（吊销即时生效，无缓存窗口） |
 | 403 | key 有效但目标资源越权（空间 / 文档可见性） |
 | 404 | 目标空间 / 知识库不存在（不区分「不存在」与「无权」，避免存在性探测） |
 | 429 | 触发限流（全局限流按 IP） |
 | 5xx | 上游模型 / 内部错误（信封 type 为对应错误类） |
+
+**MCP 面（/mcp）**：门禁 401 的信封是精简两字段（无 type/param）：
+
+```json
+{"error": {"code": "invalid_api_key", "message": "..."}}
+```
+
+进入协议层后，检索类失败（空间不存在 / 无权访问等）**不走 HTTP 403/404**——以 JSON-RPC 200 响应 + `isError: true` 工具文本返回（MCP 协议惯例，客户端从工具结果文本读取原因）。
 
 ## 安全注意事项
 

@@ -1,7 +1,7 @@
 # AGENTS.md
 
-> 本文件是 ZCode 的工作区指令，由 `CLAUDE.md` 合并原 `AGENTS.md` 而成，内容已同步至 2026-10-03 版；
-> 两份文件并行维护（CLAUDE.md 供 Claude Code 读取），改规则时请同步更新两处。
+> 本文件是 ZCode 的工作区指令，与 `CLAUDE.md`（Claude Code 工作区指令）内容镜像并行维护，
+> 内容已同步至 2026-11-18 版；改规则时请同步更新两处。
 
 ## 项目概述
 
@@ -48,6 +48,13 @@ docker-compose.yml
 - **国内网络便利不得变默认耦合**：镜像源、时区等只允许出现在部署配置（`.env.example`/deploy 脚本/compose 注入），功能代码零硬编码；默认值面向通用环境。
 - 每次修复优先补一条**正反两用例**的回归测试（触发场景 + 相邻正常场景不误伤），防止案例特例化漂移。
 
+## 分支职责：main 只放 Python 代码（硬规则）
+
+- **`main` 分支 = Python 单体分支**，只包含 `backend/`（FastAPI）、`frontend/`、`docs/`、`docker/` 等现有目录。Go 迁移代码（`engine/`、`backend-go/`）只属于 `refactor/go-migration` 及其后继分支。
+- **禁止把 Go 分支的目录合入/提交到 main**；同样禁止在 Go 分支动 main 的独有资产（两边共享的文件应先在分支里对齐再合并）。
+- **从其它分支 `git checkout main` 时警惕残留**：git 只清理被跟踪的文件，分支上的未跟踪/运行时产物（`.venv/`、`.cache/` 模型、`__pycache__/`、日志）会原样留在工作区，`git status` 显示 `??` 即为此类。发现非 main 职责的目录出现在 main 工作区，先 `git log --all -- <dir>` 确认归属，再清理，不要让它混入后续提交。
+- 2026-10-15 实际事故：从 `refactor/go-migration` 切回 main 后残留 `engine/`、`backend-go/` 共 2.4 万个未跟踪文件，一度污染工作区且掩盖了 `default.yaml` 缺失的真实启动故障。
+
 ## 多 Agent 并行开发
 
 多个 agent 窗口（或开发者）并发操作本仓库时，每个隔离在自己的 git worktree、自己的分支里。绝不让多个 agent 编辑同一工作目录——重叠修改会在 git 介入之前就被文件系统层静默覆盖，且无法恢复或归因。
@@ -62,7 +69,7 @@ docker-compose.yml
 - **频繁且原子地提交。** 不要把未提交修改留过夜；停工前 commit 或 stash。
 - **从干净主干合并回来：** `git checkout main` → `git merge feat/<scope>-<desc>`。每次合并后、开始下一项前跑相关测试。
 - **合并后清理：** `git worktree remove ../intelligent-<scope>` + `git branch -d feat/<scope>-<desc>` + `git worktree prune`。
-- **主工作目录只用于集成合并与主干同步**，不作为任何 agent 的开发工作区。
+- **主工作目录只用于集成合并与主干同步**，不作为任何 agent 的开发工作区。分支间切换后先 `git status` 检查未跟踪残留（见上节分支隔离规则）。
 
 完整工作流与冲突解决指引见 `docs/multi-agent-parallel-development-workflow.md`。
 
@@ -114,6 +121,9 @@ feature 模块按以下结构组织：
 知识库相关代码使用以下权威位置：
 
 - `backend/src/features/knowledge_space/`：知识库领域行为、任务、API、schema、repository
+- `backend/src/features/knowledge_ops/`：知识运营平台（健康报告、统一待办、事件账本、冷启动引导、质量基线）
+- `backend/src/features/evaluation/`：知识库评测与失败归因（测试集、评测任务、五阶段 15 类归因）
+- `backend/src/features/agent_api/`：知识服务出口（API key 管理、MCP server `/mcp`、OpenAI 兼容网关 `/v1`）
 - `backend/src/engines/document/pipeline/`：文本与文档解析管道（DocumentLoader/DocumentProcessor）——可复用的文档处理引擎
 - `backend/src/engines/document/splitters/`：分块切分器
 - `backend/src/engines/document/converters/`：文档格式转换器
@@ -121,6 +131,7 @@ feature 模块按以下结构组织：
 - `backend/src/engines/document/integrations/deepdoc/`：仅 DeepDoc 集成（vendored，自包含）
 - `backend/src/engines/question_generation/`：假设问题生成引擎（直收 LLM 客户端，凭证解析归业务）
 - `backend/src/engines/wiki/`：Wiki 纯函数件（互链/去重/句柄/slug/分类法）；wiki 持久化与编排留 knowledge_space
+- `backend/src/engines/video_narrative/`：视频叙事合成引擎（碎片帧描述合成章节化连贯叙事文档）
 - `backend/src/engines/rag|eval|search/`：检索、评估、Web 搜索引擎——通用能力层，零 features/setting import（agent/deep_research/resume 引擎已随 2026-11-15 工作台剥离移除）
 - `backend/src/shared/document/readers/`：跨 feature 文档读取器（PDF/DOCX/TXT/HTML/MD）——被 knowledge_space 复用
 - `backend/src/shared/document/validation/`：跨 feature 文件校验——被 knowledge_space 复用
@@ -197,7 +208,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 
 ### 后端
 
-- 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 即全部运行时依赖，test/dev 为开发测试 extras；uv.lock 已入库）
+- 安装依赖：`cd backend && uv sync --extra test --extra dev`（项目统一用 uv，不用 pip/poetry；core 即全部运行时依赖，test/dev 为开发测试 extras；uv.lock 已入库。公式模型 INT8 量化等部署增强见 pyproject `deepdoc-vision` extra，Docker 镜像构建时启用）
 - 开发服务器：`python main.py --reload`（单一模式，无环境名参数）
 - 跑测试：`pytest`（发现模式 `test_*.py` 与 `*_test.py`）；可用标记定向跑，如 `pytest -m unit`、`pytest -m "not slow"`
 - 触碰解析、文档任务、检索或共享基础设施时，优先跑针对性测试
