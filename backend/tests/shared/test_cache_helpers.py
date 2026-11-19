@@ -8,7 +8,7 @@
 5. 观测：命中/回源/故障计数与命中率。
 """
 import pytest
-from novamind.shared.cache.helpers import cache_stats, get_or_load, invalidate
+from novamind.shared.cache.helpers import cache_stats, get_or_load, invalidate, invalidate_matching
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -93,6 +93,33 @@ async def test_unconfigured_factory_degrades(monkeypatch):
 async def test_invalidate_failure_does_not_raise(fake_redis):
     fake_redis.fail = True
     await invalidate("kb:1", "kb:2")
+
+
+async def test_invalidate_matching_deletes_only_matching_keys(fake_redis):
+    """模式失效只删匹配键：同前缀全删（含用户维度变体），他前缀键存活。"""
+    await fake_redis.set("search:1:content_hybrid:aaa", {"r": 1}, expire=60)
+    await fake_redis.set("search:1:content_hybrid:u2:bbb", {"r": 2}, expire=60)
+    await fake_redis.set("search:2:content_hybrid:ccc", {"r": 3}, expire=60)
+    await fake_redis.set("member:1:2", {"ok": True}, expire=60)
+
+    deleted = await invalidate_matching("search:1:*")
+
+    assert deleted == 2, "匹配 search:1:* 的键应全删"
+    assert "search:1:content_hybrid:aaa" not in fake_redis.store
+    assert "search:1:content_hybrid:u2:bbb" not in fake_redis.store
+    assert "search:2:content_hybrid:ccc" in fake_redis.store, "他知识库的键必须存活"
+    assert "member:1:2" in fake_redis.store, "非检索域的键必须存活"
+
+
+async def test_invalidate_matching_no_match_returns_zero(fake_redis):
+    await fake_redis.set("search:1:content_hybrid:aaa", {"r": 1}, expire=60)
+    assert await invalidate_matching("search:999:*") == 0
+    assert "search:1:content_hybrid:aaa" in fake_redis.store
+
+
+async def test_invalidate_matching_failure_returns_zero_and_does_not_raise(fake_redis):
+    fake_redis.fail = True
+    assert await invalidate_matching("search:1:*") == 0
 
 
 @pytest.mark.parametrize("ttl", [0, -1])

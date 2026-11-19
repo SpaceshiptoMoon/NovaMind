@@ -3,6 +3,7 @@
 """
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.features.knowledge_space.services.wiki_ingest_service import WikiGenerationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -418,23 +419,12 @@ async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:
                 logger.warning("wiki 页 embedding/同步失败", slug=p.slug, error=str(e))
 
         if synced:
-            await _invalidate_search_cache(kb_id)
+            await invalidate_kb_search_cache(kb_id)
             logger.info("wiki 页 ES 同步完成", kb_id=kb_id, synced=synced, total=len(pages))
         return synced
     except Exception as e:
         logger.warning("wiki 页 ES 同步失败（不影响管道）", kb_id=kb_id, error=str(e))
         return 0
-
-
-async def _invalidate_search_cache(kb_id: int) -> None:
-    """失效 KB 级检索缓存（best-effort）"""
-    try:
-        from novamind.shared.storage.client_factory import get_redis_client
-
-        cache = await get_redis_client()
-        await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
-    except Exception as e:
-        logger.warning("wiki 检索缓存失效失败", kb_id=kb_id, error=str(e))
 
 
 async def _load_parsed_text(document) -> str:

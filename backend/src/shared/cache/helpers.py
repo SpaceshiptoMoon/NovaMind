@@ -121,3 +121,25 @@ async def invalidate(*keys: str) -> None:
             await cache.delete(key)
     except Exception as e:
         logger.warning("缓存失效失败，旧值将存活至 TTL 过期", keys=list(keys), error=str(e))
+
+
+async def invalidate_matching(pattern: str, *, batch_size: int = 100) -> int:
+    """按模式批量删除缓存键；缓存层故障只告警，不影响调用方的写操作。
+
+    与 :func:`invalidate` 同一失败语义：删除失败时旧值存活到 TTL 过期。
+    调用方负责 pattern 的领域语义（键格式应取自键的写入方，勿在本模块
+    硬编码任何业务键格式）。
+
+    Args:
+        pattern: 键匹配模式，如 ``search:42:*``。
+        batch_size: 逐批删除的批大小，防止单次大命令阻塞 Redis。
+
+    Returns:
+        实际删除的键数量；缓存层故障时返回 0。
+    """
+    try:
+        cache = await _get_redis_client()
+        return await cache.delete_by_pattern(pattern, batch_size=batch_size)
+    except Exception as e:
+        logger.warning("缓存模式失效失败，旧值将存活至 TTL 过期", pattern=pattern, error=str(e))
+        return 0

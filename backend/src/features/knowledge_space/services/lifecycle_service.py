@@ -18,6 +18,7 @@ from novamind.features.knowledge_space.models.document import (
 from novamind.features.knowledge_space.models.document import (
     DocumentLifecycleStatus as Lifecycle,
 )
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,7 +133,7 @@ class LifecycleService:
         # 3. 失效检索缓存（wiki_tasks 同款先例）：不失效则同 query 的缓存结果
         # 仍含已下线 chunk，最久活到 TTL——「新版已替换旧版」在缓存窗口内不生效。
         # 失败仅告警（缓存有 TTL 兜底，最终一致），不回滚。
-        await self._invalidate_search_cache(row.kb_id)
+        await invalidate_kb_search_cache(row.kb_id)
         self.logger.info(
             "生命周期转换完成",
             document_id=doc_id,
@@ -140,16 +141,6 @@ class LifecycleService:
             es_chunks_updated=updated,
         )
         return row
-
-    async def _invalidate_search_cache(self, kb_id: int) -> None:
-        """按 KB 清检索缓存（缓存键含 kb_id 前缀，wiki_tasks 同款先例）。"""
-        try:
-            from novamind.shared.storage.client_factory import get_redis_client
-
-            cache = await get_redis_client()
-            await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
-        except Exception as e:
-            self.logger.warning("检索缓存清理失败（TTL 兜底）", kb_id=kb_id, error=str(e))
 
     async def _rollback_db_status(
         self,

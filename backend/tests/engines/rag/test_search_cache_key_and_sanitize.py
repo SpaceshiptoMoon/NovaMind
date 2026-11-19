@@ -80,6 +80,46 @@ def test_cache_key_user_dimension():
     assert key_none == "search:1:content_hybrid:hash"  # 无用户段时与旧版格式一致
 
 
+def test_cache_key_derived_from_authoritative_prefix():
+    """键前缀单一出处（2026-11 收敛批次）：读写键必须以 kb_search_cache_prefix 开头。
+
+    键格式曾散布引擎与 6 个旁路失效点各自手写；kb_search_cache_prefix 是唯一
+    权威出处，本用例 pin 住「具体键 = 权威前缀 + 后缀」不变量，键格式再漂移即红。
+    """
+    from novamind.engines.rag.retrieval_engine import kb_search_cache_prefix
+
+    engine = RetrievalEngine(es_client=object())
+    key = engine._get_search_cache_key(42, "content_hybrid", "hash", user_id=7)
+    assert key.startswith(kb_search_cache_prefix(42)), "具体缓存键必须以权威前缀开头"
+    assert kb_search_cache_prefix(42) == "search:42:"
+
+
+def test_invalidate_pattern_derived_from_authoritative_prefix():
+    """失效模式必须 = 权威前缀 + '*'（经 cache_port 注入验证装配路径）。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from novamind.engines.rag.retrieval_engine import kb_search_cache_prefix
+
+    captured: dict = {}
+
+    async def fake_delete_by_pattern(pattern, batch_size=100):
+        captured["pattern"] = pattern
+        captured["batch_size"] = batch_size
+        return 3
+
+    engine = RetrievalEngine(
+        es_client=object(),
+        cache_port=SimpleNamespace(delete_by_pattern=fake_delete_by_pattern),
+    )
+    engine.logger = SimpleNamespace(debug=lambda *a, **k: None, warning=lambda *a, **k: None)
+
+    asyncio.run(engine.invalidate_kb_search_cache(42))
+
+    assert captured["pattern"] == kb_search_cache_prefix(42) + "*"
+    assert captured["batch_size"] == 100
+
+
 def test_sub_query_rrf_k_param_is_used_not_hardcoded():
     """S3-D3: _search_with_sub_queries 必须使用传入的 rrf_k，不得硬编码 60 覆盖。
 

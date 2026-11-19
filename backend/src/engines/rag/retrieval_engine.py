@@ -16,6 +16,15 @@ from novamind.shared.logging import get_logger
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时
 QUERY_EMBEDDING_CACHE_TTL = 1800  # 查询向量缓存 30 分钟：同模型同文本不重复调用远程 embedding
 
+
+def kb_search_cache_prefix(kb_id: int) -> str:
+    """检索缓存键的知识库前缀（键格式的唯一权威出处）。
+
+    读（``_get_search_cache_key``）、写、失效（``invalidate_kb_search_cache``
+    与各旁路调用点）都必须由本函数派生，保证键格式变更只改这一处。
+    """
+    return f"search:{kb_id}:"
+
 # 检索客户端 resolver 类型：宿主按需构造并返回客户端（懒解析）
 EmbeddingClientResolver = Callable[[], Awaitable[BaseEmbedding | None]]
 RerankClientResolver = Callable[[], Awaitable[BaseRerank | None]]
@@ -553,8 +562,8 @@ class RetrievalEngine:
         隔离维度——权限生效后不同用户的可见结果不同，禁止共享缓存。
         """
         if user_id is not None:
-            return f"search:{kb_id}:{search_type}:u{user_id}:{query_hash}"
-        return f"search:{kb_id}:{search_type}:{query_hash}"
+            return f"{kb_search_cache_prefix(kb_id)}{search_type}:u{user_id}:{query_hash}"
+        return f"{kb_search_cache_prefix(kb_id)}{search_type}:{query_hash}"
 
     async def _get_cached_search(self, cache_key: str) -> list[dict[str, Any]] | None:
         """获取缓存的检索结果"""
@@ -682,7 +691,7 @@ class RetrievalEngine:
             cache = await self._get_cache()
             if cache is None:
                 return
-            pattern = f"search:{kb_id}:*"
+            pattern = f"{kb_search_cache_prefix(kb_id)}*"
             total_deleted = await cache.delete_by_pattern(pattern, batch_size=100)
             self.logger.debug(
                 "知识库检索缓存已清理",

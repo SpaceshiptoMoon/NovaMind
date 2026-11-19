@@ -597,38 +597,16 @@ class SpaceRepository:
 
     async def invalidate_space_cache(self, space_id: int) -> None:
         """
-        公开方法：失效空间相关缓存
+        失效空间自身相关缓存（空间详情等空间级键）。
+
+        注意：各知识库的检索缓存（``search:{kb_id}:*``）不在此处——检索缓存
+        键格式属于检索域，由上层服务经
+        ``services.search_cache.invalidate_kb_search_cache`` 逐 KB 失效。
 
         Args:
             space_id: 空间 ID
         """
         await self._invalidate_space_cache(space_id)
-
-        # 清理该空间下所有知识库的搜索缓存
-        try:
-            cache = await self._get_cache()
-
-            from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
-            stmt = select(KnowledgeBase.id).where(
-                KnowledgeBase.space_id == space_id,
-                KnowledgeBase.deleted_at.is_(None),
-            )
-            result = await self.session.execute(stmt)
-            kb_ids = [row[0] for row in result.all()]
-
-            total_deleted = 0
-            for kb_id in kb_ids:
-                deleted = await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
-                total_deleted += deleted
-
-            if total_deleted > 0:
-                self.logger.debug(
-                    "空间检索缓存已清理",
-                    space_id=space_id,
-                    deleted_count=total_deleted,
-                )
-        except Exception as e:
-            self.logger.warning("清理空间检索缓存失败", space_id=space_id, error=str(e))
 
 
     async def find_spaces_using_embedding(self, model_name: str) -> list[dict]:

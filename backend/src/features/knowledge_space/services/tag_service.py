@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.shared.logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,7 +87,7 @@ class DocumentTagService:
             ) from e
 
         # 3. 失效检索缓存（改标后旧缓存结果与新过滤不一致；失败 TTL 兜底仅告警）
-        await self._invalidate_search_cache(document.kb_id)
+        await invalidate_kb_search_cache(document.kb_id)
         self.logger.info(
             "文档标签已更新",
             document_id=document.id,
@@ -168,13 +170,3 @@ class DocumentTagService:
                 document_id=document.id,
                 error=str(rb_err),
             )
-
-    async def _invalidate_search_cache(self, kb_id: int) -> None:
-        """按 KB 清检索缓存（缓存键含 kb_id 前缀，lifecycle_service 同款）。"""
-        try:
-            from novamind.shared.storage.client_factory import get_redis_client
-
-            cache = await get_redis_client()
-            await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
-        except Exception as e:  # noqa: BLE001
-            self.logger.warning("检索缓存清理失败（TTL 兜底）", kb_id=kb_id, error=str(e))

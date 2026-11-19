@@ -25,6 +25,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.url_signing import presigned_get_url
@@ -216,14 +217,8 @@ class DocumentQueryService:
         # 5. 更新知识库统计（使用行锁保证原子性）
         await self.session.commit()
 
-        # 6. 失效该知识库的搜索缓存
-        try:
-            from novamind.shared.storage.client_factory import get_redis_client
-
-            cache = await get_redis_client()
-            await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
-        except Exception as cache_err:
-            self.logger.warning("搜索缓存失效失败", kb_id=kb_id, error=str(cache_err))
+        # 6. 失效该知识库的搜索缓存（旁路入口统一走 search_cache，失败告警不阻断删除）
+        await invalidate_kb_search_cache(kb_id)
 
         # 6.5 被软删 wiki 页的 ES 向量清理（best-effort，对齐 WeKnora
         # deleteChunkForPage）：同步路径直接清，不依赖异步 retract 兜底。

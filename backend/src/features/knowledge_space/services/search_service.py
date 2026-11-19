@@ -965,19 +965,6 @@ class SearchService:
             metadatas, minio_client=minio_client, max_urls=self._MAX_FRAME_URLS
         )
 
-    async def invalidate_kb_search_cache(self, kb_id: int) -> None:
-        """
-        失效知识库的所有检索缓存（委托 RetrievalEngine）
-
-        Args:
-            kb_id: 知识库 ID
-        """
-        # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
-        try:
-            await self.retrieval_engine.invalidate_kb_search_cache(kb_id)
-        except RagSearchError as e:
-            raise SearchError(str(e))
-
     async def get_available_modes(
         self,
         kb_id: int,

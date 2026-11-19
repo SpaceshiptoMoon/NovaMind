@@ -19,6 +19,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
@@ -314,8 +315,10 @@ class SpaceService:
 
         await self.session.commit()
 
-        # 5. 清理检索缓存
+        # 5. 清理检索缓存（空间级键 + 各 KB 检索缓存；kb 列表已在第 3 步查出）
         await self.space_repo.invalidate_space_cache(space_id)
+        for kb in kbs:
+            await invalidate_kb_search_cache(kb.id)
 
         # 6. 异步清理 ES 空间索引（不阻塞主事务）
         if self.es_client:
@@ -773,8 +776,10 @@ class SpaceService:
         flag_modified(space, "config")
         await self.session.commit()
 
-        # 4. 失效缓存
+        # 4. 失效缓存（空间级键 + 各 KB 检索缓存——embedding 变更后旧检索缓存必须清）
         await self.space_repo.invalidate_space_cache(space_id)
+        for kb_id in await self.kb_repo.get_active_kb_ids(space_id):
+            await invalidate_kb_search_cache(kb_id)
 
         self.logger.info(
             "空间配置更新成功",

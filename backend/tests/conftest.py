@@ -123,6 +123,17 @@ class JsonFakeRedis:
             self.ttls.pop(key, None)
         return len(keys)
 
+    async def delete_by_pattern(self, pattern: str, batch_size: int = 100):
+        """镜像 RedisCache.delete_by_pattern 契约：glob 匹配、返回删除数。"""
+        import fnmatch
+
+        self._check()
+        matched = [k for k in self.store if fnmatch.fnmatchcase(k, pattern)]
+        for key in matched:
+            self.store.pop(key, None)
+            self.ttls.pop(key, None)
+        return len(matched)
+
 
 @pytest.fixture
 def fake_redis():
