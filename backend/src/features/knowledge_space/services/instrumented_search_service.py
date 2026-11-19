@@ -9,6 +9,7 @@ deep_research）换用本类后自动进账本，埋点不再依赖调用方自�
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_ops.services.event_recorder import EventRecorder
 from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
 from novamind.features.knowledge_space.services.search_service import SearchService
 
@@ -82,10 +83,6 @@ class InstrumentedSearchService(SearchService):
         内容摘要），归因时免反查 ES 即可判断「为什么这条被召回」。
         """
         try:
-            from novamind.features.knowledge_ops.services.event_recorder import (
-                EventRecorder,
-            )
-
             results = result.get("results") or []
             scores = [
                 r.get("score") for r in results if isinstance(r.get("score"), (int, float))

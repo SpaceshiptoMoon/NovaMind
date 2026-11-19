@@ -20,6 +20,9 @@ doc_archived 等新动作只进 ops_actions，避免账本事件面膨胀——
 class OpsActionService:
     """运营动作登记公共入口（四类调用方：复审确认/生命周期/缺口转化/建议处置）"""
 
+    def __init__(self) -> None:
+        """无状态服务：全部依赖经 record() 参数传入，构造零参数。"""
+
     async def record(
         self,
         *,

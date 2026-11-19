@@ -6,6 +6,9 @@ from typing import Any
 
 import structlog
 from novamind.core.middleware import metrics as pipeline_metrics
+from novamind.features.knowledge_ops.services.new_version_detector import (
+    detect_new_version_suggestions,
+)
 from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.shared.logging import get_logger
 from novamind.shared.mq.exceptions import TransientBusyError
@@ -514,10 +517,6 @@ async def process_document_task(
 
             # 9. kb-ops 新版识别（B2 旁路：判定失败不影响上传；只建议不自动）
             try:
-                from novamind.features.knowledge_ops.services.new_version_detector import (
-                    detect_new_version_suggestions,
-                )
-
                 await detect_new_version_suggestions(
                     space_id=space_id, kb_id=kb_id, new_doc_id=document_id,
                 )

@@ -15,6 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from novamind.core.auth import get_current_user_media
 from novamind.core.database.database import get_db
 from novamind.core.middleware.rate_limit import RateLimits, get_limiter
+from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
 from novamind.features.knowledge_space.api.dependencies import (
     ensure_space_member,
     get_audit_service,
@@ -1563,8 +1564,6 @@ async def confirm_document_review(
 
     # 飞轮动作统一登记（旁路）：动作表（战果/回看数据源）+ 账本双写
     try:
-        from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
-
         await OpsActionService().record(
             action="review_confirmed",
             target_kind="document",
@@ -1576,7 +1575,7 @@ async def confirm_document_review(
             context_snapshot={"next_review_at": next_at.isoformat()},
         )
     except Exception:
-        pass  # OpsActionService 内部已全吞；此处兜底防 import 期异常影响主流程
+        pass  # OpsActionService 内部已全吞；此处兜底防运行期异常影响主流程
 
     return DocumentReviewResponse(
         document_id=document.id,
@@ -1666,8 +1665,6 @@ async def transition_document_lifecycle(
         ) from e
     # 生命周期动作统一登记（旁路，只进动作表——账本不登记此类型）
     try:
-        from novamind.features.knowledge_ops.services.ops_action_service import OpsActionService
-
         await OpsActionService().record(
             action=f"doc_{data.action}",
             target_kind="document",

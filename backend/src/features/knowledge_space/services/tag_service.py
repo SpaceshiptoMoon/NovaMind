@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.shared.logging import get_logger
 from sqlalchemy.ext.asyncio import AsyncSession

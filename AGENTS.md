@@ -261,7 +261,7 @@ def merge(self, chunks: list[Chunk], min_size: int = 200) -> list[Chunk]:
 - **路由注册：** 新路由在所属 feature 的 `manifest.py` 里以 `RouterSpec` 声明（含前缀与 `route_order`）；`manifest_loader` 自动扫描 `features/*/manifest.py`，`router_manager.py` 按声明聚合挂载——不存在也不需要 router_manager 手动登记。
 - **模块 init：** 新模块建 `manifest.py` 提供 `manifest()`（`FeatureManifest`：routers/`depends_on`/`init_hook`/`models_loader`）；ORM 建表经 `models_loader` 导入模型，启动钩子经 `init_hook`，由 `startup_manager` 按 `get_sorted_manifests()` 顺序驱动。
 - **配置文件：** 所有 `*.yaml` 都被 gitignore；只提交 `*.example` 模板。
-- **import 依赖规则（ragflow 务实单体风格，2026-10-29 模块化治理后）：** `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。**engines→features/setting 禁止**（全域清零含 TYPE_CHECKING，约定不回退；引擎接口签名不携带业务服务形状——凭证解析/用户身份/数据库实现由业务层注入，接口归引擎侧定义如 IMemoryStore）；core→features 维持允许。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/AGENTS.md`。
+- **import 依赖规则（ragflow 务实单体风格，2026-10-29 模块化治理后）：** `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。**engines→features/setting 禁止**（全域清零含 TYPE_CHECKING，约定不回退；引擎接口签名不携带业务服务形状——凭证解析/用户身份/数据库实现由业务层注入，接口归引擎侧定义如 IMemoryStore）；core→features 维持允许。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。ks→ko 反向接缝白名单（R2.1）：ks 侧引用 knowledge_ops 仅允许旁路登记三模块与 models 只读直查，且必须模块级显式（禁新增函数内 lazy 边），门禁 `test_ks_to_ko_import_seam.py`。规则全文 R1–R6 见 `backend/AGENTS.md`。
 
 ### 前端编码规则
 

@@ -3,6 +3,10 @@
 埋点语义：用户触发的检索每次产生一条 query 事件（含 results_count/max_score
 载荷）；EventRecorder 挂掉时检索结果原样返回（旁路语义，项目失败方向安全
 硬规则）。系统重放（归因 worker/evaluation）不走本类，直接用父类。
+
+桩打在消费方模块绑定（instrumented_search_service.EventRecorder）：埋点
+import 已于 2026-11 收敛为模块级（ks→ko 接缝显式化），名字在消费方命名
+空间查找，patch 源模块属性不再生效。
 """
 from unittest.mock import AsyncMock, patch
 
@@ -46,7 +50,7 @@ async def test_search_records_query_event_with_payload():
             SearchService, "search", AsyncMock(return_value=fake_result)
         ) as mock_search,
         patch(
-            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            "novamind.features.knowledge_space.services.instrumented_search_service.EventRecorder",
             _FakeRecorder,
         ),
     ):
@@ -90,7 +94,7 @@ async def test_extra_carries_hit_details_and_role():
     with (
         patch.object(SearchService, "search", AsyncMock(return_value=fake_result)),
         patch(
-            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            "novamind.features.knowledge_space.services.instrumented_search_service.EventRecorder",
             _FakeRecorder,
         ),
     ):
@@ -125,7 +129,7 @@ async def test_hit_malformed_entry_does_not_break_recording():
     with (
         patch.object(SearchService, "search", AsyncMock(return_value=fake_result)),
         patch(
-            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            "novamind.features.knowledge_space.services.instrumented_search_service.EventRecorder",
             _FakeRecorder,
         ),
     ):
@@ -154,7 +158,7 @@ async def test_search_zero_results_still_records():
             SearchService, "search", AsyncMock(return_value={"results": []})
         ),
         patch(
-            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            "novamind.features.knowledge_space.services.instrumented_search_service.EventRecorder",
             _FakeRecorder,
         ),
     ):
@@ -180,7 +184,7 @@ async def test_recorder_failure_does_not_break_search():
             SearchService, "search", AsyncMock(return_value=fake_result)
         ),
         patch(
-            "novamind.features.knowledge_ops.services.event_recorder.EventRecorder",
+            "novamind.features.knowledge_space.services.instrumented_search_service.EventRecorder",
             _BrokenRecorder,
         ),
     ):

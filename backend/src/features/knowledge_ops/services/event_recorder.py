@@ -18,6 +18,9 @@ class EventRecorder:
     rollback 会连带回滚账本行）；独立短事务保证「旁路」语义真正成立。
     """
 
+    def __init__(self) -> None:
+        """无状态服务：会话工厂在 record 时惰性获取，构造零参数。"""
+
     async def record(
         self,
         event_type: str,
