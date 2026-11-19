@@ -101,6 +101,31 @@ class KnowledgeBaseRepository:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_all_by_space(self, space_id: int, status: KnowledgeBaseStatus | None = None) -> list[KnowledgeBase]:
+        """获取空间内全部未删除知识库（无分页上限）。
+
+        级联删除、缓存失效等必须覆盖全量 KB 的场景专用——``get_by_space``
+        默认 limit=100，漏一个 KB 就漏一次级联/一份旧缓存。列表分页接口
+        仍请用 ``get_by_space``。
+
+        Args:
+            space_id: 空间 ID
+            status: 状态过滤
+
+        Returns:
+            知识库完整列表（无分页截断）
+        """
+        query = select(KnowledgeBase).where(
+            KnowledgeBase.space_id == space_id,
+            KnowledgeBase.deleted_at.is_(None),
+        )
+        if status is not None:
+            query = query.where(KnowledgeBase.status == status)
+        query = query.order_by(KnowledgeBase.created_at.desc())
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def get_active_kb_ids(self, space_id: int) -> list[int]:
         """查空间下全部未删除知识库的 ID（无分页上限）。
 

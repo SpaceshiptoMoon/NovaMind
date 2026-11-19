@@ -28,6 +28,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.utils.time_utils import now_china
@@ -557,8 +558,9 @@ class MemberService:
                         field="confirm",
                     )
                 # 最后管理员离开，级联删除空间及关联资源
-                # 1. 获取关联知识库（软删除前查询，确保查到未删除的 KB）
-                kbs = await self.kb_repo.get_by_space(space_id)
+                # 1. 获取关联知识库全量列表（软删除前查询：级联与缓存失效都
+                #    必须覆盖全量，get_by_space 默认 limit=100 会截断最旧 KB）
+                kbs = await self.kb_repo.get_all_by_space(space_id)
 
                 # 2. 级联软删除：知识库、文档、空间
                 audit_repo = AuditRepository(self.session)
@@ -591,6 +593,13 @@ class MemberService:
                     space_id=space_id,
                     user_id=user_id,
                 )
+
+                # 2.2 清理检索缓存（对齐 delete_space：空间级键 + 全量 KB 的
+                #     检索缓存，用删除前取得的全量列表——提交后 deleted_at 已
+                #     置位，彼时再查即空集）
+                await self.space_repo.invalidate_space_cache(space_id)
+                for kb in kbs:
+                    await invalidate_kb_search_cache(kb.id)
 
                 # 3. 清理 ES 空间索引（不阻塞主事务，允许失败）
                 if self.es_client:

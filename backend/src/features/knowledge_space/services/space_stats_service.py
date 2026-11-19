@@ -207,7 +207,9 @@ class SpaceStatsService:
     async def _resolve_kb_names(self, space_id: int) -> dict[int, str]:
         """空间下 KB id → 名称映射（看板 by_kb 展示）"""
         try:
-            kbs = await self.kb_repo.get_by_space(space_id)
+            # 无分页版本：get_by_space 默认 limit=100，>100 KB 的空间后面的
+            # 库名会退化为占位符
+            kbs = await self.kb_repo.get_all_by_space(space_id)
             return {kb.id: kb.name for kb in kbs}
         except Exception as e:
             self.logger.warning("KB 名称解析失败（回退占位）", space_id=space_id, error=str(e))
