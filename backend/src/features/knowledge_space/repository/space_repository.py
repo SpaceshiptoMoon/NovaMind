@@ -608,7 +608,6 @@ class SpaceRepository:
         """
         await self._invalidate_space_cache(space_id)
 
-
     async def find_spaces_using_embedding(self, model_name: str) -> list[dict]:
         """查未删除且空间配置 ``embedding.model == model_name`` 的空间（批次 4.5 下沉）。
 

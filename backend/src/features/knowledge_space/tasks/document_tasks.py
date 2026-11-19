@@ -479,9 +479,11 @@ async def process_document_task(
                 await batch_repo.refresh_summary(task.batch_id)
                 await session.commit()
 
-            # 6. 失效搜索缓存（旁路入口统一走 search_cache，失败告警不阻断任务完成）
-            await invalidate_kb_search_cache(kb_id)
-            logger.info("搜索缓存已失效", kb_id=kb_id)
+            # 6. 失效搜索缓存（旁路入口统一走 search_cache；失败在 helpers 层
+            #    告警 + TTL 兜底，此处仅在确有删除时报成功，不误报）
+            deleted = await invalidate_kb_search_cache(kb_id)
+            if deleted:
+                logger.info("搜索缓存已失效", kb_id=kb_id, deleted=deleted)
 
             # 7. 移除追踪映射（任务已 COMMIT 成功，unbind 失败不应让 arq 把
             #    已完成的 job 标记为失败；残留映射由活跃检查自愈）

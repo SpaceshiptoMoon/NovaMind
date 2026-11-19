@@ -17,12 +17,17 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 
-async def invalidate_kb_search_cache(kb_id: int) -> None:
+async def invalidate_kb_search_cache(kb_id: int) -> int:
     """失效单个知识库的全部检索缓存（含用户维度变体键）。
 
     Args:
         kb_id: 知识库 ID。
+
+    Returns:
+        实际删除的键数量。缓存层故障同样返回 0（无键可删与故障不可据此
+        区分，故障细节由 helpers 层告警）；调用方需要区分时监听告警日志。
     """
     deleted = await invalidate_matching(f"{kb_search_cache_prefix(kb_id)}*")
     if deleted:
         logger.debug("知识库检索缓存已清理", kb_id=kb_id, deleted=deleted)
+    return deleted

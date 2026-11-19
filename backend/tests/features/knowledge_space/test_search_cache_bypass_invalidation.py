@@ -30,8 +30,9 @@ async def test_bypass_invalidate_deletes_kb_scoped_keys(fake_redis):
     await fake_redis.set("search:8:content_hybrid:ccc", {"r": 3}, expire=60)
     await fake_redis.set("member:1:2", {"ok": True}, expire=60)
 
-    await invalidate_kb_search_cache(7)
+    deleted = await invalidate_kb_search_cache(7)
 
+    assert deleted == 2, "返回值 = 实际删除的键数量"
     assert "search:7:content_hybrid:aaa" not in fake_redis.store, "命中 KB 的普通键应删除"
     assert "search:7:content_hybrid:u9:bbb" not in fake_redis.store, "命中 KB 的用户维度变体键应删除"
     assert "search:8:content_hybrid:ccc" in fake_redis.store, "他知识库的键必须存活"
@@ -39,8 +40,8 @@ async def test_bypass_invalidate_deletes_kb_scoped_keys(fake_redis):
 
 
 async def test_bypass_invalidate_failure_does_not_raise(fake_redis):
-    """Redis 故障（TTL 兜底语义）：只降级不抛，调用方写操作不受阻。"""
+    """Redis 故障（TTL 兜底语义）：只降级不抛，返回 0，调用方写操作不受阻。"""
     from novamind.features.knowledge_space.services.search_cache import invalidate_kb_search_cache
 
     fake_redis.fail = True
-    await invalidate_kb_search_cache(7)  # 不应抛
+    assert await invalidate_kb_search_cache(7) == 0  # 不应抛

@@ -110,7 +110,12 @@ def test_allowlist_entries_exist():
 
 
 def test_allowlist_nonempty_and_bounded():
-    """冒烟：白名单为空说明接缝被清空（应删 gate）或统计坏了。"""
+    """冒烟：白名单为空说明接缝被清空（应删 gate）或统计坏了。
+
+    上限 8 是接缝失控报警器：当前 4 条（三旁路模块 + models 前缀）。白名单
+    每扩一项都必须是有意识的接缝决策，若需突破 8 说明 ko 旁路面在无序膨胀，
+    应回设计层收敛而非继续加白。
+    """
     assert 0 < len(ALLOWED_KO_MODULES) <= 8
 
 

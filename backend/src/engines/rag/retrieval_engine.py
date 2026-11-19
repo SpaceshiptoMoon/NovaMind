@@ -25,6 +25,7 @@ def kb_search_cache_prefix(kb_id: int) -> str:
     """
     return f"search:{kb_id}:"
 
+
 # 检索客户端 resolver 类型：宿主按需构造并返回客户端（懒解析）
 EmbeddingClientResolver = Callable[[], Awaitable[BaseEmbedding | None]]
 RerankClientResolver = Callable[[], Awaitable[BaseRerank | None]]

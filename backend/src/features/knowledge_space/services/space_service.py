@@ -296,6 +296,9 @@ class SpaceService:
 
         # 3. 获取关联知识库列表（在软删除之前，确保查询到未删除的 KB）
         kbs = await self.kb_repo.get_by_space(space_id)
+        # 全量 KB id 快照（get_by_space 默认 limit=100 会截断最旧 KB）。必须在
+        # 软删提交前取：第 5 步失效执行时 deleted_at 已置位，再查即空集。
+        kb_ids_for_cache = await self.kb_repo.get_active_kb_ids(space_id)
 
         # 4. 级联软删除：空间、关联知识库、文档（使用 SAVEPOINT 保证原子性）
         async with self.session.begin_nested():
@@ -315,10 +318,10 @@ class SpaceService:
 
         await self.session.commit()
 
-        # 5. 清理检索缓存（空间级键 + 各 KB 检索缓存；kb 列表已在第 3 步查出）
+        # 5. 清理检索缓存（空间级键 + 全量 KB 的检索缓存，用删除前的 id 快照）
         await self.space_repo.invalidate_space_cache(space_id)
-        for kb in kbs:
-            await invalidate_kb_search_cache(kb.id)
+        for kb_id in kb_ids_for_cache:
+            await invalidate_kb_search_cache(kb_id)
 
         # 6. 异步清理 ES 空间索引（不阻塞主事务）
         if self.es_client:
