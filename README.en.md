@@ -208,6 +208,7 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 >   ```
 >   Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed.
 > - **Prefer the HTTPS clone URL** (no SSH key setup needed): `git clone https://github.com/SpaceshiptoMoon/NovaMind.git`; use `git clone git@github.com:SpaceshiptoMoon/NovaMind.git` only if you have an SSH key configured.
+> - **Image pulls may be slow or time out from some networks (e.g. mainland China)**: besides the Docker Hub base images, the MinIO image lives on `quay.io` and the Elasticsearch image on `docker.elastic.co` — Docker's `registry-mirrors` accelerators only cover Docker Hub and do not help with these two. If pulls fail, configure a proxy for the Docker daemon, or pull manually and `docker tag` under the same image name compose expects.
 
 ### Option 1: one-command deploy
 
@@ -233,6 +234,9 @@ The deploy script will automatically:
 - Poll `http://localhost/health` for a health check
 
 After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`; **the default username is `admin`**.
+
+> [!NOTE]
+> Path to a first usable state after login: **configure the two required model types — LLM and Embedding — on the "Model Management" page** (OpenAI-compatible protocol; base_url + API key, with connection testing — see [Model integration](#model-integration)) → create a space (pick the space's Embedding model in the creation form) → create a knowledge base → upload documents and **trigger parsing manually from the document list page** (upload stores only; parsing is not automatic) → search and ask AI questions on the search page. Document parsing fails without an Embedding model; AI answering is unavailable without an LLM.
 
 Requirements:
 
@@ -320,6 +324,9 @@ cp default.example default.yaml           # the single backend config file (conn
 cd -                                      # back to the repo root
 ```
 
+> [!WARNING]
+> Same as [Option 2](#option-2-manual-docker-deploy): edit `.env` after copying and at minimum replace `ADMIN_PASSWORD` with a real value (the other `your-*` placeholders are worth replacing too). The placeholder contains no uppercase letter / digit / special character — **the first boot succeeds (with a weak password), but the second restart of `main.py` crashes** because the backend enforces admin password strength. Requirements: 8–30 chars with at least one uppercase letter, one lowercase letter, one digit, and one special character.
+
 2. Start the infrastructure
 
 Local development needs the following services running on `localhost`:
@@ -364,6 +371,8 @@ Default backend address: `http://localhost:8100`
 > ```
 
 4. Start the frontend
+
+Requires **Node.js 20.19+ or 22.12+** (declared in `frontend/package.json` `engines`; older versions fail at `npm install`):
 
 ```bash
 cd frontend
@@ -585,6 +594,12 @@ npm run format
 <summary><b>Elasticsearch exits immediately on boot with a vm.max_map_count-too-low error?</b></summary>
 
 See the common prerequisites at the top of [Quick start](#quick-start) — set `vm.max_map_count >= 262144` and restart the ES container.
+</details>
+
+<details>
+<summary><b>Host port 80 is already in use and the containers fail to start?</b></summary>
+
+Compose maps the app container as <code>"80:8080"</code> (host 80 → container 8080). If host port 80 is taken by an existing nginx / apache etc., <code>docker compose up</code> fails with a port binding error. Change the host side of the <code>app</code> service port mapping in <code>docker-compose.yml</code> to a free port (e.g. <code>"8000:8080"</code>) and restart; the app is then served at <code>http://localhost:8000</code>. Note that <code>deploy.sh</code>'s health check always probes <code>http://localhost/health</code> — after changing the port it will falsely report unhealthy; ignore it or probe <code>/health</code> on the new port yourself.
 </details>
 
 <details>

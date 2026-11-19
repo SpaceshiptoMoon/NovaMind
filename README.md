@@ -42,6 +42,9 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 
 部署完成后打开 `http://localhost`，账号 `admin`，初始密码在根目录 `.env` 的 `ADMIN_PASSWORD`。脚本会自动完成环境检查、密钥生成、DeepDoc / 语音模型下载与健康检查。
 
+> [!NOTE]
+> 登录后按这条最小路径走到可用状态：**先在「模型管理」页配置 LLM 与 Embedding 两类必需模型**（OpenAI 兼容协议，填 base_url + API Key，支持连接测试，详见[模型接入建议](#模型接入建议)）→ 创建知识空间（创建表单中选择 Embedding 模型）→ 空间内创建知识库 → 上传文档并在文档列表页**手动触发解析**（上传仅存储，不自动解析）→ 在检索页开始检索与 AI 问答。Embedding 未配置时文档解析会失败，LLM 未配置时 AI 问答不可用。
+
 > [!TIP]
 > Linux 自托管需先设置 `vm.max_map_count >= 262144`（Elasticsearch 内核要求），详见[完整快速开始](#快速开始)的前置条件。手动 Docker 部署与本地开发方式见同节。
 
@@ -156,6 +159,7 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 >   ```
 >   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步。
 > - **克隆仓库建议用 HTTPS 地址**（无需配置 SSH key）：`git clone https://github.com/SpaceshiptoMoon/NovaMind.git`；已配置 SSH key 的用户可用 `git clone git@github.com:SpaceshiptoMoon/NovaMind.git`。
+> - **部分网络拉取镜像可能缓慢或超时**：除 Docker Hub 的基础镜像外，MinIO 镜像在 `quay.io`、Elasticsearch 镜像在 `docker.elastic.co`——Docker 的 `registry-mirrors` 加速器只覆盖 Docker Hub，帮不到这两个源。拉取失败时可为 Docker daemon 配置代理，或手动拉取后 `docker tag` 成 compose 中同名镜像。
 
 ### 方式一：一键部署
 
@@ -268,6 +272,9 @@ cp default.example default.yaml           # 唯一后端配置文件（连接参
 cd -                                      # 回到仓库根目录
 ```
 
+> [!WARNING]
+> 与[方式二](#方式二手动-docker-部署)相同：复制后须编辑 `.env`，至少把 `ADMIN_PASSWORD` 换成实际值（其余 `your-*` 占位符建议一并替换）。占位值不含大写字母/数字/特殊字符，**首次启动能成功（初始密码弱），但第二次重启 `main.py` 会因管理员密码强度校验失败而崩溃**——密码要求：8-30 位，同时包含大写字母、小写字母、数字、特殊字符。
+
 2. 启动基础设施
 
    本地开发需要以下服务在 `localhost` 上运行：
@@ -325,6 +332,8 @@ uv run python main.py --reload
 > [docs/splitting-strategy-matrix.md](docs/splitting-strategy-matrix.md)。
 
 4. 启动前端
+
+需要 **Node.js 20.19+ 或 22.12+**（`frontend/package.json` 的 `engines` 声明，更低版本 `npm install` 直接失败）：
 
 ```bash
 cd frontend
@@ -655,6 +664,12 @@ npm run format
 <summary><b>Elasticsearch 启动即退出，日志报 vm.max_map_count 太低？</b></summary>
 
 见[快速开始](#快速开始)顶部的通用前置条件——设置 `vm.max_map_count >= 262144` 后重启 ES 容器。
+</details>
+
+<details>
+<summary><b>宿主机 80 端口被占用，容器启动失败？</b></summary>
+
+Docker Compose 将应用容器映射为 `"80:8080"`（宿主机 80 → 容器 8080）。宿主机 80 已被 nginx / apache 等占用时，`docker compose up` 会报端口绑定失败。把 `docker-compose.yml` 中 `app` 服务端口映射的宿主机侧改成空闲端口（如 `"8000:8080"`）后重启，此后经 `http://localhost:8000` 访问。注意 `deploy.sh` 的健康检查固定探测 `http://localhost/health`，改端口后会误报 unhealthy，可忽略或手动探测新端口的 `/health`。
 </details>
 
 <details>
