@@ -159,7 +159,7 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 >   ```
 >   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步。
 > - **克隆仓库建议用 HTTPS 地址**（无需配置 SSH key）：`git clone https://github.com/SpaceshiptoMoon/NovaMind.git`；已配置 SSH key 的用户可用 `git clone git@github.com:SpaceshiptoMoon/NovaMind.git`。
-> - **部分网络拉取镜像可能缓慢或超时**：除 Docker Hub 的基础镜像外，MinIO 镜像在 `quay.io`、Elasticsearch 镜像在 `docker.elastic.co`——Docker 的 `registry-mirrors` 加速器只覆盖 Docker Hub，帮不到这两个源。拉取失败时可为 Docker daemon 配置代理，或手动拉取后 `docker tag` 成 compose 中同名镜像。
+> - **部分网络（如国内网络）拉取镜像可能缓慢或超时**：除 Docker Hub 的基础镜像外，MinIO 镜像在 `quay.io`、Elasticsearch 镜像在 `docker.elastic.co`——Docker 的 `registry-mirrors` 加速器只覆盖 Docker Hub，帮不到这两个源。拉取失败时可为 Docker daemon 配置代理，或手动拉取后 `docker tag` 成 compose 中同名镜像。
 
 ### 方式一：一键部署
 
@@ -333,7 +333,7 @@ uv run python main.py --reload
 
 4. 启动前端
 
-需要 **Node.js 20.19+ 或 22.12+**（`frontend/package.json` 的 `engines` 声明，更低版本 `npm install` 直接失败）：
+需要 **Node.js 20.19+ 或 22.12+**（`frontend/package.json` 的 `engines` 声明，21.x 不在支持范围；版本不满足时 npm/Vite 只发 EBADENGINE 类警告、不阻断安装与启动，但属未测试组合）：
 
 ```bash
 cd frontend

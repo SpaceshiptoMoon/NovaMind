@@ -372,7 +372,7 @@ Default backend address: `http://localhost:8100`
 
 4. Start the frontend
 
-Requires **Node.js 20.19+ or 22.12+** (declared in `frontend/package.json` `engines`; older versions fail at `npm install`):
+Requires **Node.js 20.19+ or 22.12+** (declared in `frontend/package.json` `engines`; 21.x is unsupported. Out-of-range versions only trigger EBADENGINE/Vite warnings — install and startup are not blocked — but the combination is untested):
 
 ```bash
 cd frontend
