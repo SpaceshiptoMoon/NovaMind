@@ -66,17 +66,6 @@ class VectorDbConfig:
 
 
 @dataclass
-class SplittingConfig:
-    """knowledge_base.splitting 段：文档分块策略、块大小与重叠、分隔符及块大小上下限。"""
-    strategy: str = "recursive"
-    chunk_size: int = 500
-    chunk_overlap: int = 50
-    separator: str = "\n\n"
-    min_chunk_size: int = 100
-    max_chunk_size: int = 2000
-
-
-@dataclass
 class ParsingConfig:
     """knowledge_base.parsing 段：解析开关（图片/表格/结构保留/VLM 描述）与本地 whisper、视频 VLM 并发等媒体参数。"""
     # 解析快照与断点续跑总开关（批次 6.4 配置化）：False 全局关闭快照读写，
@@ -173,7 +162,6 @@ class RetrievalConfig:
 @dataclass
 class KnowledgeBaseConfig:
     """knowledge_base 段：知识库级切分、解析、检索三类配置的聚合。"""
-    splitting: SplittingConfig = field(default_factory=SplittingConfig)
     parsing: ParsingConfig = field(default_factory=ParsingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 

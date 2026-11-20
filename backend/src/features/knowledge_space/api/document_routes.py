@@ -716,14 +716,18 @@ async def get_document_tasks_overview(
     """获取知识库批次任务列表"""
     await validate_kb_access(kb_id, space_id, db)
 
-    # 批次概览的刷新与提交由 service 控制（事务边界在 service，不在路由层）
+    # 批次概览为只读聚合（实时计数经 overlay 覆盖，无写副作用）
     total, entries = await document_task_service.list_batch_overview(
         kb_id=kb_id, skip=skip, limit=limit
     )
 
     items: list[DocumentTaskResponse] = []
-    for refreshed_batch, tasks in entries:
-        item = DocumentTaskResponse.model_validate(refreshed_batch)
+    for batch, tasks, overlay in entries:
+        item = DocumentTaskResponse.model_validate(batch)
+        item.total_count = overlay["total_count"]
+        item.processed_count = overlay["processed_count"]
+        item.task_summary = overlay["task_summary"]
+        item.status = overlay["status"]
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
         items.append(item)
 

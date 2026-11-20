@@ -577,6 +577,7 @@ async def process_document_task(
                 document_id=document_id,
                 kb_id=kb_id,
                 space_id=space_id,
+                trace_id=structlog.contextvars.get_contextvars().get("trace_id"),
                 _defer_by=asr_defer_seconds,
             )
             if new_job:
@@ -1075,6 +1076,7 @@ async def recover_orphan_documents() -> int:
                     document_id=task.document_id,
                     kb_id=task.kb_id,
                     space_id=task.space_id,
+                    trace_id=structlog.contextvars.get_contextvars().get("trace_id"),
                 )
 
                 # 复用原 task item，仅更新恢复后的入队状态
@@ -1127,6 +1129,7 @@ async def enqueue_process_document(
     retry_count: int = 0,
     session: AsyncSession | None = None,
     batch_data: dict[str, Any] | None = None,
+    trace_id: str | None = None,
 ) -> dict:
     """
     将文档处理任务入队
@@ -1211,6 +1214,7 @@ async def enqueue_process_document(
             document_id=document_id,
             kb_id=kb_id,
             space_id=space_id,
+            trace_id=trace_id,
         )
 
         job_id = job.job_id

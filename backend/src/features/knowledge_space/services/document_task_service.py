@@ -95,13 +95,14 @@ class DocumentTaskService:
         """
         获取知识库的文档处理批次概览（含子任务明细）。
 
-        对每个批次执行 refresh_summary 懒刷新（更新 batch 的 total_count/task_summary
-        等冗余字段），由 service 层统一提交——避免路由层直接 commit。
-        GET 端点的写副作用由此收敛在 service。
+        只读路径：计数字段经只读聚合实时计算（不写批次行、不 commit）——
+        写路径（任务生命周期 5 处 refresh_summary）才是冗余字段的维护者，
+        GET 轮询不再对 DB 产生写放大。
 
         Returns:
-            (total, entries)：entries 为 [(refreshed_batch, tasks), ...]，
-            仅包含有子任务的批次。
+            (total, entries)：entries 为 [(batch, tasks, overlay), ...]，
+            overlay 是覆盖在批次行之上的实时计数字典（total_count/
+            processed_count/task_summary/status），仅包含有子任务的批次。
         """
         batch_repo = DocumentTaskBatchRepository(self.session)
         task_repo = DocumentTaskRepository(self.session)
@@ -110,14 +111,29 @@ class DocumentTaskService:
 
         entries: list = []
         for batch in batches:
-            refreshed_batch = await batch_repo.refresh_summary(batch.id) or batch
             tasks = await task_repo.list_by_batch(batch.id)
             if not tasks:
                 continue
-            entries.append((refreshed_batch, tasks))
+            counts = await batch_repo.aggregate_status_counts(batch.id)
+            status_key = lambda s: counts.get(int(s), 0)  # noqa: E731
+            overlay = {
+                "total_count": sum(counts.values()),
+                "processed_count": (
+                    status_key(TaskStatus.COMPLETED)
+                    + status_key(TaskStatus.FAILED)
+                    + status_key(TaskStatus.CANCELLED)
+                ),
+                "task_summary": {
+                    "pending": status_key(TaskStatus.PENDING),
+                    "processing": status_key(TaskStatus.PROCESSING),
+                    "completed": status_key(TaskStatus.COMPLETED),
+                    "failed": status_key(TaskStatus.FAILED),
+                    "cancelled": status_key(TaskStatus.CANCELLED),
+                },
+                "status": int(batch_repo.derive_batch_status(counts)),
+            }
+            entries.append((batch, tasks, overlay))
 
-        # refresh_summary 的写副作用由 service 控制提交（事务边界在 service）
-        await self.session.commit()
         return total, entries
 
     async def list_tasks_by_document(self, document_id: int) -> list:
@@ -545,6 +561,7 @@ class DocumentTaskService:
             process_mode=process_mode,
             pipeline_config=pipeline_config,
             retry_count=retry_count,
+            trace_id=_current_trace_id(),
             session=self.session,
             batch_data=batch_data,
         )

@@ -37,6 +37,44 @@ class DocumentTaskBatchRepository:
         await self.session.refresh(batch)
         return batch
 
+    async def aggregate_status_counts(self, batch_id: int) -> dict[int, int]:
+        """按子任务状态聚合计数（只读，无写副作用——GET 端点用）。
+
+        Returns:
+            {TaskStatus int 值: 数量}；无子任务返回空 dict。
+        """
+        result = await self.session.execute(
+            select(DocumentTask.status, func.count(DocumentTask.id))
+            .where(DocumentTask.batch_id == batch_id)
+            .group_by(DocumentTask.status)
+        )
+        return {int(status): count for status, count in result.all()}
+
+    @staticmethod
+    def derive_batch_status(counts: dict[int, int]) -> "BatchStatus":  # noqa: F821
+        """由状态计数推导批次状态（refresh_summary 状态机的只读镜像，无时间戳副作用）。"""
+        from novamind.features.knowledge_space.models.document_task import TaskStatus
+        from novamind.features.knowledge_space.models.document_task_batch import BatchStatus
+
+        pending = counts.get(int(TaskStatus.PENDING), 0)
+        processing = counts.get(int(TaskStatus.PROCESSING), 0)
+        completed = counts.get(int(TaskStatus.COMPLETED), 0)
+        failed = counts.get(int(TaskStatus.FAILED), 0)
+        cancelled = counts.get(int(TaskStatus.CANCELLED), 0)
+        total = pending + processing + completed + failed + cancelled
+
+        if processing > 0:
+            return BatchStatus.PROCESSING
+        if total > 0 and completed == total:
+            return BatchStatus.COMPLETED
+        if total > 0 and completed + failed + cancelled == total:
+            if failed > 0:
+                return BatchStatus.PARTIAL_FAILED
+            if cancelled == total:
+                return BatchStatus.CANCELLED
+            return BatchStatus.COMPLETED
+        return BatchStatus.PENDING
+
     async def get_by_id(self, batch_id: int) -> DocumentTaskBatch | None:
         """按主键查批次，不存在返回 None。
 

@@ -32,7 +32,6 @@ from .config import (
     SecurityConfig,
     SerpAPIConfig,
     SmtpConfig,
-    SplittingConfig,
     TaskQueueConfig,
     TavilyConfig,
     VectorDbConfig,
@@ -271,19 +270,10 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     )
 
     kb = data.get("knowledge_base", {})
-    splitting = kb.get("splitting", {})
     parsing = kb.get("parsing", {})
     retrieval = kb.get("retrieval", {})
     hybrid = retrieval.get("hybrid_search", {})
     config.knowledge_base = KnowledgeBaseConfig(
-        splitting=SplittingConfig(
-            strategy=splitting.get("strategy", "recursive"),
-            chunk_size=splitting.get("chunk_size", 500),
-            chunk_overlap=splitting.get("chunk_overlap", 50),
-            separator=splitting.get("separator", "\n\n"),
-            min_chunk_size=splitting.get("min_chunk_size", 100),
-            max_chunk_size=splitting.get("max_chunk_size", 2000),
-        ),
         parsing=ParsingConfig(
             extract_images=parsing.get("extract_images", False),
             extract_tables=parsing.get("extract_tables", True),
