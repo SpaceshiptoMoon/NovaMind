@@ -606,10 +606,10 @@ async def execute_document_pipeline(
                 document_id=document_id,
                 failed_count=len(figure_regions) - len(image_url_map),
             )
+        # 无论上传成败都清原始 PNG bytes：全失败路径若跳过清理，blob 会随
+        # parse_metadata 整包序列化进 parse_meta.json 快照（体积 4-6 倍膨胀）
+        _prune_figure_blobs(figure_regions)
     if image_url_map:
-        # 上传完成后清除原始 PNG bytes，降低大 PDF 多图场景的内存占用。
-        for region in figure_regions:
-            region.pop("image_blobs", None)
         _logger.info(
             "PDF figure 图片占位符已替换",
             document_id=document_id,
@@ -804,6 +804,17 @@ def _build_completion_result(
     if resumed_from_snapshot:
         result["resumed_from_snapshot"] = True
     return result
+
+
+def _prune_figure_blobs(figure_regions: list[dict[str, Any]]) -> None:
+    """清除 figure_regions 内的原始 PNG bytes（原地修改）。
+
+    上传循环成功后已逐 region 清理；此函数兜底**全部/部分失败**的 region——
+    bytes 若残留在 parse_metadata，会被整包 JSON 序列化进 parse_meta.json 快照
+    （default=str 把 bytes 转义成巨串，体积膨胀约 4-6 倍）并驻留 worker 内存。
+    """
+    for region in figure_regions:
+        region.pop("image_blobs", None)
 
 
 async def _upload_figure_images_to_minio(
@@ -1017,8 +1028,9 @@ async def _process_image_document_static(
     # 图片解析指纹（VLM/OCR 描述昂贵，重试时指纹匹配即免重跑）。指纹入参注入
     # 策略名+主 VLM 模型+备用 VLM 模型（全部读嵌套 image.*，与消费侧同源——
     # 扁平 vlm_model 被 video 覆盖后会把指纹也带偏），命中检查与保存侧共用同一次
-    # 计算（单一事实源），指纹形状漂移在结构上不可能发生。skip_on_quota 只影响
-    # 失败时的降级行为不影响成功产物，不进指纹。
+    # 计算。调用必须走 keyword 形态（file_hash/file_type 为 keyword-only）：签名
+    # 失配会 TypeError 并被下方 except 吞成 warning，导致快照链整体静默失效
+    # （历史 bug）。skip_on_quota 只影响失败时的降级行为不影响成功产物，不进指纹。
     image_parse_fp = ""
     snap_minio = None
     if _snap_enabled:
@@ -1029,7 +1041,11 @@ async def _process_image_document_static(
                 f"image:{image_strategy}:{image_vlm_model}:{image_vlm_fallback_model or ''}"
                 f":{image_nested_cfg.get('ocr_task') or ''}"
             )
-            image_parse_fp = _compute_parse_fp(document, image_fp_cfg)
+            image_parse_fp = _compute_parse_fp(
+                image_fp_cfg,
+                file_hash=document.file_hash or "",
+                file_type=document.file_type or "",
+            )
         except Exception as fp_exc:
             _logger.warning("图片解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
 
@@ -1146,7 +1162,8 @@ async def _process_image_document_static(
                 })
 
     # 断点续跑：快照未命中（全量解析完成）时保存解析快照。命中侧与保存侧共用
-    # 上方同一 image_parse_fp/snap_minio（单一事实源），形状漂移不可能发生。
+    # 上方同一 image_parse_fp/snap_minio 变量（同一变量贯穿两侧，非结构保证——
+    # 指纹计算签名失配曾使整条快照链静默失效，见上方注释）。
     if image_parse_fp and not resumed and snap_minio is not None:
         try:
             await _save_parse_snap(

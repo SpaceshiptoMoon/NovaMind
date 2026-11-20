@@ -117,6 +117,8 @@ async def _trigger_narrative_if_enabled(*, kb_id: int, space_id: int, document_i
         if file_type not in video_exts:
             return
         narrative_model = video_config.get("narrative_llm_model")
+        # 模型归属基准传上传者（历史未传 → 任务侧默认 user_id=1 串用他人凭据）
+        uploader_id = getattr(doc, "uploader_id", None)
 
     from novamind.features.knowledge_space.tasks.video_narrative_task import (
         enqueue_narrative_synthesis,
@@ -125,6 +127,7 @@ async def _trigger_narrative_if_enabled(*, kb_id: int, space_id: int, document_i
     job_id = await enqueue_narrative_synthesis(
         space_id=space_id, kb_id=kb_id, document_id=document_id,
         llm_model=narrative_model,
+        user_id=uploader_id,
     )
     if job_id:
         logger.info("视频叙事合成已入队", kb_id=kb_id, document_id=document_id, job_id=job_id)

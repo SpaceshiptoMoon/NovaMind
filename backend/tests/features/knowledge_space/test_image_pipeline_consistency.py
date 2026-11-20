@@ -206,7 +206,13 @@ async def test_image_parse_snapshot_hit_end_to_end(monkeypatch):
     )
     import novamind.features.knowledge_space.services.pipeline_snapshots as snap_mod
 
-    monkeypatch.setattr(snap_mod, "compute_parse_fingerprint", lambda d, c: "FP")
+    # keyword-only 咬合：stub 签名与 compute_parse_fingerprint 一致——
+    # 调用方若退回位置传参（图片快照链整体失效的历史 bug）会在此 TypeError 显红
+    monkeypatch.setattr(
+        snap_mod,
+        "compute_parse_fingerprint",
+        lambda d, *, file_hash="", file_type="": "FP",
+    )
 
     snap_payload = build_parse_snapshot_payload(
         parse_fingerprint="FP",

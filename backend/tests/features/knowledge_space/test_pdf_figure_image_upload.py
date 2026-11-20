@@ -460,3 +460,63 @@ def test_document_salt_stable_per_document():
     assert len(document_salt(payload)) == 12
     ph = figure_placeholder(document_salt(payload), "fig-1")
     assert ph == f"__FIGURE_URL__{document_salt(payload)}_fig-1__"
+
+
+# ==================== figure blob 泄漏兜底（红队 A4） ====================
+
+
+def _region_with_blobs(artifact_id: str) -> dict:
+    """构造携带原始 PNG bytes 的 figure region（模拟解析产物原貌）。"""
+    return {
+        "artifact_id": artifact_id,
+        "placeholder": f"__FIGURE_URL__salt_{artifact_id}__",
+        "image_blobs": [b"\x89PNG-fake-" + artifact_id.encode()],
+    }
+
+
+def test_prune_figure_blobs_clears_all_regions():
+    """全失败兜底：上传全挂（map 为空）也必须清掉全部 region 的 blob。"""
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        _prune_figure_blobs,
+    )
+
+    regions = [_region_with_blobs("a"), _region_with_blobs("b")]
+    _prune_figure_blobs(regions)
+    assert all("image_blobs" not in r for r in regions)
+
+
+def test_prune_figure_blobs_mixed_success_and_failure():
+    """部分失败：成功 region 已在上传循环 pop，兜底清理剩余失败 region。"""
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        _prune_figure_blobs,
+    )
+
+    ok_region = {"artifact_id": "ok"}  # 上传循环成功时已 pop
+    failed_region = _region_with_blobs("bad")
+    regions = [ok_region, failed_region]
+    _prune_figure_blobs(regions)
+    assert "image_blobs" not in failed_region
+
+
+def test_prune_figure_blobs_empty_is_noop():
+    """无 figure（无解析产物）：no-op 不抛错。"""
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        _prune_figure_blobs,
+    )
+
+    _prune_figure_blobs([])
+
+
+def test_snapshot_payload_never_carries_raw_bytes():
+    """端到端意图：blob 清理后，parse_metadata 进快照 payload 不得含 bytes 巨串。"""
+    import json
+
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        _prune_figure_blobs,
+    )
+
+    regions = [_region_with_blobs("leak")]
+    _prune_figure_blobs(regions)
+    payload = {"parse_metadata": {"figure_regions": regions}}
+    serialized = json.dumps(payload, ensure_ascii=False, default=str)
+    assert "\x89PNG" not in serialized, "原始 PNG bytes 不得经 default=str 混入快照"

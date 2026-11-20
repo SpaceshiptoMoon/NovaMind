@@ -10,7 +10,7 @@ async def process_narrative_task(
     kb_id: int,
     document_id: int,
     llm_model: str | None = None,
-    user_id: int = 1,
+    user_id: int | None = None,
 ) -> dict:
     """异步合成视频叙事文档（拉块 → 引擎 Map-Reduce → 落库）。
 
@@ -18,7 +18,8 @@ async def process_narrative_task(
         ctx: arq 上下文（含 job_id）。
         space_id / kb_id / document_id: 目标视频文档归属。
         llm_model: 合成用 LLM 模型名（None 用触发者默认 LLM）。
-        user_id: 触发者用户 ID（模型归属解析基准；解析完成钩子未传时取文档上传者）。
+        user_id: 触发者用户 ID（模型归属解析基准；None 时回退文档上传者——
+            历史默认值 1 是恒真值，会把 uploader 兜底短路成串用他人凭据）。
 
     Returns:
         {"status": "completed"|"failed", "chunks_used": int, "error": str|None}
@@ -33,14 +34,15 @@ async def process_narrative_task(
         mcs = ModelConfigService(session)
         # 模型归属文档上传者：无显式 llm_model 时取其默认 LLM（"没选不兜底"仅约束
         # kb 显式配置；任务侧的默认档是产品决策的生产默认，非静默串用）
+        doc = None
         try:
             from novamind.features.knowledge_space.repository.document_repository import (
                 DocumentRepository,
             )
             doc = await DocumentRepository(session).get_by_id(document_id)
-            owner_id = user_id if user_id else (doc.uploader_id if doc else 1)
         except Exception:
-            owner_id = user_id or 1
+            doc = None
+        owner_id = user_id or (doc.uploader_id if doc else None) or 1
         if not llm_model:
             llm_model = await mcs.get_user_default_model_name(owner_id, "llm")
         llm_client = await mcs.get_llm_client_by_model(owner_id, llm_model)
@@ -56,7 +58,7 @@ async def enqueue_narrative_synthesis(
     kb_id: int,
     document_id: int,
     llm_model: str | None = None,
-    user_id: int = 1,
+    user_id: int | None = None,
 ) -> str | None:
     """入队叙事合成任务（fire-and-forget：解析完成路径不因入队失败阻断）。"""
     from novamind.shared.mq import get_arq_pool
