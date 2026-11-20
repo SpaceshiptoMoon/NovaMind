@@ -152,6 +152,22 @@ if (Test-Port -HostName "localhost" -Port $FrontendPort) {
     if (-not (Wait-Port -Name "前端" -HostName "localhost" -Port $FrontendPort -TimeoutSec 60)) { $script:AllReady = $false }
 }
 
+# 5. 解析 worker（backend=stream 时启动；默认 arq 模式下 parse_worker 自检测退出）
+$workerPython = "$RootDir\backend\.venv\Scripts\python.exe"
+if (Test-Path $workerPython) {
+    $yamlBackend = Select-String -Path "$RootDir\backend\src\setting\yaml_config\yaml\default.yaml" `
+        -Pattern '^\s*backend:\s*(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+    if ($yamlBackend -eq "stream") {
+        Write-Info "task_queue.backend=stream，启动解析 worker"
+        Start-Detached -Name "解析Worker" -FilePath $workerPython `
+            -ArgumentList @('parse_worker.py') `
+            -WorkingDirectory "$RootDir\backend" `
+            -OutLog "$LogDir\parse_worker_out.log" -ErrLog "$LogDir\parse_worker_err.log"
+    } else {
+        Write-Skip "解析 worker：backend=$yamlBackend 非 stream，跳过"
+    }
+}
+
 Write-Host ""
 Write-Info "本地环境入口："
 Write-Host "  前端    http://localhost:$FrontendPort"
