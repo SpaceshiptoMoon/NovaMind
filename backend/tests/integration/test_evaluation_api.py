@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import pytest
 import requests
@@ -35,7 +36,22 @@ TIMEOUT_POLL = 10
 MAX_POLL_ATTEMPTS = 60
 
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
+
+
+def _load_admin_password() -> str:
+    """ADMIN_PASSWORD 优先取环境变量；pytest 直跑不加载 .env，回退仓库根 .env。"""
+    env_value = os.environ.get("ADMIN_PASSWORD")
+    if env_value:
+        return env_value
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    if env_path.is_file():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("ADMIN_PASSWORD="):
+                return line.split("=", 1)[1].strip()
+    return "change-me-admin-password"
+
+
+ADMIN_PASSWORD = _load_admin_password()
 
 ts = int(time.time())
 TEST_SPACE_NAME = f"evaluation_test_{ts}"
@@ -318,8 +334,9 @@ def step_3_upload_document():
 def step_4_process_document():
     print_test_header("前置准备 - 解析知识文档")
 
-    url = f"{BASE_URL}/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/process"
-    body = {"enable_question_generation": False}
+    # 文档级 /documents/{id}/process 路由已下线，统一走 KB 级批量触发端点（202）
+    url = f"{BASE_URL}/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/process"
+    body = {"document_ids": [document_id]}
 
     resp = requests.post(url, json=body, headers=get_headers(access_token), timeout=TIMEOUT_SHORT)
     print_response_info(resp)
@@ -343,6 +360,32 @@ def step_4_process_document():
         time.sleep(10)
 
     print("  [警告] 文档解析轮询超时")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _script_prerequisites():
+    """补齐 script 形态前置（本文件原设计为独立脚本运行，见文件尾 __main__ 块）。
+
+    step_0~step_4（登录/建空间/建库/传文档/触发解析）不带 test_ 前缀、pytest
+    不收集——缺失时模块全局 space_id/kb_id 保持 None，用例全数打向
+    /spaces/None/... 而非真实 401/404 缺陷。
+    """
+    step_0_login()
+    step_1_create_space()
+    step_2_create_kb()
+    step_3_upload_document()
+    step_4_process_document()
+    yield
+    # 收尾：软删测评测试空间，不在演示环境遗留
+    if space_id and access_token:
+        try:
+            requests.delete(
+                f"{BASE_URL}/api/v1/spaces/{space_id}",
+                headers=get_headers(access_token),
+                timeout=TIMEOUT_SHORT,
+            )
+        except Exception:
+            pass
 
 
 # ==================== 测试用例 ====================

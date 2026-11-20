@@ -12,11 +12,15 @@
     - 数据库可访问
 """
 
+import json
 import os
 import random
 import string
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 import requests
@@ -35,8 +39,23 @@ ADMIN_EMAIL = "admin_test@test.com"
 ADMIN_PASSWORD = "TestUser@12345"
 
 # 系统默认管理员（启动时自动创建）
+
+
+def _load_admin_password() -> str:
+    """DEFAULT_ADMIN_PASSWORD 优先取环境变量；pytest 直跑不加载 .env，回退仓库根 .env。"""
+    env_value = os.environ.get("ADMIN_PASSWORD")
+    if env_value:
+        return env_value
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    if env_path.is_file():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("ADMIN_PASSWORD="):
+                return line.split("=", 1)[1].strip()
+    return "change-me-admin-password"
+
+
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
+DEFAULT_ADMIN_PASSWORD = _load_admin_password()
 
 # ============================================================
 # 测试结果统计
@@ -79,6 +98,151 @@ def generate_test_user():
         "password": "Test@12345",
         "phone": f"1{random.choice('3456789')}{phone_suffix}",
     }
+
+
+class _OpenAIMockHandler(BaseHTTPRequestHandler):
+    """OpenAI 兼容 mock：对任意 /chat/completions 返回非空 content（探针判据）"""
+
+    def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length:
+            self.rfile.read(length)
+        body = json.dumps({
+            "id": "chatcmpl-mock",
+            "object": "chat.completion",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "pong"},
+                "finish_reason": "stop",
+            }],
+        }).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):  # 静默访问日志
+        pass
+
+
+# ============================================================
+# pytest fixtures（原设计为 main() 串联参数，pytest 直跑时由 fixture 链供给）
+# ============================================================
+
+
+@pytest.fixture(scope="session")
+def llm_mock_base_url():
+    """本地 OpenAI 兼容 mock。
+
+    模型配置的创建/更新会实时做连接探针（POST {base_url}/chat/completions，
+    返回非空内容即通过）——假域名会 400，fixture 配置统一指向本 mock。
+    """
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _OpenAIMockHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+
+
+@pytest.fixture(scope="session")
+def headers() -> dict:
+    """管理员登录态（镜像 ensure_admin_and_login 的用途）"""
+    tokens = ensure_admin_and_login()
+    assert tokens and tokens.get("access_token"), "管理员登录失败，无法执行用户管理集成测试"
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+@pytest.fixture(scope="session")
+def user_info(headers) -> dict:
+    """管理员创建一个随机测试用户（镜像 test_01 的创建请求；密码含在返回值里供登录）"""
+    info = generate_test_user()
+    resp = safe_request(
+        "POST",
+        f"{BASE_URL}{API_PREFIX}/users",
+        json=info,
+        headers=headers,
+    )
+    assert resp is not None and resp.status_code in (200, 201), (
+        f"创建测试用户失败：{resp.text if resp else '服务不可达'}"
+    )
+    data = resp.json()
+    return {**info, "id": data["id"]}
+
+
+@pytest.fixture(scope="session")
+def user_id(user_info) -> int:
+    return user_info["id"]
+
+
+@pytest.fixture(scope="session")
+def user_tokens(user_info) -> dict:
+    """以测试用户身份登录（镜像 test_02）"""
+    resp = safe_request(
+        "POST",
+        f"{BASE_URL}{API_PREFIX}/users/login",
+        json={"username": user_info["username"], "password": user_info["password"]},
+    )
+    assert resp is not None and resp.status_code == 200, (
+        f"测试用户登录失败：{resp.text if resp else '服务不可达'}"
+    )
+    return resp.json()
+
+
+@pytest.fixture(scope="session")
+def user_token(user_tokens) -> str:
+    return user_tokens["access_token"]
+
+
+@pytest.fixture(scope="session")
+def refresh_token(user_tokens) -> str:
+    return user_tokens["refresh_token"]
+
+
+@pytest.fixture(scope="session")
+def config_id(headers, llm_mock_base_url) -> int:
+    """创建一个 LLM 模型配置供 test_15/16/17 使用（api_key 非空触发探针 → 打本地 mock）"""
+    tag = random_string(4)
+    config_data = {
+        "model_type": "llm",
+        "protocol": "openai",
+        "model": f"test-model-{tag}",
+        "base_url": f"{llm_mock_base_url}/v1",
+        "api_key": f"sk-test-{tag}{'x' * 20}",
+    }
+    resp = safe_request(
+        "POST",
+        f"{BASE_URL}{API_PREFIX}/model-configs",
+        json=config_data,
+        headers=headers,
+    )
+    assert resp is not None and resp.status_code in (200, 201), (
+        f"创建模型配置失败：{resp.text if resp else '服务不可达'}"
+    )
+    return resp.json()["id"]
+
+
+@pytest.fixture(scope="session")
+def model_name(headers, llm_mock_base_url) -> str:
+    """创建一个独立模型配置，供 test_19 按模型名删除（自清理）"""
+    tag = random_string(4)
+    config_data = {
+        "model_type": "llm",
+        "protocol": "openai",
+        "model": f"test-model-{tag}",
+        "base_url": f"{llm_mock_base_url}/v1",
+        "api_key": f"sk-test-{tag}{'x' * 20}",
+    }
+    resp = safe_request(
+        "POST",
+        f"{BASE_URL}{API_PREFIX}/model-configs",
+        json=config_data,
+        headers=headers,
+    )
+    assert resp is not None and resp.status_code in (200, 201), (
+        f"创建模型配置失败：{resp.text if resp else '服务不可达'}"
+    )
+    return config_data["model"]
 
 
 def print_separator(title: str):
@@ -747,12 +911,13 @@ def test_15_get_model_config(headers: dict, config_id: int) -> dict | None:
 # ============================================================
 # 测试 16：更新模型配置
 # ============================================================
-def test_16_update_model_config(headers: dict, config_id: int) -> bool:
+def test_16_update_model_config(headers: dict, config_id: int, llm_mock_base_url) -> bool:
     """PUT /api/v1/user/model-configs/{config_id} — 更新模型配置"""
     print_separator("测试 16：更新模型配置")
 
+    # base_url 是连接字段：变更会触发创建期同款探针，故指向可达 mock 的 /v2 变体
     update_data = {
-        "base_url": f"https://updated-{random_string(4)}.test.com/v1",
+        "base_url": f"{llm_mock_base_url}/v2",
     }
     print(f"  请求: PUT /model-configs/{config_id}")
     print(f"  请求参数: {update_data}")
