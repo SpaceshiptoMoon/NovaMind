@@ -31,7 +31,7 @@ pytestmark = pytest.mark.integration
 # ==================== 基础配置 ====================
 
 BASE_URL = "http://127.0.0.1:8100"
-TIMEOUT_SHORT = 10
+TIMEOUT_SHORT = 30  # 真实 LLM 时代：创建/取消会等当前评测步完成（qwen-plus 单次调用可 >10s），10s 过紧
 TIMEOUT_POLL = 10
 MAX_POLL_ATTEMPTS = 60
 
