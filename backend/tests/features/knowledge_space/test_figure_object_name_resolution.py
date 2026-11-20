@@ -84,8 +84,11 @@ def _make_service(get_file_url=None):
     return svc
 
 
+# fake_redis 隔离缓存层：presign 走 get_or_load（真实 Redis 可达时跨用例
+# 污染——前用例缓存的 presigned.png 会让单失败用例读到非预期 URL），
+# 且不依赖机器 Redis 服务在线。
 @pytest.mark.asyncio
-async def test_presign_replaces_short_file_with_presigned_url():
+async def test_presign_replaces_short_file_with_presigned_url(fake_redis):
     svc = _make_service()
     content = "前文\n![Figure 1:fig-1](figure_1_fig-1_1.png)\n后文 ![Fig2](figure_2_fig-2_3.png)"
     out = await svc.presign_figure_links(_FakeDoc(), content)
@@ -96,7 +99,7 @@ async def test_presign_replaces_short_file_with_presigned_url():
 
 
 @pytest.mark.asyncio
-async def test_presign_keeps_content_without_figures_untouched():
+async def test_presign_keeps_content_without_figures_untouched(fake_redis):
     svc = _make_service()
     content = "普通文本，无图片链接"
     assert await svc.presign_figure_links(_FakeDoc(), content) == content
@@ -121,7 +124,7 @@ async def test_presign_missing_anchor_keeps_short_path():
 
 
 @pytest.mark.asyncio
-async def test_presign_single_failure_keeps_that_link_short():
+async def test_presign_single_failure_keeps_that_link_short(fake_redis):
     """单个签名失败只影响该链接（保持短路径），其余正常替换。"""
 
     async def flaky(bucket, object_name, expires):

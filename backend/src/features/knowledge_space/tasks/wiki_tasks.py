@@ -296,36 +296,39 @@ async def purge_wiki_ingest_jobs(document_id: int) -> list:
     import time
 
     import arq.constants as arq_constants
-    from novamind.shared.mq import get_arq_pool, get_queue_name
+    from novamind.shared.mq import get_arq_pool, get_light_queue_name, get_queue_name
 
     pool = await get_arq_pool()
-    queue_name = get_queue_name(pool)
+    # 双队列枚举：wiki ingest 住 arq:light（分槽后）；arq:queue 兼容分槽前
+    # 存量 pending job（分槽后无人消费，purge 一并手术清理）
+    queue_names = {get_queue_name(pool), get_light_queue_name()}
 
     purged: list = []
     now_ms = int(time.time() * 1000)
-    for raw_id in await pool.zrange(queue_name, 0, -1):
-        job_id = raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id)
-        job_def_raw = await pool.get(arq_constants.job_key_prefix + job_id)
-        if not job_def_raw:
-            continue
-        try:
-            job_def = pickle.loads(job_def_raw)
-        except Exception as e:
-            logger.warning("wiki job 定义反序列化失败，跳过", job_id=job_id, error=str(e))
-            continue
-        if job_def.get("f") != "process_wiki_ingest_task":
-            continue
-        if (job_def.get("k") or {}).get("document_id") != document_id:
-            continue
+    for queue_name in queue_names:
+        for raw_id in await pool.zrange(queue_name, 0, -1):
+            job_id = raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id)
+            job_def_raw = await pool.get(arq_constants.job_key_prefix + job_id)
+            if not job_def_raw:
+                continue
+            try:
+                job_def = pickle.loads(job_def_raw)
+            except Exception as e:
+                logger.warning("wiki job 定义反序列化失败，跳过", job_id=job_id, error=str(e))
+                continue
+            if job_def.get("f") != "process_wiki_ingest_task":
+                continue
+            if (job_def.get("k") or {}).get("document_id") != document_id:
+                continue
 
-        await pool.zadd(arq_constants.abort_jobs_ss, {job_id: now_ms})
-        await pool.zrem(queue_name, job_id)
-        await pool.delete(
-            arq_constants.job_key_prefix + job_id,
-            arq_constants.retry_key_prefix + job_id,
-            arq_constants.in_progress_key_prefix + job_id,
-        )
-        purged.append(job_id)
+            await pool.zadd(arq_constants.abort_jobs_ss, {job_id: now_ms})
+            await pool.zrem(queue_name, job_id)
+            await pool.delete(
+                arq_constants.job_key_prefix + job_id,
+                arq_constants.retry_key_prefix + job_id,
+                arq_constants.in_progress_key_prefix + job_id,
+            )
+            purged.append(job_id)
 
     if purged:
         logger.info("已清理文档 pending wiki 生成 job", document_id=document_id, purged=purged)
