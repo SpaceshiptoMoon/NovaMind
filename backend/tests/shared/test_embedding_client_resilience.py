@@ -522,3 +522,35 @@ def test_generate_embedding_sanitizes_single_text():
     sent = captured["input"]
     assert "\x00" not in sent and "\r" not in sent
     assert sent == "残留 文本\n第二行"
+
+
+# ---- 两阶段批间并发（2026-11-20 离线优化批次回归） ----
+
+
+def test_generate_embeddings_batch_preserves_order_out_of_order_completion():
+    """乱序完成必须保序：探针批最慢，两个 rest 批并发先行，结果仍按输入顺序拼接。"""
+    client = _make_client(batch_size=10)
+
+    finished = []
+
+    async def fake_generate_batch(batch_texts):
+        idx = int(batch_texts[0].split("_")[1])
+        if idx == 0:
+            await asyncio.sleep(0.05)  # 探针批最慢
+        elif idx == 10:
+            await asyncio.sleep(0.02)  # rest 批 1 次慢
+        finished.append(idx)
+        return [[idx]] * len(batch_texts)
+
+    client._generate_batch = fake_generate_batch
+
+    texts = [f"文本_{i}" for i in range(30)]
+    result = asyncio.run(client.generate_embeddings_batch(texts))
+
+    # 3 批（探针 0 + rest 10/20）：探针串行先行（两阶段设计）；完成序
+    # [0, 20, 10] = rest 批 20（无 sleep）反超慢的 rest 批 10 → 批间并发证据
+    # （串行旧实现完成序必为 [0, 10, 20]）
+    assert finished == [0, 20, 10], f"rest 批 20 应反超慢的 rest 批 10，实际: {finished}"
+    assert [r[0] for r in result] == [0] * 10 + [10] * 10 + [20] * 10, (
+        "乱序完成后结果必须按输入顺序拼接"
+    )

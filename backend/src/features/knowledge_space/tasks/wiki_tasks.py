@@ -408,16 +408,24 @@ async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:
         es_client = await ClientFactory.get_elasticsearch_client()
         sync_svc = WikiEsSyncService(session, es_client)
 
+        # 向量化一次批量生成（逐页单条调用在页多时是纯串行 HTTP 往返），
+        # 失败则整批跳过 embedding 由 sync_page 的无向量路径兜底
+        page_texts = [f"{p.title}\n{p.summary or ''}\n{(p.content or '')[:2000]}" for p in pages]
+        try:
+            vectors = await embedding_client.generate_embeddings_batch(page_texts)
+        except Exception as emb_err:
+            logger.warning("wiki 页批量 embedding 失败，本次同步不带向量", kb_id=kb_id, error=str(emb_err))
+            vectors = [[] for _ in pages]
+
         synced = 0
-        for p in pages:
-            text = f"{p.title}\n{p.summary or ''}\n{(p.content or '')[:2000]}"
+        for p, vector in zip(pages, vectors):
+            embedding = vector if vector else None
             try:
-                vector = await embedding_client.generate_embedding(text)
-                ok = await sync_svc.sync_page(space_id, p, embedding=vector)
+                ok = await sync_svc.sync_page(space_id, p, embedding=embedding)
                 if ok:
                     synced += 1
             except Exception as e:
-                logger.warning("wiki 页 embedding/同步失败", slug=p.slug, error=str(e))
+                logger.warning("wiki 页 ES 同步失败", slug=p.slug, error=str(e))
 
         if synced:
             await invalidate_kb_search_cache(kb_id)

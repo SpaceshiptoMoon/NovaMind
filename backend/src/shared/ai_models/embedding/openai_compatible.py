@@ -5,6 +5,7 @@ OpenAI 兼容 Embedding 客户端
 OpenAI、智谱 AI、阿里云 DashScope、硅基流动等
 """
 
+import asyncio
 import traceback
 
 import httpx
@@ -243,14 +244,19 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     async def generate_embeddings_batch(
         self, texts: list[str], batch_size: int | None = None
     ) -> list[list[float]]:
-        """批次生成文本嵌入向量
+        """批次生成文本嵌入向量（两阶段：首批探针学上限，其余批间并发）。
 
         batch_size 为 None 时使用构造器配置的 self.batch_size，
         避免方法默认值（10）与构造器默认值（32）语义脱节。
 
-        服务商返回批量条数超限类 400 时，自适应缩小批次重发
-        （不重试原批次——确定性参数错误重试同样失败），
-        并记住可用批大小供后续批次直接使用。
+        并发模型（两阶段）：
+        1. **首批串行探测**：首批批内消化批量条数超限类 400（自适应缩批重发，
+           不重试原批次——确定性参数错误重试同样失败），学到的服务商上限写入
+           _learned_batch_limit——一次 400 摊薄全部后续批次的成本；
+        2. **其余批次并发**：按已学上限预切固定边界，asyncio.gather 并发执行
+           （在飞请求数由 max_concurrent 信号量兜底），各批保留批内缩批兜底。
+           任一批非上限类错误直接抛出——文档级失败语义不变。结果按输入顺序
+           拼接（gather 保序）。
         """
         if not texts:
             return []
@@ -259,33 +265,65 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         # 历史学到的上限优先（跨调用/跨文档复用，避免每文档重复付一次 400）
         if self._learned_batch_limit is not None:
             effective_batch_size = min(effective_batch_size, self._learned_batch_limit)
-        embeddings = []
-        i = 0
-        while i < len(texts):
-            batch_texts = texts[i : i + effective_batch_size]
-            try:
-                batch_embeddings = await self._generate_batch(batch_texts)
-            except openai.BadRequestError as e:
-                limit = self._batch_limit_from_error(e)
-                if limit is None or limit >= effective_batch_size or limit < 1:
-                    raise
-                logger.warning(
-                    "批量条数超过服务商上限，自适应缩小批次",
-                    model=self.model,
-                    old_batch_size=effective_batch_size,
-                    new_batch_size=limit,
-                    error=str(e),
-                )
-                effective_batch_size = limit
-                self._learned_batch_limit = (
-                    limit
-                    if self._learned_batch_limit is None
-                    else min(self._learned_batch_limit, limit)
-                )
-                continue
-            embeddings.extend(batch_embeddings)
-            i += len(batch_texts)
 
+        async def _consume_range(cursor: int, end: int, size: int, *, stop_on_shrink: bool = False) -> tuple[list[list[float]], int]:
+            """消费 [cursor, end) 区间：上限类 400 批内自适应缩批重发。
+
+            返回 (embeddings, 消费游标)——游标是下一未消费文本的下标。探针
+            stop_on_shrink=True 时缩批后停止，游标可能 < end（剩余交还调用方
+            按新学到的上限重新切分）；并发阶段各批耗尽自身切片，游标 == end。
+            """
+            local_limit = size
+            out: list[list[float]] = []
+            shrunk = False
+            while cursor < end:
+                batch_texts = texts[cursor : min(cursor + local_limit, end)]
+                try:
+                    batch_embeddings = await self._generate_batch(batch_texts)
+                except openai.BadRequestError as e:
+                    limit = self._batch_limit_from_error(e)
+                    if limit is None or limit >= local_limit or limit < 1:
+                        raise
+                    logger.warning(
+                        "批量条数超过服务商上限，自适应缩小批次",
+                        model=self.model,
+                        old_batch_size=local_limit,
+                        new_batch_size=limit,
+                        error=str(e),
+                    )
+                    local_limit = limit
+                    self._learned_batch_limit = (
+                        limit
+                        if self._learned_batch_limit is None
+                        else min(self._learned_batch_limit, limit)
+                    )
+                    shrunk = True
+                    continue
+                out.extend(batch_embeddings)
+                cursor += len(batch_texts)
+                if shrunk and stop_on_shrink:
+                    break
+            return out, cursor
+
+        # 阶段一：首批串行探针（学上限；缩批后立即停，剩余交还阶段二按新上限切分）
+        first_end = min(effective_batch_size, len(texts))
+        embeddings, probe_cursor = await _consume_range(
+            0, first_end, effective_batch_size, stop_on_shrink=True
+        )
+
+        # 阶段二：其余文本按已学上限预切，批间并发。起点 = 探针实际消费游标
+        # （缩批路径下 < first_end，旧窗口边界内的未消费文本从这里补齐）
+        learned = self._learned_batch_limit or effective_batch_size
+        rest_tasks = [
+            _consume_range(start, min(start + learned, len(texts)), learned)
+            for start in range(probe_cursor, len(texts), learned)
+        ]
+        if rest_tasks:
+            rest_results = await asyncio.gather(*rest_tasks)
+            # rest_results 每项是 (embeddings, cursor) 元组——展平只取嵌入列表
+            embeddings.extend(
+                emb for batch_out, _ in rest_results for emb in batch_out
+            )
         return embeddings
 
     @staticmethod

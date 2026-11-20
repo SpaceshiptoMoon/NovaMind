@@ -219,12 +219,17 @@ class QuestionGenerationService:
         chunks: list[tuple[str, str | None]],
         raise_on_error: bool = False,
         batch_size: int = 3,
+        max_concurrent_batches: int = 4,
     ) -> tuple[list[list[GeneratedQuestion]], BatchGenerationStats]:
         """
         批量为多个分块生成假设问题
 
         将多个 chunk 打包进一次 LLM 调用，减少 API 调用次数。
         N 个 chunk → ceil(N/batch_size) 次 LLM 调用。
+
+        批间有界并发（max_concurrent_batches 兜底，防触发服务商限流）：
+        批与批之间无数据依赖，results 按索引回填、stats 在单线程事件循环
+        内累加——并发安全。
 
         重试策略分层（失败方向安全：能力缺失而非错误结果）：
         1. 批内重试：单次调用超时/解析为空 → 最多 MAX_BATCH_ATTEMPTS 轮，
@@ -236,6 +241,7 @@ class QuestionGenerationService:
             chunks: 分块列表，每个元素是 (content, title) 元组
             raise_on_error: 是否在错误时抛出异常
             batch_size: 每次 LLM 调用包含的 chunk 数量
+            max_concurrent_batches: 批间并发上限
 
         Returns:
             (每个分块对应的问题列表, 批次级统计) — 统计供节点 metrics 透出
@@ -254,72 +260,79 @@ class QuestionGenerationService:
         results: list[list[GeneratedQuestion]] = [[] for _ in chunks]
         stats = BatchGenerationStats(batches_total=(len(chunks) + batch_size - 1) // batch_size)
         total_start = _time.monotonic()
+        semaphore = asyncio.Semaphore(max(1, max_concurrent_batches))
 
-        for batch_start in range(0, len(chunks), batch_size):
+        async def _process_batch(batch_start: int) -> None:
             batch = chunks[batch_start:batch_start + batch_size]
             batch_start_time = _time.monotonic()
-            try:
-                batch_questions, batch_signals = await self._generate_batch_questions(
-                    llm_client, batch, temperature, top_p, max_tokens,
-                )
-                if batch_signals.get("timed_out"):
-                    stats.timeout_batches += 1
-                for i, questions in enumerate(batch_questions):
-                    results[batch_start + i] = questions
-                batch_elapsed = _time.monotonic() - batch_start_time
-
-                if all(len(qs) == 0 for qs in batch_questions):
-                    # 批内重试全失败 → 逐块降级：prompt 更短、成功率高，成功一块救一块
-                    recovered = await self._degrade_to_single_chunks(
-                        llm_client, batch, temperature, top_p, max_tokens,
-                    )
-                    any_recovered = any(len(qs) > 0 for qs in recovered)
-                    stats.degraded_batches += 1 if any_recovered else 0
-                    # 降级后仍有空块即计失败批次（部分恢复的缺口比全失败更隐蔽，
-                    # 必须在 metrics 可见——doc787 教训：total=20 掩盖 12 块为空）
-                    stats.batches_failed += 1 if any(len(qs) == 0 for qs in recovered) else 0
-                    for i, questions in enumerate(recovered):
-                        results[batch_start + i] = questions
-                    self.logger.warning(
-                        "批量问题生成：批内重试耗尽，逐块降级完成",
-                        batch_start=batch_start,
-                        batch_size=len(batch),
-                        recovered_chunks=sum(1 for qs in recovered if qs),
-                        elapsed_s=round(_time.monotonic() - batch_start_time, 1),
-                    )
-                else:
-                    self.logger.info(
-                        "批量问题生成：批次成功",
-                        batch_start=batch_start,
-                        batch_size=len(batch),
-                        elapsed_s=round(batch_elapsed, 1),
-                    )
-            except Exception as e:
-                # _generate_batch_questions 只在 raise 场景（LLM 客户端持续异常）到达这里；
-                # 逐块降级兜一次底，把影响面从整批缩小到单块
-                self.logger.error(
-                    "批量问题生成失败，尝试逐块降级",
-                    error=str(e),
-                    batch_start=batch_start,
-                )
+            async with semaphore:
                 try:
-                    recovered = await self._degrade_to_single_chunks(
+                    batch_questions, batch_signals = await self._generate_batch_questions(
                         llm_client, batch, temperature, top_p, max_tokens,
                     )
-                    any_recovered = any(len(qs) > 0 for qs in recovered)
-                    stats.degraded_batches += 1 if any_recovered else 0
-                    stats.batches_failed += 1 if any(len(qs) == 0 for qs in recovered) else 0
-                    for i, questions in enumerate(recovered):
+                    if batch_signals.get("timed_out"):
+                        stats.timeout_batches += 1
+                    for i, questions in enumerate(batch_questions):
                         results[batch_start + i] = questions
-                except Exception as degrade_err:
-                    stats.batches_failed += 1
+                    batch_elapsed = _time.monotonic() - batch_start_time
+
+                    if all(len(qs) == 0 for qs in batch_questions):
+                        # 批内重试全失败 → 逐块降级：prompt 更短、成功率高，成功一块救一块
+                        recovered = await self._degrade_to_single_chunks(
+                            llm_client, batch, temperature, top_p, max_tokens,
+                        )
+                        any_recovered = any(len(qs) > 0 for qs in recovered)
+                        stats.degraded_batches += 1 if any_recovered else 0
+                        # 降级后仍有空块即计失败批次（部分恢复的缺口比全失败更隐蔽，
+                        # 必须在 metrics 可见——doc787 教训：total=20 掩盖 12 块为空）
+                        stats.batches_failed += 1 if any(len(qs) == 0 for qs in recovered) else 0
+                        for i, questions in enumerate(recovered):
+                            results[batch_start + i] = questions
+                        self.logger.warning(
+                            "批量问题生成：批内重试耗尽，逐块降级完成",
+                            batch_start=batch_start,
+                            batch_size=len(batch),
+                            recovered_chunks=sum(1 for qs in recovered if qs),
+                            elapsed_s=round(_time.monotonic() - batch_start_time, 1),
+                        )
+                    else:
+                        self.logger.info(
+                            "批量问题生成：批次成功",
+                            batch_start=batch_start,
+                            batch_size=len(batch),
+                            elapsed_s=round(batch_elapsed, 1),
+                        )
+                except Exception as e:
+                    # _generate_batch_questions 只在 raise 场景（LLM 客户端持续异常）到达这里；
+                    # 逐块降级兜一次底，把影响面从整批缩小到单块
                     self.logger.error(
-                        "逐块降级也失败，该批留空",
+                        "批量问题生成失败，尝试逐块降级",
+                        error=str(e),
                         batch_start=batch_start,
-                        error=str(degrade_err),
                     )
-                    if raise_on_error:
-                        raise
+                    try:
+                        recovered = await self._degrade_to_single_chunks(
+                            llm_client, batch, temperature, top_p, max_tokens,
+                        )
+                        any_recovered = any(len(qs) > 0 for qs in recovered)
+                        stats.degraded_batches += 1 if any_recovered else 0
+                        stats.batches_failed += 1 if any(len(qs) == 0 for qs in recovered) else 0
+                        for i, questions in enumerate(recovered):
+                            results[batch_start + i] = questions
+                    except Exception as degrade_err:
+                        stats.batches_failed += 1
+                        self.logger.error(
+                            "逐块降级也失败，该批留空",
+                            batch_start=batch_start,
+                            error=str(degrade_err),
+                        )
+                        if raise_on_error:
+                            raise
+
+        # 批间有界并发（语义同串行版：批内独立消化重试与降级，失败留空计 metrics）
+        await asyncio.gather(
+            *(_process_batch(batch_start) for batch_start in range(0, len(chunks), batch_size))
+        )
 
         self.logger.info(
             "批量问题生成完成",
