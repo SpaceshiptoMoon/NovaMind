@@ -152,13 +152,24 @@ class AppLifespanManager:
 
             # 双队列分槽：文档解析（长时重 IO/VLM，单个 2GB 视频可占槽 2 小时）
             # 与 wiki/叙事/cron 轻任务隔离——混载时轻任务与定时任务会饿尾。
-            # 解析组沿用原队列名（arq:queue），存量 pending job 无迁移问题。
-            await start_embedded_worker(
-                functions=[
-                    process_document_task,
-                ],
-                task_queue=config.task_queue,
-            )
+            # backend=stream 时解析管道由独立 stream worker 消费，API 进程
+            # 不再启动解析组 arq worker（轻任务/cron 仍走 arq:light）。
+            if config.task_queue.backend != "stream":
+                await start_embedded_worker(
+                    functions=[
+                        process_document_task,
+                    ],
+                    task_queue=config.task_queue,
+                )
+                self.logger.info(
+                    "解析组 arq Worker 已启动",
+                    queue=config.task_queue.queue_name,
+                )
+            else:
+                self.logger.info(
+                    "解析管道派发后端为 stream，跳过解析组 arq Worker",
+                    stream=config.task_queue.parse_stream_key,
+                )
             import dataclasses as _dataclasses
 
             light_queue = _dataclasses.replace(

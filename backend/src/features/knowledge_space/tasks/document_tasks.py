@@ -25,6 +25,13 @@ def _get_task_queue_max_tries() -> int:
     return get_config().task_queue.max_tries
 
 
+def _get_task_backend() -> str:
+    """解析管道派发后端（task_queue.backend：arq | stream）。"""
+    from novamind.setting.yaml_config import get_config
+
+    return get_config().task_queue.backend
+
+
 def _get_task_queue_retry_delay_seconds() -> int:
     """统一读取任务队列重试间隔。"""
     from novamind.setting.yaml_config import get_config
@@ -1209,15 +1216,30 @@ async def enqueue_process_document(
         # 若 enqueue 失败，rollback 撤销两者；若先 commit 再 enqueue 失败，
         # 会留下永远拿不到 job_id 的 PENDING 孤儿任务（无恢复路径）。
         # enqueue 成功后进程在 commit 前崩溃 → job 运行时发现任务不存在，正常跳过。
-        job = await pool.enqueue_job(
-            "process_document_task",
-            document_id=document_id,
-            kb_id=kb_id,
-            space_id=space_id,
-            trace_id=trace_id,
-        )
+        if _get_task_backend() == "stream":
+            # stream 派发：消息只带 ID 信封（配置快照等已在任务行），
+            # message_id 回写 job_id 列保持审计链
+            from novamind.shared.mq.stream_queue import xadd_parse_task
 
-        job_id = job.job_id
+            message_id = await xadd_parse_task(pool, {
+                "task_id": task.id,
+                "document_id": document_id,
+                "kb_id": kb_id,
+                "space_id": space_id,
+                "process_mode": process_mode,
+                "retry_count": retry_count,
+                "trace_id": trace_id,
+            })
+            job_id = message_id
+        else:
+            job = await pool.enqueue_job(
+                "process_document_task",
+                document_id=document_id,
+                kb_id=kb_id,
+                space_id=space_id,
+                trace_id=trace_id,
+            )
+            job_id = job.job_id
         task.job_id = job_id
         await session.commit()
     except Exception:

@@ -70,6 +70,12 @@ class DocumentTaskService:
         )
         from novamind.shared.mq import get_arq_pool
 
+        # stream 后端下任务不在 arq 队列——由任务行状态判定（与 arq 路径的
+        # job_info 探测同语义：活跃任务存在即 in_progress）
+        if self._task_backend() == "stream":
+            task_repo = DocumentTaskRepository(self.session)
+            active = await task_repo.get_active_by_document_id(document_id)
+            return "in_progress" if active else "not_found"
 
         job_id = await get_job_id_for_document(document_id)
         if not job_id:
@@ -188,7 +194,8 @@ class DocumentTaskService:
         active_task.mark_cancelled()
 
         job_id = await get_job_id_for_document(document_id)
-        if job_id:
+        if job_id and self._task_backend() == "arq":
+            # stream 后端无 arq job 可 abort（排队中消息由认领门控按 CANCELLED 丢弃）
             try:
                 pool = await get_arq_pool()
                 await pool.abort_job(job_id)
@@ -566,8 +573,48 @@ class DocumentTaskService:
             batch_data=batch_data,
         )
 
+    def _task_backend(self) -> str:
+        """解析管道派发后端（task_queue.backend：arq | stream）。"""
+        from novamind.setting.yaml_config import get_config
+
+        return get_config().task_queue.backend
+
     async def _enqueue_precreated_tasks(self, tasks: list["DocumentTask"]) -> dict[int, str]:
         """批量入队已预创建的任务项：enqueue 失败回滚入队映射，并返回各文档的 job ID。"""
+        from novamind.shared.mq import get_arq_pool
+
+        if not tasks:
+            return {}
+
+        backend = self._task_backend()
+
+        if backend == "stream":
+            from novamind.shared.mq.stream_queue import xadd_parse_task
+
+            pool = await get_arq_pool()
+            enqueued: list[tuple[int, int, str]] = []
+            try:
+                for task in tasks:
+                    message_id = await xadd_parse_task(pool, {
+                        "task_id": task.id,
+                        "document_id": task.document_id,
+                        "kb_id": task.kb_id,
+                        "space_id": task.space_id,
+                        "process_mode": int(task.process_mode or 0),
+                        "retry_count": int(task.retry_count or 0),
+                        "trace_id": _current_trace_id(),
+                    })
+                    from novamind.core.middleware import metrics as pipeline_metrics
+                    pipeline_metrics.inc("tasks_enqueued")
+                    task.job_id = message_id
+                    enqueued.append((task.id, task.document_id, message_id))
+
+                await self.session.commit()
+                return {task_id: job_id for task_id, _, job_id in enqueued}
+            except Exception:
+                await self.session.rollback()
+                raise
+
         from arq.jobs import Job
         from novamind.features.knowledge_space.services.document_task_tracking import (
             bind_job_to_document,
@@ -575,9 +622,6 @@ class DocumentTaskService:
         )
         from novamind.shared.mq import get_arq_pool
 
-
-        if not tasks:
-            return {}
 
         pool = await get_arq_pool()
         enqueued: list[tuple[int, int, str]] = []
