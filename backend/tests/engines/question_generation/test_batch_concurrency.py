@@ -139,3 +139,14 @@ async def test_degrade_semantics_preserved_under_concurrency():
         else:
             assert qs == []
     assert stats.degraded_batches == 3
+
+
+def test_batch_prompt_truncation_aligned_with_single_path():
+    """批量 prompt 的单 chunk 截断与单块降级路径同上限（3000）——
+    超长 chunk 尾部信息点也能进批量生成（1000 上限曾造成批量覆盖面
+    反而比逐块降级更窄的质量倒挂）。"""
+    service = _make_service()
+    long_content = "长" * 5000
+    prompt = service._build_batch_prompt([(long_content, None)])
+    assert "长" * 3000 in prompt
+    assert "长" * 3001 not in prompt, "批量路径截断上限应为 3000（对齐单块路径）"

@@ -53,6 +53,13 @@ class PromptTemplate(Enum):
     EVAL_GENERATE_ANSWER = "eval_generate_answer"
     # kb-ops 矛盾检测（evaluation_prompts.py）
     KB_OPS_CONTRADICTION_CHECK = "kb_ops_contradiction_check"
+    # 失败用例归因判定（evaluation_prompts.py，AttributionAnalyzer 消费）
+    EVAL_ATTR_SCOPE_CHECK = "eval_attr_scope_check"
+    EVAL_ATTR_ANSWER_COMPARE = "eval_attr_answer_compare"
+    EVAL_ATTR_SEMANTIC_MATCH = "eval_attr_semantic_match"
+    EVAL_ATTR_FAITHFULNESS_CHECK = "eval_attr_faithfulness_check"
+    EVAL_ATTR_CONTEXT_SUFFICIENCY = "eval_attr_context_sufficiency"
+    EVAL_ATTR_SOURCE_COMPARE = "eval_attr_source_compare"
 
     # ==================== Wiki 生成（knowledge_space prompts/templates.py 子模块） ====================
     WIKI_TAXONOMY_PLAN_USER = "wiki_taxonomy_plan_user"

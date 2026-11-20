@@ -526,8 +526,10 @@ class QuestionGenerationService:
         count = self.config.max_questions_per_chunk
         sections = []
         for i, (content, _) in enumerate(batch):
-            # 截取前 1000 字符，足够提取核心信息点
-            sections.append(f"### 分块 {i + 1}\n{content[:1000]}")
+            # 截取前 3000 字符，与单块降级路径（_build_prompt）同上限——
+            # 超 1000 字符的分块尾部信息点也能进问题（1000 上限曾造成
+            # 「批量生成的覆盖面反而比逐块降级更窄」的质量倒挂）
+            sections.append(f"### 分块 {i + 1}\n{content[:3000]}")
 
         chunks_text = "\n\n".join(sections)
 
