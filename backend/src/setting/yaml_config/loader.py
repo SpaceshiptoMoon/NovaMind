@@ -376,6 +376,17 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
         max_tries=tq.get("max_tries", 3),
         retry_base_delay=tq.get("retry_base_delay", 60),
         queue_name=tq.get("queue_name", "arq:queue"),
+        light_queue_name=tq.get("light_queue_name", "arq:light"),
+        light_max_jobs=tq.get("light_max_jobs", 2),
+        backend=tq.get("backend", "arq"),
+        parse_stream_key=tq.get("parse_stream_key", "nm:parse:tasks"),
+        parse_stream_group=tq.get("parse_stream_group", "parse-workers"),
+        parse_delayed_key=tq.get("parse_delayed_key", "nm:parse:delayed"),
+        parse_block_ms=tq.get("parse_block_ms", 5000),
+        parse_max_concurrency=tq.get("parse_max_concurrency", 2),
+        parse_heartbeat_ttl=tq.get("parse_heartbeat_ttl", 90),
+        parse_claim_idle_ms=tq.get("parse_claim_idle_ms", 300_000),
+        parse_reaper_interval=tq.get("parse_reaper_interval", 60),
     )
 
     ko = data.get("knowledge_ops", {})

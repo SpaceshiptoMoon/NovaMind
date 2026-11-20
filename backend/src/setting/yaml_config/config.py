@@ -361,6 +361,10 @@ class TaskQueueConfig:
     双队列分槽：queue_name 承载文档解析（长时重 IO/VLM），light_queue_name
     承载 wiki/叙事等轻任务与 cron——一个 2GB 长视频可占满解析槽位 2 小时
     （job_timeout），混载会让轻任务与定时任务饿尾。
+
+    backend 切换解析管道派发层：``arq``（默认，嵌入式 worker）或 ``stream``
+    （Redis Stream 消费组 + 独立 worker 进程）。stream 相关字段仅在
+    backend=stream 时消费。
     """
     max_jobs: int = 3
     # 7200 对齐 default.example 模板值：2GB 级视频全链路（VLM 逐帧 + ASR + 切分
@@ -371,6 +375,18 @@ class TaskQueueConfig:
     queue_name: str = "arq:queue"
     light_queue_name: str = "arq:light"
     light_max_jobs: int = 2
+
+    # 解析管道派发后端（arq | stream）
+    backend: str = "arq"
+    parse_stream_key: str = "nm:parse:tasks"
+    parse_stream_group: str = "parse-workers"
+    parse_delayed_key: str = "nm:parse:delayed"
+    parse_block_ms: int = 5000
+    parse_max_concurrency: int = 2
+    # 心跳 TTL 必须大于刷新间隔（30s 刷新 × 3 倍余量）
+    parse_heartbeat_ttl: int = 90
+    parse_claim_idle_ms: int = 300_000
+    parse_reaper_interval: int = 60
 
 
 @dataclass
