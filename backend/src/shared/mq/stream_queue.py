@@ -88,16 +88,28 @@ async def xreadgroup_parse(pool, consumer: str, count: int, block_ms: int) -> li
     out: list[tuple[str, dict[str, Any]]] = []
     for _stream, entries in result:
         for message_id, fields in entries:
-            raw = fields.get(_STREAM_FIELD) if isinstance(fields, dict) else None
-            if raw is None and isinstance(fields, (list, tuple)):
-                # redis-py decode_responses=False 时 fields 是 [(k, v), ...]
-                raw = next((v for k, v in fields if k == _STREAM_FIELD), None)
+            # redis-py decode_responses=False 时 keys/values 可能是 bytes——
+            # 统一解码为 str 后再查（_STREAM_FIELD 是 str）
+            if isinstance(fields, dict):
+                fields = {
+                    (k.decode("utf-8") if isinstance(k, bytes) else k):
+                    (v.decode("utf-8") if isinstance(v, bytes) else v)
+                    for k, v in fields.items()
+                }
+            elif isinstance(fields, (list, tuple)):
+                fields = {
+                    (k.decode("utf-8") if isinstance(k, bytes) else k):
+                    (v.decode("utf-8") if isinstance(v, bytes) else v)
+                    for k, v in fields
+                }
+            raw = fields.get(_STREAM_FIELD)
+            mid = message_id.decode("utf-8") if isinstance(message_id, bytes) else str(message_id)
             try:
-                out.append((message_id, _load_payload(raw)))
+                out.append((mid, _load_payload(raw)))
             except Exception as e:  # 载荷损坏：跳过并告警，不阻塞消费循环
                 logger.warning(
                     "stream 消息载荷解析失败，跳过",
-                    message_id=str(message_id),
+                    message_id=mid,
                     error=str(e),
                 )
     return out

@@ -14,14 +14,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from novamind.shared.logging import get_logger, setup_structured_logging
+from novamind.shared.logging import get_logger
 
 
 async def main() -> None:
     from novamind.setting.yaml_config import get_config
 
     config = get_config()
-    setup_structured_logging()
     logger = get_logger("parse_worker")
 
     if config.task_queue.backend != "stream":
@@ -32,7 +31,7 @@ async def main() -> None:
         return
 
     # ---- 初始化链（API 必需子集） ----
-    from novamind.core.security.encryption import configure_encryption_key
+    from novamind.shared.utils.crypto import configure_encryption_key
 
     configure_encryption_key(config.security.encryption_key)
 
@@ -54,10 +53,11 @@ async def main() -> None:
     )
 
     stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
 
+    # Windows 兼容：loop.add_signal_handler 在 ProactorEventLoop 上不支持，
+    # 用 signal.signal() 注册（stop_event.set() 是同步操作，信号处理线程安全）
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, stop_event.set)
+        signal.signal(sig, lambda s, f: stop_event.set())
 
     tasks = [
         asyncio.create_task(run_parse_consumer(stop_event)),

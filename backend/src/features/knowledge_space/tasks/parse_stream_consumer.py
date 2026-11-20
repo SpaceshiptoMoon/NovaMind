@@ -189,7 +189,7 @@ async def _heartbeat_loop(task_id: int, pool) -> None:
         logger.warning("心跳刷新异常（终态标记靠 reaper 兜底）", task_id=task_id, error=str(e))
 
 
-async def run_reaper(stop_event: asyncio.Event, pool) -> None:
+async def run_reaper(stop_event: asyncio.Event) -> None:
     """reaper：扫 PROCESSING 且心跳过期的任务 → 重派或终判（每分钟一轮）。
 
     补上现有"仅启动时恢复"的缺口：白天 crash 的任务不再搁浅到下次重启。
@@ -199,6 +199,7 @@ async def run_reaper(stop_event: asyncio.Event, pool) -> None:
         DocumentTaskRepository,
     )
     from novamind.setting.yaml_config import get_config
+    from novamind.shared.mq import get_arq_pool
     from novamind.shared.mq.stream_queue import (
         parse_heartbeat_key,
         xack_parse,
@@ -207,13 +208,14 @@ async def run_reaper(stop_event: asyncio.Event, pool) -> None:
 
     cfg = get_config().task_queue
     interval = cfg.parse_reaper_interval
+    pool = await get_arq_pool()
     max_tries = cfg.max_tries
 
     while not stop_event.is_set():
         try:
             async with get_db_session() as session:
                 repo = DocumentTaskRepository(session)
-                stale = await repo.list_processing_tasks()
+                stale = await repo.get_processing_tasks()
                 for task in stale:
                     key = parse_heartbeat_key(task.id)
                     if await pool.exists(key):
