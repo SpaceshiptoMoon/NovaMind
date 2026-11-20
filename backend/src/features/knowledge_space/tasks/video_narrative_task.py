@@ -61,7 +61,7 @@ async def enqueue_narrative_synthesis(
     user_id: int | None = None,
 ) -> str | None:
     """入队叙事合成任务（fire-and-forget：解析完成路径不因入队失败阻断）。"""
-    from novamind.shared.mq import get_arq_pool
+    from novamind.shared.mq import get_arq_pool, get_light_queue_name
 
     try:
         pool = await get_arq_pool()
@@ -69,6 +69,7 @@ async def enqueue_narrative_synthesis(
             "process_narrative_task",
             space_id=space_id, kb_id=kb_id, document_id=document_id,
             llm_model=llm_model, user_id=user_id,
+            _queue_name=get_light_queue_name(),
         )
         logger.info(
             "视频叙事合成已入队", kb_id=kb_id, document_id=document_id,

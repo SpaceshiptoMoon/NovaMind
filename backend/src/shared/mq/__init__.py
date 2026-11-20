@@ -49,6 +49,18 @@ def get_queue_name(pool) -> str:
     return pool.default_queue_name
 
 
+def get_light_queue_name() -> str:
+    """轻任务队列名（wiki/叙事/cron 分槽队列）。
+
+    与 worker 侧（startup_manager 构造 light worker 时读同一配置字段）同源；
+    enqueue 调用点经 ``enqueue_job(..., _queue_name=get_light_queue_name())``
+    显式指定，避免落默认解析队列与长时任务共槽。
+    """
+    from novamind.setting.yaml_config import get_config
+
+    return get_config().task_queue.light_queue_name
+
+
 async def close_arq_pool() -> None:
     """关闭 arq 连接池（不关闭底层 Redis 连接池，由 RedisCache 自行管理）"""
     global _arq_pool

@@ -276,13 +276,17 @@ class ElasticsearchClient:
         space_id: int,
         chunks: list[dict[str, Any]],
         embedding_dim: int | None = None,
+        batch_size: int = 250,
     ) -> int:
-        """批量索引分块（bulk 写入，逐条统计成败）。
+        """批量索引分块（分批 bulk 写入，逐条统计成败）。
 
         Args:
             space_id: 空间 ID。
             chunks: 分块 dict 列表，每项须含 chunk_id 键。
             embedding_dim: 向量维度；必须显式传入（不兜底、不从向量长度推断），缺失即抛错。
+            batch_size: 每批 bulk 的 chunk 数（每 chunk 2 条 action，含 1024 维向量
+                时单请求体可达数百 KB~MB 级；分批防逼近 http.max_content_length
+                且把失败重试粒度从整文档缩到单批）。
 
         Returns:
             成功写入的分块数（整体异常降级返回 0）。
@@ -307,38 +311,45 @@ class ElasticsearchClient:
         index_name = await self.ensure_index_exists(
             space_id, embedding_dim=embedding_dim
         )
-        actions = []
-        for chunk in chunks:
-            actions.append({"index": {"_index": index_name, "_id": chunk["chunk_id"]}})
-            actions.append(chunk)
-
+        effective_batch = max(1, int(batch_size))
+        success_total = 0
         try:
-            result = await self.es_client.bulk(operations=actions)
-            success = len(
-                [
-                    r
-                    for r in result.get("items", [])
-                    if r.get("index", {}).get("status") in (200, 201)
-                ]
-            )
-            errors = [
-                r for r in result.get("items", [])
-                if r.get("index", {}).get("status") not in (200, 201)
-            ]
-            if errors:
-                logger.error(
-                    "批量索引部分失败",
-                    index=index_name,
-                    success=success,
-                    failed=len(errors),
-                    first_error=errors[0] if errors else None,
+            for start in range(0, len(chunks), effective_batch):
+                batch = chunks[start : start + effective_batch]
+                actions = []
+                for chunk in batch:
+                    actions.append({"index": {"_index": index_name, "_id": chunk["chunk_id"]}})
+                    actions.append(chunk)
+
+                result = await self.es_client.bulk(operations=actions)
+                batch_success = len(
+                    [
+                        r
+                        for r in result.get("items", [])
+                        if r.get("index", {}).get("status") in (200, 201)
+                    ]
                 )
-            else:
-                logger.info("批量索引分块成功", index=index_name, count=success)
-            return success
+                success_total += batch_success
+                errors = [
+                    r for r in result.get("items", [])
+                    if r.get("index", {}).get("status") not in (200, 201)
+                ]
+                if errors:
+                    logger.error(
+                        "批量索引部分失败",
+                        index=index_name,
+                        batch=f"{start // effective_batch + 1}/"
+                        f"{(len(chunks) + effective_batch - 1) // effective_batch}",
+                        success=batch_success,
+                        failed=len(errors),
+                        first_error=errors[0] if errors else None,
+                    )
+            if success_total == len(chunks):
+                logger.info("批量索引分块成功", index=index_name, count=success_total)
+            return success_total
         except Exception as e:
             logger.error("批量索引分块失败", index=index_name, error=str(e))
-            return 0
+            return success_total
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> dict[str, Any] | None:
         """按 chunk_id 读取分块原文；不存在或异常均返回 None。

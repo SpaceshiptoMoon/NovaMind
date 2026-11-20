@@ -149,9 +149,25 @@ class AppLifespanManager:
                 process_wiki_retract_task,
             )
             from novamind.shared.mq.worker import start_embedded_worker
+
+            # 双队列分槽：文档解析（长时重 IO/VLM，单个 2GB 视频可占槽 2 小时）
+            # 与 wiki/叙事/cron 轻任务隔离——混载时轻任务与定时任务会饿尾。
+            # 解析组沿用原队列名（arq:queue），存量 pending job 无迁移问题。
             await start_embedded_worker(
                 functions=[
                     process_document_task,
+                ],
+                task_queue=config.task_queue,
+            )
+            import dataclasses as _dataclasses
+
+            light_queue = _dataclasses.replace(
+                config.task_queue,
+                queue_name=config.task_queue.light_queue_name,
+                max_jobs=config.task_queue.light_max_jobs,
+            )
+            await start_embedded_worker(
+                functions=[
                     process_wiki_ingest_task,
                     process_wiki_retract_task,
                     # 视频叙事文档合成（kb 开启 narrative_synthesis 或 API 按需触发）
@@ -165,7 +181,7 @@ class AppLifespanManager:
                     # kb-ops backlog：质量基线自动跑批（YAML quality_baseline_enabled 默认关）
                     run_quality_baseline,
                 ],
-                task_queue=config.task_queue,
+                task_queue=light_queue,
                 cron_jobs=[
                     # 孤儿分片暂存清理：每天 03:41（Redis TTL 丢失窗口兜底，mtime 超 2×TTL）
                     cron(cleanup_stale_parts, hour=3, minute=41),
@@ -179,7 +195,11 @@ class AppLifespanManager:
                     cron(run_quality_baseline, weekday=5, hour=6, minute=41),
                 ],
             )
-            self.logger.info("嵌入式 arq Worker 已启动")
+            self.logger.info(
+                "嵌入式 arq Worker 已启动",
+                parse_queue=config.task_queue.queue_name,
+                light_queue=light_queue.queue_name,
+            )
 
             # 恢复孤儿文档（PROCESSING 状态的文档重新入队）
             recovered_docs = await recover_orphan_documents()

@@ -101,13 +101,14 @@ async def process_wiki_ingest_task(
                 )
                 await _mark_defer_wait(kb_id, document_id, defer_seconds)
                 try:
-                    from novamind.shared.mq import get_arq_pool
+                    from novamind.shared.mq import get_arq_pool, get_light_queue_name
 
                     pool = await get_arq_pool()
                     await pool.enqueue_job(
                         "process_wiki_ingest_task",
                         kb_id=kb_id, space_id=space_id, document_id=document_id,
                         _defer_by=defer_seconds,
+                        _queue_name=get_light_queue_name(),
                     )
                 except Exception as enq_err:
                     logger.warning(
@@ -531,7 +532,7 @@ async def enqueue_wiki_ingest(
     from novamind.features.knowledge_space.repository.wiki_repository import (
         WikiIngestRecordRepository,
     )
-    from novamind.shared.mq import get_arq_pool
+    from novamind.shared.mq import get_arq_pool, get_light_queue_name
 
     pool = await get_arq_pool()
 
@@ -550,6 +551,7 @@ async def enqueue_wiki_ingest(
             job = await pool.enqueue_job(
                 "process_wiki_ingest_task",
                 kb_id=kb_id, space_id=space_id, document_id=document_id,
+                _queue_name=get_light_queue_name(),
             )
         except Exception:
             await session.rollback()
@@ -621,13 +623,14 @@ async def enqueue_wiki_retract(
     Returns:
         入队成功返回 job ID；失败告警并返回 None。
     """
-    from novamind.shared.mq import get_arq_pool
+    from novamind.shared.mq import get_arq_pool, get_light_queue_name
 
     try:
         pool = await get_arq_pool()
         job = await pool.enqueue_job(
             "process_wiki_retract_task",
             kb_id=kb_id, space_id=space_id, document_id=document_id,
+            _queue_name=get_light_queue_name(),
         )
         return job.job_id if job else None
     except Exception as e:

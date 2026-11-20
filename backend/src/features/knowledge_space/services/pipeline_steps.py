@@ -237,6 +237,11 @@ _RESERVED_CHUNK_META_KEYS = frozenset({
     "start_time", "end_time", "confidence", "speaker_id", "frame_indices",
 })
 
+# 显式排除、不落 metadata.custom 的键（custom 的 500 字符 JSON 截断会把
+# 这类 list 值截成损坏串）：entry_bboxes 为 deepdoc 页级坐标链，当前无消费方
+# （溯源读 chunk_entry_source_ids），源数据完整保留在解析快照 prechunked_items
+_ES_DROPPED_CHUNK_META_KEYS = frozenset({"entry_bboxes"})
+
 _CUSTOM_META_MAX_KEYS = 16
 _CUSTOM_META_MAX_STR = 200
 _CUSTOM_META_MAX_JSON = 500
@@ -409,8 +414,14 @@ def build_es_chunks(
         # 会被静默丢弃、检索期扩展能力无声消失（审计验证轮案例）。sanitize
         # 限长限深防 ES mapping 膨胀：标量直收（str 截 200 字符），list/dict
         # JSON 串化截 500，键数上限 16。
+        # entry_bboxes（deepdoc 页级坐标链）显式排除：非保留键时曾落 custom 被
+        # 500 字符截成损坏 JSON——且全仓无读回方（溯源消费的是
+        # chunk_entry_source_ids），坐标源数据仍完整保留在解析快照的
+        # prechunked_items 里，未来启用页级高亮时从快照取，不进 ES。
         custom_meta = {
-            k: v for k, v in meta.items() if k not in _RESERVED_CHUNK_META_KEYS
+            k: v
+            for k, v in meta.items()
+            if k not in _RESERVED_CHUNK_META_KEYS and k not in _ES_DROPPED_CHUNK_META_KEYS
         }
         if custom_meta:
             chunk_meta["custom"] = _sanitize_custom_meta(custom_meta)

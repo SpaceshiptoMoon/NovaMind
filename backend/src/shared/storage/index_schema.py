@@ -134,9 +134,11 @@ class DefaultIndexSchema:
             "metadata": {
                 "properties": {
                     "page_number": {"type": "integer"},
-                    "section_title": {"type": "text"},
-                    "char_start": {"type": "integer"},
-                    "char_end": {"type": "integer"},
+                    # 解析器标识（build_es_chunks 稳定写入的字符串：parser 为策略
+                    # 名、parser_class 为解析器类名；常用于过滤/分面）——声明
+                    # keyword 避免 dynamic 推断 text+keyword 双写
+                    "parser": {"type": "keyword"},
+                    "parser_class": {"type": "keyword"},
                     "content_hash": {"type": "keyword"},
                     # wiki 页同步（chunk_type=wiki_page）：slug 关键字供过滤/回链
                     "wiki_slug": {"type": "keyword"},
@@ -144,7 +146,6 @@ class DefaultIndexSchema:
                     "wiki_page_type": {"type": "keyword"},
                     "start_time": {"type": "float"},
                     "end_time": {"type": "float"},
-                    "duration": {"type": "float"},
                     "speaker_id": {"type": "keyword"},
                     # ASR 转写置信度（0~1）：chunk 内 segments 的 language-agnostic
                     # 概率聚合（sigmoid(avg_logprob) 均值），检索侧可按质量过滤。

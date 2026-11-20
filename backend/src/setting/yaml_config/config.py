@@ -368,7 +368,12 @@ class ProjectConfig:
 
 @dataclass
 class TaskQueueConfig:
-    """task_queue 段：arq 任务队列的并发上限、单任务超时、重试次数与退避基数。"""
+    """task_queue 段：arq 任务队列的并发上限、单任务超时、重试次数与退避基数。
+
+    双队列分槽：queue_name 承载文档解析（长时重 IO/VLM），light_queue_name
+    承载 wiki/叙事等轻任务与 cron——一个 2GB 长视频可占满解析槽位 2 小时
+    （job_timeout），混载会让轻任务与定时任务饿尾。
+    """
     max_jobs: int = 3
     # 7200 对齐 default.example 模板值：2GB 级视频全链路（VLM 逐帧 + ASR + 切分
     # + embedding）在 4 并发挤占下可超 30 分钟，1800 会把长作业误杀成超时重试
@@ -376,6 +381,8 @@ class TaskQueueConfig:
     max_tries: int = 3
     retry_base_delay: int = 60
     queue_name: str = "arq:queue"
+    light_queue_name: str = "arq:light"
+    light_max_jobs: int = 2
 
 
 @dataclass
