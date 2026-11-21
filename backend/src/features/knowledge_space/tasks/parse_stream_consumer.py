@@ -278,12 +278,13 @@ async def _cleanup_stale_pel(pool, session) -> None:
     cleaned = 0
 
     while True:
-        _, entries, _ = await pool.xautoclaim(
+        next_cursor, entries, _ = await pool.xautoclaim(
             PARSE_STREAM_KEY, PARSE_STREAM_GROUP, consumer,
             min_idle_time=min_idle_ms, start_id=cursor, count=50,
         )
         if not entries:
             break
+        cursor = next_cursor
 
         for message_id, fields in entries:
             mid = message_id.decode("utf-8") if isinstance(message_id, bytes) else str(message_id)
@@ -298,33 +299,39 @@ async def _cleanup_stale_pel(pool, session) -> None:
                     k_str = k.decode("utf-8") if isinstance(k, bytes) else k
                     if k_str == "payload":
                         raw = v.decode("utf-8") if isinstance(v, bytes) else v
-            if raw is None:
-                continue
-            p = json.loads(raw)
-            tid = p.get("task_id")
 
-            task = await session.get(DocumentTask, tid)
-            if task is None:
-                # 任务已被回滚/删除 → XACK（消息无用）
-                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
-                cleaned += 1
-            elif int(task.status) in (int(TaskStatus.COMPLETED), int(TaskStatus.FAILED), int(TaskStatus.CANCELLED)):
-                # 终态 → XACK
-                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
-                cleaned += 1
-            elif int(task.status) == int(TaskStatus.PENDING):
-                # PENDING → 重派（补齐分槽迁移期间的丢失）
-                from novamind.shared.mq.stream_queue import xadd_parse_task
-                await xadd_parse_task(pool, p)
-                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
-                cleaned += 1
-            # PROCESSING → 跳过（有活消费者在处理）
+            try:
+                if raw is None:
+                    # 缺 payload 字段：XACK 丢弃（消息无信息量）
+                    await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                    cleaned += 1
+                    continue
 
-        if len(entries) < 50:
-            break
+                p = json.loads(raw)
+                tid = p.get("task_id")
+                task = await session.get(DocumentTask, tid)
 
-    if cleaned:
-        logger.info("PEL 清理完成", cleaned=cleaned)
+                if task is None:
+                    await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                    cleaned += 1
+                elif int(task.status) in (int(TaskStatus.COMPLETED), int(TaskStatus.FAILED), int(TaskStatus.CANCELLED)):
+                    await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                    cleaned += 1
+                elif int(task.status) == int(TaskStatus.PENDING):
+                    from novamind.shared.mq.stream_queue import xadd_parse_task
+                    await xadd_parse_task(pool, p)
+                    await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                    cleaned += 1
+            except Exception as exc:
+                # 逐条兜底：损坏条目 XACK 丢弃，不阻断其余条目（毒丸防护）
+                logger.warning(
+                    "PEL 条目处理异常，XACK 丢弃", mid=mid, error=str(exc),
+                )
+                try:
+                    await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                except Exception:
+                    pass
+                cleaned += 1
 
 
 async def _mark_failed(session, task_id: int, error_message: str) -> None:
