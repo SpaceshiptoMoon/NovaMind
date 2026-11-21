@@ -13,6 +13,7 @@
 由快照兜底）。不追求 exactly-once。
 """
 import asyncio
+import json
 import signal
 from typing import Any
 
@@ -215,6 +216,14 @@ async def run_reaper(stop_event: asyncio.Event) -> None:
         try:
             async with get_db_session() as session:
                 repo = DocumentTaskRepository(session)
+
+                # ---- Phase 0: PEL 清理（死消费者遗留的已终态条目） ----
+                # XAUTOCLAIM min_idle=5min 的 PEL 条目，查任务行状态：
+                # 终态(COMPLETED/FAILED/CANCELLED) → XACK 确认（工作已完成）
+                # 非终态(PENDING) → 重新 XADD 派发 + XACK 旧条目
+                await _cleanup_stale_pel(pool, session)
+
+                # ---- Phase 1: PROCESSING + 心跳过期 → 重派或终判 ----
                 stale = await repo.get_processing_tasks()
                 for task in stale:
                     key = parse_heartbeat_key(task.id)
@@ -244,6 +253,78 @@ async def run_reaper(stop_event: asyncio.Event) -> None:
             logger.warning("reaper 轮次异常（下轮重试）", error=str(exc))
 
         await _sleep_or_stop(stop_event, interval)
+
+
+async def _cleanup_stale_pel(pool, session) -> None:
+    """XAUTOCLAIM 清理死消费者 PEL 条目（min_idle 5 分钟）。
+
+    对每条认领的消息查任务行状态：
+    - 终态（COMPLETED/FAILED/CANCELLED）→ XACK（工作已完成，无需重复消费）
+    - PENDING → 重新 XADD 派发（补齐分槽迁移/消费者崩溃期间的丢失）
+    - PROCESSING → 跳过（另一消费者正在处理，心跳未过期不该被 XAUTOCLAIM 认领）
+    """
+    from novamind.features.knowledge_space.models.document_task import (
+        DocumentTask,
+        TaskStatus,
+    )
+    from novamind.shared.mq.stream_queue import (
+        PARSE_STREAM_GROUP,
+        PARSE_STREAM_KEY,
+    )
+
+    consumer = "reaper-pel-cleanup"
+    min_idle_ms = 300_000  # 5 分钟：超过此 idle 的 PEL 条目视为死消费者遗留
+    cursor = "0-0"
+    cleaned = 0
+
+    while True:
+        _, entries, _ = await pool.xautoclaim(
+            PARSE_STREAM_KEY, PARSE_STREAM_GROUP, consumer,
+            min_idle_time=min_idle_ms, start_id=cursor, count=50,
+        )
+        if not entries:
+            break
+
+        for message_id, fields in entries:
+            mid = message_id.decode("utf-8") if isinstance(message_id, bytes) else str(message_id)
+            raw = None
+            if isinstance(fields, dict):
+                for k, v in fields.items():
+                    k_str = k.decode("utf-8") if isinstance(k, bytes) else k
+                    if k_str == "payload":
+                        raw = v.decode("utf-8") if isinstance(v, bytes) else v
+            elif isinstance(fields, (list, tuple)):
+                for k, v in fields:
+                    k_str = k.decode("utf-8") if isinstance(k, bytes) else k
+                    if k_str == "payload":
+                        raw = v.decode("utf-8") if isinstance(v, bytes) else v
+            if raw is None:
+                continue
+            p = json.loads(raw)
+            tid = p.get("task_id")
+
+            task = await session.get(DocumentTask, tid)
+            if task is None:
+                # 任务已被回滚/删除 → XACK（消息无用）
+                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                cleaned += 1
+            elif int(task.status) in (int(TaskStatus.COMPLETED), int(TaskStatus.FAILED), int(TaskStatus.CANCELLED)):
+                # 终态 → XACK
+                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                cleaned += 1
+            elif int(task.status) == int(TaskStatus.PENDING):
+                # PENDING → 重派（补齐分槽迁移期间的丢失）
+                from novamind.shared.mq.stream_queue import xadd_parse_task
+                await xadd_parse_task(pool, p)
+                await pool.xack(PARSE_STREAM_KEY, PARSE_STREAM_GROUP, mid)
+                cleaned += 1
+            # PROCESSING → 跳过（有活消费者在处理）
+
+        if len(entries) < 50:
+            break
+
+    if cleaned:
+        logger.info("PEL 清理完成", cleaned=cleaned)
 
 
 async def _mark_failed(session, task_id: int, error_message: str) -> None:
