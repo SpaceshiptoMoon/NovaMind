@@ -134,7 +134,7 @@ def search(sid, kid, query, mode="content_hybrid", top_k=5):
 
 # ==================== 主流程 ====================
 if len(sys.argv) < 2 or sys.argv[1] != "--run":
-    print("用法: python e2e_full_test.py --run")
+    print("用法: python e2e_full_run.py --run")
     sys.exit(0)
 
 print("=== NovaMind E2E 全链路测试 ===\n")
