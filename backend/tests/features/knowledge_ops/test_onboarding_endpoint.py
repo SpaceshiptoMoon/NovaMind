@@ -23,7 +23,12 @@ pytest.importorskip("aiosqlite")
 
 pytestmark = pytest.mark.unit
 
-NOW = datetime(2026, 11, 16, 12, 0, 0)
+# 种子时间必须动态取当前时钟：判定窗口（近 7 天）用真实 datetime.now()，
+# 固定日期会随时间流逝滑出窗口导致测试腐化（2026-11-23 实证：11-16 固定
+# 值在第 7 天爆发，31 个跨 30 小时的事件只数到 10 个）。此处纯窗口计数、
+# 事件全部向过去铺开，裸 now 即可；窗口终点 created_at < now 要求 NOW
+# 快照不得取未来时刻（不能锚定正午）。
+NOW = datetime.now()
 EMBEDDING_CONFIG = {"embedding": {"model": "text-embedding-v3", "dimension": 1024}}
 
 

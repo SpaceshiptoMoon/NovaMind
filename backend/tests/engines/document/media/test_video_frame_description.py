@@ -519,9 +519,11 @@ class FakeNativeVlmClient:
     async def generate_text_from_video_url(self, video_url, text_prompt, **kwargs):
         self.calls.append((video_url, text_prompt))
         if self.responses_by_segment:
-            for seg_idx, desc in self.responses_by_segment.items():
+            for seg_idx, resp in self.responses_by_segment.items():
                 if f"seg_{seg_idx:03d}" in video_url:
-                    return desc
+                    if isinstance(resp, Exception):
+                        raise resp
+                    return resp
             raise RuntimeError(
                 f"FakeNativeVlmClient: URL {video_url} 不匹配任何片序响应"
             )
@@ -618,7 +620,12 @@ async def test_video_native_cleanup_called_on_all_fail(fake_slice):
 @pytest.mark.anyio("asyncio")
 async def test_video_native_partial_failure_skipped_with_stats(fake_slice):
     """部分片失败：跳过留洞 + stats 记失败片覆盖帧数；idx_list 取片内场景帧。"""
-    vlm = FakeNativeVlmClient([RuntimeError("boom"), "片1描述", "片2描述", "片3描述"])
+    # 片间并发（concurrency=2）下响应必须按片序绑定：按调用顺序出队会把
+    # 失败绑到先完成的片上，CI 与本地完成顺序相反即错位（本 Fake 类 docstring
+    # 注明的已知坑，2026-11-22 CI 实证）。
+    vlm = FakeNativeVlmClient([], responses_by_segment={
+        0: RuntimeError("boom"), 1: "片1描述", 2: "片2描述", 3: "片3描述",
+    })
     upload, cleanup, uploaded, cleaned = _fake_upload_store()
     stats: dict[str, int] = {}
 

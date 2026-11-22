@@ -43,7 +43,11 @@ from novamind.features.knowledge_space.models.document import Document
 
 pytestmark = pytest.mark.unit
 
-NOW = datetime(2026, 11, 16, 12, 0, 0)
+# 种子时间必须动态取当前时钟：健康报告的 30 天/7 天窗口与按天分桶键全部
+# 用真实 datetime.now() 判定，固定日期会随时间流逝滑出窗口导致测试腐化
+# （2026-11-23 实证：NOW=11-16 固定值在第 7 天爆发，weekly 战果归零）。
+# 锚定正午：days_ago=0.5（12 小时前）必须落在同一天，上午运行裸 now 会跨日。
+NOW = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
 
 
 _EVENT_SEQ = iter(range(1, 10000))
