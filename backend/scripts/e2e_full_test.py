@@ -14,6 +14,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 BASE = "http://localhost:8100/api/v1"
 PASS = []
@@ -69,8 +70,7 @@ def login():
     _check("登录", bool(TOKEN), f"HTTP {code}")
 
 
-from pathlib import Path as _P
-BACKEND_ROOT = _P(__file__).resolve().parent
+BACKEND_ROOT = Path(__file__).resolve().parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -93,7 +93,7 @@ def upload_doc(sid, kid, filename, content):
         f"Content-Type: text/markdown\r\n\r\n"
         f"{content}\r\n"
         f"--{boundary}--\r\n"
-    ).encode("utf-8")
+    ).encode()
     hdr = _headers(f"multipart/form-data; boundary={boundary}")
     req = urllib.request.Request(
         f"{BASE}/spaces/{sid}/knowledge-bases/{kid}/documents",
@@ -141,8 +141,7 @@ print("=== NovaMind E2E 全链路测试 ===\n")
 login()
 
 # ---- 场景 1: 创建空间/KB ----
-import time as _tm
-_ts = str(int(_tm.time()))
+_ts = str(int(time.time()))
 sid = create_space(f"e2e_full_test_{_ts}")
 kid = create_kb(sid, f"e2e_full_test_kb_{_ts}")
 _check("创建空间/KB", sid is not None and kid is not None, f"sid={sid} kid={kid}")
@@ -207,7 +206,7 @@ try:
         f"Content-Type: application/x-msdownload\r\n\r\n"
         f"MZ fake binary\r\n"
         f"--{boundary}--\r\n"
-    ).encode("utf-8")
+    ).encode()
     hdr = _headers(f"multipart/form-data; boundary={boundary}")
     req = urllib.request.Request(
         f"{BASE}/spaces/{sid}/knowledge-bases/{kid}/documents",

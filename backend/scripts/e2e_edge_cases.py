@@ -1,7 +1,12 @@
 """NovaMind 极端边界 E2E 测试（真机 backend=stream）。"""
-import json, os, sys, time, uuid, urllib.request, urllib.error
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -47,7 +52,7 @@ def upload(sid, kid, filename, content, ct="text/markdown"):
         f"Content-Type: {ct}\r\n\r\n"
         f"{content}\r\n"
         f"--{boundary}--\r\n"
-    ).encode("utf-8")
+    ).encode()
     hdr = _hdr(f"multipart/form-data; boundary={boundary}")
     req = urllib.request.Request(
         f"{BASE}/spaces/{sid}/knowledge-bases/{kid}/documents",
@@ -85,7 +90,8 @@ def main():
     _, login = _api("POST", "/user/users/login", {"username": "admin", "password": PW})
     TOKEN = login.get("access_token", "")
     if not TOKEN:
-        print("登录失败"); sys.exit(1)
+        print("登录失败")
+        sys.exit(1)
 
     suffix = uuid.uuid4().hex[:8]
     _, sp = _api("POST", "/spaces", {"name": f"edge_{suffix}"})
