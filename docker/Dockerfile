@@ -76,23 +76,29 @@ RUN groupadd --system --gid 1001 appuser \
 # python:3.12.13-slim，venv 内解释器符号链接在本镜像同样有效。novamind 本体
 # 仍从 /app/src 加载，不进 venv；supervisord 与 compose run 的 `python` 均经
 # PATH 解析到 venv 解释器。
-COPY --from=backend-build /app/.venv /app/.venv
+# 属主在复制时直接设为 appuser（--chown）：若留到后面的 chown -R 统一改，2GB 的
+# venv 会被整层再复制一遍（镜像解压体积接近翻倍、构建多花约 45 秒）。
+COPY --from=backend-build --chown=appuser:appuser /app/.venv /app/.venv
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
 # Backend source (loaded from disk via main.py sys.path insertion) + manifest.
-COPY backend/pyproject.toml backend/README.md ./
-COPY backend/src/ ./src/
-COPY backend/main.py ./
+COPY --chown=appuser:appuser backend/pyproject.toml backend/README.md ./
+COPY --chown=appuser:appuser backend/src/ ./src/
+COPY --chown=appuser:appuser backend/main.py ./
+# 解析管道独立 worker 进程（supervisord.conf 的 [program:parse_worker] 入口）：
+# backend=stream 时必需；默认 backend=arq 时它自检测后正常退出。漏拷会以
+# "can't open file" 启动失败并刷错误日志。
+COPY --chown=appuser:appuser backend/parse_worker.py ./
 # 运维脚本（模型下载等）：deploy 期 faster-whisper 模型预装与 README 手动补救
 # 命令都在容器内执行 scripts/download_faster_whisper_model.py，缺了会以
 # "can't open file" 失败且 WARN-不阻断，模型静默缺失。
-COPY backend/scripts/ ./scripts/
+COPY --chown=appuser:appuser backend/scripts/ ./scripts/
 
 # Frontend static assets served by Nginx.
-COPY --from=frontend-build /build/dist /usr/share/nginx/html
+COPY --from=frontend-build --chown=appuser:appuser /build/dist /usr/share/nginx/html
 
 # Non-root Nginx: main config is a template rendered at startup by
 # render-nginx-conf.sh (TLS 块与 client_max_body_size 由环境变量注入；
@@ -109,8 +115,11 @@ RUN mkdir -p /etc/nginx/tls
 COPY docker/supervisord.conf /etc/supervisor/supervisord.conf
 
 # Writable dirs owned by appuser (nginx temp + supervisor logs + pid).
+# /app 下各目录与文件的属主已由上面的 COPY --chown 设定，这里不再对 /app 做 chown -R；
+# /app 本身由 WORKDIR 以 root 创建，只改这两个目录自身（不递归，不触发整层复制）。
 RUN mkdir -p /var/log/supervisor /var/log/nginx /var/lib/nginx /var/cache/nginx /tmp/nginx \
-    && chown -R appuser:appuser /app /usr/share/nginx/html \
+    && chown appuser:appuser /app /usr/share/nginx/html \
+    && chown -R appuser:appuser \
         /var/log/supervisor /var/log/nginx /var/lib/nginx /var/cache/nginx /tmp/nginx \
     && chmod -R a+rwX /tmp/nginx
 
