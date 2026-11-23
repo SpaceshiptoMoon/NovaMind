@@ -46,6 +46,16 @@ ENV UV_PYTHON=/usr/local/bin/python3.12 \
 COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
 RUN uv sync --frozen --no-install-project --extra deepdoc-vision --no-cache
 
+# GPU 部署可选层（构建参数 ASR_GPU=true，compose 经 build.args 传入）：本地 ASR
+# （CTranslate2）的 CUDA 实现运行时 dlopen cuBLAS，默认镜像不含。只在开启时追加
+# asr-gpu extra（pyproject.toml）。独立成层：默认构建（false）此层为空，不触碰上面
+# 的依赖层。显卡驱动库 libcuda.so.1 不装——由宿主机驱动经 NVIDIA Container Toolkit
+# 在容器启动时注入。
+ARG ASR_GPU=false
+RUN if [ "$ASR_GPU" = "true" ]; then \
+      uv sync --frozen --no-install-project --extra deepdoc-vision --extra asr-gpu --no-cache; \
+    fi
+
 # ---- Stage 3: runtime (no gcc, non-root) ----
 FROM python:3.12.13-slim
 
@@ -81,6 +91,20 @@ RUN groupadd --system --gid 1001 appuser \
 COPY --from=backend-build --chown=appuser:appuser /app/.venv /app/.venv
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
+
+# ASR_GPU=true 时 cuBLAS 位于 venv 的 site-packages/nvidia 下，不在动态链接器的默认
+# 搜索路径（CTranslate2 按名字 libcublas.so.12 dlopen）。把包内 lib 目录登记进链接器
+# 配置并刷新缓存：容器内所有进程（含 ASR 推理子进程）都能找到，且不依赖 LD_LIBRARY_PATH。
+# 必须登记整个目录而不是只软链 libcublas.so.12——它依赖同目录的 libcublasLt.so.12，
+# 经软链打开时后者解析不到，dlopen 照样失败（实测）。
+ARG ASR_GPU=false
+RUN if [ "$ASR_GPU" = "true" ]; then \
+      printf '%s\n' \
+        /app/.venv/lib/python3.12/site-packages/nvidia/cublas/lib \
+        /app/.venv/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib \
+        > /etc/ld.so.conf.d/asr-gpu.conf \
+      && ldconfig; \
+    fi
 
 WORKDIR /app
 

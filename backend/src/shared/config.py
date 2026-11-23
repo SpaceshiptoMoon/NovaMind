@@ -37,7 +37,7 @@ class AudioConfig:
     # 推理设备：auto（CTranslate2 自动探测 CUDA，生产 GPU 服务器自动用卡）/
     # cpu / cuda。None 时 auto。
     local_whisper_device: str | None = None
-    # 量化类型：auto（CPU→int8 / CUDA→float16）/ int8 / int8_float16 / float16 /
+    # 量化类型：auto（CPU→int8 / CUDA→int8_float16，由引擎按设备选择）/ int8 / int8_float16 / float16 /
     # float32。None 时 auto。
     local_whisper_compute_type: str | None = None
     # 束搜索宽度，默认 5（Whisper 官方默认）。加大精度略升、速度线性下降。

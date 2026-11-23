@@ -250,6 +250,7 @@ Requirements:
 - One-command deploy via `deploy.sh` needs a working `python` or `python3` command on the host the first time it generates `.env` (to generate random secrets; the script probes `python` then `python3`, and offers an alternative when neither works). `deploy.ps1` has no such dependency
 - At least 2 CPU cores / 4 GB RAM / 30 GB disk (measured: images ≈ 7 GB and models ≈ 3.2 GB, plus reclaimable build cache — `docker builder prune`. Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
 - For video parsing, local speech transcription, or DeepDoc full mode, 4 cores / 8 GB+ recommended
+- Local speech transcription uses CPU inference inside the container by default; on a machine with an NVIDIA GPU it can run on the GPU instead (the app image must be rebuilt) — see [Optional: accelerate local speech transcription with an NVIDIA GPU](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu)
 
 Common commands:
 
@@ -313,6 +314,55 @@ Notes:
     ```bash
     sudo chown -R 1001:1001 backend/.cache
     ```
+
+### Optional: accelerate local speech transcription with an NVIDIA GPU
+
+Local speech transcription (faster-whisper) runs on the CPU inside the container by default (INT8 for the large-v3 tier). On a machine with an NVIDIA GPU it can run on the GPU instead (the engine picks the compute type supported by the GPU — int8_float16, i.e. INT8 weights with float16 computation, was measured on an RTX 4060); `default.yaml` needs no change — with `local_whisper_device` / `local_whisper_compute_type` left empty (auto) the engine detects CUDA by itself. That detection only picks the GPU when the container **can reach the GPU and the image contains the GPU runtime libraries**, neither of which a default deployment has, so both must be enabled:
+
+1. **Let Docker hand the GPU to containers.** Docker Desktop has this built in. On a Linux host — including Docker Engine installed directly inside a WSL2 distro on Windows (install the driver on the Windows side only; do **not** install a Linux NVIDIA driver inside WSL) — install the NVIDIA Container Toolkit in **the Linux environment that runs Docker**:
+
+   ```bash
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+     | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+     | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+     | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+   ```
+
+   Verify: `docker run --rm --gpus all ubuntu nvidia-smi` lists the GPU.
+
+2. **Put the GPU runtime libraries into the app image.** The CUDA implementation of the transcription engine (CTranslate2) needs cuBLAS at run time, which the default image does not contain (it adds about 1 GB and is useless on machines without an NVIDIA GPU); it is installed through the build argument `ASR_GPU=true`. Create `docker-compose.override.yml` in the repo root (already ignored by `.gitignore`; `docker compose` merges it with `docker-compose.yml` automatically, `deploy.sh` included):
+
+   ```yaml
+   services:
+     app:
+       build:
+         args:
+           ASR_GPU: "true"   # install cuBLAS into the image
+       deploy:
+         resources:
+           reservations:
+             devices:        # hand the host's NVIDIA GPU to the app container
+               - driver: nvidia
+                 count: all
+                 capabilities: [gpu]
+   ```
+
+   Then deploy as usual (`bash deploy.sh` or `docker compose up -d --build`); the app image is rebuilt.
+
+> [!NOTE]
+> - The NVIDIA driver must support CUDA 12 (driver version 527.41+ on Windows, 525.60.13+ on Linux; 566.26 tested).
+> - large-v3 occupies about 2 GB of additional GPU memory while transcribing (measured on an 8 s clip); if VRAM runs out, transcription fails with CUDA out of memory — downgrade `local_whisper_model` to `small` in the YAML.
+> - Do not create this file on machines without an NVIDIA GPU: the container fails to start because the device cannot be reserved.
+> - To confirm the GPU is really in use, the transcription log reports the device and precision the engine actually resolved: `子进程 faster-whisper 模型已加载 … 实际 device=cuda, compute_type=int8_float16` (`docker exec novamind-app sh -c 'grep -h "模型已加载" /var/log/supervisor/*.log'`).
+
+To use the GPU for local development on Linux / WSL (without Docker): install cuBLAS with `uv sync --extra asr-gpu`, then add its directory to the dynamic-linker search path before starting the backend:
+
+```bash
+export LD_LIBRARY_PATH="$(cd backend && uv run python -c 'import nvidia.cublas.lib, nvidia.cuda_nvrtc.lib; print(":".join(list(nvidia.cublas.lib.__path__) + list(nvidia.cuda_nvrtc.lib.__path__)))')"
+```
 
 ### Option 3: local development
 
@@ -557,7 +607,7 @@ Plan for at least these model types:
 
 Audio documents have two ASR paths, selectable in the KB parsing config's audio section:
 
-- **Local Whisper (default, free)**: local CPU inference via faster-whisper (INT8 quantized, dedicated single-process isolation, never blocks other tasks); the production-default `faster-whisper-large-v3` is pre-downloaded at deploy time (lower-memory machines can downgrade to `small`/`tiny` via YAML `knowledge_base.parsing.local_whisper_model`), no API key needed. Good for privacy-sensitive or zero-cost scenarios; for better accuracy swap in another tier (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
+- **Local Whisper (default, free)**: local inference via faster-whisper (CPU by default — INT8 quantized, dedicated single-process isolation, never blocks other tasks; with an NVIDIA GPU it can [run on the GPU](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu)); the production-default `faster-whisper-large-v3` is pre-downloaded at deploy time (lower-memory machines can downgrade to `small`/`tiny` via YAML `knowledge_base.parsing.local_whisper_model`), no API key needed. Good for privacy-sensitive or zero-cost scenarios; for better accuracy swap in another tier (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
 - **Cloud ASR (optional)**: OpenAI Whisper or DashScope Paraformer configured on the "Model Management" page — usually better quality, billed per use; run a connection test before selecting a cloud model
 
 </details>

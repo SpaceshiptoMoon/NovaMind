@@ -112,6 +112,14 @@ test = [
 deepdoc-vision = [
     "onnx>=1.16.0",
 ]
+# 本地 ASR 走 NVIDIA GPU：CTranslate2 的 CUDA 实现运行时按名字 dlopen cuBLAS，其 wheel
+# 自身不带（实测 4.8.1 二进制只引用 libcublas.so.12 与 libcuda.so.1，不需要 cuDNN）。
+# 本 extra 即 pip 包 nvidia-cublas-cu12；体积大，仅 GPU 部署经构建参数 ASR_GPU=true
+# 安装（docker/Dockerfile，README「可选：启用 NVIDIA GPU 加速本地语音转写」）。
+# 显卡驱动库 libcuda.so.1 不在此列：它随宿主机驱动经 NVIDIA Container Toolkit 注入容器。
+asr-gpu = [
+    "nvidia-cublas-cu12",
+]
 [project.scripts]
 deepdoc = "novamind.engines.document.integrations.deepdoc.__main__:main"
 
