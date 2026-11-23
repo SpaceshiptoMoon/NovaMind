@@ -147,7 +147,7 @@ print_summary() {
     echo "Frontend: http://localhost"
     echo "API docs: not exposed in Docker deploy (backend 8100 is container-internal only;"
     echo "          nginx does not proxy /docs). Local dev mode: http://localhost:8100/docs"
-    echo "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
+    echo "MinIO S3 API: http://localhost:9005 (no web console in this MinIO release; credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
   fi
 }
 

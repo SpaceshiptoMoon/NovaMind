@@ -157,9 +157,14 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 >   sudo sysctl -w vm.max_map_count=262144              # 临时生效（重启失效）
 >   echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # 永久生效
 >   ```
->   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步。
+>   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步；WSL2 内核默认值已高于该下限（实测 1048576），同样无需设置。
 > - **克隆仓库建议用 HTTPS 地址**（无需配置 SSH key）：`git clone https://github.com/SpaceshiptoMoon/NovaMind.git`；已配置 SSH key 的用户可用 `git clone git@github.com:SpaceshiptoMoon/NovaMind.git`。
-> - **部分网络（如国内网络）拉取镜像可能缓慢或超时**：除 Docker Hub 的基础镜像外，MinIO 镜像在 `quay.io`、Elasticsearch 镜像在 `docker.elastic.co`——Docker 的 `registry-mirrors` 加速器只覆盖 Docker Hub，帮不到这两个源。拉取失败时可为 Docker daemon 配置代理，或手动拉取后 `docker tag` 成 compose 中同名镜像。
+> - **MinIO 镜像说明**：官方镜像已无法匿名拉取（2026-11 实测：`quay.io/minio/minio` 返回 401，Docker Hub 的 `minio/minio` 要求登录，代理和 `registry-mirrors` 加速器都无效）。`docker-compose.yml` 因此默认使用 Bitnami 基于 MinIO 2025-07-23 源码构建的镜像，无需额外操作；该 MinIO 版本不带网页控制台。**从官方镜像的旧部署升级时**，数据卷里的旧文件属主是 root，而 Bitnami 镜像以非 root 用户运行、无权写入，请先执行一次下面的命令再启动（`redis` 镜像部署时已拉取，这里只借其中的 `chown`）：
+>   ```bash
+>   docker run --rm -v novamind_minio-data:/data redis:7.4.9-alpine chown -R 1001:1000 /data
+>   ```
+>   要换回官方镜像或自托管副本，用 `docker-compose.override.yml`（已被 `.gitignore` 忽略）覆盖 `minio` 服务的 `image`，并恢复 `command: server /data --address ":9005"` 与数据卷 `minio-data:/data`。
+> - **Elasticsearch 镜像在 `docker.elastic.co`**：Docker Hub 的 `registry-mirrors` 加速器覆盖不到这个源。拉取失败时可为 Docker daemon 配置代理，或手动拉取后 `docker tag` 成 compose 中同名镜像。
 
 ### 方式一：一键部署
 
@@ -190,8 +195,8 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1
 
 - Docker 20.10+（Windows 需 Docker Desktop 已启动）
 - Docker Compose V2+
-- 一键部署（`deploy.sh`）需要宿主机有可用的 `python` 命令（用于生成随机密码；脚本会自动探测，不可用时给出替代方案）。`deploy.ps1` 无此依赖
-- 最低 2 核 CPU / 4 GB 内存 / 20 GB 磁盘（Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
+- 一键部署（`deploy.sh`）首次生成 `.env` 时需要宿主机有可用的 `python` 或 `python3` 命令（用于生成随机密码；脚本按 `python` → `python3` 顺序探测，`.env` 已存在时不再需要，都不可用时给出替代方案）。`deploy.ps1` 无此依赖
+- 最低 2 核 CPU / 4 GB 内存 / 30 GB 磁盘（实测：镜像约 7 GB、模型约 3.2 GB，构建还会产生可回收的缓存，可用 `docker builder prune` 清理；Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
 - 如需使用视频解析、本地语音转写或 DeepDoc full 模式，建议 4 核 / 8 GB 以上
 
 常用命令：
@@ -352,8 +357,11 @@ Docker 部署模式：
 | 前端首页 | `http://localhost` | 管理员账号 `admin`，初始密码见 `.env` 的 `ADMIN_PASSWORD` |
 | 后端 API 文档 | Docker 形态不暴露 `/docs`（8100 仅容器内监听、未映射宿主机）；本地开发模式直连 `http://localhost:8100/docs` | 同上；公网 80 端口刻意不暴露 `/docs`（nginx 不反代） |
 | 健康检查 | `http://localhost/health` | 无（进程存活检查，不校验依赖；依赖健康看 `/health/detailed`） |
-| MinIO 控制台 | `http://localhost:9001` | `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
+| MinIO S3 API | `http://localhost:9005` | `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`。当前使用的 MinIO（2025-07-23 版本）不带网页控制台，9001 端口无服务；管理桶请用 `mc` 或任意 S3 客户端 |
 | Elasticsearch | `http://localhost:9200` | 无（Docker 部署关闭了 ES 安全特性） |
+
+> [!NOTE]
+> 全新部署后、首次上传文档之前，`/health/detailed` 会显示 `degraded`，其中 MinIO 组件为 `degraded`、错误说明为「业务桶未创建（首次上传文档时自动创建）」。业务桶由后端首次写对象时懒创建，这不是部署故障。其余组件的检查异常在接口上统一显示为「连接失败」，真实原因见应用容器内 `/var/log/supervisor/backend-access.log`。
 
 本地开发模式：
 

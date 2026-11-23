@@ -42,9 +42,9 @@ services:
       REDIS_ENABLED: "true"
       REDIS_HOST: redis
       # MinIO API 真实端点 = <compose 服务名>:<容器内 API 端口>，即下方 minio 服务
-      # （server --address ":9005"）。app 容器经 app-network DNS 解析到它——与宿主机
+      # （MINIO_API_PORT_NUMBER=9005）。app 容器经 app-network DNS 解析到它——与宿主机
       # 端口映射 127.0.0.1:9005 是两条路径，恰好同端口纯属巧合；改 minio 服务名或
-      # --address 端口时这里必须同步（9001 是控制台端口，勿填）。
+      # MINIO_API_PORT_NUMBER 时这里必须同步（9001 是控制台端口，勿填）。
       MINIO_ENDPOINT: minio:9005
       # 生产桶名（区别于本地基线的 novamind-dev；首次上传时自动创建）
       MINIO_BUCKET: novamind
@@ -128,21 +128,33 @@ services:
       - app-network
 
   minio:
-    # MinIO 社区版自 2025-10 起停止发布官方 Docker 镜像（12 月进入维护模式，
-    # 仅源码分发），官方源为 quay.io。此处钉在 cutoff 前最后可拉取的 release，
-    # 升级需自行从源码构建或改用商业镜像，见 https://github.com/minio/minio/releases
-    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    # MinIO 官方镜像已无法匿名拉取（2026-11 实测：quay.io/minio/minio 返回 401，
+    # Docker Hub 的 minio/minio 要求登录，代理与镜像加速器均无效），社区版也自
+    # 2025-10 起停止发布官方镜像、转入仅源码分发。这里改用 Broadcom/Bitnami 基于
+    # MinIO 2025-07-23 版本源码自行构建的镜像（Bitnami Legacy 存档仓库，只读、不再更新）。
+    # Bitnami 打包与官方镜像的差异（升级镜像时需同步核对）：
+    #   - 以环境变量而非命令行参数配置，API 端口用 MINIO_API_PORT_NUMBER
+    #   - 数据目录是 /bitnami/minio/data（不是 /data）
+    #   - 以非 root 用户 1001 运行；MINIO_ROOT_USER / MINIO_ROOT_PASSWORD /
+    #     MC_HOST_local 变量名与官方镜像相同，镜像内捆绑 mc，健康检查可沿用
+    # 从官方镜像的旧部署升级：卷内旧数据属主是 root，切换后需先修正属主，见 README。
+    # 要换回官方镜像或自托管副本：用 docker-compose.override.yml 覆盖 image，
+    # 并恢复 command: server /data --address ":9005" 与数据卷 minio-data:/data。
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     container_name: novamind-minio
     ports:
       - "127.0.0.1:9005:9005"
+      # 该 MinIO 版本不带网页控制台，9001 实际无服务监听（S3 API 在 9005）；映射保留以兼容带控制台的镜像
       - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+      # Bitnami 的启动脚本从这里读 API 端口；须与上方端口映射及 app 的 MINIO_ENDPOINT 一致
+      MINIO_API_PORT_NUMBER: "9005"
       # mc ready 用的别名：指向本机 API 端口（凭据同上，不额外引入新密钥）
       MC_HOST_local: "http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@localhost:9005"
-    command: server /data --address ":9005" --console-address ":9001"
-    # 官方镜像不含 curl；用镜像内捆绑的 mc ready 做就绪探测（等 API 端口
+    # 启动命令用镜像自带的 /opt/bitnami/scripts/minio/run.sh（由环境变量配置），不显式指定。
+    # 用镜像内捆绑的 mc ready 做就绪探测（等 API 端口
     # 可服务，比 liveness 的 /minio/health/live 更贴合 depends_on 语义）。
     # MC_HOST 别名指向本机服务，凭据来自启动环境变量。
     healthcheck:
@@ -152,7 +164,7 @@ services:
       retries: 12
       start_period: 10s
     volumes:
-      - minio-data:/data
+      - minio-data:/bitnami/minio/data
     restart: unless-stopped
     networks:
       - app-network

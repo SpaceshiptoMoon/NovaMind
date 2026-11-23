@@ -136,7 +136,7 @@ function Show-Summary {
         Write-Host "Frontend: http://localhost"
         Write-Host "API docs: not exposed in Docker deploy (backend 8100 is container-internal only;"
         Write-Host "          nginx does not proxy /docs). Local dev mode: http://localhost:8100/docs"
-        Write-Host "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
+        Write-Host "MinIO S3 API: http://localhost:9005 (no web console in this MinIO release; credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
     }
     Write-Host ""
 }

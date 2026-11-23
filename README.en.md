@@ -206,9 +206,14 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 >   sudo sysctl -w vm.max_map_count=262144              # temporary (lost on reboot)
 >   echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # permanent
 >   ```
->   Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed.
+>   Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed; the WSL2 kernel default is already above this floor (measured 1048576), so no action is needed there either.
 > - **Prefer the HTTPS clone URL** (no SSH key setup needed): `git clone https://github.com/SpaceshiptoMoon/NovaMind.git`; use `git clone git@github.com:SpaceshiptoMoon/NovaMind.git` only if you have an SSH key configured.
-> - **Image pulls may be slow or time out from some networks (e.g. mainland China)**: besides the Docker Hub base images, the MinIO image lives on `quay.io` and the Elasticsearch image on `docker.elastic.co` — Docker's `registry-mirrors` accelerators only cover Docker Hub and do not help with these two. If pulls fail, configure a proxy for the Docker daemon, or pull manually and `docker tag` under the same image name compose expects.
+> - **About the MinIO image**: the official image can no longer be pulled anonymously (measured 2026-11: `quay.io/minio/minio` returns 401 and Docker Hub's `minio/minio` requires login; neither a proxy nor `registry-mirrors` accelerators help). `docker-compose.yml` therefore uses by default the image Bitnami built from the MinIO 2025-07-23 source — nothing extra to do. This MinIO version ships without a web console. **Upgrading an older deployment that ran the official image**: the old files in the data volume are owned by root, while the Bitnami image runs as a non-root user and cannot write them — run the command below once before starting (the `redis` image is already pulled by the deploy and is used only for its `chown`):
+>   ```bash
+>   docker run --rm -v novamind_minio-data:/data redis:7.4.9-alpine chown -R 1001:1000 /data
+>   ```
+>   To switch back to the official image or a self-hosted copy, override the `minio` service's `image` in `docker-compose.override.yml` (already in `.gitignore`) and restore `command: server /data --address ":9005"` and the volume `minio-data:/data`.
+> - **The Elasticsearch image lives on `docker.elastic.co`**: Docker Hub `registry-mirrors` accelerators do not cover it. If the pull fails, configure a proxy for the Docker daemon, or pull manually and `docker tag` under the same image name compose expects.
 
 ### Option 1: one-command deploy
 
@@ -242,8 +247,8 @@ Requirements:
 
 - Docker 20.10+ (on Windows, Docker Desktop must be running)
 - Docker Compose V2+
-- One-command deploy via `deploy.sh` needs a working `python` command on the host (to generate random secrets; the script probes for it and offers an alternative when missing). `deploy.ps1` has no such dependency
-- At least 2 CPU cores / 4 GB RAM / 20 GB disk (Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
+- One-command deploy via `deploy.sh` needs a working `python` or `python3` command on the host the first time it generates `.env` (to generate random secrets; the script probes `python` then `python3`, and offers an alternative when neither works). `deploy.ps1` has no such dependency
+- At least 2 CPU cores / 4 GB RAM / 30 GB disk (measured: images ≈ 7 GB and models ≈ 3.2 GB, plus reclaimable build cache — `docker builder prune`. Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
 - For video parsing, local speech transcription, or DeepDoc full mode, 4 cores / 8 GB+ recommended
 
 Common commands:
@@ -391,8 +396,11 @@ Docker deploy:
 | Frontend | `http://localhost` | admin account `admin`, initial password in `ADMIN_PASSWORD` in `.env` |
 | Backend API docs | not exposed in Docker deploy (`8100` is container-internal only, not mapped to the host); in local dev mode use `http://localhost:8100/docs` | same as above; the public port 80 deliberately does NOT expose `/docs` (nginx does not proxy it) |
 | Health check | `http://localhost/health` | none (process-liveness only; dependency health is at `/health/detailed`) |
-| MinIO console | `http://localhost:9001` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env` |
+| MinIO S3 API | `http://localhost:9005` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env`. The MinIO version in use (2025-07-23) ships without a web console and nothing listens on port 9001; manage buckets with `mc` or any S3 client |
 | Elasticsearch | `http://localhost:9200` | none (ES security features are disabled in Docker deploy) |
+
+> [!NOTE]
+> On a fresh deployment, until the first document upload, `/health/detailed` reports `degraded`, with the MinIO component marked `degraded` and explained as `业务桶未创建（首次上传文档时自动创建）` ("business bucket not created yet — it is created automatically on the first document upload"). The backend creates the bucket lazily on its first write, so this is not a deployment failure. Failures of the other components are reported generically as "connection failed"; the real cause is in `/var/log/supervisor/backend-access.log` inside the app container.
 
 Local dev:
 
