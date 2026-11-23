@@ -119,6 +119,28 @@ def split_local_whisper_model_name(model_name: str | None) -> str | None:
     return slug
 
 
+def local_whisper_required_files(model_slug: str) -> list[str]:
+    """列出某档位本地 faster-whisper 模型目录必须包含的文件。
+
+    对齐 HF 仓库 Systran/faster-whisper-{档位} 的实际内容（也是 faster-whisper
+    自身 download_model 的 allow_patterns）：large-v3 的词表是 vocabulary.json，
+    另带 preprocessor_config.json，仓库内没有 vocabulary.txt；其余档位为
+    vocabulary.txt。下载脚本与连接测试共用本清单，避免各写一份。
+
+    Args:
+        model_slug: 档位 slug（见 ``LOCAL_WHISPER_SUPPORTED_MODELS``）。
+
+    Returns:
+        必需文件名列表。
+    """
+    files = ["config.json", "model.bin", "tokenizer.json"]
+    if model_slug == "large-v3":
+        files.extend(["preprocessor_config.json", "vocabulary.json"])
+    else:
+        files.append("vocabulary.txt")
+    return files
+
+
 # 本地 ASR 幻觉段过滤阈值（segment 级兜底）。
 # 判据为 OpenAI Whisper 官方同款推荐值：无语音概率高 且 平均对数概率低 → 判为幻觉丢弃。
 # faster-whisper 在解码窗口层已有同款阈值（no_speech_threshold=0.6 /

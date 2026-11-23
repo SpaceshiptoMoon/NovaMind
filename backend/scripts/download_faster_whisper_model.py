@@ -11,9 +11,12 @@
 
 支持档位（--model）：tiny / base / small / medium / large-v2 / large-v3。
 模型文件（各档位 HF 仓库 Systran/faster-whisper-{slug}）：config.json /
-model.bin / tokenizer.json / vocabulary.txt——与 connection_testers.asr
-的完整性校验一致。checksum 清单（model_manager.MODEL_CHECKSUMS）已登记的
-档位按内容哈希校验；未登记档位降级为大小校验（>0 字节）+ 运行时自检。
+model.bin / tokenizer.json + 词表文件——其余档位为 vocabulary.txt，large-v3
+为 vocabulary.json 与 preprocessor_config.json（该仓库内没有 vocabulary.txt）。
+清单单一事实源 audio_utils.local_whisper_required_files，与
+connection_testers.asr 的完整性校验共用。checksum 清单
+（model_manager.MODEL_CHECKSUMS）已登记的档位按内容哈希校验；未登记档位
+降级为大小校验（>0 字节）+ 运行时自检。
 
 本脚本幂等：已存在的文件按 checksum/大小校验后跳过；部署期（deploy.sh）
 自动调用，容器内经 compose 挂载卷持久化（backend/.cache/faster-whisper ->
@@ -41,9 +44,6 @@ except Exception:
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
-
-# 各档位 HF 仓库必需文件（缺一不可；README/.gitattributes 非模型文件）
-REQUIRED_FILES = ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"]
 
 # 默认下载目录（与运行时 _resolve_local_whisper_model_dir 的最终兜底一致）：
 # 仓库根 backend/.cache（与 deepdoc 模型同一基准；脚本位于 backend/scripts/，上两级即 backend）
@@ -83,10 +83,10 @@ def resolve_model_dir(cli_value: str | None, slug: str) -> Path:
     return DEFAULT_MODEL_ROOT / slug
 
 
-def check_status(model_dir: Path) -> dict:
+def check_status(model_dir: Path, required_files: list[str]) -> dict:
     """检查模型文件就绪状态，返回 {available, missing, present}。"""
-    present = [f for f in REQUIRED_FILES if (model_dir / f).is_file()]
-    missing = [f for f in REQUIRED_FILES if f not in present]
+    present = [f for f in required_files if (model_dir / f).is_file()]
+    missing = [f for f in required_files if f not in present]
     return {
         "model_dir": model_dir,
         "available": not missing,
@@ -95,7 +95,7 @@ def check_status(model_dir: Path) -> dict:
     }
 
 
-def download(model_dir: Path, repo_id: str) -> bool:
+def download(model_dir: Path, repo_id: str, required_files: list[str]) -> bool:
     """经 huggingface_hub 下载模型（支持 HF_ENDPOINT 换源），幂等。
 
     checksum 清单（model_manager.MODEL_CHECKSUMS）已登记的档位按内容哈希
@@ -110,7 +110,7 @@ def download(model_dir: Path, repo_id: str) -> bool:
 
     model_dir.mkdir(parents=True, exist_ok=True)
     ok = True
-    for filename in REQUIRED_FILES:
+    for filename in required_files:
         target = model_dir / filename
         if target.is_file() and target.stat().st_size > 0:
             if verify_model_checksum(repo_id, filename, target):
@@ -158,16 +158,19 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="只检查状态，不下载")
     args = parser.parse_args()
 
+    from novamind.engines.document.media.audio import local_whisper_required_files
+
     slug = resolve_model_slug(args.model)
+    required_files = local_whisper_required_files(slug)
     model_dir = resolve_model_dir(args.model_dir, slug)
 
     print(f"模型目录: {model_dir}")
     print(f"HuggingFace 仓库: Systran/faster-whisper-{slug}")
-    for f in REQUIRED_FILES:
-        flag = "✅" if f in check_status(model_dir)["present"] else "❌"
+    for f in required_files:
+        flag = "✅" if f in check_status(model_dir, required_files)["present"] else "❌"
         print(f"  [{flag}] {f}")
 
-    status = check_status(model_dir)
+    status = check_status(model_dir, required_files)
     if status["available"]:
         print("模型已就绪。")
         return 0
@@ -176,8 +179,8 @@ def main() -> int:
         return 1
 
     print("开始下载 ...")
-    if download(model_dir, f"Systran/faster-whisper-{slug}"):
-        final = check_status(model_dir)
+    if download(model_dir, f"Systran/faster-whisper-{slug}", required_files):
+        final = check_status(model_dir, required_files)
         if final["available"]:
             print(f"模型下载完成: {model_dir}")
             return 0

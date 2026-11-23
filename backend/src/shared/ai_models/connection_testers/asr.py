@@ -53,6 +53,7 @@ class ASRConnectionTester:
         """
         from novamind.engines.document.media.audio.audio_utils import (
             default_faster_whisper_cache_dir,
+            local_whisper_required_files,
             split_local_whisper_model_name,
         )
 
@@ -71,7 +72,8 @@ class ASRConnectionTester:
                 f"（默认落 backend/.cache/faster-whisper/{slug}）"
             )
 
-        required_files = ["model.bin", "config.json", "tokenizer.json", "vocabulary.txt"]
+        # large-v3 的词表是 vocabulary.json（仓库内没有 vocabulary.txt），清单按档位取
+        required_files = local_whisper_required_files(slug)
         missing = [f for f in required_files if not (model_dir / f).exists()]
         if missing:
             raise ValueError(
