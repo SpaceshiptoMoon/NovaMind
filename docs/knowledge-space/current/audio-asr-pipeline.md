@@ -32,12 +32,14 @@ YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认�
 | | 开发机（8GB 无 GPU） | 生产（GPU/大内存服务器） |
 |---|---|---|
 | YAML `local_whisper_model` | **显式配置** `small`（~460MB，CPU int8 可跑） | 留空（= large-v3，中文 CER 最低） |
-| `local_whisper_device` | 留空（auto 探测无 CUDA → CPU） | 留空（auto 探测 CUDA → GPU + float16） |
+| `local_whisper_device` | 留空（auto 探测无 CUDA → CPU） | 留空（auto 探测 CUDA → GPU，计算类型由引擎按显卡选择，RTX 4060 实测 int8_float16） |
 | `local_whisper_compute_type` | 留空（auto） | 留空（auto） |
 | 模型预装 | `python scripts/download_faster_whisper_model.py --model small` | `deploy.sh`/`deploy.ps1` 自动按 YAML 档位预装 |
 | 需要改回 tiny | YAML 改 `local_whisper_model: tiny` | 同左（tiny ~75MB，CER 高，仅排障用） |
 
 > 原则：默认值面向生产，开发机约束通过**显式配置**表达，不把低配焊进代码。
+
+> GPU 生效的部署前提：容器要能拿到显卡（宿主机装 NVIDIA Container Toolkit），且应用镜像带 cuBLAS（构建参数 `ASR_GPU=true`）——默认部署两者都没有，此时 auto 仍解析为 CPU。做法见 README「可选：启用 NVIDIA GPU 加速本地语音转写」。日志 `子进程 faster-whisper 模型已加载 … 实际 device=` 记录引擎真实解析到的设备与精度。
 
 ## 3. 转写参数（识别准的三道闸）
 

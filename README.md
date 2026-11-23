@@ -198,6 +198,7 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1
 - 一键部署（`deploy.sh`）首次生成 `.env` 时需要宿主机有可用的 `python` 或 `python3` 命令（用于生成随机密码；脚本按 `python` → `python3` 顺序探测，`.env` 已存在时不再需要，都不可用时给出替代方案）。`deploy.ps1` 无此依赖
 - 最低 2 核 CPU / 4 GB 内存 / 30 GB 磁盘（实测：镜像约 7 GB、模型约 3.2 GB，构建还会产生可回收的缓存，可用 `docker builder prune` 清理；Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
 - 如需使用视频解析、本地语音转写或 DeepDoc full 模式，建议 4 核 / 8 GB 以上
+- 本地语音转写默认在容器内用 CPU 推理；机器有 NVIDIA 显卡时可改走 GPU（需重建应用镜像），见[可选：启用 NVIDIA GPU 加速本地语音转写](#可选启用-nvidia-gpu-加速本地语音转写)
 
 常用命令：
 
@@ -261,6 +262,55 @@ docker compose up -d --build
     ```bash
     sudo chown -R 1001:1001 backend/.cache
     ```
+
+### 可选：启用 NVIDIA GPU 加速本地语音转写
+
+本地语音转写（faster-whisper）默认在容器内用 CPU 推理（large-v3 档为 INT8）。有 NVIDIA 显卡的机器可以改走 GPU（引擎按显卡自动选择计算类型，RTX 4060 上实测为 int8_float16，即权重 INT8、计算 float16），`default.yaml` 不用改：`local_whisper_device` / `local_whisper_compute_type` 留空（auto）时引擎自动探测 CUDA。但自动探测只有在容器**拿得到显卡、且镜像里带 GPU 运行库**时才会选 GPU，这两点默认部署都不具备，需要手动开启：
+
+1. **让 Docker 能把显卡交给容器**。Docker Desktop 自带此能力；Linux 宿主机，以及 Windows 上在 WSL2 发行版里直接安装 Docker Engine 的情况（驱动只装 Windows 侧，WSL 内**不要**再装 Linux 版 NVIDIA 驱动），要在**运行 Docker 的那套 Linux** 里安装 NVIDIA Container Toolkit：
+
+   ```bash
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+     | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+     | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+     | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+   ```
+
+   验证：`docker run --rm --gpus all ubuntu nvidia-smi` 能列出显卡。
+
+2. **让应用镜像带上 GPU 运行库**。转写引擎（CTranslate2）的 CUDA 实现运行时需要 cuBLAS，默认镜像不含（新增约 1 GB，没有 NVIDIA 显卡的部署用不上），通过构建参数 `ASR_GPU=true` 追加安装。在仓库根目录新建 `docker-compose.override.yml`（已被 `.gitignore` 忽略；`docker compose` 自动与 `docker-compose.yml` 叠加，`deploy.sh` 同样生效）：
+
+   ```yaml
+   services:
+     app:
+       build:
+         args:
+           ASR_GPU: "true"   # 镜像内追加安装 cuBLAS
+       deploy:
+         resources:
+           reservations:
+             devices:        # 把宿主机的 NVIDIA 显卡交给 app 容器
+               - driver: nvidia
+                 count: all
+                 capabilities: [gpu]
+   ```
+
+   然后照常部署（`bash deploy.sh` 或 `docker compose up -d --build`），应用镜像会重新构建。
+
+> [!NOTE]
+> - 显卡驱动需支持 CUDA 12（NVIDIA 驱动版本：Windows 侧 527.41 及以上，Linux 侧 525.60.13 及以上；566.26 实测可用）。
+> - large-v3 转写期间额外占用约 2 GB 显存（8 秒音频实测）；显存不足会报 CUDA out of memory，可在 YAML 把 `local_whisper_model` 降档为 `small`。
+> - 没有 NVIDIA 显卡的机器不要建这个文件：容器会因申请不到设备而启动失败。
+> - 如何确认确实跑在 GPU 上：转写日志会打印引擎实际解析到的设备与精度——`子进程 faster-whisper 模型已加载 … 实际 device=cuda, compute_type=int8_float16`（查看方式：`docker exec novamind-app sh -c 'grep -h "模型已加载" /var/log/supervisor/*.log'`）。
+
+Linux / WSL 本地开发（不经 Docker）想用 GPU：`uv sync --extra asr-gpu` 安装 cuBLAS，再把它的目录加入动态链接器搜索路径后启动后端：
+
+```bash
+export LD_LIBRARY_PATH="$(cd backend && uv run python -c 'import nvidia.cublas.lib, nvidia.cuda_nvrtc.lib; print(":".join(list(nvidia.cublas.lib.__path__) + list(nvidia.cuda_nvrtc.lib.__path__)))')"
+```
 
 ### 方式三：本地开发
 
@@ -635,7 +685,7 @@ NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，
 
 音频文档的 ASR 模型有两条路径，可在知识库解析配置的音频分节中选择：
 
-- **本地 Whisper（默认，免费）**：基于 faster-whisper 的本地 CPU 推理（INT8 量化，专用单进程隔离，不阻塞其它任务），默认生产档 `faster-whisper-large-v3` 在部署期自动预装（低内存机器可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 降档为 `small`/`tiny`），无需任何 API Key。适合对隐私敏感或不希望产生调用费用的场景；追求更高中文准确率可自行换用其他档位（下载后把路径填入 `knowledge_base.parsing.local_whisper_model_dir`）
+- **本地 Whisper（默认，免费）**：基于 faster-whisper 的本地推理（默认走 CPU，INT8 量化，专用单进程隔离，不阻塞其它任务；有 NVIDIA 显卡时可[改走 GPU](#可选启用-nvidia-gpu-加速本地语音转写)），默认生产档 `faster-whisper-large-v3` 在部署期自动预装（低内存机器可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 降档为 `small`/`tiny`），无需任何 API Key。适合对隐私敏感或不希望产生调用费用的场景；追求更高中文准确率可自行换用其他档位（下载后把路径填入 `knowledge_base.parsing.local_whisper_model_dir`）
 - **云端 ASR（可选）**：使用「模型管理」中配置的 OpenAI Whisper 或 DashScope Paraformer，效果通常更好但按量计费；选择云端模型前请先通过连接测试确认凭证可用
 
 如果你的场景偏中文、多工具调用或长上下文任务，优先选择在这些维度表现稳定的模型。

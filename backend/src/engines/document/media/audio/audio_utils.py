@@ -569,9 +569,12 @@ def _transcribe_in_subprocess(
             local_files_only=True,
         )
         _subprocess_models[cache_key] = model
+        # 入参 device/compute_type 可以是 auto：同时记录引擎实际解析到的设备与精度，
+        # 才能从日志确认这次是 GPU（cuda/int8_float16）还是 CPU（int8）在跑。
         logger.info(
-            "子进程 faster-whisper 模型已加载, path=%s, device=%s, compute_type=%s",
-            model_dir, device, compute_type,
+            "子进程 faster-whisper 模型已加载, path=%s, device=%s, compute_type=%s, "
+            "实际 device=%s, compute_type=%s",
+            model_dir, device, compute_type, model.model.device, model.model.compute_type,
         )
 
     logger.info(

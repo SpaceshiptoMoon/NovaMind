@@ -96,7 +96,7 @@ class ParsingConfig:
     # 本地 ASR 推理设备：auto（有 CUDA 自动用 GPU）/ cpu / cuda。
     # 生产 GPU 服务器无需配置（auto 即用卡）；无卡开发机显式 cpu。
     local_whisper_device: str | None = None
-    # 量化类型：auto（CPU→int8 / GPU→float16）/ int8 / int8_float16 / float16 / float32。
+    # 量化类型：auto（CPU→int8 / GPU→int8_float16，由引擎按设备选择）/ int8 / int8_float16 / float16 / float32。
     local_whisper_compute_type: str | None = None
     # 束搜索宽度（默认 5，Whisper 官方默认值）。
     local_whisper_beam_size: int | None = None
