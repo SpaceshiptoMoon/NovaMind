@@ -10,10 +10,12 @@
 KB 配置 audio.asr_model / 空间配置 asr.model          ← 用户在 KB/空间 UI 显式选择
         │ 有值 → 按名路由（faster-whisper-* 家族 → local；其它 → 云端凭证精确匹配）
         ▼ 空
-YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认空 = 引擎默认）
-        │ 有值 → faster-whisper-{slug}（如 faster-whisper-small）
+YAML knowledge_base.parsing.local_whisper_model       ← 显式档位（默认空 = 按设备自动选）
+        │ 有值 → faster-whisper-{slug}（如 faster-whisper-medium），不随设备改写
         ▼ 空
-引擎默认 DEFAULT_LOCAL_WHISPER_MODEL（large-v3，生产档）
+按推理设备选默认档（audio_utils.resolve_local_whisper_model_slug）
+        ├─ 探测到 CUDA → DEFAULT_LOCAL_WHISPER_MODEL（large-v3，GPU 档）
+        └─ 仅 CPU     → DEFAULT_LOCAL_WHISPER_CPU_MODEL（small，无 GPU 自动降级）
 ```
 
 - **云端模型**（如 `whisper-1`/`paraformer-v2`）：按「uploader_id + model_type=asr + 模型名
@@ -25,21 +27,26 @@ YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认�
   1. YAML `local_whisper_model_dir`（显式目录，存量部署兼容，最高优先）
   2. YAML `local_whisper_model`（档位名）→ `backend/.cache/faster-whisper/{档位}`
   3. YAML `asr.local_whisper_model_dir`（第二回退目录，可引用 `${VAR}` 环境占位符）
-  4. 档位缺省 → 引擎默认档 `DEFAULT_LOCAL_WHISPER_MODEL`（large-v3）
+  4. 档位缺省 → 按推理设备选默认档：有 CUDA → `DEFAULT_LOCAL_WHISPER_MODEL`（large-v3），
+     仅 CPU → `DEFAULT_LOCAL_WHISPER_CPU_MODEL`（small）
+- **默认档未预装的降级**（`_degrade_local_whisper_model_dir`，只对未显式配置的默认档生效）：首选默认档不在
+  本地、而另一个默认档已下载时，改用已有档位并打 WARNING——典型场景是存量无 GPU 部署只预装过 large-v3，
+  升级后先用 large-v3 在 CPU 上跑完这次转写；两个默认档都不在则照旧报错，指引里点名应下载的档位。
+  显式配置的档位/目录缺失不降级（显式即显式，不静默换成别的模型）。
 
-## 2. 开发机 vs 生产（同一代码，两套配置法）
+## 2. 无 GPU 与 GPU 环境（同一份配置，默认档位随设备切换）
 
-| | 开发机（8GB 无 GPU） | 生产（GPU/大内存服务器） |
+| | 无 GPU（开发机 / 未启用 GPU 的部署） | GPU（服务器，或按 README 启用 GPU） |
 |---|---|---|
-| YAML `local_whisper_model` | **显式配置** `small`（~460MB，CPU int8 可跑） | 留空（= large-v3，中文 CER 最低） |
+| YAML `local_whisper_model` | 留空即可 → 自动用 `small`（~460MB，CPU int8 跑得动） | 留空即可 → 自动用 `large-v3`（中文 CER 最低） |
 | `local_whisper_device` | 留空（auto 探测无 CUDA → CPU） | 留空（auto 探测 CUDA → GPU，计算类型由引擎按显卡选择，RTX 4060 实测 int8_float16） |
 | `local_whisper_compute_type` | 留空（auto） | 留空（auto） |
-| 模型预装 | `python scripts/download_faster_whisper_model.py --model small` | `deploy.sh`/`deploy.ps1` 自动按 YAML 档位预装 |
-| 需要改回 tiny | YAML 改 `local_whisper_model: tiny` | 同左（tiny ~75MB，CER 高，仅排障用） |
+| 模型预装 | `deploy.sh`/`deploy.ps1` 自动预装 `small` | `deploy.sh`/`deploy.ps1` 自动预装 `large-v3` |
+| 要固定档位 | YAML 显式配置（如无 GPU 也用 large-v3）；显式档位不随设备改写 | 同左（如 GPU 上改用 tiny，~75MB，CER 高，仅排障用） |
 
-> 原则：默认值面向生产，开发机约束通过**显式配置**表达，不把低配焊进代码。
+> 原则：默认值随设备自适应，无 GPU 的机器不必为降级单独配一份 YAML；显式配置永远优先。
 
-> GPU 生效的部署前提：容器要能拿到显卡（宿主机装 NVIDIA Container Toolkit），且应用镜像带 cuBLAS（构建参数 `ASR_GPU=true`）——默认部署两者都没有，此时 auto 仍解析为 CPU。做法见 README「可选：启用 NVIDIA GPU 加速本地语音转写」。日志 `子进程 faster-whisper 模型已加载 … 实际 device=` 记录引擎真实解析到的设备与精度。
+> GPU 生效的部署前提：容器要能拿到显卡（宿主机装 NVIDIA Container Toolkit），且应用镜像带 cuBLAS（构建参数 `ASR_GPU=true`）——默认部署两者都没有，此时 auto 解析为 CPU，默认档相应为 small。做法见 README「可选：启用 NVIDIA GPU 加速本地语音转写」。日志 `子进程 faster-whisper 模型已加载 … 实际 device=` 记录引擎真实解析到的设备与精度。
 
 ## 3. 转写参数（识别准的三道闸）
 
@@ -71,13 +78,16 @@ YAML knowledge_base.parsing.local_whisper_model       ← 部署档位（默认�
 `protocol/model/model_dir/model_slug/device/compute_type/beam_size/vad_enabled/min_speech_dbfs/empty_result_retry_language/hotwords/diarization_enabled/speaker_count`（热词排序后参与哈希）。
 
 任一变化（切档位、改设备、加热词、换协议）→ 指纹变化 → 存量音频文档下次 RETRY
-重新转写；未变化的 RETRY 仍命中快照免重跑。指纹构造是命中检查与保存侧共用的单一
+重新转写；默认档位未显式配置时 `model` 是按设备解析出的实际档位（如 `faster-whisper-small`），
+设备可用性变化 → 实际档位变化 → 指纹随之变化；未变化的 RETRY 仍命中快照免重跑。指纹构造是命中检查与保存侧共用的单一
 事实源（`_audio_asr_fingerprint_params`），两处不会漂移。
 
 ## 5. 部署预装（deploy 脚本 ↔ 下载脚本 ↔ 运行时三方同源）
 
 - 下载脚本 `scripts/download_faster_whisper_model.py`：`--model` 显式档位 > YAML
-  `local_whisper_model` > 引擎默认；`--model-dir` 显式目录 > YAML `local_whisper_model_dir`
+  `local_whisper_model` > 按推理设备选默认档（与运行时同一函数
+  `resolve_local_whisper_model_slug`——脚本在容器内执行，容器有没有 GPU 与运行时一致，
+  无 GPU 的机器因此只下载 small）；`--model-dir` 显式目录 > YAML `local_whisper_model_dir`
   > 缓存命名约定 `backend/.cache/faster-whisper/{档位}`。
 - `deploy.sh` / `deploy.ps1`：部署期容器内按同一档位解析链预装，落
   `./backend/.cache/faster-whisper/{档位}`（compose 挂载为 `/app/.cache/faster-whisper`）。

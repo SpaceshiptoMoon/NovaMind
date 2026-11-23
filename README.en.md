@@ -235,7 +235,7 @@ The deploy script will automatically:
 - Create `backend/src/setting/yaml_config/yaml/default.yaml` (the single backend config file)
 - Build and start the full stack
 - Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr, several hundred MB total) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable). **A failure here does not abort the deploy** — parsing degrades gracefully (formula recognition skipped, DeepDoc full mode unavailable) and you can retry later per the script's warning
-- Download the local speech model (production default `faster-whisper-large-v3`, ~3GB; switch to smaller tiers like tiny/small via `--model`) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
+- Download the local speech model (the tier follows the GPU: `large-v3` (~3GB) when the container can use a GPU, otherwise only `small` (~460MB), which runs on the CPU; use `--model` to pick another tier) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
 - Poll `http://localhost/health` for a health check
 
 After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`; **the default username is `admin`**.
@@ -303,7 +303,7 @@ Notes:
       -e PYTHONPATH=/app/src \
       app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
     ```
-  - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually (production default `large-v3`; add `--model small` on low-memory machines):
+  - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually (the tier is chosen exactly as at runtime, by whether the container can use a GPU):
     ```bash
     docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
@@ -317,7 +317,7 @@ Notes:
 
 ### Optional: accelerate local speech transcription with an NVIDIA GPU
 
-Local speech transcription (faster-whisper) runs on the CPU inside the container by default (INT8 for the large-v3 tier). On a machine with an NVIDIA GPU it can run on the GPU instead (the engine picks the compute type supported by the GPU — int8_float16, i.e. INT8 weights with float16 computation, was measured on an RTX 4060); `default.yaml` needs no change — with `local_whisper_device` / `local_whisper_compute_type` left empty (auto) the engine detects CUDA by itself. That detection only picks the GPU when the container **can reach the GPU and the image contains the GPU runtime libraries**, neither of which a default deployment has, so both must be enabled:
+Local speech transcription (faster-whisper) runs on the CPU inside the container by default, and the model tier follows the device: when no GPU is visible it uses the `small` tier (fast enough in CPU int8). On a machine with an NVIDIA GPU, enabling the GPU switches it to `large-v3` automatically (the engine picks the compute type supported by the GPU — int8_float16, i.e. INT8 weights with float16 computation, was measured on an RTX 4060); `default.yaml` needs no change — with `local_whisper_model` / `local_whisper_device` / `local_whisper_compute_type` left empty (auto) the engine detects CUDA and picks the matching default tier. That detection only picks the GPU when the container **can reach the GPU and the image contains the GPU runtime libraries**, neither of which a default deployment has, so both must be enabled:
 
 1. **Let Docker hand the GPU to containers.** Docker Desktop has this built in. On a Linux host — including Docker Engine installed directly inside a WSL2 distro on Windows (install the driver on the Windows side only; do **not** install a Linux NVIDIA driver inside WSL) — install the NVIDIA Container Toolkit in **the Linux environment that runs Docker**:
 
@@ -350,7 +350,7 @@ Local speech transcription (faster-whisper) runs on the CPU inside the container
                  capabilities: [gpu]
    ```
 
-   Then deploy as usual (`bash deploy.sh` or `docker compose up -d --build`); the app image is rebuilt.
+   Then deploy as usual (`bash deploy.sh` or `docker compose up -d --build`); the app image is rebuilt, and the deploy script downloads the tier for the detected device (`large-v3`, ~3GB, with a GPU).
 
 > [!NOTE]
 > - The NVIDIA driver must support CUDA 12 (driver version 527.41+ on Windows, 525.60.13+ on Linux; 566.26 tested).
@@ -415,7 +415,7 @@ uv run python main.py --reload
 Default backend address: `http://localhost:8100`
 
 > [!NOTE]
-> **Audio / video parsing in local development**: the local speech model loads from `backend/.cache/faster-whisper/large-v3` by default (same repo-root cache directory as the DeepDoc models; on memory-constrained dev machines set a lower tier via YAML `knowledge_base.parsing.local_whisper_model` and download that tier); download it before first use:
+> **Audio / video parsing in local development**: the local speech model loads from `backend/.cache/faster-whisper/{tier}` (same repo-root cache directory as the DeepDoc models). With the tier left empty it follows the device — `large-v3` when CUDA is available, otherwise `small`; set YAML `knowledge_base.parsing.local_whisper_model` to pin a tier. Download it before first use (the script picks the tier by the same rule):
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py
@@ -607,7 +607,7 @@ Plan for at least these model types:
 
 Audio documents have two ASR paths, selectable in the KB parsing config's audio section:
 
-- **Local Whisper (default, free)**: local inference via faster-whisper (CPU by default — INT8 quantized, dedicated single-process isolation, never blocks other tasks; with an NVIDIA GPU it can [run on the GPU](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu)); the production-default `faster-whisper-large-v3` is pre-downloaded at deploy time (lower-memory machines can downgrade to `small`/`tiny` via YAML `knowledge_base.parsing.local_whisper_model`), no API key needed. Good for privacy-sensitive or zero-cost scenarios; for better accuracy swap in another tier (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
+- **Local Whisper (default, free)**: local inference via faster-whisper (dedicated single-process isolation, never blocks other tasks); the model tier follows the device and is pre-downloaded at deploy time — `small` on the CPU (INT8) without a GPU, `large-v3` once an NVIDIA GPU is [enabled](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu); no API key needed. Good for privacy-sensitive or zero-cost scenarios; for better accuracy swap in another tier (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
 - **Cloud ASR (optional)**: OpenAI Whisper or DashScope Paraformer configured on the "Model Management" page — usually better quality, billed per use; run a connection test before selecting a cloud model
 
 </details>
@@ -675,7 +675,9 @@ The `plain` / `default` mode only extracts the PDF text layer, which is empty fo
 <details>
 <summary><b>Audio document parsing fails with a local-model-not-found error?</b></summary>
 
-The local speech model (production default `faster-whisper-large-v3`) is downloaded at deploy time; if that step failed, or you chose manual deploy and skipped it, run the commands in [Option 2](#option-2-manual-docker-deploy); for local development run `uv run python scripts/download_faster_whisper_model.py`. You can also switch to a configured cloud ASR model in the KB config.
+The local speech model (the tier follows the device: `faster-whisper-large-v3` with a GPU, `faster-whisper-small` without) is downloaded at deploy time; if that step failed, or you chose manual deploy and skipped it, run the commands in [Option 2](#option-2-manual-docker-deploy); for local development run `uv run python scripts/download_faster_whisper_model.py`. You can also switch to a configured cloud ASR model in the KB config.
+
+If the log shows 「本地 ASR 默认档 small 未预装，暂用已下载的 large-v3 档转写」, the machine currently cannot use a GPU but only has large-v3 locally: transcription still works (slower); run `bash deploy.sh` again or the download command from the log to switch to small.
 </details>
 
 <details>

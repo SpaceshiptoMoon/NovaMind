@@ -85,9 +85,9 @@ class ParsingConfig:
     # 兼容通道）；为空时按 local_whisper_model 档位名解析缓存目录。
     local_whisper_model_dir: str | None = None
     # 本地 faster-whisper 模型档位（tiny/base/small/medium/large-v2/large-v3）。
-    # None = 引擎默认 large-v3（生产默认档，中文 CER 最低）。
-    # 开发机（8GB 内存无 GPU）显式配置 tiny 或 small——tiny 仅 ~75MB、small
-    # ~460MB，CPU int8 可跑；large-v3 需 GPU 或 16GB+ 内存。
+    # None = 按推理设备自动选默认档：有 CUDA 用 large-v3（生产档，中文 CER 最低），
+    # 仅 CPU 降级为 small（~460MB，CPU int8 跑得动）。要固定档位（如无 GPU 也用
+    # large-v3）才需要显式配置。
     local_whisper_model: str | None = None
     # 本地 faster-whisper 转写 CPU 线程数。None 时按物理核自动取保守值（留至少 1
     # 物理核给事件循环）。转写期间其它请求仍卡顿就调小（如 2）；ASR 太慢可调大，

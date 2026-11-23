@@ -186,7 +186,7 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1
 - 创建 `backend/src/setting/yaml_config/yaml/default.yaml`（唯一后端配置文件）
 - 构建并启动完整服务栈
 - **部署期下载 DeepDoc 模型**（OCR / 版面 / 表格 / 段落合并 XGBoost / 公式识别 pix2text-mfr，共数百 MB）到 `backend/.cache/deepdoc`，经 compose 卷挂载进容器（`/app/.cache/deepdoc`），容器重建不丢；下载源默认国内镜像 `hf-mirror.com`（`HF_ENDPOINT` 可覆盖）。**此步失败不会中断部署**，仅解析能力降级（公式识别跳过、DeepDoc full 模式不可用），可事后按脚本提示重试
-- **部署期下载本地语音模型**（生产默认档 faster-whisper-large-v3，约 3GB；可用 `--model` 换 tiny/small 等更小档位）到 `backend/.cache/faster-whisper`（挂载为 `/app/.cache/faster-whisper`）——音频文档默认走本地转写，模型缺失时音频解析会失败，可按脚本提示重试
+- **部署期下载本地语音模型**（档位按容器内是否可用 GPU 自动选择：有 GPU 下载 large-v3，约 3GB；没有 GPU 只下载 small，约 460MB，并在 CPU 上跑；可用 `--model` 指定其它档位）到 `backend/.cache/faster-whisper`（挂载为 `/app/.cache/faster-whisper`）——音频文档默认走本地转写，模型缺失时音频解析会失败，可按脚本提示重试
 - 轮询 `http://localhost/health` 做健康检查
 
 部署完成后，管理员初始密码可在根目录 `.env` 的 `ADMIN_PASSWORD` 中查看，**默认用户名为 `admin`**。
@@ -251,7 +251,7 @@ docker compose up -d --build
       -e PYTHONPATH=/app/src \
       app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
     ```
-  - **本地语音模型缺失**：音频解析（未显式选云端 ASR 时）会失败。手动补齐（默认下载生产档 large-v3，低内存机器加 `--model small` 降档）：
+  - **本地语音模型缺失**：音频解析（未显式选云端 ASR 时）会失败。手动补齐（档位与部署脚本、运行时同一规则，按容器内是否可用 GPU 自动选择）：
     ```bash
     docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
@@ -265,7 +265,7 @@ docker compose up -d --build
 
 ### 可选：启用 NVIDIA GPU 加速本地语音转写
 
-本地语音转写（faster-whisper）默认在容器内用 CPU 推理（large-v3 档为 INT8）。有 NVIDIA 显卡的机器可以改走 GPU（引擎按显卡自动选择计算类型，RTX 4060 上实测为 int8_float16，即权重 INT8、计算 float16），`default.yaml` 不用改：`local_whisper_device` / `local_whisper_compute_type` 留空（auto）时引擎自动探测 CUDA。但自动探测只有在容器**拿得到显卡、且镜像里带 GPU 运行库**时才会选 GPU，这两点默认部署都不具备，需要手动开启：
+本地语音转写（faster-whisper）默认在容器内用 CPU 推理，档位按推理设备自动选择：容器内探测不到 GPU 时用 `small` 档（CPU int8 跑得动）。有 NVIDIA 显卡的机器启用 GPU 后自动改用 `large-v3`（引擎按显卡自动选择计算类型，RTX 4060 上实测为 int8_float16，即权重 INT8、计算 float16），`default.yaml` 不用改：`local_whisper_model` / `local_whisper_device` / `local_whisper_compute_type` 留空（auto）时引擎自动探测 CUDA 并选对应的默认档。但自动探测只有在容器**拿得到显卡、且镜像里带 GPU 运行库**时才会选 GPU，这两点默认部署都不具备，需要手动开启：
 
 1. **让 Docker 能把显卡交给容器**。Docker Desktop 自带此能力；Linux 宿主机，以及 Windows 上在 WSL2 发行版里直接安装 Docker Engine 的情况（驱动只装 Windows 侧，WSL 内**不要**再装 Linux 版 NVIDIA 驱动），要在**运行 Docker 的那套 Linux** 里安装 NVIDIA Container Toolkit：
 
@@ -298,7 +298,7 @@ docker compose up -d --build
                  capabilities: [gpu]
    ```
 
-   然后照常部署（`bash deploy.sh` 或 `docker compose up -d --build`），应用镜像会重新构建。
+   然后照常部署（`bash deploy.sh` 或 `docker compose up -d --build`），应用镜像会重新构建，部署脚本同时按容器内是否可用 GPU 预装对应档位（有 GPU → large-v3，约 3GB）。
 
 > [!NOTE]
 > - 显卡驱动需支持 CUDA 12（NVIDIA 驱动版本：Windows 侧 527.41 及以上，Linux 侧 525.60.13 及以上；566.26 实测可用）。
@@ -365,7 +365,7 @@ uv run python main.py --reload
 默认后端地址：`http://localhost:8100`
 
 > [!NOTE]
-> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `backend/.cache/faster-whisper/large-v3` 加载（默认档位由引擎代码兜底——YAML 的 `local_whisper_model` 留空即 large-v3；与 DeepDoc 模型同一仓库根缓存目录。开发机内存有限可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 显式降档为 `small`/`tiny` 并下载对应档位），首次使用前手动下载：
+> **本地开发使用音频 / 视频解析**：本地语音模型默认从 `backend/.cache/faster-whisper/{档位}` 加载（档位留空时按推理设备自动选择：有 CUDA 用 `large-v3`，否则用 `small`；与 DeepDoc 模型同一仓库根缓存目录。要固定档位，在 YAML 的 `knowledge_base.parsing.local_whisper_model` 显式配置），首次使用前手动下载（下载脚本按同一规则选档）：
 > ```bash
 > cd backend
 > uv run python scripts/download_faster_whisper_model.py
@@ -685,7 +685,7 @@ NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，
 
 音频文档的 ASR 模型有两条路径，可在知识库解析配置的音频分节中选择：
 
-- **本地 Whisper（默认，免费）**：基于 faster-whisper 的本地推理（默认走 CPU，INT8 量化，专用单进程隔离，不阻塞其它任务；有 NVIDIA 显卡时可[改走 GPU](#可选启用-nvidia-gpu-加速本地语音转写)），默认生产档 `faster-whisper-large-v3` 在部署期自动预装（低内存机器可在 YAML 的 `knowledge_base.parsing.local_whisper_model` 降档为 `small`/`tiny`），无需任何 API Key。适合对隐私敏感或不希望产生调用费用的场景；追求更高中文准确率可自行换用其他档位（下载后把路径填入 `knowledge_base.parsing.local_whisper_model_dir`）
+- **本地 Whisper（默认，免费）**：基于 faster-whisper 的本地推理（专用单进程隔离，不阻塞其它任务），模型档位按推理设备自动选择并在部署期预装：没有 GPU 用 `small` 档走 CPU（INT8），有 NVIDIA 显卡并[启用 GPU](#可选启用-nvidia-gpu-加速本地语音转写) 后用 `large-v3` 档；无需任何 API Key。适合对隐私敏感或不希望产生调用费用的场景；追求更高中文准确率可自行换用其他档位（下载后把路径填入 `knowledge_base.parsing.local_whisper_model_dir`）
 - **云端 ASR（可选）**：使用「模型管理」中配置的 OpenAI Whisper 或 DashScope Paraformer，效果通常更好但按量计费；选择云端模型前请先通过连接测试确认凭证可用
 
 如果你的场景偏中文、多工具调用或长上下文任务，优先选择在这些维度表现稳定的模型。
@@ -745,7 +745,9 @@ Docker 一键部署后，用户名 `admin`，初始密码在根目录 `.env` 的
 <details>
 <summary><b>音频文档解析失败，提示本地模型未找到？</b></summary>
 
-本地语音模型（默认生产档 faster-whisper-large-v3）在部署期下载，若该步失败或采用手动部署方式跳过了下载，按[方式二](#方式二手动-docker-部署)中的命令补齐；本地开发则运行 `uv run python scripts/download_faster_whisper_model.py`。也可以在知识库配置中改用已配置的云端 ASR 模型。
+本地语音模型（档位按设备自动选择：有 GPU 是 faster-whisper-large-v3，没有 GPU 是 faster-whisper-small）在部署期下载，若该步失败或采用手动部署方式跳过了下载，按[方式二](#方式二手动-docker-部署)中的命令补齐；本地开发则运行 `uv run python scripts/download_faster_whisper_model.py`。也可以在知识库配置中改用已配置的云端 ASR 模型。
+
+日志若出现「本地 ASR 默认档 small 未预装，暂用已下载的 large-v3 档转写」，说明这台机器当前用不了 GPU、但本地只有 large-v3：此时仍能转写（较慢），重新运行 `bash deploy.sh` 或按日志提示执行下载命令即可切到 small。
 </details>
 
 <details>

@@ -130,9 +130,11 @@ knowledge_base:
     video_vlm_concurrency: 4
     # ===== 本地 faster-whisper ASR（音频解析）=====
     # 模型档位（tiny/base/small/medium/large-v2/large-v3）。
-    # 默认空 = large-v3（生产推荐档，中文识别最准）。
-    # 开发机（8GB 内存无 GPU）必须显式降档：tiny（~75MB）或 small（~460MB）。
-    # 部署期由 deploy 脚本按此档位预装到 backend/.cache/faster-whisper/{档位}
+    # 默认空 = 按推理设备自动选择，没有 GPU 的机器无需单独配置：
+    #   探测到 CUDA（启用方法见 README「可选：启用 NVIDIA GPU 加速本地语音转写」）→ large-v3（约 3GB，中文识别最准）
+    #   否则 → small（约 460MB，CPU int8 跑得动）
+    # 要固定档位（如无 GPU 也用 large-v3、GPU 上改用 tiny）才需要显式填写。
+    # 部署期由 deploy 脚本按同一规则预装到 backend/.cache/faster-whisper/{档位}
     # （compose 挂载为 /app/.cache/faster-whisper，容器重建不丢）。
     local_whisper_model:
     # 显式模型目录（绝对路径）。存量部署兼容通道，最高优先——配置后 local_whisper_model

@@ -273,19 +273,15 @@ def build_engine_mineru_config() -> "MineruEngineConfig":
 def _resolve_default_local_asr_model() -> str:
     """解析本地 ASR 默认档位名（faster-whisper-{slug}）。
 
-    YAML ``knowledge_base.parsing.local_whisper_model`` 显式档位优先；
-    未配置时用引擎默认（生产 large-v3）。此名字同时用于路由判定与
-    转写日志/pipeline_result 透出，保证「配置 → 路由 → 产物标注」全链
-    一致。
+    与引擎、部署预装同一解析（``resolve_local_whisper_model_slug``）：YAML
+    ``knowledge_base.parsing.local_whisper_model`` 显式档位优先；未配置时按推理
+    设备选默认档（有 CUDA → large-v3，仅 CPU → small，无 GPU 自动降级）。此名字
+    同时用于路由判定、转写日志/pipeline_result 透出与解析快照指纹，保证
+    「配置 → 路由 → 产物标注」全链一致——实际生效的档位变了，指纹也随之变化。
     """
-    from novamind.setting.yaml_config import get_config
+    from novamind.engines.document.media.audio import resolve_local_whisper_model_slug
 
-    slug = get_config().knowledge_base.parsing.local_whisper_model
-    if slug:
-        return f"faster-whisper-{slug}"
-    from novamind.engines.document.media.audio import DEFAULT_LOCAL_WHISPER_MODEL
-
-    return f"faster-whisper-{DEFAULT_LOCAL_WHISPER_MODEL}"
+    return f"faster-whisper-{resolve_local_whisper_model_slug(_build_engine_audio_config())}"
 
 
 async def _run_asr_transcription(
@@ -1658,7 +1654,8 @@ async def process_audio_document(
     # prepare_local_whisper_model）——这不是「串用别的云端配置」的静默兜底，
     # 而是有明确默认语义的降级路径；转写日志会记录实际生效的 protocol:model。
     # 显式配置了云端模型但凭证缺失时仍然抛错（不串用其它配置，审计 P1#8）。
-    # 默认档位来自 YAML local_whisper_model（生产默认 large-v3，开发机降档配置）。
+    # 默认档位来自 YAML local_whisper_model（留空时按推理设备自动选择：有 CUDA →
+    # large-v3，仅 CPU → small）。
     asr_model = (
         audio_config.get("asr_model")
         or space_asr_cfg.get("model")
