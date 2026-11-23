@@ -22,6 +22,15 @@ router = APIRouter(tags=["健康检查"])
 _HEALTH_CHECK_TIMEOUT = 3.0
 
 
+class ComponentNotReady(Exception):
+    """组件可达但尚未就绪（如业务桶未创建）。
+
+    与「连接失败」区分开：这是设计上会自行恢复的预期状态，异常文案可直接
+    返回给调用方（不含内部细节），/health/detailed 据此报 degraded 而非
+    unhealthy。其余异常在接口上仍统一显示为「连接失败」。
+    """
+
+
 async def _check_with_timeout(coro, timeout: float = _HEALTH_CHECK_TIMEOUT):
     """为协程添加超时保护，防止外部服务响应慢阻塞健康检查
 
@@ -76,7 +85,9 @@ async def _check_minio_component(config) -> dict:
     minio_client = await get_minio_client()
     bucket_exists = await minio_client.bucket_exists(config.minio.bucket_name)
     if not bucket_exists:
-        raise Exception("bucket 不存在")
+        # 桶由后端首次写对象时懒创建：全新部署到首次上传之间必然不存在，
+        # 属于预期状态而非连接故障。
+        raise ComponentNotReady("业务桶未创建（首次上传文档时自动创建）")
     return {"bucket_exists": True}
 
 
@@ -173,6 +184,12 @@ async def detailed_health_check() -> dict[str, Any]:
             if result is None:
                 raise TimeoutError(f"{name} 健康检查超时")
             health_status["components"][name] = {"status": "healthy", **(result or {})}
+        except ComponentNotReady as e:
+            new_status = "unhealthy" if is_critical else "degraded"
+            if _priority[new_status] > _priority[overall_status]:
+                overall_status = new_status
+            health_status["components"][name] = {"status": new_status, "error": str(e)}
+            logger.warning(f"{name} 尚未就绪", error=str(e))
         except Exception as e:
             new_status = "unhealthy" if is_critical else "degraded"
             if _priority[new_status] > _priority[overall_status]:
