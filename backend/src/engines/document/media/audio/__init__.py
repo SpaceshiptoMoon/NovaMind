@@ -1,5 +1,6 @@
 """音频处理模块。"""
 from novamind.engines.document.media.audio.audio_utils import (
+    DEFAULT_LOCAL_WHISPER_CPU_MODEL,
     DEFAULT_LOCAL_WHISPER_MODEL,
     DEFAULT_ZH_INITIAL_PROMPT,
     LOCAL_WHISPER_SUPPORTED_MODELS,
@@ -14,6 +15,8 @@ from novamind.engines.document.media.audio.audio_utils import (
     merge_segment_meta,
     release_asr_slot,
     resolve_initial_prompt,
+    resolve_local_whisper_device,
+    resolve_local_whisper_model_slug,
     sigmoid_confidence,
     split_local_whisper_model_name,
     transcribe_audio_local,
@@ -44,6 +47,7 @@ __all__ = [
     "AsrRoute",
     "AudioClipExtractionError",
     "AudioFileInvalidError",
+    "DEFAULT_LOCAL_WHISPER_CPU_MODEL",
     "DEFAULT_LOCAL_WHISPER_MODEL",
     "DEFAULT_ZH_INITIAL_PROMPT",
     "LOCAL_WHISPER_SUPPORTED_MODELS",
@@ -60,6 +64,8 @@ __all__ = [
     "local_whisper_required_files",
     "merge_segment_meta",
     "resolve_initial_prompt",
+    "resolve_local_whisper_device",
+    "resolve_local_whisper_model_slug",
     "sigmoid_confidence",
     "split_local_whisper_model_name",
     "transcribe_audio_local",

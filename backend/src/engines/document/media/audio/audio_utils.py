@@ -85,10 +85,13 @@ def _detect_audio_format(file_content: bytes) -> tuple[str, str]:
 
 # ========== 本地 faster-whisper 模型 ==========
 
-# 默认本地模型档位（面向生产 GPU/资源充足服务器）。
-# 开发机（无 GPU / 低内存）不要改这个默认，而是在 YAML
-# knowledge_base.parsing.local_whisper_model 显式降档（tiny/base/small）。
+# 档位未显式配置（YAML knowledge_base.parsing.local_whisper_model 留空）时的默认档，
+# 按推理设备自动选择——同一份配置在 GPU 服务器和无 GPU 的机器上都不用改：
+#   CUDA 可用 → DEFAULT_LOCAL_WHISPER_MODEL（生产 GPU 档，中文识别最准）
+#   仅 CPU   → DEFAULT_LOCAL_WHISPER_CPU_MODEL（降级档：CPU int8 跑得动）
+# 显式配置的档位在两种设备下都原样生效（显式即显式，不被降级改写）。
 DEFAULT_LOCAL_WHISPER_MODEL = "large-v3"
+DEFAULT_LOCAL_WHISPER_CPU_MODEL = "small"
 
 # 本地模型档位白名单：faster-whisper-{slug} → HF 仓库 Systran/faster-whisper-{slug}
 LOCAL_WHISPER_SUPPORTED_MODELS = ("tiny", "base", "small", "medium", "large-v2", "large-v3")
@@ -384,6 +387,50 @@ def default_faster_whisper_cache_dir(model_slug: str = DEFAULT_LOCAL_WHISPER_MOD
     return default_model_dir().parent / "faster-whisper" / model_slug
 
 
+@functools.lru_cache(maxsize=1)
+def _cuda_available() -> bool:
+    """CTranslate2 是否看得到可用的 CUDA 设备（进程内缓存：驱动探测只做一次）。
+
+    探测本身出异常按「没有可用显卡」处理——落到 CPU 默认档照常转写，而不是让
+    音频解析直接失败。
+    """
+    try:
+        import ctranslate2
+
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:  # noqa: BLE001 - 探测异常等价于无卡
+        return False
+
+
+def resolve_local_whisper_device(audio_config: AudioConfig | None = None) -> str:
+    """解析本地 ASR 实际使用的推理设备：``cpu`` 或 ``cuda``。
+
+    ``local_whisper_device`` 显式配置时原样生效；留空（auto）与引擎的 auto 语义
+    一致——CTranslate2 探测到 CUDA 即 cuda，否则 cpu。默认档位的选择、部署期
+    预装哪一档都以此为准，三处对「有没有 GPU」的判断不会漂移。
+    """
+    configured = getattr(audio_config, "local_whisper_device", None) if audio_config else None
+    if configured and str(configured).lower() != "auto":
+        return str(configured).lower()
+    return "cuda" if _cuda_available() else "cpu"
+
+
+def resolve_local_whisper_model_slug(audio_config: AudioConfig | None = None) -> str:
+    """解析本地 faster-whisper 模型档位 slug（运行时、宿主路由、部署预装共用的唯一事实源）。
+
+    优先级：
+      1. ``AudioConfig.local_whisper_model``（显式档位名）——原样返回，不随设备改写
+      2. 缺省时按推理设备选默认档（无 GPU 自动降级，开发机不必单独配一份 YAML）：
+         cuda → ``DEFAULT_LOCAL_WHISPER_MODEL``，cpu → ``DEFAULT_LOCAL_WHISPER_CPU_MODEL``
+    """
+    model_slug = getattr(audio_config, "local_whisper_model", None) if audio_config else None
+    if model_slug:
+        return str(model_slug)
+    if resolve_local_whisper_device(audio_config) == "cuda":
+        return DEFAULT_LOCAL_WHISPER_MODEL
+    return DEFAULT_LOCAL_WHISPER_CPU_MODEL
+
+
 def _resolve_local_whisper_model_dir(
     audio_config: AudioConfig | None = None,
 ) -> Path:
@@ -395,8 +442,9 @@ def _resolve_local_whisper_model_dir(
          部署已配置具体路径的兼容通道，最高优先）
       2. ``AudioConfig.local_whisper_model``（档位名，如 ``large-v3``）→
          ``backend/.cache/faster-whisper/{档位}``（与下载脚本/部署预装同约定）
-      3. 档位名缺省时用 ``DEFAULT_LOCAL_WHISPER_MODEL``（生产默认 large-v3；
-         开发机在 YAML 显式降档）
+         档位名缺省时按推理设备选默认档（有 CUDA → ``DEFAULT_LOCAL_WHISPER_MODEL``，
+         仅 CPU → ``DEFAULT_LOCAL_WHISPER_CPU_MODEL``，见
+         ``resolve_local_whisper_model_slug``）
 
     YAML ``asr.local_whisper_model_dir`` 的第二回退已上移宿主
     （``_build_engine_audio_config`` 合并进 ``AudioConfig.local_whisper_model_dir``
@@ -410,14 +458,52 @@ def _resolve_local_whisper_model_dir(
     if configured:
         return Path(str(configured)).expanduser()
 
-    # 2. 档位名 → 缓存目录命名约定（下载脚本/部署预装默认下载到同一基准）
-    model_slug = getattr(audio_config, "local_whisper_model", None) if audio_config else None
-    if model_slug:
-        return default_faster_whisper_cache_dir(model_slug)
+    # 2. 档位名 → 缓存目录命名约定（下载脚本/部署预装默认下载到同一基准）。档位名
+    #    缺省时按推理设备选默认档（发包纪律：引擎零 setting 依赖——原第 3 级
+    #    YAML asr.local_whisper_model_dir 回退已上移宿主 _build_engine_audio_config）。
+    #    本函数只做纯计算给出「首选」目录，不碰文件系统；首选档未预装时的降级见
+    #    _degrade_local_whisper_model_dir。
+    return default_faster_whisper_cache_dir(resolve_local_whisper_model_slug(audio_config))
 
-    # 3. 默认档位（发包纪律：引擎零 setting 依赖——原第 3 级 YAML
-    # asr.local_whisper_model_dir 回退已上移宿主 _build_engine_audio_config）
-    return default_faster_whisper_cache_dir(DEFAULT_LOCAL_WHISPER_MODEL)
+
+def _degrade_local_whisper_model_dir(
+    audio_config: AudioConfig | None, preferred_dir: Path,
+) -> Path:
+    """按设备选出的默认档未预装时，改用本地已下载的另一个默认档（降级）。
+
+    只对「档位/目录都未显式配置」的默认档生效。典型场景：存量无 GPU 部署只预装过
+    large-v3，升级后 CPU 默认档变成 small——small 还没下载时先用已有的 large-v3 在
+    CPU 上跑完这次转写并告警，而不是让音频解析直接失败；GPU 不可用而 large-v3
+    已下载、small 未下载时同理（反向）。两个默认档都不在则原样返回首选目录，由调用
+    方按首选档位报错并给出下载指引。显式配置的档位/目录不参与降级：缺了照旧报错，
+    不静默换成别的模型。
+
+    Args:
+        audio_config: 引擎音频配置（只看其中的显式档位名与显式目录）。
+        preferred_dir: 首选模型目录（调用方已确认它不存在）。
+
+    Returns:
+        实际可用的模型目录：另一个默认档的目录（已下载）或入参 ``preferred_dir``。
+    """
+    if getattr(audio_config, "local_whisper_model_dir", None):
+        return preferred_dir
+    if getattr(audio_config, "local_whisper_model", None):
+        return preferred_dir
+    preferred_slug = resolve_local_whisper_model_slug(audio_config)
+    other_slug = (
+        DEFAULT_LOCAL_WHISPER_CPU_MODEL
+        if preferred_slug == DEFAULT_LOCAL_WHISPER_MODEL
+        else DEFAULT_LOCAL_WHISPER_MODEL
+    )
+    candidate = default_faster_whisper_cache_dir(other_slug)
+    if not candidate.exists():
+        return preferred_dir
+    logger.warning(
+        "本地 ASR 默认档 %s 未预装（设备 %s），暂用已下载的 %s 档转写；运行 "
+        "python scripts/download_faster_whisper_model.py --model %s 预装后自动切回",
+        preferred_slug, resolve_local_whisper_device(audio_config), other_slug, preferred_slug,
+    )
+    return candidate
 
 
 def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:
@@ -917,10 +1003,13 @@ async def transcribe_audio_local(
         # 3. 解析模型目录 + 推理参数（主进程），校验模型存在
         model_dir = _resolve_local_whisper_model_dir(audio_config)
         if not model_dir.exists():
+            # 首选是按设备选出的默认档且未预装：看另一个默认档在不在（降级）
+            model_dir = _degrade_local_whisper_model_dir(audio_config, model_dir)
+        if not model_dir.exists():
             raise RuntimeError(
                 f"本地 ASR 模型未找到: {model_dir}，"
                 f"请运行 python scripts/download_faster_whisper_model.py --model "
-                f"{getattr(audio_config, 'local_whisper_model', None) or DEFAULT_LOCAL_WHISPER_MODEL} "
+                f"{resolve_local_whisper_model_slug(audio_config)} "
                 f"预装，或在配置 knowledge_base.parsing.local_whisper_model_dir 指定路径。"
             )
         cpu_threads = _resolve_cpu_threads(audio_config)

@@ -187,7 +187,8 @@ function Invoke-PrepareLocalWhisperModel {
     # 本地 ASR 默认模型部署期预装：音频文档未显式配置 asr_model 时默认走本地
     # faster-whisper 转写，模型缺失会让音频解析直接失败。
     # 档位按 YAML knowledge_base.parsing.local_whisper_model 解析（下载脚本内
-    # 同一优先级：--model 参数 > YAML > 引擎默认 large-v3 生产档）；落宿主机
+    # 同一优先级：--model 参数 > YAML > 按推理设备选默认档——容器内有 CUDA 用
+    # large-v3，没有则只下 small，与运行时一致）；落宿主机
     # ./backend/.cache/faster-whisper/{档位}（compose 挂载为
     # /app/.cache/faster-whisper，容器重建不丢；运行时按同一档位名解析目录）。
     Write-Step "Preparing local faster-whisper model (deploy-time download)"

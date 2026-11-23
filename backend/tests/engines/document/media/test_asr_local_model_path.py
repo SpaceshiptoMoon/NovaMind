@@ -24,7 +24,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.engines.document.media.audio import audio_utils
 from novamind.engines.document.media.audio.audio_utils import (
+    DEFAULT_LOCAL_WHISPER_CPU_MODEL,
     DEFAULT_LOCAL_WHISPER_MODEL,
     _resolve_local_whisper_model_dir,
 )
@@ -38,10 +40,10 @@ def _clear_env(monkeypatch):
 
 
 def test_default_model_dir_points_to_repo_cache(monkeypatch):
-    """无 AudioConfig、无 YAML 配置时回退引擎默认档（生产 large-v3）缓存目录。
+    """无 AudioConfig、无 YAML 配置时回退引擎默认档的缓存目录，默认档按设备选。
 
-    2026-10 识别质量批次：默认档从 tiny 升为 DEFAULT_LOCAL_WHISPER_MODEL
-    （面向生产；开发机在 YAML 显式降档），目录命名约定不变。
+    2026-10 识别质量批次：默认档从 tiny 升为 DEFAULT_LOCAL_WHISPER_MODEL；此后默认档
+    改为按推理设备选择（有 CUDA → large-v3，仅 CPU → small），目录命名约定不变。
     """
     _clear_env(monkeypatch)
     # 隔离全局配置单例（防其它测试污染/防读到真实 YAML 的 local_whisper_model）
@@ -49,11 +51,14 @@ def test_default_model_dir_points_to_repo_cache(monkeypatch):
     original = get_config().knowledge_base.parsing.local_whisper_model
     get_config().knowledge_base.parsing.local_whisper_model = None
     try:
+        cache_root = BACKEND_ROOT / ".cache" / "faster-whisper"
+        monkeypatch.setattr(audio_utils, "_cuda_available", lambda: True)
         model_dir = _resolve_local_whisper_model_dir()
-        expected = (
-            BACKEND_ROOT / ".cache" / "faster-whisper" / "large-v3"
-        )
-        assert model_dir == expected
+        assert model_dir == cache_root / "large-v3"
+
+        # 没有 GPU → 自动降级到 CPU 默认档
+        monkeypatch.setattr(audio_utils, "_cuda_available", lambda: False)
+        assert _resolve_local_whisper_model_dir() == cache_root / DEFAULT_LOCAL_WHISPER_CPU_MODEL
     finally:
         get_config().knowledge_base.parsing.local_whisper_model = original
 
@@ -97,5 +102,10 @@ def test_audio_config_none_falls_back_to_default_slug(monkeypatch, tmp_path):
     （YAML asr 段兜底已上移宿主 _build_engine_audio_config，见
     test_host_merges_asr_fallback_into_whisper_dir）。"""
     monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    monkeypatch.setattr(audio_utils, "_cuda_available", lambda: True)
     model_dir = _resolve_local_whisper_model_dir(AudioConfig(local_whisper_model_dir=None))
     assert model_dir.name == DEFAULT_LOCAL_WHISPER_MODEL
+    # 仅 CPU → CPU 默认档
+    monkeypatch.setattr(audio_utils, "_cuda_available", lambda: False)
+    model_dir = _resolve_local_whisper_model_dir(AudioConfig(local_whisper_model_dir=None))
+    assert model_dir.name == DEFAULT_LOCAL_WHISPER_CPU_MODEL

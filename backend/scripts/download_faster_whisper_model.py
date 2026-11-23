@@ -1,13 +1,16 @@
 """统一下载本地 faster-whisper ASR 模型（Systran/faster-whisper-*）。
 
 音频文档未显式配置 asr_model 时默认走本地 faster-whisper 转写（用户裁定
-2026-09-23：本地推理免费，部署期预装模型，无云端费用风险）。运行时引擎
-默认档位面向生产（large-v3）；开发机低内存场景在 YAML 显式降档。
+2026-09-23：本地推理免费，部署期预装模型，无云端费用风险）。档位解析与运行时
+同一事实源（audio_utils.resolve_local_whisper_model_slug）：--model 显式档位 >
+YAML local_whisper_model > 按推理设备选默认档——容器内探测到 CUDA 用 large-v3，
+否则用 small（无 GPU 自动降级，无需为开发机单独配置）。本脚本由部署脚本在容器内
+执行，容器有没有 GPU 与运行时一致，预装的档位因此也一致。
 模型目录解析顺序与运行时一致（audio_utils._resolve_local_whisper_model_dir）：
 
   --model-dir 参数 > knowledge_base.parsing.local_whisper_model_dir（YAML）
   > --model 档位名 → backend/.cache/faster-whisper/{档位}
-  > 默认档位（引擎 DEFAULT_LOCAL_WHISPER_MODEL，生产 large-v3）
+  > 默认档位（有 CUDA → DEFAULT_LOCAL_WHISPER_MODEL，仅 CPU → DEFAULT_LOCAL_WHISPER_CPU_MODEL）
 
 支持档位（--model）：tiny / base / small / medium / large-v2 / large-v3。
 模型文件（各档位 HF 仓库 Systran/faster-whisper-{slug}）：config.json /
@@ -50,21 +53,44 @@ if str(BACKEND_ROOT) not in sys.path:
 DEFAULT_MODEL_ROOT = Path(__file__).resolve().parents[1] / ".cache" / "faster-whisper"
 
 
-def resolve_model_slug(cli_model: str | None) -> str:
-    """解析目标模型档位：--model 参数 > YAML local_whisper_model > 引擎默认。"""
-    if cli_model:
-        return cli_model
+def _engine_audio_config():
+    """把 YAML 里与档位解析有关的两项（档位名、设备）包成引擎 AudioConfig。
+
+    YAML 不可用（脚本脱离部署单独运行）时返回 None：引擎按「未显式配置」处理，
+    默认档仍然跟随设备，而不是无条件落回 GPU 档。
+    """
     try:
         from novamind.setting.yaml_config import get_config
+        from novamind.shared.config import AudioConfig
 
-        slug = get_config().knowledge_base.parsing.local_whisper_model
-        if slug:
-            return slug
-    except Exception:
-        pass  # 脚本独立运行时 YAML 可能缺失，落到引擎默认
-    from novamind.engines.document.media.audio import DEFAULT_LOCAL_WHISPER_MODEL
+        parsing = get_config().knowledge_base.parsing
+        return AudioConfig(
+            local_whisper_model=parsing.local_whisper_model,
+            local_whisper_device=parsing.local_whisper_device,
+        )
+    except Exception:  # noqa: BLE001 - 配置缺失只影响显式档位/设备，默认档照常按设备选
+        return None
 
-    return DEFAULT_LOCAL_WHISPER_MODEL
+
+def resolve_model_slug(cli_model: str | None) -> str:
+    """解析目标模型档位：--model 参数 > YAML local_whisper_model > 按推理设备选默认档。"""
+    if cli_model:
+        return cli_model
+    from novamind.engines.document.media.audio import resolve_local_whisper_model_slug
+
+    return resolve_local_whisper_model_slug(_engine_audio_config())
+
+
+def describe_default_choice(cli_model: str | None) -> str:
+    """档位不是显式指定时，说明默认档是怎么选出来的（部署日志里看得见为什么下的是这一档）。"""
+    if cli_model:
+        return ""
+    config = _engine_audio_config()
+    if config is not None and config.local_whisper_model:
+        return ""
+    from novamind.engines.document.media.audio import resolve_local_whisper_device
+
+    return f"（YAML 未配置档位，按推理设备自动选择：{resolve_local_whisper_device(config)}）"
 
 
 def resolve_model_dir(cli_value: str | None, slug: str) -> Path:
@@ -164,6 +190,7 @@ def main() -> int:
     required_files = local_whisper_required_files(slug)
     model_dir = resolve_model_dir(args.model_dir, slug)
 
+    print(f"模型档位: {slug}{describe_default_choice(args.model)}")
     print(f"模型目录: {model_dir}")
     print(f"HuggingFace 仓库: Systran/faster-whisper-{slug}")
     for f in required_files:

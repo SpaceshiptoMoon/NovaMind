@@ -20,13 +20,15 @@ class AudioConfig:
       2. ``local_whisper_model``（档位名，对应 YAML
          ``knowledge_base.parsing.local_whisper_model``）→
          ``backend/.cache/faster-whisper/{档位}``
-      3. 默认 ``DEFAULT_LOCAL_WHISPER_MODEL``（生产默认 large-v3；
-         开发机在 YAML 显式降档到 tiny/base/small）
+         档位名缺省时按推理设备选默认档：有 CUDA → ``DEFAULT_LOCAL_WHISPER_MODEL``
+         （生产 large-v3），仅 CPU → ``DEFAULT_LOCAL_WHISPER_CPU_MODEL``（small，
+         无 GPU 自动降级，见 ``audio_utils.resolve_local_whisper_model_slug``）
     """
 
     local_whisper_model_dir: str | None = None
     # 本地 faster-whisper 模型档位（tiny/base/small/medium/large-v2/large-v3）。
-    # None 时用引擎默认（large-v3，面向生产）；开发机低内存场景在 YAML 显式降档。
+    # None 时按推理设备自动选默认档（有 CUDA → large-v3，仅 CPU → small）；
+    # 显式配置的档位不随设备改写。
     # 仅在 local_whisper_model_dir 为空时生效（显式目录优先）。
     local_whisper_model: str | None = None
     # 本地 faster-whisper 转写使用的 CPU 线程数。None 时按物理核数自动取保守值

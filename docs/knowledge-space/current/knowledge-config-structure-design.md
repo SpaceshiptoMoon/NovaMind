@@ -436,7 +436,8 @@ Current implemented structure:
 - `asr_model` and `language` are not mutually exclusive.
 - `language=null` means auto-detect.
 - `asr_model=null`（默认）走本地 faster-whisper（引擎档位由 YAML
-  `knowledge_base.parsing.local_whisper_model` 决定，默认 large-v3）；云端模型名
+  `knowledge_base.parsing.local_whisper_model` 决定，留空时按推理设备自动选默认档：
+  有 GPU 用 large-v3，否则用 small）；云端模型名
   （如 whisper-1 / paraformer-v2）须在模型管理中配置同名凭证。历史默认
   `whisper-1` 已修正为 None——旧值会让未显式选模型的 KB 去查不存在的云端凭证。
 - `clean_enabled`/`clean_llm_model`：LLM 逐批清洗转写文本（双产物 raw+clean，

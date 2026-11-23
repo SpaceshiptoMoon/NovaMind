@@ -27,6 +27,7 @@ if str(BACKEND_ROOT) not in sys.path:
 import pytest
 from novamind.engines.document.media.audio import audio_utils
 from novamind.engines.document.media.audio.audio_utils import (
+    DEFAULT_LOCAL_WHISPER_CPU_MODEL,
     DEFAULT_LOCAL_WHISPER_MODEL,
     _filter_hallucinated_segments,
     _filter_low_energy_segments,
@@ -65,8 +66,8 @@ def test_default_model_dir_respects_slug():
     assert "faster-whisper" in str(d)
 
 
-def test_resolve_model_dir_priority():
-    """目录解析优先级：显式目录 > 档位名 > 默认档。"""
+def test_resolve_model_dir_priority(monkeypatch):
+    """目录解析优先级：显式目录 > 档位名 > 按设备选出的默认档。"""
     # 显式目录最高优先
     explicit = audio_utils._resolve_local_whisper_model_dir(
         AudioConfig(local_whisper_model_dir="/models/w", local_whisper_model="tiny")
@@ -79,9 +80,13 @@ def test_resolve_model_dir_priority():
     )
     assert by_slug.name == "small"
 
-    # 全空 → 引擎默认档
+    # 全空 → 按推理设备选默认档：有 CUDA → 引擎默认档；仅 CPU → CPU 默认档
+    monkeypatch.setattr(audio_utils, "_cuda_available", lambda: True)
     fallback = audio_utils._resolve_local_whisper_model_dir(AudioConfig())
     assert fallback.name == DEFAULT_LOCAL_WHISPER_MODEL
+    monkeypatch.setattr(audio_utils, "_cuda_available", lambda: False)
+    cpu_default = audio_utils._resolve_local_whisper_model_dir(AudioConfig())
+    assert cpu_default.name == DEFAULT_LOCAL_WHISPER_CPU_MODEL
 
 
 # ==================== 幻觉段过滤 ====================

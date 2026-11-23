@@ -354,9 +354,9 @@ class AudioParsingConfig(BaseModel):
     """音频解析配置（KB 级）。
 
     asr_model 语义：None/空 = 走本地 faster-whisper（引擎档位由 YAML
-    knowledge_base.parsing.local_whisper_model 决定，默认 large-v3，开发机
-    降档配置）；云端模型名（如 whisper-1 / paraformer-v2）须在模型管理中
-    配置同名凭证。
+    knowledge_base.parsing.local_whisper_model 决定；留空时按推理设备自动选
+    默认档：有 GPU 用 large-v3，否则用 small）；云端模型名（如 whisper-1 /
+    paraformer-v2）须在模型管理中配置同名凭证。
     """
 
     model_config = ConfigDict(extra="ignore")
