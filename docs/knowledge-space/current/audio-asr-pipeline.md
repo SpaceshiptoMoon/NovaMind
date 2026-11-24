@@ -23,10 +23,12 @@ YAML knowledge_base.parsing.local_whisper_model       ← 显式档位（默认�
   `PermanentProcessingError`（no-fallback，不串用其它配置）。
 - **本地家族**（`faster-whisper-tiny/base/small/medium/large-v2/large-v3`）：协议恒
   `local`，不查凭证；非法档位（如 `faster-whisper-huge`）在路由层 fail fast。
-- **模型目录解析**（`_resolve_local_whisper_model_dir`）：
-  1. YAML `local_whisper_model_dir`（显式目录，存量部署兼容，最高优先）
-  2. YAML `local_whisper_model`（档位名）→ `backend/.cache/faster-whisper/{档位}`
-  3. YAML `asr.local_whisper_model_dir`（第二回退目录，可引用 `${VAR}` 环境占位符）
+- **模型目录解析**（宿主 `media_processing._build_engine_audio_config` 先合并 YAML、再交引擎
+  `_resolve_local_whisper_model_dir` 解析；整体优先级）：
+  1. YAML `knowledge_base.parsing.local_whisper_model_dir`（显式目录，存量部署兼容，最高优先）
+  2. YAML `knowledge_base.parsing.local_whisper_model`（档位名）→ `backend/.cache/faster-whisper/{档位}`
+  3. YAML `asr.local_whisper_model_dir`（第二回退目录，可引用 `${VAR}` 环境占位符；前两项都为空时
+     由宿主并入「显式目录」，引擎本身不读 asr 段）
   4. 档位缺省 → 按推理设备选默认档：有 CUDA → `DEFAULT_LOCAL_WHISPER_MODEL`（large-v3），
      仅 CPU → `DEFAULT_LOCAL_WHISPER_CPU_MODEL`（small）
 - **默认档未预装的降级**（`_degrade_local_whisper_model_dir`，只对未显式配置的默认档生效）：首选默认档不在

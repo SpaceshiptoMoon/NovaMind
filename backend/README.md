@@ -143,14 +143,14 @@ cp default.example default.yaml
 
 ```bash
 cd backend
-python main.py --reload
+uv run python main.py --reload
 ```
 
 常见变体：
 
 ```bash
-python main.py
-python main.py --workers 4
+uv run python main.py
+uv run python main.py --workers 4
 ```
 
 默认本地地址：
@@ -165,9 +165,9 @@ python main.py --workers 4
 
 ```bash
 cd backend
-pytest
-pytest -m unit
-pytest -m "not slow"
+uv run pytest
+uv run pytest -m unit
+uv run pytest -m "not slow"
 ```
 
 测试文件放在 `backend/tests/`，按**被测对象所在分层**分子目录摆放（`architecture/` 全局门禁与契约、`core/`、`shared/`、`engines/<x>/`、`features/<x>/`、`integration/` 需运行服务），详见 [`tests/README.md`](tests/README.md)。
