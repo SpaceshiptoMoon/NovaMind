@@ -37,11 +37,13 @@ English | [简体中文](./README.md)
 <details open>
 <summary><b>📕 Table of Contents</b></summary>
 
+- [Quick try](#quick-try)
 - [What it is](#what-it-is)
 - [Core capabilities](#core-capabilities)
 - [Document processing pipeline](#document-processing-pipeline)
 - [Knowledge-base Wiki](#knowledge-base-wiki)
-- [Who it's for](#whos-it-for)
+- [Who it's for](#who-its-for)
+- [Compared with mainstream options](#compared-with-mainstream-options)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
   - [Option 1: one-command deploy](#option-1-one-command-deploy)
@@ -65,6 +67,21 @@ English | [简体中文](./README.md)
 
 ---
 
+## Quick try
+
+```bash
+git clone https://github.com/SpaceshiptoMoon/NovaMind.git
+cd NovaMind
+bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File deploy.ps1
+```
+
+Once deployed, open `http://localhost` and sign in as `admin`; the initial password is in `ADMIN_PASSWORD` in the root `.env`. The script takes care of the environment check, secret generation, DeepDoc / speech model downloads and the health check.
+
+> [!TIP]
+> Linux self-hosting needs `vm.max_map_count >= 262144` set first (an Elasticsearch kernel requirement) — see the prerequisites in [Quick start](#quick-start). Manual Docker deploy and local development are covered in the same section.
+
+---
+
 ## What it is
 
 Many knowledge-base projects only cover the "upload a document and chat" segment. NovaMind covers a more complete workflow:
@@ -75,7 +92,17 @@ Many knowledge-base projects only cover the "upload a document and chat" segment
 - From building capabilities to evaluation test sets, manual review, and result export
 - From raw documents to auto-generated structured wikis, knowledge graphs, and quality linting
 
-If you want more than a document cabinet — a knowledge service that organizes knowledge, verifies quality continuously, and serves any agent host via MCP/OpenAI — NovaMind is exactly that.
+Real team knowledge comes in far more shapes than text: product demo videos, review meeting recordings, architecture diagram screenshots, scanned contracts… — they should land in the **same** retrieval system instead of being scattered across network drives and chat logs.
+
+Three dead ends that keep recurring:
+
+1. **"I remember a video that covered this" — and it can't be found.** Training recordings, product demos and review recordings either cannot be uploaded at all in most knowledge-base products, or only their filename is extracted. NovaMind breaks videos down to the frame level (per-frame VLM understanding) and audio down to timestamps (local whisper transcription), and generates a chaptered narrative document for each video — "the return process was demonstrated at which minute" gets a coherent answer with a timeline, instead of stitched frame descriptions.
+2. **Scans, formulas and tables come out as garbage or blank.** Generic solutions only extract the PDF text layer, so image-based PDFs come out empty. NovaMind ships the DeepDoc parsing engine: layout analysis + per-span text layer fused with OCR + formula recognition + table structure restoration — parsing quality sets the floor for RAG.
+3. **Abandoned two months after going live: "the answers feel bad, but nobody can say where".** A knowledge base without a feedback loop rots silently. NovaMind attributes failures along two tracks: four-way attribution of failed live Q&A (content gap / retrieval failure / stale content / permission boundary), and five-stage, 15-category attribution of failed evaluation cases (source data / parsing & ingestion / retrieval / generation / question side; multi-level replay pinpoints exactly which link dropped something that should have been recalled); gaps convert to test sets in one click, and the quality baseline batch-compares weekly and alerts on regressions in key metrics — whether a fix worked is decided by the data.
+
+On top of that, NovaMind covers the complete workflow: spaces / knowledge bases / permissions → multimodal parsing → splitting → vectorization → hybrid retrieval → knowledge enhancement & evaluation → operations loop → automatic structured Wiki and knowledge graph.
+
+If you want more than a document cabinet — a knowledge service that organizes knowledge, continuously verifies its own effectiveness, and can be consumed by any agent host via MCP/OpenAI — that is exactly where NovaMind is positioned.
 
 ## Core capabilities
 
@@ -92,7 +119,7 @@ If you want more than a document cabinet — a knowledge service that organizes 
 
 ### 📄 Multimodal document parsing
 
-- **Text documents**: PDF (DeepDoc full mode with per-span text layer + OCR fusion, or lightweight plain mode), DOCX, TXT, MD, CSV, HTML, JSON
+- **Text documents**: PDF (DeepDoc full mode with per-span text layer + OCR fusion, or lightweight plain mode), DOCX, Excel (XLS / XLSX), PPT (PPT / PPTX), TXT, MD, CSV, HTML, JSON, EPUB, email (EML / MSG), OFD
 - **Image understanding**: VLM-generated descriptions, or DeepDoc OCR for in-image text
 - **Video parsing**: 8 strategy presets (fixed-interval / scene-change / deduplicated sampling × per-frame / grouped / frame-sequence pseudo-video / native video clips / adaptive representative frames — coarse sampling + farthest-point selection, fewest frames covering the whole video), audio-track ASR fusion, LLM step synthesis, dual-anchor timeline alignment
 - **Video narrative document**: after parsing, fragment frame descriptions can be synthesized into a chaptered coherent narrative (whole-video synopsis + chapter timeline), coexisting with the fragment chunks; QA auto-attaches the matched chapter summary — "what is this video about" gets a coherent answer instead of stitched fragments
@@ -181,6 +208,26 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 - An evaluation system (test sets, auto eval, manual scoring) to verify KB effectiveness
 - Willing to run some infrastructure (MySQL, Redis, Elasticsearch, MinIO) in exchange for completeness and freedom
 
+## Compared with mainstream options
+
+The table reflects each project's publicly announced capabilities as of 2026-11. This space moves fast — when choosing, defer to each project's official docs.
+
+| Option | Their strengths | Where NovaMind differs |
+| --- | --- | --- |
+| **RAGFlow** | Equally strong document parsing (same DeepDoc lineage), fine-grained chunk templates, large community | Video / audio modalities (8 strategy presets + narrative documents), evaluation regression gate, two-track attribution operations loop (four-way live + 15-category evaluation) |
+| **Dify** | Plugin ecosystem, workflow orchestration, LLMOps, easy onboarding | Parsing depth, Wiki subsystem, evaluation & operations loop, video modality — a different niche: it is an application orchestration platform where the knowledge base is an accessory |
+| **WeKnora** | Wiki design (which NovaMind aligns with), big-vendor ecosystem integration | Video depth, five-stage attribution + gap-to-test-set flywheel + regression alerts, evaluation regression baseline |
+| **MaxKB / AnythingLLM** | Single-container deployment, works out of the box | Parsing depth, multimodality, evaluation, operations — a capability gap, paid for with a heavier deployment |
+| **Build your own (LangChain / LlamaIndex)** | Flexible, fits the business exactly | A framework is not a product: task orchestration, resumable pipelines, per-step progress, permissions and evaluation all have to be built yourself — NovaMind gives them out of the box |
+
+**What is defensible is completeness, not a feature list.** Anyone can extract frames, but "8 strategy presets + adaptive representative-frame calibration + audio-track transcription alignment + narrative synthesis + auto-attached chapter summaries in QA + three-level fingerprint resumption" is one complete engineering chain; and the attribution criteria (the five-stage, 15-category decision tree on the evaluation side; threshold-lowered replay on the live side to tell content gaps from retrieval failures) were calibrated on real failure cases — designs can be copied, criteria are hard to copy.
+
+**The boundaries, stated just as honestly:**
+
+- **Deployment weight is a real barrier**: MySQL + Redis + Elasticsearch + MinIO — four pieces of infrastructure, a slower start than single-container options; what it buys is that video / audio / scans are not turned away at the door
+- **Community and ecosystem** are smaller than Dify / RAGFlow: plugins, templates and community accumulation can't compete — the differentiation plays depth, not breadth
+- **Breadth of parsing formats** is behind dedicated parsing services (hundreds of formats): NovaMind takes the "go deep on common formats" route
+
 ## Tech stack
 
 | Category | Tech |
@@ -208,7 +255,7 @@ KB documents ──parsed──▶ Wiki generation task (LLM planning + generati
 >   ```
 >   Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed; the WSL2 kernel default is already above this floor (measured 1048576), so no action is needed there either.
 > - **Prefer the HTTPS clone URL** (no SSH key setup needed): `git clone https://github.com/SpaceshiptoMoon/NovaMind.git`; use `git clone git@github.com:SpaceshiptoMoon/NovaMind.git` only if you have an SSH key configured.
-> - **About the MinIO image**: the official image can no longer be pulled anonymously (measured 2026-11: `quay.io/minio/minio` returns 401 and Docker Hub's `minio/minio` requires login; neither a proxy nor `registry-mirrors` accelerators help). `docker-compose.yml` therefore uses by default the image Bitnami built from the MinIO 2025-07-23 source — nothing extra to do. This MinIO version ships without a web console. **Upgrading an older deployment that ran the official image**: the old files in the data volume are owned by root, while the Bitnami image runs as a non-root user and cannot write them — run the command below once before starting (the `redis` image is already pulled by the deploy and is used only for its `chown`):
+> - **About the MinIO image**: the official image has been taken down — the MinIO community edition has been source-only since 2025-10, `minio/minio` was removed from Docker Hub around 2026-09 (per third-party reports), and `quay.io/minio/minio` returns 401 to anonymous access (measured 2026-11; a public control repository responds normally). Neither logging in, a proxy, nor `registry-mirrors` accelerators help. `docker-compose.yml` therefore uses by default the image Bitnami built from the MinIO 2025-07-23 source — nothing extra to do. This MinIO version ships without a web console. **Upgrading an older deployment that ran the official image**: the old files in the data volume are owned by root, while the Bitnami image runs as a non-root user and cannot write them — run the command below once before starting (the `redis` image is already pulled by the deploy and is used only for its `chown`):
 >   ```bash
 >   docker run --rm -v novamind_minio-data:/data redis:7.4.9-alpine chown -R 1001:1000 /data
 >   ```
@@ -248,7 +295,7 @@ Requirements:
 - Docker 20.10+ (on Windows, Docker Desktop must be running)
 - Docker Compose V2+
 - One-command deploy via `deploy.sh` needs a working `python` or `python3` command on the host the first time it generates `.env` (to generate random secrets; the script probes `python` then `python3`, and offers an alternative when neither works). `deploy.ps1` has no such dependency
-- At least 2 CPU cores / 4 GB RAM / 30 GB disk (measured: images ≈ 7 GB and models ≈ 3.2 GB, plus reclaimable build cache — `docker builder prune`. Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
+- At least 2 CPU cores / 4 GB RAM / 30 GB disk (measured: images ≈ 7 GB; models ≈ 3.2 GB with a GPU, ≈ 0.7 GB without; plus reclaimable build cache — `docker builder prune`. Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
 - For video parsing, local speech transcription, or DeepDoc full mode, 4 cores / 8 GB+ recommended
 - Local speech transcription uses CPU inference inside the container by default; on a machine with an NVIDIA GPU it can run on the GPU instead (the app image must be rebuilt) — see [Optional: accelerate local speech transcription with an NVIDIA GPU](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu)
 
@@ -524,6 +571,7 @@ NovaMind/
 | User & model config | `/api/v1/user` | auth, user management, five model types with connection testing |
 | Knowledge spaces | `/api/v1/spaces` | space management, members, permission isolation |
 | Knowledge bases | `/api/v1/spaces/{space_id}/knowledge-bases` | KB create, config, document management |
+| Global search | `POST /api/v1/search` | cross-space retrieval (fan-out over the accessible spaces' KBs + RRF fusion, optional LLM answers) |
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
 | Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
 | Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard & governance views |
@@ -541,7 +589,7 @@ The config system has two layers: **YAML files** (structure and environment diff
 At startup the backend reads exactly one config file: `backend/src/setting/yaml_config/yaml/default.yaml` (mounted into the container in Docker deploy).
 
 - **Division of labor**: credentials (`${SECRET_KEY}`, `${MYSQL_ROOT_PASSWORD}`, bare placeholders) live only in `.env` — an undeclared one resolves to `None` and fails visibly; connection params (hosts/endpoints/bucket, `${DB_HOST:127.0.0.1}` form) carry local baseline defaults in the placeholder, so local development needs zero extra config
-- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:false}"`), so boolean switches also come from env vars
+- For a whole-string placeholder, `true` / `false` / `null` are normalized to native bool / None (e.g. `redis.enabled: "${REDIS_ENABLED:true}"`), so boolean switches also come from env vars
 - No real secrets live in YAML; the historical `<environment>.yaml` / `local.yaml` override layers were removed in 2026-10
 - No environment names (single mode): there are no development/production branches — deployment differences are expressed entirely via env-var placeholders; internal error details never go into HTTP responses (full detail in logs), and Swagger stays off the public internet at the nginx layer
 
@@ -618,7 +666,7 @@ If your use case is Chinese-heavy, multi-tool, or long-context, prioritize model
 
 - **Secrets never at rest in plaintext**: all model API keys are encrypted with `ENCRYPTION_KEY`; config files contain only `${VAR}` placeholders; `*.yaml` and `.env` are excluded from Git
 - **Auth & permissions**: JWT + Redis blacklist (logout / disable / delete purges all tokens immediately); four-tier space roles plus per-KB fine-grained operation checks
-- **Upload protection**: dual file-type validation (python-magic magic-number detection with a built-in signature-table fallback; probe failure rejects rather than allows); path-traversal-safe filename checks; per-modality size limits
+- **Upload protection**: file content is matched against the extension — the real MIME type comes from the file's magic bytes (built-in signature table, with second-level checks for RIFF / EBML / ftyp containers and a deep inspection of OOXML / EPUB zip containers); text-class files, which have no magic bytes, are accepted by extension, while binary files whose content cannot be verified are rejected; path-traversal-safe filename checks; per-modality size limits. (The validator probes with libmagic through the optional python-magic package when it is installed, but that package is neither a declared dependency nor part of the image — deployments run on the signature table alone.)
 - **Injection protection**: fully parameterized SQLAlchemy ORM queries; Pydantic validation on every request; templated prompt registry
 - **Password policy**: async hashing (never blocks the event loop); admin password strength checks (8–30 chars, four character classes)
 
@@ -706,11 +754,11 @@ When a space already has completed documents, changing the embedding config is b
 
 ## Project status
 
-The repo has completed the baseline entry-point work needed for a public release. The skeletons of evaluation attribution and the knowledge-operations loop (four-source unified todos / event ledger / cold-start onboarding / 15-category attribution / regression alerts) are built, and the focus now shifts to validating them with real usage:
+The project is in active development: the core chains — multimodal parsing, hybrid retrieval and RAG QA — are stable; the skeleton of the evaluation-attribution and knowledge-operations loop (four-source unified todos / event ledger / cold-start onboarding / 15-category attribution / regression alerts) is built and entering validation with real usage. Near-term focus:
 
 - Run the ops flywheel on real data: onboard a real space via cold-start guidance, enable the quality-baseline cron, and walk the full loop (gap → fix docs → convert to test set → eval attribution → todo disposition → regression verification)
 - Validate the external consumption surfaces with real agent hosts: MCP / OpenAI gateway / Claude Code skill usage polish in real workflows
-- Continue stabilizing the KB main pipeline and task model
+- Keep deepening multimodal parsing and coverage of common formats
 - Add real business tests for the frontend, beyond a minimal baseline
 
 See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.

@@ -1,7 +1,9 @@
 """
 文件类型验证器
 
-使用 python-magic 验证文件的真实 MIME 类型，防止文件伪装攻击。
+按文件头魔数验证文件的真实 MIME 类型并与扩展名比对，防止文件伪装攻击：默认用内置签名表；
+装有可选依赖 python-magic（libmagic）时先用它探测、签名表兜底。python-magic 未在依赖中声明、
+镜像里也没有——实际部署走的都是内置签名表。
 """
 
 from dataclasses import dataclass
@@ -167,7 +169,14 @@ class FileValidator:
         self._magic = None
 
     def _get_magic(self):
-        """懒加载 libmagic 探测器；缺失时告警并回落内置签名表检测。"""
+        """懒加载 libmagic 探测器；缺失时告警并回落内置签名表检测。
+
+        注意：直接安装 python-magic 会改变校验结果。libmagic 对文本类文件按内容分类
+        （代码块 → text/x-script.python、diff → text/x-diff、非 UTF-8 → octet-stream），
+        AAC 返回 audio/x-hx-aac-adts，与 EXTENSION_TO_MIME 按字面比对会被误拒：实测 973 个
+        存量文档里 53 个原本可上传的会被拒。要真正启用 libmagic，须先调整 validate() 的
+        比对规则（文本类按 text/* 通配、octet-stream 回落签名表、补 libmagic 的 MIME 变体）。
+        """
         if self._magic is None:
             try:
                 import magic

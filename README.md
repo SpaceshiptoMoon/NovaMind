@@ -59,7 +59,7 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 - [核心能力](#核心能力)
   - [多模态文档解析](#-多模态文档解析)
   - [知识库引擎](#-知识库引擎)
-  - [智能应用](#-智能应用)
+  - [知识增强与开放接口](#-知识增强与开放接口)
   - [平台能力](#-平台能力)
 - [快速开始](#快速开始)
   - [部署后的访问入口](#部署后的访问入口)
@@ -108,10 +108,10 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 
 | 模态 | 解析方式 | 检索产出 |
 | --- | --- | --- |
-| **文本** | PDF（DeepDoc 逐框文字层 + OCR 融合的 full 模式）、DOCX、TXT、MD、CSV、HTML、JSON、EPUB | 全文分块 + 表格 HTML 内联 |
+| **文本** | PDF（DeepDoc 逐框文字层 + OCR 融合的 full 模式）、DOCX、Excel（XLS / XLSX）、PPT（PPT / PPTX）、TXT、MD、CSV、HTML、JSON、EPUB、邮件（EML / MSG）、OFD | 全文分块 + 表格 HTML 内联 |
 | **图片** | VLM 视觉理解（生成结构化描述）或 DeepDoc OCR 提取图内文字 | 描述文本，支持图像语义检索 |
 | **音频** | 本地 **faster-whisper**（免费、无 API Key、部署期预装）或云端 ASR | 带时间戳的转写文本 |
-| **视频** | 8 种抽帧策略 + 逐帧 VLM 描述 + 音轨 ASR **双轨融合** + LLM 步骤综合 | 帧描述 + 转写 + 章节化叙事文档 |
+| **视频** | 8 种解析策略预设（抽帧 / 去重 / 描述三阶段的组合）+ 逐帧 VLM 描述 + 音轨 ASR **双轨融合** + LLM 步骤综合 | 帧描述 + 转写 + 章节化叙事文档 |
 
 三个拿出来单独讲的特性：
 
@@ -159,7 +159,7 @@ bash deploy.sh    # Windows PowerShell: powershell -ExecutionPolicy Bypass -File
 >   ```
 >   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步；WSL2 内核默认值已高于该下限（实测 1048576），同样无需设置。
 > - **克隆仓库建议用 HTTPS 地址**（无需配置 SSH key）：`git clone https://github.com/SpaceshiptoMoon/NovaMind.git`；已配置 SSH key 的用户可用 `git clone git@github.com:SpaceshiptoMoon/NovaMind.git`。
-> - **MinIO 镜像说明**：官方镜像已无法匿名拉取（2026-11 实测：`quay.io/minio/minio` 返回 401，Docker Hub 的 `minio/minio` 要求登录，代理和 `registry-mirrors` 加速器都无效）。`docker-compose.yml` 因此默认使用 Bitnami 基于 MinIO 2025-07-23 源码构建的镜像，无需额外操作；该 MinIO 版本不带网页控制台。**从官方镜像的旧部署升级时**，数据卷里的旧文件属主是 root，而 Bitnami 镜像以非 root 用户运行、无权写入，请先执行一次下面的命令再启动（`redis` 镜像部署时已拉取，这里只借其中的 `chown`）：
+> - **MinIO 镜像说明**：官方镜像已下架——MinIO 社区版自 2025-10 起只发布源码，`minio/minio` 已于 2026-09 前后从 Docker Hub 删除（据第三方报道），`quay.io/minio/minio` 对匿名访问返回 401（2026-11 实测，对照组公开仓库正常）；登录、代理和 `registry-mirrors` 加速器都无效。`docker-compose.yml` 因此默认使用 Bitnami 基于 MinIO 2025-07-23 源码构建的镜像，无需额外操作；该 MinIO 版本不带网页控制台。**从官方镜像的旧部署升级时**，数据卷里的旧文件属主是 root，而 Bitnami 镜像以非 root 用户运行、无权写入，请先执行一次下面的命令再启动（`redis` 镜像部署时已拉取，这里只借其中的 `chown`）：
 >   ```bash
 >   docker run --rm -v novamind_minio-data:/data redis:7.4.9-alpine chown -R 1001:1000 /data
 >   ```
@@ -196,7 +196,7 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1
 - Docker 20.10+（Windows 需 Docker Desktop 已启动）
 - Docker Compose V2+
 - 一键部署（`deploy.sh`）首次生成 `.env` 时需要宿主机有可用的 `python` 或 `python3` 命令（用于生成随机密码；脚本按 `python` → `python3` 顺序探测，`.env` 已存在时不再需要，都不可用时给出替代方案）。`deploy.ps1` 无此依赖
-- 最低 2 核 CPU / 4 GB 内存 / 30 GB 磁盘（实测：镜像约 7 GB、模型约 3.2 GB，构建还会产生可回收的缓存，可用 `docker builder prune` 清理；Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
+- 最低 2 核 CPU / 4 GB 内存 / 30 GB 磁盘（实测：镜像约 7 GB，模型有 GPU 时约 3.2 GB、没有 GPU 时约 0.7 GB，构建还会产生可回收的缓存，可用 `docker builder prune` 清理；Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
 - 如需使用视频解析、本地语音转写或 DeepDoc full 模式，建议 4 核 / 8 GB 以上
 - 本地语音转写默认在容器内用 CPU 推理；机器有 NVIDIA 显卡时可改走 GPU（需重建应用镜像），见[可选：启用 NVIDIA GPU 加速本地语音转写](#可选启用-nvidia-gpu-加速本地语音转写)
 
@@ -436,13 +436,13 @@ Docker 部署模式：
 
 | 对比对象 | 它们的强项 | NovaMind 的差异点 |
 | --- | --- | --- |
-| **RAGFlow** | 文档解析同样强（DeepDoc 同源）、分块模板细、社区大 | 视频 / 音频模态（8 种抽帧策略 + 叙事文档）、评测回归门禁、双路归因运营闭环（线上四分 + 评测 15 类） |
+| **RAGFlow** | 文档解析同样强（DeepDoc 同源）、分块模板细、社区大 | 视频 / 音频模态（8 种解析策略预设 + 叙事文档）、评测回归门禁、双路归因运营闭环（线上四分 + 评测 15 类） |
 | **Dify** | 插件生态、Workflow 编排、LLMOps、易上手 | 解析深度、Wiki 子系统、评测与运营闭环、视频模态——生态位不同：它是应用编排平台，知识库是配件 |
 | **WeKnora** | Wiki 设计（NovaMind 对齐了它）、大厂生态集成 | 视频深度、五阶段归因 + 缺口转测试集飞轮 + 回归告警、评测回归基线 |
 | **MaxKB / AnythingLLM** | 单容器易部署、开箱即用 | 解析深度、多模态、评测、运营——能力代差，代价是部署更重 |
 | **自建（LangChain / LlamaIndex）** | 灵活、完全贴业务 | 框架不是产品：任务编排、断点续跑、节点级进度、权限、评测都要自己造，NovaMind 开箱即得 |
 
-**可防守的是完整度，不是功能清单。** 抽帧谁都会做，但「8 种抽帧策略 + 自适应代表帧标定 + 音轨转写双轨对齐 + 叙事合成 + 问答自动附章节摘要 + 三级指纹断点续跑」是一条完整工程链；归因判据（评测侧五阶段 15 类决策树、线上四分归因的降阈值重放区分内容缺口与检索失败）是拿真实失败案例标定出来的——设计可以抄，判据难抄。
+**可防守的是完整度，不是功能清单。** 抽帧谁都会做，但「8 种解析策略预设 + 自适应代表帧标定 + 音轨转写双轨对齐 + 叙事合成 + 问答自动附章节摘要 + 三级指纹断点续跑」是一条完整工程链；归因判据（评测侧五阶段 15 类决策树、线上四分归因的降阈值重放区分内容缺口与检索失败）是拿真实失败案例标定出来的——设计可以抄，判据难抄。
 
 **同样诚实地列出边界：**
 
@@ -609,7 +609,7 @@ NovaMind/
 
 - **密钥不落盘**：所有模型 API Key 经 `ENCRYPTION_KEY` 加密存储，配置文件只含 `${VAR}` 占位符；`*.yaml` 与 `.env` 均不进 Git
 - **认证与鉴权**：JWT + Redis 黑名单双重管理，登出 / 禁用 / 删除用户即时吊销全部令牌；空间级四层角色权限 + 知识库级细粒度操作校验
-- **上传防护**：文件类型双重校验（python-magic 魔数检测 + 内置签名表兜底，探测失败拒绝而非放行）；防路径遍历的文件名校验；上传大小按模态分治
+- **上传防护**：文件内容与扩展名比对——按文件头魔数判定真实 MIME 类型（内置签名表，含 RIFF / EBML / ftyp 容器的二次判定与 OOXML / EPUB 压缩包的深检），文本类文件没有魔数、按扩展名放行，二进制类文件核验不了即拒绝；防路径遍历的文件名校验；上传大小按模态分治。（校验器在装有可选依赖 python-magic 时会先用 libmagic 探测，但该依赖未声明、镜像里也没装，实际部署用的都是内置签名表。）
 - **注入防护**：全量 SQLAlchemy ORM 参数化查询；Pydantic 全量请求校验；模板化 Prompt 注册表管理
 - **密码策略**：异步哈希（不阻塞事件循环），管理员密码强度校验（8-30 位四类字符）
 
@@ -621,7 +621,7 @@ NovaMind/
 <summary><b>展开完整配置参考（变量表 / Docker 差异 / 本地开发配法）</b></summary>
 
 - **分工**：账户密码/凭据类（`${SECRET_KEY}`、`${MYSQL_ROOT_PASSWORD}` 等纯占位符）只存在 `.env`，缺失解析为 `None` 显性报错；连接参数（host/端点/桶名，`${DB_HOST:127.0.0.1}` 形式）在占位符内带本地基线默认值，本地开发零配置
-- 整串占位符的 `true` / `false` / `null` 会归一为原生 bool / None（如 `redis.enabled: "${REDIS_ENABLED:false}"`），布尔开关也能经环境变量表达
+- 整串占位符的 `true` / `false` / `null` 会归一为原生 bool / None（如 `redis.enabled: "${REDIS_ENABLED:true}"`），布尔开关也能经环境变量表达
 - YAML 里不写任何真实密钥；历史上的 `<环境>.yaml` / `local.yaml` 覆盖层已于 2026-10 移除
 - 无环境名概念（单一模式）：不存在 development/production 等环境分支，部署差异全部经环境变量占位符表达；内部错误详情永远不写入 HTTP 响应（全量在日志），公网不暴露 Swagger 由 nginx 层保证
 

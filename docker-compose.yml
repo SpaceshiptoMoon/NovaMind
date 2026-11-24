@@ -128,9 +128,9 @@ services:
       - app-network
 
   minio:
-    # MinIO 官方镜像已无法匿名拉取（2026-11 实测：quay.io/minio/minio 返回 401，
-    # Docker Hub 的 minio/minio 要求登录，代理与镜像加速器均无效），社区版也自
-    # 2025-10 起停止发布官方镜像、转入仅源码分发。这里改用 Broadcom/Bitnami 基于
+    # MinIO 官方镜像已下架：社区版自 2025-10 起只发布源码，minio/minio 已于 2026-09 前后
+    # 从 Docker Hub 删除（据第三方报道），quay.io/minio/minio 对匿名访问返回 401（2026-11
+    # 实测，对照组公开仓库正常）——登录、代理与镜像加速器均无效。这里改用 Broadcom/Bitnami 基于
     # MinIO 2025-07-23 版本源码自行构建的镜像（Bitnami Legacy 存档仓库，只读、不再更新）。
     # Bitnami 打包与官方镜像的差异（升级镜像时需同步核对）：
     #   - 以环境变量而非命令行参数配置，API 端口用 MINIO_API_PORT_NUMBER
