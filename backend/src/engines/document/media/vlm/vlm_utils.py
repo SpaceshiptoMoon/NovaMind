@@ -188,8 +188,18 @@ def ocr_page_text_proxy(page_image_png: bytes) -> str:
         from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
 
         _OCR_PROXY_SINGLETON = OCR()
-    result, _elapse = _OCR_PROXY_SINGLETON(img)
-    return "\n".join(
-        entry[1] for entry in (result or []) if len(entry) >= 2 and entry[1]
-    )
+    raw = _OCR_PROXY_SINGLETON(img)
+    # 门面返回形态：检出框 → [(框角点, (文本, 置信度)), ...]；未检出 →
+    # (None, None, time_dict)。两种都要兜（空列表/None 均视为无文字）。
+    if not raw:
+        return ""
+    lines = []
+    for item in raw:
+        if len(item) < 2:
+            continue
+        payload = item[1]
+        text = payload[0] if isinstance(payload, (tuple, list)) and payload else payload
+        if text:
+            lines.append(str(text))
+    return "\n".join(lines)
 
