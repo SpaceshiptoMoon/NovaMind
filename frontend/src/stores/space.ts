@@ -130,6 +130,7 @@ export const useSpaceStore = defineStore('space', () => {
     if (currentSpace.value?.id === spaceId) {
       currentSpace.value = null
     }
+    forgetRecentSpace(spaceId)
   }
 
   function setCurrentSpace(space: Space | null) {
@@ -187,6 +188,21 @@ export const useSpaceStore = defineStore('space', () => {
     }
   }
 
+  // localStorage 的响应式镜像：localStorage 本身不具备响应性，消费方
+  // （切换器「最近使用」computed）必须依赖这份 ref 才会在访问记录变化时
+  // 重新计算，否则列表在会话内停留在旧顺序
+  const recentSpacesMap = ref<Record<number, number>>(readRecentSpaces())
+
+  /** 写回持久层并同步响应式镜像（存储失败静默，镜像仍更新保会话内一致） */
+  function persistRecentSpaces(recent: Record<number, number>) {
+    try {
+      localStorage.setItem(RECENT_SPACES_KEY, JSON.stringify(recent))
+    } catch {
+      /* 隐私模式等存储失败静默 */
+    }
+    recentSpacesMap.value = recent
+  }
+
   /** 记录空间访问：写最近时间戳与「最近空间」指针（按用户隔离） */
   function touchSpaceAccess(spaceId: number, userId: number | null) {
     if (userId != null) {
@@ -198,11 +214,7 @@ export const useSpaceStore = defineStore('space', () => {
     }
     const recent = readRecentSpaces()
     recent[spaceId] = Date.now()
-    try {
-      localStorage.setItem(RECENT_SPACES_KEY, JSON.stringify(recent))
-    } catch {
-      /* 同上 */
-    }
+    persistRecentSpaces(recent)
   }
 
   /** 读某用户的最近空间（无记录或存储不可用返回 null） */
@@ -212,10 +224,20 @@ export const useSpaceStore = defineStore('space', () => {
     return Number.isFinite(id) && id > 0 ? id : null
   }
 
-  /** 最近访问的 n 个空间（切换器「最近使用」组；含当前空间） */
+  /** 最近访问的 n 个空间（切换器「最近使用」组；含当前空间；读响应式镜像） */
   function recentSpaceIds(n: number): number[] {
-    const entries = Object.entries(readRecentSpaces()).sort((a, b) => b[1] - a[1])
-    return entries.slice(0, n).map(([id]) => Number(id))
+    return Object.entries(recentSpacesMap.value)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([id]) => Number(id))
+  }
+
+  /** 清理某空间的最近访问记录（删除空间时调用，防幽灵条目累积） */
+  function forgetRecentSpace(spaceId: number) {
+    if (recentSpacesMap.value[spaceId] == null) return
+    const recent = { ...recentSpacesMap.value }
+    delete recent[spaceId]
+    persistRecentSpaces(recent)
   }
 
   /** 关键词搜索空间并写入搜索结果（空关键词清空结果，回到列表视图） */

@@ -1,33 +1,29 @@
 <template>
   <div class="system-group">
-    <div class="group-label">系统</div>
     <router-link
       v-for="item in items"
       :key="item.key"
       :to="item.to"
       class="system-item"
       :class="{ active: isActive(item) }"
-      :title="collapsed ? item.label : undefined"
     >
       <el-icon :size="14"><component :is="item.icon" /></el-icon>
-      <span v-if="!collapsed" class="item-text">{{ item.label }}</span>
+      <span class="item-text">{{ item.label }}</span>
     </router-link>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * 侧栏系统组：模型配置 / API 密钥 /（权限）用户·角色管理。
+ * 系统菜单项组（沉底系统行的弹层内容）：模型配置 / API 密钥 /（权限）用户·角色管理。
  *
- * 权限过滤与 AppHeader 原系统下拉同口径（admin 短路全过）；active 沿用
+ * 权限过滤与原 AppHeader 系统下拉同口径（admin 短路全过）；active 沿用
  * 登记簿墨线语法（3px 左缘线 + primary 色），路由前缀判定。
  */
 import { computed, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { Cpu, Key, User, UserFilled } from '@element-plus/icons-vue'
 import { usePermissionStore } from '@/stores/permission'
-
-defineProps<{ collapsed?: boolean }>()
 
 const route = useRoute()
 const permStore = usePermissionStore()
@@ -72,15 +68,11 @@ function isActive(item: SystemItem): boolean {
 </script>
 
 <style scoped>
+/* 弹层内容：无分隔线、无组标签——触发行已表明「系统」语境 */
 .system-group {
-  border-top: 1px solid var(--color-border-light);
-  padding: var(--space-2) 0 var(--space-1);
-}
-
-.group-label {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1) 0;
 }
 
 .system-item {
@@ -88,17 +80,17 @@ function isActive(item: SystemItem): boolean {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 30px;
+  height: 32px;
   padding: 0 var(--space-3);
   color: var(--color-text-secondary);
   text-decoration: none;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  border-radius: var(--radius-md);
   transition:
     color var(--transition-fast),
     background var(--transition-fast);
 }
 
-/* 字形列统一 18px 宽：与 KB 行/切换器的文字起点同一竖线 */
+/* 字形列统一 18px 宽：与 KB 行/系统行的文字起点同一竖线 */
 .system-item .el-icon {
   flex-shrink: 0;
   width: 18px;

@@ -8,6 +8,14 @@
         <p class="desc">管理空间内的知识库：上传文档、配置解析与检索，或归档不再使用的库</p>
       </div>
       <div class="header-actions">
+        <!-- 搜索上移到页头操作区：开箱即达，不再沉到统计卡下的工具行 -->
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索知识库名称、描述"
+          clearable
+          :prefix-icon="Search"
+          class="header-search"
+        />
         <el-button type="primary" @click="showCreateDialog">
           <el-icon><Plus /></el-icon>
           新建知识库
@@ -55,15 +63,8 @@
     </div>
 
     <div class="section-card">
-      <!-- 工具行：搜索 + 计数 -->
+      <!-- 工具行：计数（搜索已上移页头操作区） -->
       <div class="toolbar">
-        <el-input
-          v-model="searchKeyword"
-          placeholder="搜索知识库名称、描述"
-          clearable
-          :prefix-icon="Search"
-          class="toolbar-search"
-        />
         <span class="toolbar-meta">共 {{ filteredKBs.length }} 个知识库</span>
       </div>
 
@@ -493,8 +494,15 @@ onMounted(() => {
 
 .header-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+
+/* 页头内联搜索：与操作钮同高一行，窄屏随 flex-wrap 折行 */
+.header-search {
+  width: 240px;
+  max-width: 100%;
 }
 
 /* ===== 统计卡条 ===== */
@@ -563,11 +571,6 @@ onMounted(() => {
   gap: var(--space-3);
   flex-wrap: wrap;
   margin-bottom: var(--space-4);
-}
-
-.toolbar-search {
-  width: 260px;
-  max-width: 100%;
 }
 
 .toolbar-meta {

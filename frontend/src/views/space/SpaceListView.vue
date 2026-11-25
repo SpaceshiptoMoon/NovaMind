@@ -3,35 +3,8 @@
 
     <!-- 主内容区 -->
     <main class="main-content">
-      <!-- 空间首页：面包屑 + 空间设置。新建知识库与知识运营的大入口由子页面
-           （KnowledgeBaseView）页头区承载——父层只留导航与设置 -->
-      <div v-if="isSpaceHome" class="content-header content-header--full">
-        <div class="header-left">
-          <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
-        </div>
-        <div class="header-actions">
-          <el-button
-            v-if="selectedSpaceId"
-            size="small"
-            circle
-            aria-label="空间设置"
-            title="空间设置"
-            @click="switchTab('settings')"
-          >
-            <el-icon><Setting /></el-icon>
-          </el-button>
-        </div>
-      </div>
-
-      <!-- 子页面：极简返回栏（返回键 + 分段面包屑） -->
-      <div v-else class="content-header content-header--slim">
-        <BreadcrumbNav
-          :items="crumbItems"
-          :back-label="navBack?.label"
-          @back="handleNavBack"
-          @navigate="(to: string) => router.push(to)"
-        />
-      </div>
+      <!-- 面包屑（含空间首页的「空间设置」动作）已全部上移全局顶栏
+           （breadcrumbStore → AppHeader），本壳只留子路由出口 -->
 
       <!-- 子路由内容：key 含 kbId——同空间两个 KB 直跳（侧栏登记册）时强制重挂载，
            否则组件实例被复用、onMounted 拉取不重跑，右侧内容停在旧库 -->
@@ -56,37 +29,32 @@
 
 <script setup lang="ts">
 /**
- * 知识空间子路由壳（纯壳）：面包屑/返回栏 + KB 子路由出口。
+ * 知识空间子路由壳（纯壳）：KB 子路由出口 + 面包屑发布。
  *
  * 对应路由 /home/spaces（SpaceList）。空间选择/创建/管理已上提全局侧栏
- * （WorkbenchSidebar），本壳只承载面包屑、返回导航与 router-view。
+ * （WorkbenchSidebar），面包屑与页头动作（空间设置）经 breadcrumbStore
+ * 发布到全局顶栏渲染——本壳只承载 router-view 与欢迎空态。
  */
 
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, watchEffect, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { markRaw } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Setting } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
+import { useBreadcrumbStore } from '@/stores/breadcrumb'
 import { knowledgeBaseApi } from '@/api/knowledge'
-import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
 const spaceStore = useSpaceStore()
+const breadcrumbStore = useBreadcrumbStore()
 
 const selectedSpaceId = ref<number | null>(null)
 const kbRefreshKey = ref(0)
 
 // === 空间选择（侧栏列表） ===
-
-// === Tab 导航 ===
-
-function switchTab(tab: string) {
-  if (selectedSpaceId.value) {
-    router.push(`/home/spaces/${selectedSpaceId.value}/${tab}`)
-  }
-}
 
 // === 知识库上下文 ===
 
@@ -116,12 +84,34 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
   return { label: '返回知识库', to: kbBase }
 })
 
-function handleNavBack() {
-  if (navBack.value) router.push(navBack.value.to)
-}
+// 面包屑发布到全局顶栏（store 桥接）：所有空间页面统一上移——
+// 空间首页链路短（仅空间名段）+ 附「空间设置」动作；子页面带返回目标。
+// isSpaceHome / 链路 / 返回目标任一变化即整体覆盖
+watchEffect(() => {
+  if (!selectedSpaceId.value) {
+    breadcrumbStore.clear()
+    return
+  }
+  const isHome = isSpaceHome.value
+  breadcrumbStore.set(
+    crumbItems.value,
+    isHome ? null : navBack.value,
+    isHome
+      ? {
+          label: '空间设置',
+          to: `/home/spaces/${selectedSpaceId.value}/settings`,
+          icon: markRaw(Setting),
+        }
+      : null,
+  )
+})
 
-// 分段面包屑链：所有 KB 子页面统一三段「空间名 → KB 实体名 → 功能名」，
-// 空间级页面两段「空间名 → 功能名」——同类页面链路长度一致，头部布局稳定
+// 离开空间壳时清空顶栏面包屑，避免其他页面残留上一页的链路
+onBeforeUnmount(() => breadcrumbStore.clear())
+
+// 分段面包屑链（顶栏切换器已承载空间名，链路自 KB 级起）：
+// KB 子页面「KB 实体名 → 功能名」，空间级子页「功能名」；空间首页为空
+// （仅余「空间设置」动作）——链路长度随层级走，头部不虚占
 const crumbItems = computed(() => {
   const items: Array<{ label: string; to?: string }> = []
   const sid = selectedSpaceId.value
@@ -131,13 +121,7 @@ const crumbItems = computed(() => {
     (route.params.kbId as string | undefined) ?? (route.query.kbId as string | undefined)
   const kbBase = `/home/spaces/${sid}/knowledge-bases`
 
-  const isKbHome = route.name === 'KnowledgeBases'
-  items.push({
-    label: spaceStore.currentSpace?.name || '知识空间',
-    to: isKbHome ? undefined : kbBase,
-  })
-
-  // KB 级页面：统一插入 KB 实体段（真实名；映射未命中时异步拉取后自动更新）
+  // KB 级页面：KB 实体段（真实名；映射未命中时异步拉取后自动更新）
   if (kbIdParam) {
     const kbIdNum = Number(kbIdParam)
     items.push({
@@ -266,15 +250,6 @@ onMounted(() => {
   height: 100%;
 }
 
-
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
 /* ===== Main Content ===== */
 
 .main-content {
@@ -284,120 +259,6 @@ onMounted(() => {
   flex-direction: column;
   overflow-y: auto;
   background: var(--color-bg);
-}
-
-.content-header {
-  display: flex;
-  align-items: center;
-  background: var(--color-bg-card);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--shadow-xs);
-  flex-shrink: 0;
-}
-
-/* 空间首页：完整栏 —— 发丝线 + 大留白，无阴影 */
-.content-header--full {
-  justify-content: space-between;
-  padding: var(--space-5) var(--space-8);
-}
-
-/* 子页面：极简返回栏 */
-.content-header--slim {
-  gap: var(--space-3);
-  padding: 0 var(--space-6);
-  height: 44px;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* ===== Header 按钮：Linear 极简风（扁平 · 发丝线 · hover 浅底，无阴影/上浮） ===== */
-.header-actions {
-  gap: var(--space-2);
-}
-
-.header-actions :deep(.el-button) {
-  border-radius: var(--radius-md);
-  font-weight: var(--weight-medium);
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-/* 实心主操作（新建知识库）：与全局主按钮同一 token，随亮暗主题反转 */
-.header-actions :deep(.el-button.el-button--primary) {
-  border: none;
-  padding: 6px 14px;
-  font-size: 14px;
-  height: auto;
-  transition: background-color var(--transition-fast);
-}
-
-.header-actions :deep(.el-button.el-button--primary) span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.header-actions :deep(.el-button.el-button--primary:active) {
-  transform: translateY(0);
-}
-
-/* 次级按钮（新建知识空间）：描边样式，hover 浅底，层级低于主按钮 */
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary)) {
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-  padding: 6px 14px;
-  font-size: 14px;
-  height: auto;
-  box-shadow: none;
-  transition:
-    background var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary) span) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary):hover) {
-  color: var(--color-text);
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
-  transform: none;
-  box-shadow: none;
-}
-
-/* 圆形图标按钮：发丝线，透明底，hover 浅底 */
-.header-actions :deep(.el-button.is-circle) {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-  box-shadow: none;
-}
-
-.header-actions :deep(.el-button.is-circle:hover) {
-  color: var(--color-text);
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
-  transform: none;
-  box-shadow: none;
-}
-
-/* 文字按钮：hover 浅底 */
-.header-actions :deep(.el-button.is-text:hover) {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
 }
 
 .content-body {

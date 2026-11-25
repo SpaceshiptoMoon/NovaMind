@@ -5,7 +5,7 @@
     <!-- 登记簿式全局侧栏（全高）：品牌/空间切换/KB 登记/系统区 -->
     <WorkbenchSidebar />
 
-    <!-- 右列：瘦身顶栏（全局搜索 + 全局项）+ 主内容区 -->
+    <!-- 右列：瘦身顶栏（面包屑 + 全局项）+ 主内容区 -->
     <div class="workspace-right">
       <AppHeader />
 
@@ -29,7 +29,7 @@
  * 主布局：全局侧栏 + 右列（顶栏 + 主内容区）。
  *
  * 产品已收敛为知识空间单模块——侧栏即工作台（品牌/空间切换器/KB 登记
- * 册/系统区），顶栏只保留全局搜索与主题/通知/用户；skip-link 供键盘导航。
+ * 册/系统区），顶栏承载页面面包屑（breadcrumbStore）与主题/通知/用户；skip-link 供键盘导航。
  */
 import AppHeader from './AppHeader.vue'
 import { WorkbenchSidebar } from '@/components/workbench'

@@ -1,18 +1,28 @@
 <template>
   <header class="app-header">
-    <!-- 全局搜索位：知识产品的第一动作，居中独大（品牌与导航已入侧栏） -->
-    <div class="header-search">
-      <el-icon :size="18" class="search-icon-btn" title="知识检索" @click="goGlobalSearch">
-        <Search />
-      </el-icon>
-      <el-input
-        v-model="globalQuery"
-        class="search-input"
-        placeholder="搜索知识…"
-        maxlength="2000"
-        clearable
-        @keydown.enter.prevent="goGlobalSearch"
-      />
+    <!-- 左区：空间切换器（原侧栏上移，内联 chip 形态）+ 分隔线 + 面包屑 +
+         页头动作（如空间设置）。面包屑链路自 KB 级起——空间名由切换器承载 -->
+    <div class="header-left">
+      <SpaceSwitcher variant="header" />
+      <template v-if="crumbStore.items.length > 0">
+        <div class="header-divider" />
+        <BreadcrumbNav
+          :items="crumbStore.items"
+          :back-label="crumbStore.back?.label"
+          @back="handleCrumbBack"
+          @navigate="(to: string) => router.push(to)"
+        />
+      </template>
+      <button
+        v-if="crumbStore.action"
+        type="button"
+        class="crumb-action"
+        :title="crumbStore.action.label"
+        :aria-label="crumbStore.action.label"
+        @click="router.push(crumbStore.action.to)"
+      >
+        <el-icon :size="14"><component :is="crumbStore.action.icon" /></el-icon>
+      </button>
     </div>
 
     <div class="header-right">
@@ -97,34 +107,35 @@
 
 <script setup lang="ts">
 /**
- * 全局顶栏（瘦身版）：全局搜索位居中独大 + 主题/通知/用户。
+ * 全局顶栏：空间切换器 + 面包屑（页面发布）+ 主题/通知/用户。
  *
  * 品牌与主导航已下沉到 WorkbenchSidebar（登记簿式工作台），系统管理入口
- * 在侧栏系统组——顶栏不再承担导航职责。
+ * 在侧栏系统组；空间切换器自侧栏上移至左区首位（2026-11），全局检索入口
+ * 在检索页——顶栏不再内嵌搜索。
  */
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { User, SwitchButton, Bell, Moon, Sunny, Search } from '@element-plus/icons-vue'
+import { User, SwitchButton, Bell, Moon, Sunny } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useBreadcrumbStore } from '@/stores/breadcrumb'
 import { useNotificationStore } from '@/stores/notification'
 import { formatRelativeTime } from '@/utils/format'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
+import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
+import SpaceSwitcher from '@/components/workbench/SpaceSwitcher.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const userStore = useUserStore()
 const { theme, toggleTheme } = useTheme()
 
-// ==================== 全局搜索位 ====================
-const globalQuery = ref('')
+// ==================== 面包屑位 ====================
+const crumbStore = useBreadcrumbStore()
 
-/** 顶栏搜索：非空直达全局检索（?q 深链），空输入也进检索页聚焦输入 */
-function goGlobalSearch() {
-  const q = globalQuery.value.trim()
-  void router.push(q ? { path: '/home/search', query: { q } } : '/home/search')
-  globalQuery.value = ''
+function handleCrumbBack() {
+  if (crumbStore.back) void router.push(crumbStore.back.to)
 }
 
 // ==================== 通知相关（经 notifStore：WS 实时 + 30s 轮询兜底） ====================
@@ -184,8 +195,9 @@ const handleCommand = async (command: string) => {
 <style scoped>
 .app-header {
   height: var(--header-height);
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 560px) 1fr;
+  /* 左列面包屑（页面发布）+ 右列全局操作，空面包屑时右列仍靠右 */
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   padding: 0 var(--space-6);
   /* 顶栏磨砂玻璃（悬浮于内容之上，滚动时透出下方内容） */
@@ -202,46 +214,54 @@ const handleCommand = async (command: string) => {
   .app-header { background: var(--color-bg-card); }
 }
 
-/* ==================== 全局搜索位（中列） ==================== */
-.header-search {
-  grid-column: 2;
+/* ==================== Header Left（左区：切换器 + 面包屑列） ==================== */
+.header-left {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: var(--space-2);
+  flex: 1;
   min-width: 0;
+  /* 窄屏放不下时整体截断（crumb-item 自带 ellipsis） */
+  overflow: hidden;
 }
 
-/* 宽屏内联输入：聚焦轻放大；窄屏（<992px）收成图标按钮进检索页 */
-.search-input {
-  width: 100%;
-  max-width: 400px;
-  transition: max-width var(--transition-base);
+/* 切换器与面包屑之间的细分隔线 */
+.header-divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--color-border);
+  margin: 0 var(--space-1);
 }
 
-.search-input:focus-within {
-  max-width: 520px;
-}
-
-.search-icon-btn {
-  display: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
+/* 面包屑尾随动作（如空间设置）：28px 圆形操作位，与 crumb-back 同形态 */
+.crumb-action {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--transition-fast);
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
-.search-icon-btn:hover {
+.crumb-action:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ==================== Header Right（右列） ==================== */
 .header-right {
-  grid-column: 3;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -407,17 +427,6 @@ const handleCommand = async (command: string) => {
 }
 
 /* ==================== Responsive ==================== */
-@media (max-width: 992px) {
-  /* 窄屏：内联搜索收成图标按钮（点击进全局检索页） */
-  .search-input {
-    display: none;
-  }
-
-  .search-icon-btn {
-    display: inline-flex;
-  }
-}
-
 @media (max-width: 768px) {
   .app-header {
     padding: 0 var(--space-3);

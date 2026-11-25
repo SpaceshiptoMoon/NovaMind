@@ -121,9 +121,8 @@ function createKb() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 32px;
+  height: 34px;
   padding: 0 var(--space-3) 0 var(--space-3);
-  border-top: 1px solid var(--color-border-light);
 }
 
 .head-label {
@@ -168,7 +167,7 @@ function createKb() {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  height: 30px;
+  height: 32px;
   padding: 0 var(--space-3);
   border: none;
   background: none;

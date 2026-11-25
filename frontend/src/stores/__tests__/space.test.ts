@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Space } from '@/api/types'
 import { createPinia, setActivePinia } from 'pinia'
 
@@ -19,6 +19,8 @@ const { spaceApi } = vi.hoisted(() => ({
 vi.mock('@/api/space', () => ({ spaceApi }))
 
 import { useSpaceStore } from '../space'
+
+const RECENT_KEY = 'novamind:recent-spaces'
 
 describe('useSpaceStore', () => {
   beforeEach(() => {
@@ -91,5 +93,62 @@ describe('useSpaceStore', () => {
     expect(spaceApi.searchSpaces).toHaveBeenCalledWith({ keyword: 'alpha' })
     expect(store.searchResults).toEqual([])
     expect(store.isSearching).toBe(false)
+  })
+})
+
+// ===== 最近空间（切换器「最近使用」数据源；localStorage 响应式镜像） =====
+
+describe('useSpaceStore recent spaces', () => {
+  beforeEach(() => {
+    // store 建立时读一次 localStorage 做镜像初始化，先清空再建 pinia
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('按最后访问时间倒序取前 n 个，再次访问刷新排序', () => {
+    // Date.now() 同毫秒会让排序不确定，用假时钟固定先后
+    vi.useFakeTimers()
+    const store = useSpaceStore()
+
+    vi.setSystemTime(1000)
+    store.touchSpaceAccess(3, 1)
+    vi.setSystemTime(2000)
+    store.touchSpaceAccess(4, 1)
+    vi.setSystemTime(3000)
+    store.touchSpaceAccess(5, 1)
+    expect(store.recentSpaceIds(2)).toEqual([5, 4])
+
+    // 回访 3 → 升为最新（回归：镜像响应式更新，会话内列表不再停留在旧顺序）
+    vi.setSystemTime(4000)
+    store.touchSpaceAccess(3, 1)
+    expect(store.recentSpaceIds(2)).toEqual([3, 5])
+  })
+
+  it('镜像与 localStorage 持久层同步写入', () => {
+    const store = useSpaceStore()
+    store.touchSpaceAccess(9, 1)
+
+    expect(store.recentSpaceIds(5)).toEqual([9])
+    expect(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '{}')).toEqual({ 9: expect.any(Number) })
+    expect(localStorage.getItem('novamind:last-space:1')).toBe('9')
+  })
+
+  it('deleteSpace 清理对应空间的最近访问记录（防幽灵条目）', async () => {
+    spaceApi.deleteSpace.mockResolvedValue(undefined)
+    const store = useSpaceStore()
+    store.touchSpaceAccess(7, 1)
+    store.touchSpaceAccess(8, 1)
+
+    await store.deleteSpace(7)
+
+    expect(store.recentSpaceIds(5)).toEqual([8])
+    expect(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '{}')).toEqual({
+      8: expect.any(Number),
+    })
   })
 })

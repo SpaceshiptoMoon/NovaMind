@@ -1,5 +1,5 @@
 <template>
-  <div class="space-switcher">
+  <div class="space-switcher" :class="{ 'space-switcher--header': variant === 'header' }">
     <el-popover
       v-model:visible="panelVisible"
       placement="bottom-start"
@@ -33,8 +33,8 @@
         />
 
         <div class="panel-body">
-          <template v-if="showRecentGroup">
-            <div class="panel-group-label">最近使用</div>
+        <template v-if="showRecentGroup && recentSpaces.length > 0">
+          <div class="panel-group-label">最近使用</div>
             <button
               v-for="space in recentSpaces"
               :key="`recent-${space.id}`"
@@ -43,9 +43,6 @@
               :class="{ current: space.id === currentSpaceId }"
               @click="selectSpace(space.id)"
             >
-              <span class="row-avatar" :style="{ background: avatarColor(space.name) }">{{
-                space.name.charAt(0)
-              }}</span>
               <span class="row-name">{{ space.name }}</span>
               <span v-if="space.id === currentSpaceId" class="row-current">当前</span>
             </button>
@@ -63,9 +60,6 @@
               :title="space.name"
               @click="selectSpace(space.id)"
             >
-              <span class="row-avatar" :style="{ background: avatarColor(space.name) }">{{
-                space.name.charAt(0)
-              }}</span>
               <span class="row-name">{{ space.name }}</span>
               <span v-if="space.id === currentSpaceId" class="row-current">当前</span>
             </button>
@@ -139,6 +133,9 @@ import { useSpaceStore } from '@/stores/space'
 import type { Space } from '@/api/types'
 import { avatarColor } from './avatar'
 import SpaceCreateDialog from './SpaceCreateDialog.vue'
+
+// sidebar = 侧栏整行形态（默认）；header = 顶栏内联 chip 形态（自适应宽、名字限宽）
+withDefaults(defineProps<{ variant?: 'sidebar' | 'header' }>(), { variant: 'sidebar' })
 
 const route = useRoute()
 const router = useRouter()
@@ -295,6 +292,20 @@ async function handleBatchDeleteSpaces() {
   transition: background var(--transition-fast);
 }
 
+/* 顶栏变体：内联自适应宽、行高与顶栏操作键同档、名字限宽防挤占面包屑 */
+.space-switcher--header .switcher-row {
+  width: auto;
+  height: 36px;
+  max-width: 240px;
+  padding: 0 var(--space-2);
+  flex-shrink: 0;
+}
+
+.space-switcher--header .switcher-name {
+  flex: 0 1 auto;
+  max-width: 160px;
+}
+
 .switcher-row:hover {
   background: var(--color-bg-hover);
 }
@@ -344,16 +355,22 @@ async function handleBatchDeleteSpaces() {
   min-height: 0;
 }
 
+/* 分组标题：与条目文字的区分靠排版而非彩色——semibold + 字距放宽 + 灰度
+   加深一档（muted），小字号大字距是「人手打磨」的层级语法，无彩色零 AI 味 */
 .panel-group-label {
+  flex-shrink: 0;
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  padding: var(--space-1) var(--space-1) var(--space-1);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  padding: var(--space-3) var(--space-1) var(--space-2);
 }
 
 .panel-divider {
+  flex-shrink: 0;
   height: 1px;
   background: var(--color-border-light);
-  margin: var(--space-1) 0;
+  margin: var(--space-2) 0;
 }
 
 .panel-list {
@@ -367,7 +384,9 @@ async function handleBatchDeleteSpaces() {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  height: 32px;
+  height: 40px;
+  /* 面板超高时不被 flex 容器压缩（「最近使用」行直接排在 panel-body 上） */
+  flex-shrink: 0;
   padding: 0 var(--space-2);
   border: none;
   background: none;
@@ -395,23 +414,11 @@ async function handleBatchDeleteSpaces() {
   content: '';
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
+  top: 11px;
+  bottom: 11px;
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--color-primary);
-}
-
-.row-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
 }
 
 .row-name {
