@@ -412,6 +412,109 @@ class TestCoverageSelfCheck:
         assert result.full_text, "低覆盖不失败，产出仍入库"
 
 
+class TestScanOcrProxyTruth:
+    """纯扫描件（文字层全空）→ DeepDoc OCR 代理真值：检出+重试+标记兜底。"""
+
+    @pytest.mark.asyncio
+    async def test_scan_uses_ocr_proxy_and_retries_below_wide_pass(self, monkeypatch):
+        """文字层全空 + OCR 代理有内容 → ocr_proxy 源 + 低覆盖重试（宽线 0.70）。"""
+        import novamind.engines.document.media.ocr.qwen as qwen_mod
+        import novamind.engines.document.media.vlm.vlm_utils as vutils
+        import novamind.engines.document.converters.doc_converter as dc
+
+        monkeypatch.setattr(
+            qwen_mod, "extract_pdf_page_texts", lambda content: ["", ""]
+        )  # 纯扫描件：文字层全空
+        monkeypatch.setattr(qwen_mod, "render_pdf_page_images", lambda content, dpi=144: [(b"jpg1", 0), (b"jpg2", 1)])
+
+        proxy_calls = {"n": 0}
+        monkeypatch.setattr(
+            vutils, "ocr_page_text_proxy",
+            lambda png: (proxy_calls.__setitem__("n", proxy_calls["n"] + 1) or "OCR代理读取的页面文本 " * 8),
+        )
+
+        calls = {"n": 0}
+
+        class _Scripted:
+            async def generate_text(self, prompt, **kwargs):
+                calls["n"] += 1
+                # 首轮两页都缺内容（低覆盖），第二轮补全
+                return ("第一页缺" if calls["n"] <= 2 else
+                        "OCR代理读取的页面文本 " * 6) if calls["n"] <= 3 else "OCR代理读取的页面文本 " * 6
+
+        import novamind.engines.document.media.vlm.vlm_utils as _vu
+        real_cov = _vu.transcription_coverage
+
+        doc = _doc("pdf")
+        doc.storage = {}
+
+        async def run():
+            class _Mcs:
+                async def get_vlm_client_by_model(self, uid, model):
+                    return _Scripted()
+
+            return await document_pipeline._parse_pdf_with_vlm_static(
+                document=doc,
+                file_content=b"%PDF-1.4 fake-scan",
+                file_path=None,
+                parse_config={"pdf_vlm_model": "qwen3-vl"},
+                splitting_config={},
+                processor=_processor("x"),
+                model_config_port=_Mcs(),
+                _logger=_TEST_LOGGER,
+            )
+
+        result = await run()
+        assert result.metadata["vlm_coverage_source"] == "ocr_proxy"
+        assert result.metadata["vlm_coverage_pass"] == 0.70
+        covs = result.metadata["vlm_page_coverages"]
+        assert all(c is not None for c in covs), "代理真值页面应有覆盖率数值"
+        assert calls["n"] >= 3, "低覆盖页应触发重试"
+
+    @pytest.mark.asyncio
+    async def test_ocr_proxy_failure_falls_back_to_sentinel(self, monkeypatch):
+        """OCR 代理不可用：退回哨兵模式（覆盖率 None，不失败）。"""
+        import novamind.engines.document.media.ocr.qwen as qwen_mod
+        import novamind.engines.document.media.vlm.vlm_utils as vutils
+
+        monkeypatch.setattr(qwen_mod, "extract_pdf_page_texts", lambda content: [""])
+        def _boom(png):
+            raise RuntimeError("ocr down")
+        monkeypatch.setattr(vutils, "ocr_page_text_proxy", _boom)
+
+        calls = {"n": 0}
+
+        class _Counting:
+            async def generate_text(self, prompt, **kwargs):
+                calls["n"] += 1
+                return "扫描件 VLM 转写"
+
+        monkeypatch.setattr(qwen_mod, "render_pdf_page_images", lambda content, dpi=144: [(b"jpg1", 0)])
+
+        from types import SimpleNamespace as SN
+
+        class _Mcs:
+            async def get_vlm_client_by_model(self, uid, model):
+                return _Counting()
+
+        doc2 = _doc("pdf")
+        doc2.storage = {}
+
+        result = await document_pipeline._parse_pdf_with_vlm_static(
+            document=doc2,
+            file_content=b"%PDF-1.4 fake-scan",
+            file_path=None,
+            parse_config={"pdf_vlm_model": "qwen3-vl"},
+            splitting_config={},
+            processor=_processor("x"),
+            model_config_port=_Mcs(),
+            _logger=_TEST_LOGGER,
+        )
+        assert result.metadata["vlm_coverage_source"] == "none"
+        assert result.metadata["vlm_page_coverages"] == [None]
+        assert calls["n"] == 1, "哨兵模式不应重试"
+
+
 class TestPageImageUpload:
     @pytest.mark.asyncio
     async def test_anchor_missing_warns_and_continues(self, monkeypatch):

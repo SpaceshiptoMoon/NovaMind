@@ -160,3 +160,36 @@ def transcription_coverage(output: str, truth: str | None) -> float | None:
             hits += 1
     return hits / max(total, 1)
 
+# DeepDoc OCR 单例（VLM 转写线的扫描件代理真值；懒加载，模型驻留 GPU/CPU）
+_OCR_PROXY_SINGLETON = None
+
+
+def ocr_page_text_proxy(page_image_png: bytes) -> str:
+    """单页图经 DeepDoc OCR 独立读取的文本（VLM 转写的弱真值/代理）。
+
+    纯图片页/扫描件没有文字层真值——OCR 独立读取提供第二来源，用于覆盖率
+    代理自检：OCR 自身有小错，只可当哨兵不可当真值（调用方须用宽及格线）。
+    阻塞推理，调用方负责 to_thread 隔离。
+
+    Args:
+        page_image_png: 页图 PNG 字节。
+
+    Returns:
+        OCR 识别文本（按行拼接）；图片不可解码或无文字时为空串。
+    """
+    import cv2
+    import numpy as np
+
+    img = cv2.imdecode(np.frombuffer(page_image_png, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return ""
+    global _OCR_PROXY_SINGLETON
+    if _OCR_PROXY_SINGLETON is None:
+        from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+
+        _OCR_PROXY_SINGLETON = OCR()
+    result, _elapse = _OCR_PROXY_SINGLETON(img)
+    return "\n".join(
+        entry[1] for entry in (result or []) if len(entry) >= 2 and entry[1]
+    )
+

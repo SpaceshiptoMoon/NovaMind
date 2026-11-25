@@ -1135,6 +1135,8 @@ async def _process_image_document_static(
             processor=None,
             _logger=_logger,
             split=False,
+            truth_texts=None,
+            coverage_source="none",
         )
         description_text = result.full_text
     elif image_strategy == "combined":
@@ -1809,11 +1811,40 @@ async def _parse_pdf_with_vlm_static(
     await _upload_vlm_page_images(document, pages, _logger)
 
     # 覆盖率自检真值：视觉化所用的 PDF（含 ppt 转出的 PDF）逐页文字层；
-    # 扫描件文字层为空串 → 覆盖率 None（哨兵模式）
+    # 纯图片页（扫描件/图片型 PDF，文字层全空）→ DeepDoc OCR 对页图独立
+    # 读取作代理真值（弱真值，宽及格线）——扫描件同样获得「检出→重试→标记」
+    # 兜底；OCR 不可用/无文字 → 哨兵模式（覆盖率 None，只查空产出）
     from novamind.engines.document.media.ocr.qwen import extract_pdf_page_texts
     truth_texts = await asyncio.to_thread(extract_pdf_page_texts, content)
     if len(truth_texts) != len(pages):
         truth_texts = None  # 页数不一致（异常防御）：退化为哨兵模式
+        coverage_source = "none"
+    coverage_pass = _VLM_COVERAGE_PASS
+    coverage_source = "text_layer"
+    if truth_texts and all(not (t or "").strip() for t in truth_texts):
+        coverage_source = "none"
+        try:
+            from novamind.engines.document.media.vlm.vlm_utils import ocr_page_text_proxy
+
+            proxy = [
+                await asyncio.to_thread(ocr_page_text_proxy, blob) for blob, _num in pages
+            ]
+            if any((t or "").strip() for t in proxy):
+                truth_texts = proxy
+                coverage_pass = 0.70  # OCR 自身有小错：弱真值用宽及格线
+                coverage_source = "ocr_proxy"
+                _logger.info(
+                    "文字层为空：启用 DeepDoc OCR 代理真值做覆盖率自检",
+                    document_id=document.id,
+                    pages=len(pages),
+                    proxy_pages=sum(1 for t in proxy if (t or "").strip()),
+                )
+        except Exception as exc:  # noqa: BLE001 - 代理真值失败退回哨兵模式
+            _logger.warning(
+                "OCR 代理真值不可用，退回哨兵模式",
+                document_id=document.id,
+                error=str(exc),
+            )
 
     return await _vlm_transcribe_pages(
         document=document,
@@ -1824,6 +1855,8 @@ async def _parse_pdf_with_vlm_static(
         processor=processor,
         _logger=_logger,
         truth_texts=truth_texts,
+        coverage_pass=coverage_pass,
+        coverage_source=coverage_source,
     )
 
 
@@ -1838,6 +1871,8 @@ async def _vlm_transcribe_pages(
     *,
     split: bool = True,
     truth_texts: list[str | None] | None = None,
+    coverage_pass: float = _VLM_COVERAGE_PASS,
+    coverage_source: str = "text_layer",
 ):
     """VLM 逐页转写核心：并发受控、页序保持、页标记契约与 mineru 对齐。
 
@@ -1903,7 +1938,7 @@ async def _vlm_transcribe_pages(
         truth = page_truth.get(page_number)
         text = await _call_vlm(page_bytes, page_number)
         cov = _vlm_cov_fn(text, truth)
-        if cov is not None and cov < _VLM_COVERAGE_PASS:
+        if cov is not None and cov < coverage_pass:
             _logger.warning(
                 "VLM 页转写覆盖率不达标，自动重试一次",
                 document_id=document.id,
@@ -1939,7 +1974,7 @@ async def _vlm_transcribe_pages(
         )
     # 低覆盖页只标记不失败：重试后仍不达标说明是该页的系统性形态差异
     # （公式/表格 LaTeX 化等），覆盖数值进元数据供检索侧降权与质量统计
-    flagged = [num for num, cov in coverages.items() if cov is not None and cov < _VLM_COVERAGE_PASS]
+    flagged = [num for num, cov in coverages.items() if cov is not None and cov < coverage_pass]
     if flagged:
         _logger.warning(
             "VLM 页转写覆盖率重试后仍不达标（已标记）",
@@ -1984,6 +2019,8 @@ async def _vlm_transcribe_pages(
         "vlm_model": vlm_model_name,
         # 逐页覆盖率（None=该页无真值，哨兵模式）；kb-ops 质量基线可统计
         "vlm_page_coverages": [coverages.get(num) for _blob, num in pages],
+        "vlm_coverage_source": coverage_source,
+        "vlm_coverage_pass": coverage_pass,
     }
     if split_strategy:
         metadata["split_strategy"] = split_strategy
