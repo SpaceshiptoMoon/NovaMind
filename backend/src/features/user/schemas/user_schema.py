@@ -307,7 +307,10 @@ class UserResponse(BaseModel):
     # 不得让整个用户列表 500；格式校验是 UserBase 等输入边界的职责
     email: str = Field(..., description="用户邮箱")
     phone: str | None = Field(None, description="用户手机号码")
-    role: RoleBrief = Field(..., description="用户系统角色")
+    # RoleBrief | None：users.role_id 无外键约束，历史/手工数据操作可能留下
+    # 悬空角色引用（role 关系加载为 None），响应侧降级为 null 而非 500 用户列表；
+    # 角色完整性校验是分配角色的输入边界职责
+    role: RoleBrief | None = Field(None, description="用户系统角色，角色引用悬空时为 null")
     is_admin: bool = Field(default=False, description="是否系统管理员（从 role 派生）")
     is_super_admin: bool = Field(default=False, description="是否最高管理员（YAML 配置的初始账号）")
     status: int = Field(..., description="用户状态，0为禁用，1为启用，2为封禁，3为已删除")
