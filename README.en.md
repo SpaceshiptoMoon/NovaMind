@@ -297,7 +297,7 @@ Requirements:
 - One-command deploy via `deploy.sh` needs a working `python` or `python3` command on the host the first time it generates `.env` (to generate random secrets; the script probes `python` then `python3`, and offers an alternative when neither works). `deploy.ps1` has no such dependency
 - At least 2 CPU cores / 4 GB RAM / 30 GB disk (measured: images ≈ 7 GB; models ≈ 3.2 GB with a GPU, ≈ 0.7 GB without; plus reclaimable build cache — `docker builder prune`. Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
 - For video parsing, local speech transcription, or DeepDoc full mode, 4 cores / 8 GB+ recommended
-- Local speech transcription uses CPU inference inside the container by default; on a machine with an NVIDIA GPU it can run on the GPU instead (the app image must be rebuilt) — see [Optional: accelerate local speech transcription with an NVIDIA GPU](#optional-accelerate-local-speech-transcription-with-an-nvidia-gpu)
+- Local models (speech transcription, DeepDoc document parsing) run on the CPU inside the container by default; on a machine with an NVIDIA GPU the deploy scripts detect it automatically and enable GPU acceleration — see [Optional: accelerate local models with an NVIDIA GPU](#optional-accelerate-local-models-with-an-nvidia-gpu)
 
 Common commands:
 
@@ -362,7 +362,11 @@ Notes:
     sudo chown -R 1001:1001 backend/.cache
     ```
 
-### Optional: accelerate local speech transcription with an NVIDIA GPU
+### Optional: accelerate local models with an NVIDIA GPU
+
+Since 2026-11 local models follow one system-wide device standard: **detect at install time — GPU-flavored dependencies (torch + onnxruntime-gpu) are installed only when an NVIDIA GPU is present and its total VRAM meets the threshold (default ≥6GB, tunable via `VISION_GPU_MIN_TOTAL_MB`); at run time every local model (speech transcription, DeepDoc OCR/layout/TSR/formula) asks the single device probe for the same verdict, and any unmet condition uniformly falls back to the CPU** — so a mismatched install (e.g. a GPU image running on a GPU-less machine) only costs image size, never correctness.
+
+**DeepDoc parsing GPU is now automated by the deploy scripts**: `bash deploy.sh` / `bash deploy.sh update` probe `nvidia-smi` on the host before building (Docker build containers cannot see the GPU — the check must run on the host) and inject `VISION_GPU=true` when the threshold is met, rebuilding the image with torch + onnxruntime-gpu (about +2~3GB). The four ONNX components (OCR/layout/TSR/formula) then run on the GPU automatically; if CUDA initialization fails, onnxruntime falls back to the CPU instead of raising. Startup logs reconcile the install: `设备探针：CUDA 可用 → GPU` and `设备对账：安装 flavor ↔ 运行时判定一致`; parse logs showing `load_model … uses GPU (device 0 …)` confirm it (`docker exec novamind-app sh -c 'grep -h "uses GPU\|设备探针" /var/log/supervisor/*.log'`). For manual builds export `VISION_GPU=true` (or `false` to force a CPU build) yourself and keep the GPU device reservation in the override (see below).
 
 Local speech transcription (faster-whisper) runs on the CPU inside the container by default, and the model tier follows the device: when no GPU is visible it uses the `small` tier (fast enough in CPU int8). On a machine with an NVIDIA GPU, enabling the GPU switches it to `large-v3` automatically (the engine picks the compute type supported by the GPU — int8_float16, i.e. INT8 weights with float16 computation, was measured on an RTX 4060); `default.yaml` needs no change — with `local_whisper_model` / `local_whisper_device` / `local_whisper_compute_type` left empty (auto) the engine detects CUDA and picks the matching default tier. That detection only picks the GPU when the container **can reach the GPU and the image contains the GPU runtime libraries**, neither of which a default deployment has, so both must be enabled:
 

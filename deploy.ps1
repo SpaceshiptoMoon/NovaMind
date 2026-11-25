@@ -36,6 +36,33 @@ function Test-DockerEnvironment {
     }
 }
 
+# 全系统标准（2026-11）：本地模型安装时检测 GPU——有卡且总显存达标装 GPU 版依赖
+# （torch + onnxruntime-gpu），否则 CPU 版；结果经 VISION_GPU 传给 compose build
+# args。检测必须在宿主侧（build 容器内见不到 nvidia-smi）。阈值
+# VISION_GPU_MIN_TOTAL_MB 可用环境变量覆盖（默认 6144）。运行时唯一探针会复核并
+# 按实际环境兜底 CPU——装错方向不影响正确性，只是镜像变大。
+function Set-VisionGpuEnv {
+    $minMb = if ($env:VISION_GPU_MIN_TOTAL_MB) { [int]$env:VISION_GPU_MIN_TOTAL_MB } else { 6144 }
+    $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    if ($nvidiaSmi) {
+        $totalMb = $null
+        try {
+            $raw = (nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+            if ($raw) { $totalMb = [int]($raw.ToString().Trim()) }
+        } catch { $totalMb = $null }
+        if ($totalMb -and $totalMb -ge $minMb) {
+            $env:VISION_GPU = "true"
+            Write-Info "GPU detected: ${totalMb}MiB total >= ${minMb}MiB -> VISION_GPU=true (GPU build: torch + onnxruntime-gpu)"
+            return
+        }
+        Write-Info "GPU detected but VRAM ${totalMb}MiB < ${minMb}MiB threshold -> VISION_GPU=false (CPU build)"
+        $env:VISION_GPU = "false"
+        return
+    }
+    $env:VISION_GPU = "false"
+    Write-Info "No usable NVIDIA GPU detected -> VISION_GPU=false (CPU build)"
+}
+
 function Invoke-ComposeStep {
     param([string]$Description, [string[]]$ArgumentList)
     # 关键 compose 步骤统一走这里：检查 $LASTEXITCODE，失败即终止，
@@ -212,6 +239,7 @@ function Invoke-PrepareLocalWhisperModel {
 function Invoke-Deploy {
     Show-Banner
     Test-DockerEnvironment
+    Set-VisionGpuEnv
     Ensure-EnvFile
     Ensure-ConfigFiles
     Invoke-ComposeStep -Description "Building and starting services" -ArgumentList @("compose", "up", "-d", "--build")
@@ -224,6 +252,7 @@ function Invoke-Deploy {
 function Invoke-Update {
     Show-Banner
     Test-DockerEnvironment
+    Set-VisionGpuEnv
     Invoke-ComposeStep -Description "Rebuilding app service" -ArgumentList @("compose", "up", "-d", "--build", "app")
     Invoke-PrepareDeepdocModels
     Invoke-PrepareLocalWhisperModel

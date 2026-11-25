@@ -30,6 +30,16 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        # DeepDoc 视觉 GPU 依赖开关：deploy.sh/ps1 宿主检测后注入 true/false
+        #（有卡且总显存 >= VISION_GPU_MIN_TOTAL_MB 才为 true）。手动构建可
+        # 自行 export VISION_GPU=true；默认 false = CPU 构建。运行时行为由
+        # 容器内唯一探针按实际环境兜底，装错方向不影响正确性。
+        VISION_GPU: ${VISION_GPU:-false}
+        # PPT×VLM 转写线的 LibreOffice 依赖开关（+~600MB）：需要 ppt×vlm 时
+        # export OFFICE_CONVERT=true 后构建；默认 false 镜像零增量，未装时
+        # ppt×vlm 解析期显式终态失败并给安装指引。
+        OFFICE_CONVERT: ${OFFICE_CONVERT:-false}
     container_name: novamind-app
     ports:
       - "80:8080"

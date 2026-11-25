@@ -37,6 +37,31 @@ check_docker() {
   docker compose version >/dev/null 2>&1 || { error "Docker Compose V2 is required"; exit 1; }
 }
 
+# 全系统标准（2026-11）：本地模型安装时检测 GPU——有卡且总显存达标装 GPU 版依赖
+# （torch + onnxruntime-gpu），否则 CPU 版；结果经 VISION_GPU 传给 compose build
+# args（Dockerfile 原子置换 onnxruntime -> onnxruntime-gpu 并登记 CUDA 运行库）。
+# 检测必须在宿主侧：docker build 容器内见不到 nvidia-smi。
+# 阈值 VISION_GPU_MIN_TOTAL_MB 可用环境变量覆盖（默认 6144：ASR large-v3 ~1.5GB +
+# DeepDoc 视觉各会话 ~2GB + 余量）。运行时唯一探针会用同一判据复核并按实际环境
+# 兜底 CPU——装错方向（无卡机器误装 GPU 版）不影响正确性，只是镜像变大。
+detect_vision_gpu() {
+  local min_mb="${VISION_GPU_MIN_TOTAL_MB:-6144}"
+  if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+    local total_mb
+    total_mb="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]')"
+    if [[ "${total_mb:-0}" =~ ^[0-9]+$ ]] && [[ "$total_mb" -ge "$min_mb" ]]; then
+      export VISION_GPU=true
+      info "GPU detected: ${total_mb}MiB total >= ${min_mb}MiB -> VISION_GPU=true (GPU build: torch + onnxruntime-gpu)"
+    else
+      export VISION_GPU=false
+      info "GPU detected but VRAM ${total_mb:-unknown}MiB < ${min_mb}MiB threshold -> VISION_GPU=false (CPU build)"
+    fi
+  else
+    export VISION_GPU=false
+    info "No usable NVIDIA GPU detected -> VISION_GPU=false (CPU build)"
+  fi
+}
+
 # 密码/密钥生成直接内联在 ensure_env 的 python heredoc 中（无独立函数）
 
 ensure_env() {
@@ -158,7 +183,8 @@ print_summary() {
 read_env_hf_endpoint() {
   local value=""
   if [[ -f .env ]]; then
-    value="$(grep -E '^HF_ENDPOINT=' .env | tail -n 1 | cut -d '=' -f 2- | tr -d '' | sed 's/^"//; s/"$//')"
+    value="$(grep -E '^HF_ENDPOINT=' .env | tail -n 1 | cut -d '=' -f 2- | tr -d '
+' | sed 's/^"//; s/"$//')"
   fi
   if [[ -n "${HF_ENDPOINT:-}" ]]; then
     echo "$HF_ENDPOINT"
@@ -225,6 +251,7 @@ prepare_local_whisper_model() {
 cmd_deploy() {
   banner
   check_docker
+  detect_vision_gpu
   ensure_env
   ensure_configs
   step "Building and starting services"
@@ -241,6 +268,7 @@ cmd_deploy() {
 cmd_update() {
   banner
   check_docker
+  detect_vision_gpu
   step "Rebuilding app service"
   docker compose up -d --build app
   prepare_deepdoc_models

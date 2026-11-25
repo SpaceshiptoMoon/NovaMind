@@ -198,7 +198,7 @@ powershell -ExecutionPolicy Bypass -File deploy.ps1
 - 一键部署（`deploy.sh`）首次生成 `.env` 时需要宿主机有可用的 `python` 或 `python3` 命令（用于生成随机密码；脚本按 `python` → `python3` 顺序探测，`.env` 已存在时不再需要，都不可用时给出替代方案）。`deploy.ps1` 无此依赖
 - 最低 2 核 CPU / 4 GB 内存 / 30 GB 磁盘（实测：镜像约 7 GB，模型有 GPU 时约 3.2 GB、没有 GPU 时约 0.7 GB，构建还会产生可回收的缓存，可用 `docker builder prune` 清理；Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
 - 如需使用视频解析、本地语音转写或 DeepDoc full 模式，建议 4 核 / 8 GB 以上
-- 本地语音转写默认在容器内用 CPU 推理；机器有 NVIDIA 显卡时可改走 GPU（需重建应用镜像），见[可选：启用 NVIDIA GPU 加速本地语音转写](#可选启用-nvidia-gpu-加速本地语音转写)
+- 本地模型（语音转写、DeepDoc 文档解析）默认在容器内用 CPU 推理；机器有 NVIDIA 显卡时可启用 GPU（部署脚本自动检测，见[可选：启用 NVIDIA GPU 加速本地模型](#可选启用-nvidia-gpu-加速本地模型)）
 
 常用命令：
 
@@ -263,7 +263,11 @@ docker compose up -d --build
     sudo chown -R 1001:1001 backend/.cache
     ```
 
-### 可选：启用 NVIDIA GPU 加速本地语音转写
+### 可选：启用 NVIDIA GPU 加速本地模型
+
+2026-11 起本地模型遵循全系统唯一的设备标准：**安装时检测——有 GPU 且总显存达标（默认 ≥6GB，`VISION_GPU_MIN_TOTAL_MB` 可调）才安装 GPU 版依赖；运行时所有本地模型（语音转写、DeepDoc OCR/版面/表格/公式）调用同一个设备探针拿同一个判定，判定不满足即统一落 CPU**，因此装错方向（如 GPU 镜像拿到无卡机器）不影响正确性，只是镜像变大。
+
+**DeepDoc 文档解析的 GPU 已随部署脚本自动化**：`bash deploy.sh` / `bash deploy.sh update` 在构建前于宿主侧检测 `nvidia-smi`（Docker 构建容器内看不到显卡，检测必须在宿主机做），达标即注入 `VISION_GPU=true` 重新构建——镜像追加安装 torch + onnxruntime-gpu（约 +2~3GB），OCR/版面/表格/公式四个 ONNX 组件自动改走 GPU（CUDA 初始化失败时 ORT 自动回落 CPU，不会报错）。启动日志可对账：`设备探针：CUDA 可用 → GPU`、`设备对账：安装 flavor ↔ 运行时判定一致`；解析日志 `load_model … uses GPU (device 0 …)` 即为生效（`docker exec novamind-app sh -c 'grep -h "uses GPU\|设备探针" /var/log/supervisor/*.log'`）。手动构建时自行 `export VISION_GPU=true`（或 false 强制 CPU 构建），并确保 override 的 GPU 设备预留（见下）。
 
 本地语音转写（faster-whisper）默认在容器内用 CPU 推理，档位按推理设备自动选择：容器内探测不到 GPU 时用 `small` 档（CPU int8 跑得动）。有 NVIDIA 显卡的机器启用 GPU 后自动改用 `large-v3`（引擎按显卡自动选择计算类型，RTX 4060 上实测为 int8_float16，即权重 INT8、计算 float16），`default.yaml` 不用改：`local_whisper_model` / `local_whisper_device` / `local_whisper_compute_type` 留空（auto）时引擎自动探测 CUDA 并选对应的默认档。但自动探测只有在容器**拿得到显卡、且镜像里带 GPU 运行库**时才会选 GPU，这两点默认部署都不具备，需要手动开启：
 
