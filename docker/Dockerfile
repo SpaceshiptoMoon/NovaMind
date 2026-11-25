@@ -67,12 +67,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # 见不到 nvidia-smi，检测必须在宿主侧）：DeepDoc 视觉组件（OCR/layout/TSR/公式）
 # 的 ONNX CUDA 推理需要 onnxruntime-gpu + CUDA 运行库。torch 一并安装——它既是
 # 全系统唯一设备探针（runtime_settings.resolve_device_policy）的判定依据，其
-# wheel 依赖又顺带拉齐 nvidia 运行库。CUDA 大版本必须与 ORT-gpu 对齐（二进制
-# soname 实测 2026-11-26）：onnxruntime-gpu 1.27 的 CUDA provider 依赖
-# libcudart.so.13 / libcublasLt.so.13 / libcudnn.so.9 —— cu13 构建；因此 torch
-# 放开 >=2.11（默认 cu13 栈，libcudart.so.13 + cudnn-cu13 9.x 同 soname）。
-# 禁止 torch<2.11（cu12 栈）与 ORT-gpu 1.27 混装——libcudart.so.13 缺失会让
-# onnxruntime import 直接失败（解析全线下不可用，实测 2026-11-26）。
+# wheel 依赖又顺带拉齐 nvidia 运行库。CUDA 大版本必须三方对齐（宿主驱动 +
+# torch + ORT-gpu；二进制 soname 实测 2026-11-26）：
+# - 宿主驱动 566.26 = CUDA 12.7 → cu13 栈（torch 2.11+/ORT-gpu 1.27）在本机
+#   永远起不来（"NVIDIA driver too old (12070)" 实测）；
+# - onnxruntime-gpu 1.27 = 仅 cu13 构建 → 弃用；
+# - onnxruntime-gpu 1.26 = cu12 构建，且 [cuda,cudnn] extras 可 pip 直装
+#   nvidia-cuda-runtime/nvrtc/cufft/curand/cudnn 的 cu12 轮子 → 采用；
+# - torch 2.10.x = cu12 栈（cublas 12.8 + cudnn-cu12 9.10）→ 采用。
+# CUDA 12.x 系列跨小版本兼容（12.8 库跑 12.7 驱动，ASR cu12 先例实测）。
 # onnxruntime（CPU）与 onnxruntime-gpu 是同 import 名的互斥发行版无法共存，
 # 此处原子置换；独立成层不动上面的 --frozen 主依赖层。默认构建（false）此层
 # 为空、镜像零增量。UV_HTTP_TIMEOUT=3600：冷缓存首装 torch 系列 wheel 达 GB 级
@@ -84,8 +87,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$VISION_GPU" = "true" ]; then \
       UV_HTTP_TIMEOUT=3600 uv pip uninstall --python /app/.venv/bin/python onnxruntime \
       && UV_HTTP_TIMEOUT=3600 uv pip install --python /app/.venv/bin/python \
-        "torch>=2.11" \
-        "onnxruntime-gpu>=1.27.0,<1.28"; \
+        "torch>=2.10.0,<2.11" \
+        "onnxruntime-gpu[cuda,cudnn]==1.26.0"; \
     fi
 
 # ---- Stage 3: runtime (no gcc, non-root) ----
