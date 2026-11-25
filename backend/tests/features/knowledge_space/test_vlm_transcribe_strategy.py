@@ -212,8 +212,12 @@ class TestPdfVlmEntry:
             "spaces/1/kbs/2/documents/42/abc.pdf_pages/page_0001.jpg",
             "spaces/1/kbs/2/documents/42/abc.pdf_pages/page_0002.jpg",
         ]
-        # storage 记录 pages_object_dir
+        # storage 记录 pages_object_dir + 逐页地址清单（MySQL 可直接按页定位）
         assert doc.storage["pages_object_dir"] == "spaces/1/kbs/2/documents/42/abc.pdf_pages"
+        assert doc.storage["pages"] == [
+            {"page": 1, "object_name": "spaces/1/kbs/2/documents/42/abc.pdf_pages/page_0001.jpg"},
+            {"page": 2, "object_name": "spaces/1/kbs/2/documents/42/abc.pdf_pages/page_0002.jpg"},
+        ]
 
     @pytest.mark.asyncio
     async def test_model_missing_permanent(self, pipeline_env):
@@ -323,3 +327,4 @@ class TestPageImageUpload:
         )
         assert uploads == [], "锚点缺失不应尝试上传"
         assert "pages_object_dir" not in doc.storage
+        assert "pages" not in doc.storage

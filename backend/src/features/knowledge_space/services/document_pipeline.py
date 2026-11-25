@@ -1661,7 +1661,9 @@ async def _upload_vlm_page_images(
     """把 VLM 转写线的页图持久化到 MinIO（{base}_pages/page_NNNN.jpg）。
 
     页图是辅助产物（重解析/审计用）：storage 无 minio 锚点时告警跳过，
-    不阻断解析主链（失败方向安全：产物缺失 ≠ 解析失败）。
+    不阻断解析主链（失败方向安全：产物缺失 ≠ 解析失败）。每页的 MinIO
+    地址写入 document.storage["pages"]（page + object_name 清单），MySQL
+    侧可直接按页定位，不依赖命名约定反推；目录锚点 pages_object_dir 保留。
 
     Args:
         document: 文档行（storage 携带 minio_object_name 锚点）。
@@ -1680,12 +1682,16 @@ async def _upload_vlm_page_images(
     from novamind.shared.storage.client_factory import ClientFactory
 
     minio_client = await ClientFactory.get_minio_client()
+    # 逐页地址清单进 documents.storage：MySQL 侧可直接按页取 MinIO 地址，
+    # 不依赖命名约定反推（页图目录仍保留作前缀锚点）
+    page_records: list[dict[str, Any]] = []
     uploaded = 0
     for page_bytes, page_number in pages:
         object_name = _obj_name(base, page_number)
         try:
             await minio_client.upload_file(object_name, page_bytes, "image/jpeg")
             uploaded += 1
+            page_records.append({"page": page_number, "object_name": object_name})
         except Exception as exc:  # noqa: BLE001 - 单页上传失败不阻断解析主链
             _logger.warning(
                 "VLM 页图上传失败（跳过）",
@@ -1693,8 +1699,11 @@ async def _upload_vlm_page_images(
                 page=page_number,
                 error=str(exc),
             )
-    if storage.get("pages_object_dir") != f"{base}_pages":
-        document.storage = {**storage, "pages_object_dir": f"{base}_pages"}
+    document.storage = {
+        **storage,
+        "pages_object_dir": f"{base}_pages",
+        "pages": page_records,
+    }
     _logger.info(
         "VLM 页图已持久化",
         document_id=document.id,
