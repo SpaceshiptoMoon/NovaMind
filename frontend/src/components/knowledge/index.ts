@@ -43,6 +43,7 @@ export type {
   ImageStrategy,
   OcrTask,
   PdfStrategy,
+  PptStrategy,
   WikiGranularity,
   TextStrategy,
   TextStrategyField,

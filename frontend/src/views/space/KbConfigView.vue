@@ -66,7 +66,7 @@
           <p class="section-desc">按文档类型和模态选择解析方式，无效字段已按后端约束自动隐藏。</p>
         </div>
 
-        <KbTextParsingSection v-if="hasText" :config-form="configForm" />
+        <KbTextParsingSection v-if="hasText" :config-form="configForm" :vlm-models="vlmModels" />
         <KbMultimodalParsingSection
           :config-form="configForm"
           :has-image="hasImage"
@@ -138,6 +138,7 @@ import type {
   ImageStrategy,
   OcrTask,
   PdfStrategy,
+  PptStrategy,
   TextStrategy,
   VideoStrategy,
   WikiGranularity,
@@ -184,11 +185,13 @@ const asrModels = ref<AvailableModelItem[]>([])
 const configForm = reactive({
   kbSpaceTypes: ['text'] as string[],
 
-  pdfStrategy: 'default' as PdfStrategy,
+  pdfStrategy: 'deepdoc' as PdfStrategy,
   pdfOcrTask: null as OcrTask | null,
+  pdfVlmModel: '',
   docxStrategy: 'default' as TextStrategy,
   excelStrategy: 'deepdoc' as TextStrategy,
-  pptStrategy: 'deepdoc' as TextStrategy,
+  pptStrategy: 'deepdoc' as PptStrategy,
+  pptVlmModel: '',
   epubStrategy: 'deepdoc' as TextStrategy,
   markdownStrategy: 'default' as TextStrategy,
   htmlStrategy: 'default' as TextStrategy,
@@ -338,9 +341,21 @@ watch(hasAudio, (value) => {
 watch(
   () => configForm.pdfStrategy,
   (value) => {
+    // ocr_task/vlm_model 均为各自策略专属消费，切走即清防脏值
     if (value !== 'external_ocr') {
-      // ocr_task 仅 external_ocr 消费，切走即清防脏值
       configForm.pdfOcrTask = null
+    }
+    if (value !== 'vlm') {
+      configForm.pdfVlmModel = ''
+    }
+  },
+)
+
+watch(
+  () => configForm.pptStrategy,
+  (value) => {
+    if (value !== 'vlm') {
+      configForm.pptVlmModel = ''
     }
   },
 )

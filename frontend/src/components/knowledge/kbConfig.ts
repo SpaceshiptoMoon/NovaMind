@@ -3,12 +3,16 @@ import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 
 /** 文本解析策略：default（内置 reader）或 deepdoc */
 export type TextStrategy = 'default' | 'deepdoc'
-/** PDF 文本解析策略：额外支持 external_ocr（扫描件整本交外部 OCR） */
-export type PdfStrategy = TextStrategy | 'external_ocr'
+/** PDF 文本解析策略：default（Python 库纯文字层，快，仅电子版）/
+ * deepdoc（文字层+OCR 融合，默认，扫描件适用）/ external_ocr（扫描件整本交外部 OCR）/
+ * vlm（逐页图 → VLM 转写 markdown，版面还原度最高，成本随页数线性） */
+export type PdfStrategy = 'default' | 'deepdoc' | 'external_ocr' | 'vlm'
+/** PPT 解析策略：deepdoc（python-pptx 文本抽取）或 vlm（soffice 转图后逐页转写，需环境有 soffice） */
+export type PptStrategy = 'deepdoc' | 'vlm'
 /** 外部 OCR 任务：document_parsing（整本 PDF 直传带版面）/ multi_lan（逐页纯文本） */
 export type OcrTask = 'document_parsing' | 'multi_lan'
-/** 图片解析策略：VLM 描述或 DeepDoc OCR */
-export type ImageStrategy = 'vlm' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
+/** 图片解析策略：VLM 描述 / VLM 文档转写 / DeepDoc OCR / 合并 / 外部 OCR */
+export type ImageStrategy = 'vlm' | 'vlm_doc' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
 /** 视频解析策略：7 种抽帧/去重/描述组合预设 */
 export type VideoStrategy =
   | 'simple'
@@ -85,19 +89,20 @@ export function getVideoStrategyValue(value: unknown): VideoStrategy {
   return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
 }
 
-/** 各文本类型解析策略在表单里的字段名（pdf 除外，pdf 单独带 OCR 开关） */
+/** 各文本类型解析策略在表单里的字段名（pdf/ppt 除外——pdf 有专属面板，
+ * ppt 有 vlm 模型联动，均在模板单独渲染） */
 export type TextStrategyField =
   | 'docxStrategy'
   | 'excelStrategy'
-  | 'pptStrategy'
   | 'epubStrategy'
   | 'markdownStrategy'
   | 'htmlStrategy'
   | 'txtStrategy'
   | 'jsonStrategy'
 
-/** 文本类型策略选项；deepdocOnly 标记的类型（Excel/PPT/EPUB）后端 default 模式
- * 无 reader，仅支持 DeepDoc，前端不显示「默认」选项。 */
+/** 文本类型策略选项；deepdocOnly 标记的类型（Excel/EPUB）后端 default 模式
+ * 无 reader，仅支持 DeepDoc，前端不显示「默认」选项。PPT 有 vlm 模型联动，
+ * 在模板单独渲染，不进本清单。 */
 export const textStrategyItems: Array<{
   key: TextStrategyField
   label: string
@@ -105,7 +110,6 @@ export const textStrategyItems: Array<{
 }> = [
   { key: 'docxStrategy', label: 'DOCX' },
   { key: 'excelStrategy', label: 'Excel', deepdocOnly: true },
-  { key: 'pptStrategy', label: 'PPT', deepdocOnly: true },
   { key: 'epubStrategy', label: 'EPUB', deepdocOnly: true },
   { key: 'markdownStrategy', label: 'Markdown' },
   { key: 'htmlStrategy', label: 'HTML' },
@@ -118,10 +122,15 @@ export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
 
-/** 校验 PDF 文本策略枚举（含 external_ocr），非法值回退 default */
+/** 校验 PDF 文本策略枚举（default/deepdoc/external_ocr/vlm），非法值回退 deepdoc（后端同款默认） */
 export function getPdfStrategyValue(value: unknown): PdfStrategy {
-  if (value === 'deepdoc' || value === 'external_ocr') return value
-  return 'default'
+  if (value === 'default' || value === 'deepdoc' || value === 'external_ocr' || value === 'vlm') return value
+  return 'deepdoc'
+}
+
+/** 校验 PPT 策略枚举（deepdoc/vlm），非法值回退 deepdoc */
+export function getPptStrategyValue(value: unknown): PptStrategy {
+  return value === 'vlm' ? 'vlm' : 'deepdoc'
 }
 
 /** 校验音频切分模式枚举，仅接受 pause_topic，其余回退空（通用切分）。 */
@@ -165,9 +174,11 @@ export function applyTextParsingConfig(
   target: {
     pdfStrategy: PdfStrategy
     pdfOcrTask: OcrTask | null
+    pdfVlmModel: string
     docxStrategy: TextStrategy
     excelStrategy: TextStrategy
-    pptStrategy: TextStrategy
+    pptStrategy: PptStrategy
+    pptVlmModel: string
     epubStrategy: TextStrategy
     markdownStrategy: TextStrategy
     htmlStrategy: TextStrategy
@@ -178,9 +189,11 @@ export function applyTextParsingConfig(
 ) {
   target.pdfStrategy = getPdfStrategyValue(textConfig?.pdf?.strategy)
   target.pdfOcrTask = textConfig?.pdf?.ocr_task ?? null
+  target.pdfVlmModel = textConfig?.pdf?.vlm_model ?? ''
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
   target.excelStrategy = DEEPDOC_ONLY_STRATEGY
-  target.pptStrategy = DEEPDOC_ONLY_STRATEGY
+  target.pptStrategy = getPptStrategyValue(textConfig?.ppt?.strategy)
+  target.pptVlmModel = textConfig?.ppt?.vlm_model ?? ''
   target.epubStrategy = DEEPDOC_ONLY_STRATEGY
   target.markdownStrategy = getTextStrategyValue(textConfig?.markdown?.strategy)
   target.htmlStrategy = getTextStrategyValue(textConfig?.html?.strategy)
@@ -192,9 +205,11 @@ export function applyTextParsingConfig(
 export function buildTextParsingConfigFromForm(source: {
   pdfStrategy: PdfStrategy
   pdfOcrTask: OcrTask | null
+  pdfVlmModel: string
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
-  pptStrategy: TextStrategy
+  pptStrategy: PptStrategy
+  pptVlmModel: string
   epubStrategy: TextStrategy
   markdownStrategy: TextStrategy
   htmlStrategy: TextStrategy
@@ -204,14 +219,18 @@ export function buildTextParsingConfigFromForm(source: {
   return {
     pdf: {
       strategy: source.pdfStrategy,
-      // 前端只暴露 default/deepdoc/external_ocr；deepdoc 固定走 full（推荐模式）。
-      // ocr_task 仅 external_ocr 消费，其它策略置 undefined 防脏值。
+      // deepdoc 固定走 full（推荐模式）。ocr_task 仅 external_ocr 消费，
+      // vlm_model 仅 vlm 消费——其余策略置 undefined 防脏值。
       parser: source.pdfStrategy === 'deepdoc' ? 'full' : undefined,
       ocr_task: source.pdfStrategy === 'external_ocr' ? source.pdfOcrTask : undefined,
+      vlm_model: source.pdfStrategy === 'vlm' ? source.pdfVlmModel || undefined : undefined,
     },
     docx: { strategy: source.docxStrategy },
     excel: { strategy: DEEPDOC_ONLY_STRATEGY },
-    ppt: { strategy: DEEPDOC_ONLY_STRATEGY },
+    ppt: {
+      strategy: source.pptStrategy,
+      vlm_model: source.pptStrategy === 'vlm' ? source.pptVlmModel || undefined : undefined,
+    },
     epub: { strategy: DEEPDOC_ONLY_STRATEGY },
     markdown: { strategy: source.markdownStrategy },
     html: { strategy: source.htmlStrategy },

@@ -11,13 +11,16 @@
         <el-form-item label="解析策略">
           <el-radio-group v-model="configForm.imageStrategy">
             <el-radio value="vlm">VLM 描述</el-radio>
+            <el-radio value="vlm_doc">VLM 文档转写</el-radio>
             <el-radio value="deepdoc_ocr">DeepDoc OCR</el-radio>
             <el-radio value="combined">OCR + VLM 合并</el-radio>
             <el-radio value="external_ocr">外部 OCR</el-radio>
           </el-radio-group>
           <div class="field-hint">
             {{
-              configForm.imageStrategy === 'combined'
+              configForm.imageStrategy === 'vlm_doc'
+                ? '把图片当作文档页整页转写为 markdown（标题/表格/公式保留），适合截图型与照片型文档页；与「VLM 描述」语义不同'
+                : configForm.imageStrategy === 'combined'
                 ? '本地 OCR 提取文字 + VLM 结构化描述合并入库：文字逐字通道与语义通道互补，caption 与 OCR 交叉校验产出幻觉信号；VLM 失败自动降级纯 OCR'
                 : configForm.imageStrategy === 'external_ocr'
                   ? '调用配置中心 ocr 段的外部 OCR 服务（如 qwen3.5-ocr），扫描件/公式页识别质量优于本地 OCR；需先配置 api_key'

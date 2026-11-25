@@ -446,24 +446,33 @@ export interface AudioParsingConfig {
   speaker_count?: number
 }
 
-export type PdfParserName = 'full' | 'plain'
+export type PdfParserName = 'full'
 
 export interface TextTypeParsingConfig {
   strategy?: 'default' | 'deepdoc'
 }
 
 export interface PdfParsingConfig extends Omit<TextTypeParsingConfig, 'strategy'> {
-  strategy?: 'default' | 'deepdoc' | 'external_ocr'
+  strategy?: 'default' | 'deepdoc' | 'external_ocr' | 'vlm'
   parser?: PdfParserName
   /** 仅 strategy=external_ocr 消费：document_parsing(整本直传带版面)/multi_lan(逐页纯文本)；空=document_parsing */
   ocr_task?: 'document_parsing' | 'multi_lan' | null
+  /** 仅 strategy=vlm 消费：逐页图 → VLM 转写 markdown 的模型名（配置中心 vlm 类型） */
+  vlm_model?: string
+}
+
+/** PPT 解析：deepdoc(python-pptx 文本抽取) 或 vlm(soffice 转图后逐页转写) */
+export interface PptParsingConfig {
+  strategy?: 'deepdoc' | 'vlm'
+  /** 仅 strategy=vlm 消费 */
+  vlm_model?: string
 }
 
 export interface TextParsingConfig {
   pdf?: PdfParsingConfig
   docx?: TextTypeParsingConfig
   excel?: TextTypeParsingConfig
-  ppt?: TextTypeParsingConfig
+  ppt?: PptParsingConfig
   epub?: TextTypeParsingConfig
   markdown?: TextTypeParsingConfig
   html?: TextTypeParsingConfig
@@ -472,7 +481,7 @@ export interface TextParsingConfig {
 }
 
 export interface ImageParsingConfig {
-  strategy?: 'vlm' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
+  strategy?: 'vlm' | 'vlm_doc' | 'deepdoc_ocr' | 'combined' | 'external_ocr'
   /** 仅 external_ocr 消费：document_parsing(PDF 整本直传带版面)/multi_lan(逐页纯文本)；空=按文件形态自动 */
   ocr_task?: 'document_parsing' | 'multi_lan' | null
   vlm_model?: string
