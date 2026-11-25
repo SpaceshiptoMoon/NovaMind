@@ -65,6 +65,22 @@ class TestLoadSettings:
         assert s.ocr_intra_op_threads == 2
         assert s.hf_etag_timeout == 60
 
+    def test_device_policy_env_parsing(self):
+        """DEEPDOC_DEVICE 合法值原样、非法值回退 auto；大小写不敏感。"""
+        assert rs.load_settings({"DEEPDOC_DEVICE": "cuda"}).device == "cuda"
+        assert rs.load_settings({"DEEPDOC_DEVICE": "CPU"}).device == "cpu"
+        assert rs.load_settings({"DEEPDOC_DEVICE": "AUTO"}).device == "auto"
+        assert rs.load_settings({"DEEPDOC_DEVICE": "gpu"}).device == "auto"  # 非法回退
+        assert rs.load_settings({}).device == "auto"
+
+    def test_install_flavor_normalization(self):
+        """DEVICE_FLAVOR 的 true/false（Dockerfile ENV 口径）与 gpu/cpu 等价归一。"""
+        assert rs.load_settings({"DEVICE_FLAVOR": "true"}).install_flavor == "gpu"
+        assert rs.load_settings({"DEVICE_FLAVOR": "false"}).install_flavor == "cpu"
+        assert rs.load_settings({"DEVICE_FLAVOR": "GPU"}).install_flavor == "gpu"
+        assert rs.load_settings({"DEVICE_FLAVOR": "cpu"}).install_flavor == "cpu"
+        assert rs.load_settings({}).install_flavor == ""
+
 
 class TestHostInjection:
     def test_override_beats_env(self, monkeypatch):

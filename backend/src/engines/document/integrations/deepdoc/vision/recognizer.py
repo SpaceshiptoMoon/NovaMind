@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from novamind.engines.document.integrations.deepdoc.runtime_settings import (
+    get_settings,
+    resolve_device_policy,
+)
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     ensure_model_group_available,
 )
@@ -101,7 +105,19 @@ class Recognizer:
         if model_path is None or not model_path.exists():
             raise FileNotFoundError(f"DeepDoc recognizer model not found for domain '{self.domain}': {model_path}")
 
-        providers = ["CPUExecutionProvider"]
+        # 设备判定来自全系统唯一探针；cuda 时 [CUDA, CPU] 双列表——CUDA 初始化
+        # 失败由 ORT 自动回落 CPU，会话创建不抛错。显存上限复用 OCR_GPU_MEM_LIMIT_MB。
+        if resolve_device_policy() == "cuda":
+            cuda_provider_options = {
+                "device_id": 0,
+                "gpu_mem_limit": max(get_settings().ocr_gpu_mem_limit_mb, 0) * 1024 * 1024,
+                "arena_extend_strategy": get_settings().ocr_arena_extend_strategy,
+            }
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            provider_options = [cuda_provider_options, {}]
+        else:
+            providers = ["CPUExecutionProvider"]
+            provider_options = None
         cache_key = str(model_path.resolve())
         cached = _SESSION_CACHE.get(cache_key)
         if cached is not None:
@@ -111,9 +127,10 @@ class Recognizer:
             options = ort.SessionOptions()
             options.enable_cpu_mem_arena = False
             options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-            self.ort_sess = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
+            self.ort_sess = ort.InferenceSession(str(model_path), sess_options=options, providers=providers, provider_options=provider_options)
             self.run_options = ort.RunOptions()
             _SESSION_CACHE[cache_key] = (self.ort_sess, self.run_options)
+        actual_providers = list(self.ort_sess.get_providers())
         self.session = self.ort_sess
         self.input_name = self.ort_sess.get_inputs()[0].name
         self.input_names = [node.name for node in self.ort_sess.get_inputs()]
@@ -129,7 +146,8 @@ class Recognizer:
             input_shape=self.input_shape,
             input_names=self.input_names,
             output_names=self.output_names,
-            providers=providers,
+            requested_providers=providers,
+            providers=actual_providers,
         )
         return self
 

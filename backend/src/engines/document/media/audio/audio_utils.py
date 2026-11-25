@@ -389,15 +389,20 @@ def default_faster_whisper_cache_dir(model_slug: str = DEFAULT_LOCAL_WHISPER_MOD
 
 @functools.lru_cache(maxsize=1)
 def _cuda_available() -> bool:
-    """CTranslate2 是否看得到可用的 CUDA 设备（进程内缓存：驱动探测只做一次）。
+    """本地模型是否有可用 CUDA 设备（全系统唯一探针的薄别名）。
 
-    探测本身出异常按「没有可用显卡」处理——落到 CPU 默认档照常转写，而不是让
-    音频解析直接失败。
+    2026-11 起设备判定归一：DeepDoc（OCR/layout/TSR/公式）与本地 ASR 共用
+    ``runtime_settings.resolve_device_policy()`` 同一个探针、同一个结论，杜绝
+    各组件自探导致判定漂移。本别名保留可 monkeypatch 的符号位置与历史
+    ``cache_clear`` 接口（存量测试与部署脚本经此处消费）；探测异常按「无卡」
+    处理——落 CPU 默认档照常转写。
     """
     try:
-        import ctranslate2
+        from novamind.engines.document.integrations.deepdoc.runtime_settings import (
+            resolve_device_policy,
+        )
 
-        return ctranslate2.get_cuda_device_count() > 0
+        return resolve_device_policy() == "cuda"
     except Exception:  # noqa: BLE001 - 探测异常等价于无卡
         return False
 
@@ -406,8 +411,9 @@ def resolve_local_whisper_device(audio_config: AudioConfig | None = None) -> str
     """解析本地 ASR 实际使用的推理设备：``cpu`` 或 ``cuda``。
 
     ``local_whisper_device`` 显式配置时原样生效；留空（auto）与引擎的 auto 语义
-    一致——CTranslate2 探测到 CUDA 即 cuda，否则 cpu。默认档位的选择、部署期
-    预装哪一档都以此为准，三处对「有没有 GPU」的判断不会漂移。
+    一致——唯一设备探针（``resolve_device_policy``）判到 CUDA 即 cuda，否则 cpu。
+    默认档位的选择、部署期预装哪一档都以此为准，三处对「有没有 GPU」的判断
+    不会漂移（与 DeepDoc 共用同一探针结论）。
     """
     configured = getattr(audio_config, "local_whisper_device", None) if audio_config else None
     if configured and str(configured).lower() != "auto":

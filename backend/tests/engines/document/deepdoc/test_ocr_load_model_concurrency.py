@@ -27,12 +27,18 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeSession:
-    """最小 ONNX session 桩（仅作实例身份标识）。"""
+    """最小 ONNX session 桩（仅作实例身份标识；回报 CPU 实际设备）。"""
+
+    def get_providers(self):
+        return ["CPUExecutionProvider"]
 
 
 @pytest.fixture()
 def fake_ort(monkeypatch):
-    """mock InferenceSession 构造计数与模型文件存在性，清空模块缓存。"""
+    """mock InferenceSession 构造计数与模型文件存在性，清空模块缓存。
+
+    设备策略钉死 cpu：本套件只关注并发/缓存语义，不随宿主机有没有 GPU 漂移。
+    """
     build_count = {"n": 0}
 
     def fake_inference_session(model_file_path, options=None, providers=None, provider_options=None):
@@ -40,6 +46,7 @@ def fake_ort(monkeypatch):
         time.sleep(0.05)  # 放大首载竞态窗口
         return _FakeSession()
 
+    monkeypatch.setattr(ocr_mod, "resolve_device_policy", lambda: "cpu")
     monkeypatch.setattr(ocr_mod.ort, "InferenceSession", fake_inference_session)
     monkeypatch.setattr(ocr_mod.os.path, "exists", lambda p: True)
     monkeypatch.setattr(ocr_mod, "loaded_models", {})

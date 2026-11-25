@@ -37,6 +37,15 @@ docker-compose.yml
 - 避免造重复的工具层。某能力已有权威归属时，扩展该归属，不在别处加第二套实现。
 - 改 API 契约时，后端 schema、前端类型、文档三处同步更新。
 
+## 本地模型设备标准（用户硬性要求，2026-11-25）
+
+全系统**唯一设备探针**：`backend/src/engines/document/integrations/deepdoc/runtime_settings.py` 的 `resolve_device_policy()`。
+
+- **一个函数、一次探测、一个结论**：所有本地模型（DeepDoc OCR/layout/TSR/公式、本地 ASR faster-whisper）的 GPU/CPU 判定只允许来自它；任何组件不得自带第二套探针（判定不一致即是 bug）。
+- **安装时检测**：deploy 脚本在宿主机用同一判据（`nvidia-smi` 可用且总显存 ≥ `VISION_GPU_MIN_TOTAL_MB`，默认 6144）决定构建 flavor（`VISION_GPU=true` → 镜像装 torch + onnxruntime-gpu）；构建结果经 `DEVICE_FLAVOR` 回传，运行时首次判定对账——不一致仅告警，行为一律以运行时判定为准（统一落 CPU），绝不报错。
+- **失败方向安全**：探针判定 cuda 时 ONNX 会话一律以 `[CUDAExecutionProvider, CPUExecutionProvider]` 双列表创建（CUDA 初始化失败由 ORT 自动回落 CPU）；实际生效设备以 `sess.get_providers()` 为准并透出日志。
+- 旋钮：`DEEPDOC_DEVICE=auto|cuda|cpu`（运行时强制）、`OCR_GPU_MEM_LIMIT_MB`（单会话显存上限，兼作探针容量判据）。
+
 ## 通用补丁原则（用户硬性要求）
 
 补丁必须是**通用性修复**，不得针对特定错误样例做特例化改动，也不得隐含当前 Windows 开发机（8GB 内存）的资源假设：

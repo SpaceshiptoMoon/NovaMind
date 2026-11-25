@@ -21,7 +21,10 @@ import os
 import threading
 import time
 
-from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+from novamind.engines.document.integrations.deepdoc.runtime_settings import (
+    get_settings,
+    resolve_device_policy,
+)
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_model_group,
@@ -29,14 +32,6 @@ from novamind.engines.document.integrations.deepdoc.vision.model_manager import 
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
-
-def pip_install_torch(*args, **kwargs):
-    """探测 torch 是否可用（仅尝试 import，不做任何安装）；结果不外传，GPU 可用性在 load_model 内重新探测。"""
-    try:
-        import torch  # noqa: F401
-    except ImportError:
-        return None
-
 
 import math
 
@@ -95,9 +90,11 @@ def create_operators(op_param_list, global_config=None):
 def load_model(model_dir, nm, device_id: int | None = None):
     """加载 ``<model_dir>/<nm>.onnx`` 并按路径做模块级缓存（同模型重复加载直接复用）。
 
-    优先 CUDA（需 torch 可用且目标 device_id 存在），否则 CPU；线程数与显存
-    由 OCR_INTRA_OP_NUM_THREADS / OCR_INTER_OP_NUM_THREADS /
-    OCR_GPU_MEM_LIMIT_MB 等环境变量注入；CPU 恒开内存 arena 收缩。
+    设备判定来自全系统唯一探针 ``resolve_device_policy()``（本模块不自带探针）：
+    判定 cuda 时以 ``[CUDA, CPU]`` 双 providers 列表建会话——CUDA 初始化失败由
+    ORT 自动回落 CPU，不会抛错；实际生效设备以 ``sess.get_providers()`` 为准，
+    arena 收缩与日志据此挂载。线程数与显存由 OCR_INTRA_OP_NUM_THREADS /
+    OCR_INTER_OP_NUM_THREADS / OCR_GPU_MEM_LIMIT_MB 等环境变量注入。
     并发安全：OCR 推理跑在 to_thread 线程池，多任务并发首载时经双检锁串行化
     构造段——无锁时两个线程会各建一份 ONNX session，重复占显存/内存。
 
@@ -126,19 +123,6 @@ def load_model(model_dir, nm, device_id: int | None = None):
         if not os.path.exists(model_file_path):
             raise ValueError(f"not find model file path {model_file_path}")
 
-        def cuda_is_available():
-            # CUDA 可用性探测（懒装 torch；失败/无 GPU 均视为不可用）。
-            try:
-                pip_install_torch()
-                import torch
-
-                target_id = 0 if device_id is None else device_id
-                if torch.cuda.is_available() and torch.cuda.device_count() > target_id:
-                    return True
-            except Exception:
-                return False
-            return False
-
         options = ort.SessionOptions()
         options.enable_cpu_mem_arena = False
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
@@ -149,25 +133,34 @@ def load_model(model_dir, nm, device_id: int | None = None):
         # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
         # Shrink GPU memory after execution
         run_options = ort.RunOptions()
-        if cuda_is_available():
-            gpu_mem_limit_mb = get_settings().ocr_gpu_mem_limit_mb
-            arena_strategy = get_settings().ocr_arena_extend_strategy
-            provider_device_id = 0 if device_id is None else device_id
+        gpu_mem_limit_mb = get_settings().ocr_gpu_mem_limit_mb
+        arena_strategy = get_settings().ocr_arena_extend_strategy
+        provider_device_id = 0 if device_id is None else device_id
+        if resolve_device_policy() == "cuda":
             cuda_provider_options = {
                 "device_id": provider_device_id,  # Use specific GPU
                 "gpu_mem_limit": max(gpu_mem_limit_mb, 0) * 1024 * 1024,
                 "arena_extend_strategy": arena_strategy,  # gpu memory allocation strategy
             }
-            sess = ort.InferenceSession(model_file_path, options=options, providers=["CUDAExecutionProvider"], provider_options=[cuda_provider_options])
+            # CPU 兜底位：CUDA 初始化失败时 ORT 自动回落 CPU，会话创建不抛错
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            provider_options = [cuda_provider_options, {}]
+        else:
+            providers = ["CPUExecutionProvider"]
+            provider_options = None
+        sess = ort.InferenceSession(model_file_path, options=options, providers=providers, provider_options=provider_options)
+        # 实际生效设备以会话回报为准（探针判定 cuda 但 CUDA 初始化失败时 ORT 已回落 CPU）
+        actual_providers = sess.get_providers()
+        using_gpu = bool(actual_providers) and actual_providers[0] == "CUDAExecutionProvider"
+        if using_gpu:
             # Explicit arena shrinkage for GPU to release VRAM back to the system after each run
             if get_settings().ocr_gpu_arena_shrinkage:
                 run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", f"gpu:{provider_device_id}")
                 logging.info(f"load_model {model_file_path} enabled GPU memory arena shrinkage on device {provider_device_id}")
-            logging.info(f"load_model {model_file_path} uses GPU (device {provider_device_id}, gpu_mem_limit={cuda_provider_options['gpu_mem_limit']}, arena_strategy={arena_strategy})")
+            logging.info(f"load_model {model_file_path} uses GPU (device {provider_device_id}, gpu_mem_limit={max(gpu_mem_limit_mb, 0) * 1024 * 1024}, arena_strategy={arena_strategy}, providers={actual_providers})")
         else:
-            sess = ort.InferenceSession(model_file_path, options=options, providers=["CPUExecutionProvider"])
             run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
-            logging.info(f"load_model {model_file_path} uses CPU")
+            logging.info(f"load_model {model_file_path} uses CPU (requested={providers}, actual={actual_providers})")
         loaded_model = (sess, run_options)
         loaded_models[model_cached_tag] = loaded_model
         return loaded_model

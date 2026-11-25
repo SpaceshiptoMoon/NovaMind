@@ -17,7 +17,10 @@ from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
-from novamind.engines.document.integrations.deepdoc.runtime_settings import get_settings
+from novamind.engines.document.integrations.deepdoc.runtime_settings import (
+    get_settings,
+    resolve_device_policy,
+)
 
 
 def _formula_model_repo_id() -> str:
@@ -161,11 +164,30 @@ class FormulaRecognizer:
         suffix = "_int8" if precision == "int8" else ""
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        # 设备判定来自全系统唯一探针；cuda 时 [CUDA, CPU] 双列表——CUDA 初始化
+        # 失败由 ORT 自动回落 CPU，会话创建不抛错。显存上限复用 OCR_GPU_MEM_LIMIT_MB。
+        if resolve_device_policy() == "cuda":
+            cuda_provider_options = {
+                "device_id": 0,
+                "gpu_mem_limit": max(get_settings().ocr_gpu_mem_limit_mb, 0) * 1024 * 1024,
+                "arena_extend_strategy": get_settings().ocr_arena_extend_strategy,
+            }
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            provider_options = [cuda_provider_options, {}]
+        else:
+            providers = ["CPUExecutionProvider"]
+            provider_options = None
         self.encoder = ort.InferenceSession(
-            str(base_dir / f"encoder_model{suffix}.onnx"), opts, providers=["CPUExecutionProvider"]
+            str(base_dir / f"encoder_model{suffix}.onnx"), opts, providers=providers, provider_options=provider_options
         )
         self.decoder = ort.InferenceSession(
-            str(base_dir / f"decoder_model{suffix}.onnx"), opts, providers=["CPUExecutionProvider"]
+            str(base_dir / f"decoder_model{suffix}.onnx"), opts, providers=providers, provider_options=provider_options
+        )
+        logger.info(
+            "公式识别模型加载完成",
+            precision=precision,
+            requested_providers=providers,
+            providers=list(self.encoder.get_providers()),
         )
         self.tokenizer = Tokenizer.from_file(str(base_dir / "tokenizer.json"))
         self.precision = precision

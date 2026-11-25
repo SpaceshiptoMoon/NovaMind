@@ -16,10 +16,15 @@
 """
 from __future__ import annotations
 
+import functools
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
+
+from novamind.shared.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 def _env_int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -70,6 +75,10 @@ class DeepDocSettings:
     hf_etag_timeout: int = 60                           # DEEPDOC_HF_ETAG_TIMEOUT
     hf_max_workers: int = 4                             # DEEPDOC_HF_MAX_WORKERS
 
+    # ── 设备策略（唯一探针 resolve_device_policy）──
+    device: str = "auto"                                # DEEPDOC_DEVICE（auto/cuda/cpu）
+    install_flavor: str = ""                            # DEVICE_FLAVOR（安装期构建标记 gpu/cpu，仅用于一致性对账）
+
     # ── OCR ONNX 运行时（vision/ocr）──
     ocr_intra_op_threads: int = 2                       # OCR_INTRA_OP_NUM_THREADS
     ocr_inter_op_threads: int = 2                       # OCR_INTER_OP_NUM_THREADS
@@ -105,6 +114,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> DeepDocSettings:
         解析后的冻结配置。非法数值一律回退默认（与原散落实现的容错一致）。
     """
     e = env if env is not None else os.environ
+    device_raw = (e.get("DEEPDOC_DEVICE") or "").strip().lower()
+    flavor_raw = (e.get("DEVICE_FLAVOR") or "").strip().lower()
     return DeepDocSettings(
         model_repo_id=(e.get("DEEPDOC_MODEL_REPO_ID") or DeepDocSettings.model_repo_id),
         model_dir=(e.get("DEEPDOC_MODEL_DIR") or "").strip(),
@@ -114,6 +125,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> DeepDocSettings:
         skip_checksum=_env_flag(e, "DEEPDOC_SKIP_MODEL_CHECKSUM", False),
         hf_etag_timeout=_env_int(e, "DEEPDOC_HF_ETAG_TIMEOUT", 60),
         hf_max_workers=_env_int(e, "DEEPDOC_HF_MAX_WORKERS", 4),
+        device=(device_raw if device_raw in ("auto", "cuda", "cpu") else "auto"),
+        # Dockerfile 以 ENV DEVICE_FLAVOR=${VISION_GPU} 传 true/false，归一为 gpu/cpu
+        install_flavor={"true": "gpu", "gpu": "gpu", "false": "cpu", "cpu": "cpu"}.get(flavor_raw, flavor_raw),
         ocr_intra_op_threads=_env_int(e, "OCR_INTRA_OP_NUM_THREADS", 2),
         ocr_inter_op_threads=_env_int(e, "OCR_INTER_OP_NUM_THREADS", 2),
         ocr_gpu_mem_limit_mb=_env_int(e, "OCR_GPU_MEM_LIMIT_MB", 2048),
@@ -172,3 +186,112 @@ def reset_settings() -> None:
     """清空宿主注入（测试隔离用：恢复按进程环境解析）。"""
     global _override
     _override = None
+
+
+# ==================== 唯一设备探针 ====================
+# 全系统标准：所有本地模型（DeepDoc OCR/layout/TSR/公式、本地 ASR）的
+# GPU/CPU 判定只允许来自 resolve_device_policy()——一个函数、一次探测、
+# 一个结论；任何组件不得自带第二套探针（判定不一致即是 bug）。
+# 安装期（deploy 脚本）用同一判据决定镜像装 GPU/CPU 版依赖，构建结果经
+# DEVICE_FLAVOR 环境变量回传，首次判定时与运行时结论对账——不一致仅告警，
+# 行为一律以运行时判定为准（失败方向安全：无卡机器绝不尝试 GPU）。
+
+
+def _compute_device_policy() -> str:
+    """执行实际探测，返回 "cuda" 或 "cpu"（判定原因记入日志）。"""
+    settings = get_settings()
+    if settings.device == "cpu":
+        _logger.info("设备探针：DEEPDOC_DEVICE=cpu 显式强制 → CPU", reason="forced_cpu")
+        return "cpu"
+    if settings.device == "cuda":
+        # 显式指定：跳过 ORT/torch/容量检查；ORT 会话级 [CUDA, CPU] 列表兜底，
+        # 无 CUDA 构建时 ORT 自行回落 CPU 并告警，不会抛错
+        _logger.info("设备探针：DEEPDOC_DEVICE=cuda 显式指定（跳过探测）→ CUDA", reason="forced_cuda")
+        return "cuda"
+    # auto：按判定链逐项检查
+    try:
+        import onnxruntime as ort
+
+        providers = ort.get_available_providers()
+    except Exception as exc:  # noqa: BLE001 - 探测异常等价于无 GPU
+        _logger.info("设备探针：onnxruntime 不可用 → CPU", reason="ort_import_failed", error=str(exc))
+        return "cpu"
+    if "CUDAExecutionProvider" not in providers:
+        _logger.info(
+            "设备探针：onnxruntime 为 CPU 构建（无 CUDAExecutionProvider）→ CPU",
+            reason="ort_cpu_build",
+            providers=providers,
+        )
+        return "cpu"
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            _logger.info("设备探针：torch 无可见 CUDA 设备 → CPU", reason="torch_no_cuda")
+            return "cpu"
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+    except Exception as exc:  # noqa: BLE001 - 探测异常等价于无 GPU
+        _logger.info("设备探针：torch CUDA 探测失败 → CPU", reason="torch_probe_failed", error=str(exc))
+        return "cpu"
+    need_bytes = max(settings.ocr_gpu_mem_limit_mb, 0) * 1024 * 1024
+    if free_bytes < need_bytes:
+        _logger.warning(
+            "设备探针：CUDA 空闲显存不足 → CPU",
+            reason="insufficient_vram",
+            free_mb=round(free_bytes / 1048576),
+            need_mb=round(need_bytes / 1048576),
+        )
+        return "cpu"
+    _logger.info(
+        "设备探针：CUDA 可用 → GPU",
+        reason="cuda_ok",
+        free_mb=round(free_bytes / 1048576),
+        total_mb=round(total_bytes / 1048576),
+    )
+    return "cuda"
+
+
+def _compare_install_flavor(policy: str) -> None:
+    """安装期构建标记（DEVICE_FLAVOR）与运行时判定对账：一致记 info，不一致告警。
+
+    只对账不裁决——行为永远以运行时判定为准：GPU flavor 拿到无卡机器自动
+    落 CPU（探针保证）；CPU flavor 拿到有卡机器维持 CPU 并提示重建。
+    """
+    flavor = get_settings().install_flavor
+    if not flavor:
+        return
+    # 词汇归一：flavor 侧是 gpu/cpu（安装口径），判定侧是 cuda/cpu（运行时口径）
+    flavor_as_policy = {"gpu": "cuda", "cuda": "cuda", "cpu": "cpu"}.get(flavor, flavor)
+    if flavor_as_policy == policy:
+        _logger.info("设备对账：安装 flavor ↔ 运行时判定一致", flavor=flavor, policy=policy)
+    else:
+        _logger.warning(
+            "设备对账：安装 flavor 与运行时判定不一致，以运行时判定为准",
+            flavor=flavor,
+            policy=policy,
+            hint="如在有 NVIDIA GPU 的目标机部署，请重新构建以启用 GPU 依赖",
+        )
+
+
+@functools.lru_cache(maxsize=1)
+def resolve_device_policy() -> str:
+    """全系统唯一设备探针：返回 "cuda" 或 "cpu"（进程级缓存，判定原因记日志一次）。
+
+    所有本地模型组件的 GPU/CPU 决策必须经本函数；首次调用时与安装期
+    DEVICE_FLAVOR 标记对账。测试用 ``reset_device_policy()`` 清缓存。
+    """
+    policy = _compute_device_policy()
+    _compare_install_flavor(policy)
+    return policy
+
+
+def resolve_execution_providers() -> list[str]:
+    """探针判定对应的 ORT providers 列表（cuda → [CUDA, CPU] 双列表兜底）。"""
+    if resolve_device_policy() == "cuda":
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
+
+
+def reset_device_policy() -> None:
+    """清空设备探针缓存（测试隔离用：环境变更后强制重探）。"""
+    resolve_device_policy.cache_clear()
