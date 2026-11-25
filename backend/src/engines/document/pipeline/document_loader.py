@@ -480,7 +480,6 @@ class DocumentProcessor:
                 file_type=file_type,
                 parsing_strategy=parsing_strategy,
                 deepdoc_parser_id=parser_id,
-                deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
                 splitting_strategy=splitting_config.get("strategy", "recursive"),
                 splitting_chunk_size=splitting_config.get("chunk_size", 1000),
                 splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),

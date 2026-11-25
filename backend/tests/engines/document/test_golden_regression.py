@@ -11,9 +11,9 @@
   经 ``test_data/_probe/golden_baseline_tool.py --refresh`` 显式刷新基线。
 
 指标口径：full_text/markdown 的 sha256、chunk 数、统一块按 kind 计数。
-duration 不进对比（机器波动）。PDF 门禁走 plain 模式（文字层快路径，快、
-稳定、无模型依赖）；full 模式（OCR/版面）产物更重但耗时长，留给 --bench
-基准工具按需手动跑，不进全量测试套件。
+duration 不进对比（机器波动）。PDF 走唯一策略（文字层+OCR 融合）——与产线
+完全同口径；视觉运行时不可用的环境 skip（诚实标记而非假绿），模型目录就绪
+的环境正常跑门禁。
 """
 import asyncio
 import hashlib
@@ -89,18 +89,25 @@ def test_golden_regression_against_baseline():
     baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8")) if BASELINE_PATH.exists() else {}
     assert baseline, "基线快照文件缺失/为空——先运行 golden_baseline_tool.py --refresh"
 
+    # PDF 唯一策略依赖视觉运行时（OCR/版面模型）；模型目录未就绪的环境 skip
+    from novamind.engines.document.integrations.deepdoc.vision_runtime import (
+        get_vision_runtime_status,
+    )
+    if not get_vision_runtime_status()["parser_available"]:
+        pytest.skip(
+            "视觉运行时不可用（DeepDoc OCR/版面模型缺失）——PDF 门禁依赖融合解析，"
+            "运行 golden_baseline_tool.py 的 prepare 流程就绪模型后再跑"
+        )
+
     parser = DeepDocParser()
     mismatches: list[str] = []
     unknown: list[str] = []
     for index, sample in enumerate(samples, start=1):
         key = f"sample_{index:03d}"
-        parsing_config = (
-            {"deepdoc_pdf_mode": "plain"} if sample.suffix.lower() == ".pdf" else {}
-        )
         result = asyncio.run(
             parser.parse_bytes(
                 sample.read_bytes(), file_type=sample.suffix.lower().lstrip("."),
-                parsing_config=parsing_config, splitting_config={"chunk_size": 1000},
+                splitting_config={"chunk_size": 1000},
             )
         )
         snapshot = _snapshot(result, key)

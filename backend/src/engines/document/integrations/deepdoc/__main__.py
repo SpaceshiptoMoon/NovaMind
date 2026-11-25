@@ -31,8 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parse_parser = subparsers.add_parser("parse", help="Parse a local file through DeepDoc")
     parse_parser.add_argument("path", help="Path to the file to parse")
-    parse_parser.add_argument("--parser-id", dest="parser_id", help="DeepDoc parser id, e.g. pdf_plain")
-    parse_parser.add_argument("--pdf-mode", dest="pdf_mode", help="PDF mode: plain or full")
+    parse_parser.add_argument("--parser-id", dest="parser_id", help="DeepDoc parser id, e.g. pdf_full")
     parse_parser.add_argument("--chunk-size", dest="chunk_size", type=int, default=1000, help="Chunk size")
     parse_parser.add_argument(
         "--output",
@@ -96,7 +95,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "doctor":
-        payload = build_doctor_payload(engine, include_smoke=args.smoke)
+        # 报告装配期间的设备探针等日志经 structlog 直写 stdout（上面的 stdlib
+        # handler 改道拦不住），会污染 JSON 输出——与 prepare 一致整体重定向。
+        with contextlib.redirect_stdout(sys.stderr):
+            payload = build_doctor_payload(engine, include_smoke=args.smoke)
         print(json.dumps(payload, ensure_ascii=False, indent=args.indent))
         return 0
 
@@ -134,8 +136,6 @@ def main(argv: list[str] | None = None) -> int:
         parsing_config: dict[str, Any] = {}
         if args.parser_id:
             parsing_config["deepdoc_parser_id"] = args.parser_id
-        if args.pdf_mode:
-            parsing_config["deepdoc_pdf_mode"] = args.pdf_mode
         file_type = file_path.suffix.lower().lstrip(".")
         with contextlib.redirect_stdout(sys.stderr):
             if args.parser_id:

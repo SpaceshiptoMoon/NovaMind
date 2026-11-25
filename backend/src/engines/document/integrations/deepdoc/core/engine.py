@@ -109,11 +109,6 @@ class DeepDocEngine:
 
         return download_formula_model_artifact()
 
-    @classmethod
-    def available_pdf_modes(cls) -> dict:
-        """PDF 模式能力表（含逐模式 available/missing）。"""
-        return dict(get_deepdoc_capabilities()["pdf_modes"])
-
     async def aparse_with_parser_id(
         self,
         *,

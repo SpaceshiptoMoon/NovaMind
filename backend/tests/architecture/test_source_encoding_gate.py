@@ -44,7 +44,6 @@ STRINGS_ALLOWED_FILES = {
     "tests/shared/utils/test_pua_normalize.py",
     "tests/shared/document/test_pdf_reader_pua.py",
     "tests/engines/document/deepdoc/test_deepdoc_pdf_fusion.py",
-    "tests/engines/document/deepdoc/test_deepdoc_pdf_plain_pua.py",
     "tests/engines/document/deepdoc/test_deepdoc_pdf_outlines_pua.py",
     "tests/engines/document/deepdoc/test_deepdoc_runtime.py",
     "tests/engines/document/deepdoc/test_page_filter_dirty_pattern.py",

@@ -398,7 +398,7 @@ def test_runtime_formula_flag_passthrough(tmp_path, monkeypatch):
     captured = {}
 
     class _FakePdfParser:
-        def __call__(self, filename, *, pdf_mode, chunk_size, formula_recognition=None, **_kwargs):
+        def __call__(self, filename, *, chunk_size, formula_recognition=None, **_kwargs):
             captured["formula_recognition"] = formula_recognition
             from novamind.engines.document.integrations.deepdoc.core.models import (
                 DeepDocParseResult,
@@ -409,18 +409,14 @@ def test_runtime_formula_flag_passthrough(tmp_path, monkeypatch):
 
     parser = DeepDocParser()
     parser._pdf_parser = _FakePdfParser()  # cached_property 可被实例属性覆盖
-    monkeypatch.setattr(
-        DeepDocParser, "supported_pdf_modes",
-        staticmethod(lambda: {"full": {"available": True, "missing": []}}),
-    )
     parser._parse_pdf_sync(
         tmp_path / "x.pdf",
-        {"deepdoc_pdf_mode": "full", "deepdoc_formula_recognition": False},
+        {"deepdoc_formula_recognition": False},
         {"chunk_size": 1000},
     )
     assert captured["formula_recognition"] is False
     parser._parse_pdf_sync(
-        tmp_path / "x.pdf", {"deepdoc_pdf_mode": "full"}, {"chunk_size": 1000},
+        tmp_path / "x.pdf", {}, {"chunk_size": 1000},
     )
     assert captured["formula_recognition"] is None  # 未配置 → 默认开启
 

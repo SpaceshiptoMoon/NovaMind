@@ -354,7 +354,7 @@ def test_pdf_parser_encrypted_detected(tmp_path):
     pdf = tmp_path / "enc.pdf"
     _write_encrypted_pdf(pdf)
     with pytest.raises(EncryptedDocumentError):
-        RAGFlowPdfParser()(str(pdf), pdf_mode="plain")
+        RAGFlowPdfParser()(str(pdf))
 
 
 def test_pdf_reader_encrypted_detected(tmp_path):

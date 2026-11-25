@@ -17,15 +17,17 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
 
 def get_deepdoc_capabilities() -> dict[str, Any]:
     """DeepDoc 引擎能力表：解析器目录 + PDF 模式可用性。
-    
+
     Returns:
-        dict：parsers（id → 后缀/描述）与 pdf_modes（full/plain →
+        dict：parsers（id → 后缀/描述）与 pdf_modes（唯一 full 融合模式 →
         available/missing），供 runtime 校验与前端配置面板。
+        文字层-only 的 plain 模式已随单策略收敛移除（2026-11）；纯文字层
+        提取走 loader 的 default 策略（Python 库 reader），不经本引擎。
     """
     runtime_report = get_deepdoc_runtime_report()
     vision_status = get_vision_runtime_status()
     vision_health = get_vision_health_status()
-    # 懒 import 防环：runtime_parser.supported_pdf_modes 反向依赖本模块
+    # 懒 import 防环：runtime_parser 的路由校验反向依赖本模块
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
         DeepDocParser,
     )
@@ -36,7 +38,6 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
         "mirrored_packages": ["parser", "vision"],
         "parser_ids": [
             "pdf_full",
-            "pdf_plain",
             "docx",
             "epub",
             "excel",
@@ -49,10 +50,6 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
             "json",
         ],
         "pdf_modes": {
-            "plain": {
-                "available": True,
-                "description": "Adapted from RAGFlow PlainParser.",
-            },
             "full": {
                 "available": bool(vision_status["parser_available"]),
                 "description": "Upstream-aligned full pipeline: per-page OCR detect + per-box text-layer fusion + ONNX layout + TSR. Default mode; handles scanned and digital-native PDFs.",

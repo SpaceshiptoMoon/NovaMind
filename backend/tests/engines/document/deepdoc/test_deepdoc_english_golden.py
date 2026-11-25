@@ -144,7 +144,7 @@ def _parse(pdf_path: Path) -> tuple[str, dict]:
     logging.disable(logging.CRITICAL)
     try:
         parser = RAGFlowPdfParser()
-        result = parser(str(pdf_path), pdf_mode="full", chunk_size=1000)
+        result = parser(str(pdf_path), chunk_size=1000)
     finally:
         logging.disable(logging.NOTSET)
     return result.full_text, result.metadata

@@ -160,7 +160,7 @@ def test_deepdoc_cli_parse_pdf(tmp_path):
             "parse",
             str(pdf_path),
             "--parser-id",
-            "pdf_plain",
+            "pdf_full",
         ],
         cwd=BACKEND_ROOT,
         capture_output=True,
@@ -170,5 +170,5 @@ def test_deepdoc_cli_parse_pdf(tmp_path):
 
     payload = json.loads(completed.stdout)
     assert payload["metadata"]["parser"] == "deepdoc"
-    assert payload["metadata"]["parser_id"] == "pdf_plain"
+    assert payload["metadata"]["parser_id"] == "pdf_full"
     assert "CLI DeepDoc" in payload["full_text"]

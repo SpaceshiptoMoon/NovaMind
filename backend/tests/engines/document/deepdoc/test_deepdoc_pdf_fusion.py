@@ -17,6 +17,7 @@ from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPd
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     ParsingConfig,
+    TextParsingConfig,
     build_runtime_parsing_config,
 )
 from PIL import Image
@@ -236,17 +237,13 @@ def test_build_vision_strategy_text_layer_and_fused():
 
 
 @pytest.mark.unit
-def test_call_alias_layout_vision_routes_to_full(monkeypatch):
-    """__call__("layout")/("vision") 兼容别名 → _parse_full。"""
+def test_call_routes_to_full_pipeline(monkeypatch):
+    """__call__ 唯一策略：直接走 _parse_full（plain/别名分派已移除）。"""
     parser = RAGFlowPdfParser()
     calls = []
-    monkeypatch.setattr(parser, "_parse_full", lambda filename, *, chunk_size, formula_recognition=None, **_kwargs: calls.append(("full", chunk_size)) or _fake_result())
-    monkeypatch.setattr(parser, "_parse_plain", lambda filename, *, chunk_size: calls.append(("plain", chunk_size)) or _fake_result())
-    parser(b"pdf", pdf_mode="layout", chunk_size=500)
-    parser(b"pdf", pdf_mode="vision", chunk_size=500)
-    parser(b"pdf", pdf_mode="full", chunk_size=500)
-    parser(b"pdf", pdf_mode="plain", chunk_size=500)
-    assert [c[0] for c in calls] == ["full", "full", "full", "plain"]
+    monkeypatch.setattr(parser, "_parse_full", lambda filename, *, chunk_size, formula_recognition=None, model_failure_policy="raise", **_kwargs: calls.append(("full", chunk_size)) or _fake_result())
+    parser(b"pdf", chunk_size=500)
+    assert [c[0] for c in calls] == ["full"]
 
 
 class _FakeResult:
@@ -260,45 +257,79 @@ def _fake_result():
 
 
 @pytest.mark.unit
-def test_capabilities_pdf_modes_collapsed_to_full():
-    """capabilities 只剩 plain + full + 6 远程，不再有 layout/vision。"""
+def test_capabilities_pdf_modes_single_full():
+    """capabilities 只剩 full（plain/layout/vision 全部收敛移除）。"""
     caps = get_deepdoc_capabilities()
     modes = caps["pdf_modes"]
-    assert "full" in modes
-    assert "plain" in modes
-    assert "layout" not in modes
-    assert "vision" not in modes
+    assert list(modes) == ["full"]
     # full 依赖 vision 运行时（与旧 vision 同门禁）
     assert "missing" in modes["full"]
 
 
 @pytest.mark.unit
-def test_build_runtime_pdf_full_emits_full_mode():
-    """build_runtime_parsing_config：parser=full → deepdoc_pdf_mode=full, parser_id=pdf_full。"""
+def test_build_runtime_pdf_full_emits_parser_id():
+    """build_runtime_parsing_config：parser=full → parser_id=pdf_full（pdf_mode 键已移除）。"""
     rc = build_runtime_parsing_config({"text": {"pdf": {"strategy": "deepdoc", "parser": "full"}}}, "pdf")
-    assert rc["deepdoc_pdf_mode"] == "full"
+    assert "deepdoc_pdf_mode" not in rc
     assert rc["deepdoc_parser_id"] == "pdf_full"
 
 
 @pytest.mark.unit
-def test_legacy_layout_vision_migrate_to_full():
-    """旧 deepdoc_parser_id=pdf_layout/pdf_vision 与 deepdoc_pdf_mode=layout/vision 迁移到 full。"""
-    for legacy_id in ("pdf_layout", "pdf_vision"):
-        m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_parser_id": legacy_id})
+def test_legacy_modes_and_flat_keys_migrate_to_full():
+    """旧 parser/mode 值与平面 strategy/deepdoc_pdf_mode 键全部收敛到 PDF deepdoc 融合策略。"""
+    for legacy_id in ("pdf_layout", "pdf_vision", "pdf_plain"):
+        m = ParsingConfig.model_validate({"deepdoc_parser_id": legacy_id})
         assert m.text.pdf.parser == "full", f"{legacy_id} 应迁移到 full"
-    for legacy_mode in ("layout", "vision"):
-        m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_pdf_mode": legacy_mode})
-        assert m.text.pdf.parser == "full", f"deepdoc_pdf_mode={legacy_mode} 应迁移到 full"
-        assert m.deepdoc_pdf_mode == "full"
+        assert m.text.pdf.strategy == "deepdoc"
+    for legacy_mode in ("layout", "vision", "plain"):
+        m = ParsingConfig.model_validate({"deepdoc_pdf_mode": legacy_mode})
+        assert m.text.pdf.strategy == "deepdoc"
+        assert not hasattr(m, "deepdoc_pdf_mode") or m.model_dump().get("deepdoc_pdf_mode") is None
+
+    # 平面 strategy 恢复原语义（2026-11-25 双策略恢复）：null/default → default
+    #（Python 文字层），deepdoc → deepdoc 融合 + parser=full
+    assert ParsingConfig.model_validate({"strategy": None}).text.pdf.strategy == "default"
+    assert ParsingConfig.model_validate({"strategy": "default"}).text.pdf.strategy == "default"
+    m = ParsingConfig.model_validate({"strategy": "deepdoc"})
+    assert m.text.pdf.strategy == "deepdoc"
+    assert m.text.pdf.parser == "full"
 
 
 @pytest.mark.unit
-def test_legacy_plain_migrates_to_full():
-    """6b45384 移除 PDF plain 模式后，旧 plain 配置一律迁移到 full。"""
-    m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_parser_id": "pdf_plain"})
+def test_pdf_strategy_default_is_deepdoc():
+    """回归：零配置 PDF 默认走 deepdoc 融合（扫描件开箱即用）。"""
+    m = ParsingConfig.model_validate({})
+    assert (m.text or TextParsingConfig()).pdf.strategy == "deepdoc"
+    rc = build_runtime_parsing_config({}, "pdf")
+    assert rc["strategy"] == "deepdoc"
+
+
+@pytest.mark.unit
+def test_pdf_explicit_default_strategy_routes_to_python_reader():
+    """回归（2026-11-25 双策略恢复）：显式 strategy=default 合法，运行时路由
+    落 default（loader 走 Python 库 PDFReader），parser 不外泄。"""
+    rc = build_runtime_parsing_config({"text": {"pdf": {"strategy": "default"}}}, "pdf")
+    assert rc["strategy"] == "default"
+    assert "deepdoc_parser_id" not in rc
+
+
+@pytest.mark.unit
+def test_flat_legacy_deepdoc_config_keeps_deepdoc_after_two_strategy_restore():
+    """回归：平面旧配置（strategy=deepdoc 无 parser_id）在双策略恢复后仍落
+    deepdoc+full，不被新 default 基线吞掉。"""
+    m = ParsingConfig.model_validate({"strategy": "deepdoc"})
+    assert m.text.pdf.strategy == "deepdoc"
     assert m.text.pdf.parser == "full"
-    m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"})
-    assert m.text.pdf.parser == "full"
+
+
+@pytest.mark.unit
+def test_flat_legacy_null_config_restores_default_strategy():
+    """回归：平面旧配置（strategy=null → 原 default 行为）恢复落 default，
+    不再被强转成 deepdoc。"""
+    m = ParsingConfig.model_validate({"strategy": None})
+    assert m.text.pdf.strategy == "default"
+    rc = build_runtime_parsing_config({"strategy": None}, "pdf")
+    assert rc["strategy"] == "default"
 
 def test_insert_word_spaces_adds_english_gaps():
     """英文单词字符间隙过大时应补空格，中文不应被插空格。"""

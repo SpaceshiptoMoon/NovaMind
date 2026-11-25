@@ -10,6 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.pipeline import DocumentProcessor
@@ -64,9 +65,11 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
     )
 
     dumped = config.model_dump(by_alias=True)
+    # 单策略收敛：平面 strategy/deepdoc_pdf_mode 键被迁移吸收，PDF 恒落 deepdoc，
+    # 旧 plain 值 coerce 到 parser="full"
+    assert "strategy" not in dumped["parsing"]
+    assert "deepdoc_pdf_mode" not in dumped["parsing"]
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    # 6b45384 移除 PDF plain 模式：deepdoc_pdf_mode="plain" 经 migrate_legacy_parsing
-    # 迁移到 text.pdf.parser="full"
     assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
 
 
@@ -124,12 +127,12 @@ def test_document_processor_uses_deepdoc_parser_id(monkeypatch, tmp_path):
 
     async def fake_aparse_with_parser_id(**kwargs):
         assert kwargs["file_type"] == "pdf"
-        assert kwargs["parser_id"] == "pdf_plain"
+        assert kwargs["parser_id"] == "pdf_full"
         assert Path(kwargs["file_path"]) == pdf_path
         return DeepDocParseResult(
             full_text="processor parser id",
             chunks=["processor parser id"],
-            metadata={"parser": "deepdoc", "pdf_mode": "plain"},
+            metadata={"parser": "deepdoc", "pdf_mode": "full"},
         )
 
     monkeypatch.setattr(processor, "_deepdoc_engine", SimpleNamespace(aparse_with_parser_id=fake_aparse_with_parser_id))
@@ -137,7 +140,7 @@ def test_document_processor_uses_deepdoc_parser_id(monkeypatch, tmp_path):
     full_text, chunks = asyncio.run(
         processor.parse_document(
             pdf_path,
-            parsing_config={"strategy": "deepdoc", "deepdoc_parser_id": "pdf_plain"},
+            parsing_config={"strategy": "deepdoc", "deepdoc_parser_id": "pdf_full"},
             splitting_config={"chunk_size": 256},
         )
     )
@@ -156,7 +159,7 @@ def test_document_processor_runs_real_deepdoc_pdf_path(tmp_path):
             pdf_path,
             parsing_config={
                 "strategy": "deepdoc",
-                "deepdoc_parser_id": "pdf_plain",
+                "deepdoc_parser_id": "pdf_full",
             },
             splitting_config={"chunk_size": 256},
         )
@@ -165,7 +168,7 @@ def test_document_processor_runs_real_deepdoc_pdf_path(tmp_path):
     assert "Real Processor DeepDoc" in result.full_text
     assert result.chunks
     assert result.metadata["parser"] == "deepdoc"
-    assert result.metadata["parser_id"] == "pdf_plain"
+    assert result.metadata["parser_id"] == "pdf_full"
 
 
 def test_document_processor_parse_document_result_preserves_deepdoc_metadata(monkeypatch, tmp_path):
@@ -209,12 +212,8 @@ def test_document_processor_parse_document_result_preserves_deepdoc_metadata(mon
     assert result.metadata["chunk_structure_source"] == "tagged_rechunk"
 
 
-def test_deepdoc_engine_available_pdf_modes_exposed():
-    engine = DeepDocEngine()
-    modes = engine.available_pdf_modes()
+def test_deepdoc_capabilities_pdf_modes_single_full():
+    modes = get_deepdoc_capabilities()["pdf_modes"]
 
-    assert "plain" in modes
-    assert "full" in modes
-    # layout/vision 已收敛为 full，不再作为独立模式暴露
-    assert "layout" not in modes
-    assert "vision" not in modes
+    assert list(modes) == ["full"]
+    # layout/vision/plain 已全部收敛为 full，不再作为独立模式暴露

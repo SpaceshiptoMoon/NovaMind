@@ -211,15 +211,18 @@ def _build_minimal_epub_bytes(title: str, body: str) -> bytes:
 def test_knowledge_base_config_accepts_deepdoc_strategy():
     config = KnowledgeBaseConfig.model_validate(
         {
+            # 平面 strategy/deepdoc_pdf_mode 已随单策略收敛移除：旧键被迁移吸收，
+            # PDF 恒落 deepdoc 融合策略（plain 值 coerce 到 full 语义）
             "parsing": {"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"},
             "splitting": {"strategy": "recursive"},
         }
     )
 
     dumped = config.model_dump()
-    assert dumped["parsing"]["strategy"] == "deepdoc"
-    # 6b45384 移除 PDF plain 模式：deepdoc_pdf_mode="plain" 迁移到 full
-    assert dumped["parsing"]["deepdoc_pdf_mode"] == "full"
+    parsing = dumped["parsing"]
+    assert "strategy" not in parsing
+    assert "deepdoc_pdf_mode" not in parsing
+    assert (parsing["text"] or {}).get("pdf", {}).get("strategy") == "deepdoc"
 
 
 def test_knowledge_base_service_accepts_all_deepdoc_full_options():
@@ -332,7 +335,7 @@ def test_document_processor_runs_real_deepdoc_pdf_path(tmp_path):
             pdf_path,
             parsing_config={
                 "strategy": "deepdoc",
-                "deepdoc_parser_id": "pdf_plain",
+                "deepdoc_parser_id": "pdf_full",
             },
             splitting_config={"chunk_size": 256},
         )
@@ -341,7 +344,7 @@ def test_document_processor_runs_real_deepdoc_pdf_path(tmp_path):
     assert "Real Processor DeepDoc" in result.full_text
     assert result.chunks
     assert result.metadata["parser"] == "deepdoc"
-    assert result.metadata["parser_id"] == "pdf_plain"
+    assert result.metadata["parser_id"] == "pdf_full"
 
 
 def test_document_processor_parse_document_result_preserves_deepdoc_metadata(monkeypatch, tmp_path):
@@ -640,25 +643,9 @@ def test_deepdoc_parser_supports_parse_bytes_for_pdf():
     assert result.chunks
 
 
-def test_deepdoc_parser_supports_plain_pdf_mode():
-    parser = DeepDocParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("Plain PDF Mode"),
-            file_type="pdf",
-            parsing_config={"deepdoc_pdf_mode": "plain"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["file_type"] == "pdf"
-    assert result.metadata["pdf_mode"] == "plain"
-    assert "@@1\t" not in result.full_text
-
-
 def test_ragflow_pdf_parser_exposes_layout_bboxes():
     parser = RAGFlowPdfParser()
-    result = parser(_build_minimal_pdf_bytes("BBox PDF"), pdf_mode="full", chunk_size=500)
+    result = parser(_build_minimal_pdf_bytes("BBox PDF"), chunk_size=500)
     assert result.metadata["parser_class"] == "RAGFlowPdfParser"
     assert result.metadata["layout_bboxes"]
     assert result.metadata["merged_bboxes"]
@@ -676,7 +663,7 @@ def test_ragflow_pdf_parser_detects_columns_and_positions():
             (320, 660, "Right Two"),
         ]
     )
-    result = parser(pdf_bytes, pdf_mode="layout", chunk_size=500)
+    result = parser(pdf_bytes, chunk_size=500)
 
     assert result.metadata["detected_columns"] == 2
     assert result.full_text.index("Left One") < result.full_text.index("Right One")
@@ -695,7 +682,7 @@ def test_ragflow_pdf_parser_merges_vertical_lines_into_blocks():
             (72, 630, "New paragraph"),
         ]
     )
-    result = parser(pdf_bytes, pdf_mode="layout", chunk_size=500)
+    result = parser(pdf_bytes, chunk_size=500)
 
     assert "This is line one that continues below" in result.full_text
     assert result.metadata["merged_block_count"] < len(result.metadata["bboxes"])
@@ -1087,7 +1074,7 @@ def test_deepdoc_parser_full_mode_surfaces_artifacts():
 def test_ragflow_pdf_parser_full_mode_artifacts_include_lazy_images():
     _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
-    result = parser(_build_minimal_pdf_bytes("Full Artifact"), pdf_mode="full", chunk_size=500)
+    result = parser(_build_minimal_pdf_bytes("Full Artifact"), chunk_size=500)
 
     assert "artifacts" in result.metadata
     assert isinstance(result.metadata["artifacts"]["tables"], list)
@@ -1108,15 +1095,15 @@ def test_deepdoc_engine_standalone_facade():
     engine = DeepDocEngine()
     exts = engine.supported_extensions()
     assert {"pdf", "docx", "epub", "xlsx", "pptx", "png"} <= exts
-    modes = engine.available_pdf_modes()
-    assert modes["plain"]["available"] is True
-    assert modes["full"]["available"] is get_vision_runtime_status()["parser_available"]
+    # PDF 单策略：factory spec available 随视觉运行时状态
+    specs = DeepDocParserFactory.list_specs()
+    assert specs["pdf_full"].available is get_vision_runtime_status()["parser_available"]
 
 
 def test_deepdoc_factory_exposes_parser_ids():
     specs = DeepDocParserFactory.list_specs()
     assert "pdf_full" in specs
-    assert "pdf_plain" in specs
+    assert "pdf_plain" not in specs
     assert "epub" in specs
     assert "excel" in specs
     assert "ppt" in specs
@@ -1124,7 +1111,7 @@ def test_deepdoc_factory_exposes_parser_ids():
     assert "markdown" in specs
     assert "html" in specs
     assert "json" in specs
-    assert specs["pdf_plain"].mode == "plain"
+    assert specs["pdf_full"].mode == "full"
     assert specs["pdf_full"].available is get_vision_runtime_status()["parser_available"]
 
 
@@ -1172,7 +1159,7 @@ def test_knowledge_base_service_accepts_non_pdf_deepdoc_parser_ids(parser_id: st
 def test_deepdoc_capabilities_surface_unavailable_vision_mode():
     capabilities = get_deepdoc_capabilities()
     assert "pdf_modes" in capabilities
-    assert capabilities["pdf_modes"]["plain"]["available"] is True
+    assert "plain" not in capabilities["pdf_modes"]
     assert capabilities["pdf_modes"]["full"]["available"] is get_vision_runtime_status()["parser_available"]
     assert "vision_runtime" in capabilities
     assert "package_status" in capabilities["pdf_modes"]["full"]
@@ -2006,7 +1993,7 @@ def test_table_regions_include_page_order_and_structure_summary():
         ]
     )
 
-    result = parser(pdf_bytes, pdf_mode="full", chunk_size=500)
+    result = parser(pdf_bytes, chunk_size=500)
 
     assert "table_regions" in result.metadata
     assert result.metadata["table_regions"] == []
@@ -2158,18 +2145,18 @@ def test_extract_parse_metadata_summary_counts_regions():
     assert summary["reading_order_count"] == 3
 
 
-def test_deepdoc_engine_parse_with_parser_id_plain_pdf():
+def test_deepdoc_engine_parse_with_parser_id_full_pdf():
     engine = DeepDocEngine()
     result = engine.parse_with_parser_id(
         file_type="pdf",
-        parser_id="pdf_plain",
-        file_bytes=_build_minimal_pdf_bytes("Parser ID Plain"),
+        parser_id="pdf_full",
+        file_bytes=_build_minimal_pdf_bytes("Parser ID Full"),
         splitting_config={"chunk_size": 500},
     )
 
     assert result.metadata["file_type"] == "pdf"
-    assert result.metadata["pdf_mode"] == "plain"
-    assert "Parser ID Plain" in result.full_text
+    assert result.metadata["pdf_mode"] == "full"
+    assert "Parser ID Full" in result.full_text
 
 
 def test_deepdoc_engine_parse_with_parser_id_excel():
@@ -2245,7 +2232,7 @@ def test_deepdoc_capabilities_include_upstream_snapshot():
     assert "upstream_snapshot" in capabilities
     assert capabilities["upstream_snapshot"]["commit"]
     assert "pdf_full" in capabilities["parser_ids"]
-    assert "pdf_plain" in capabilities["parser_ids"]
+    assert "pdf_plain" not in capabilities["parser_ids"]
 
 
 def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):

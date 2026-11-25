@@ -14,9 +14,6 @@ from novamind.engines.document.contracts import (
     normalize_figure_regions,
     unsalted_placeholder,
 )
-from novamind.engines.document.integrations.deepdoc.core.capabilities import (
-    get_deepdoc_capabilities,
-)
 from novamind.engines.document.integrations.deepdoc.core.document_model import (
     KIND_FIGURE,
     KIND_FOOTER,
@@ -131,11 +128,6 @@ class DeepDocParser:
         """支持的文件后缀全集（含图片与文本族）。"""
         return {"pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp", "zip", "eml", "msg", "ofd"}
 
-    @staticmethod
-    def supported_pdf_modes() -> dict[str, dict[str, Any]]:
-        """PDF 解析模式能力表（full/plain 及其 available/missing）。"""
-        return dict(get_deepdoc_capabilities()["pdf_modes"])
-
     async def parse(
         self,
         file_path: str | Path,
@@ -147,7 +139,7 @@ class DeepDocParser:
         
         Args:
             file_path: 文件路径。
-            parsing_config: 解析配置（deepdoc_parser_id/deepdoc_pdf_mode 等）。
+            parsing_config: 解析配置（deepdoc_parser_id 等）。
             splitting_config: 分块配置（chunk_size）。
         
         Raises:
@@ -172,7 +164,7 @@ class DeepDocParser:
         Args:
             file_bytes: 文件字节流。
             file_type: 文件后缀（决定路由的解析器）。
-            parsing_config: 解析配置（deepdoc_parser_id / deepdoc_pdf_mode 等），可空。
+            parsing_config: 解析配置（deepdoc_parser_id 等），可空。
             splitting_config: 切分配置（chunk_size 等），可空。
 
         Returns:
@@ -198,7 +190,6 @@ class DeepDocParser:
             "DeepDoc 解析路由",
             extension=extension,
             deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
-            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
             source_type="file" if isinstance(source, Path) else "bytes",
         )
         result = await asyncio.to_thread(
@@ -242,32 +233,24 @@ class DeepDocParser:
         parsing_config: dict[str, Any],
         splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
-        """PDF 同步解析：校验模式可用性 → 调 RAGFlowPdfParser。
-        
+        """PDF 同步解析：调 RAGFlowPdfParser 融合流水线（唯一策略）。
+
         Raises:
-            ValueError: pdf_mode 不在能力表。
-            RuntimeError: 模式不可用（模型/依赖缺失）。
+            RuntimeError: 视觉解析器不可用（模型/依赖缺失）。
         """
         parser_id = str(parsing_config.get("deepdoc_parser_id", "") or "")
         logger.info(
             "DeepDoc PDF 解析开始",
             parser_id=parser_id or "(auto)",
-            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode", "full"),
             chunk_size=splitting_config.get("chunk_size", 1000),
             source_type="file" if isinstance(source, Path) else "bytes",
         )
-        pdf_mode = str(parsing_config.get("deepdoc_pdf_mode", "full"))
-        pdf_modes = self.supported_pdf_modes()
-        if pdf_mode not in pdf_modes:
-            raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
-        if not pdf_modes[pdf_mode]["available"]:
-            if pdf_mode == "full":
-                ensure_vision_parser_available()
-            missing = ", ".join(pdf_modes[pdf_mode].get("missing", []))
-            raise RuntimeError(f"DeepDoc PDF mode '{pdf_mode}' is not available: {missing}")
+        # PDF 唯一策略：文字层+OCR 融合（原 full 模式）。plain 模式及模式选择
+        # 机制已移除（2026-11），融合质量回退（cid→OCR、启发式布局）在解析器
+        # 内部，模型不可用直接调 ensure 门报错
+        ensure_vision_parser_available()
         logger.info(
             "DeepDoc PDF 使用本地解析器",
-            pdf_mode=pdf_mode,
             parser_id=parser_id or "(full/default)",
         )
         pdf_input = str(source) if isinstance(source, Path) else source
@@ -275,22 +258,22 @@ class DeepDocParser:
         # 显式 False 关闭。模型缺失时解析器内部 WARNING 软降级，不影响可用性。
         formula_recognition = parsing_config.get("deepdoc_formula_recognition")
         # 发包模式：模型不可用类失败（版面识别/公式识别）策略由宿主经
-        # parsing_config 声明（默认回退保持既有行为；"raise" 时抛
-        # LayoutInferenceError / FormulaModelUnavailableError 由宿主决策）
+        # parsing_config 声明。默认 raise——模型失败直接报错（不做静默启发式
+        # 降级，准确率探索与生产行为一致）；需要旧行为时显式传
+        # "heuristic_fallback"。
         model_failure_policy = parsing_config.get(
-            "deepdoc_model_failure_policy", "heuristic_fallback"
+            "deepdoc_model_failure_policy", "raise"
         )
         started = time.perf_counter()
         with collect_warnings() as warnings:
             result = self._pdf_parser(
                 pdf_input,
-                pdf_mode=pdf_mode,
                 chunk_size=int(splitting_config.get("chunk_size", 1000)),
                 formula_recognition=None if formula_recognition is None else bool(formula_recognition),
                 model_failure_policy=str(model_failure_policy),
             )
         result.metadata["quality"] = build_quality_metadata(
-            "deepdoc", warnings, started, pdf_mode=pdf_mode
+            "deepdoc", warnings, started
         )
         doc_blocks = [
             UnifiedBlock(kind=KIND_TEXT, text=chunk)
@@ -311,7 +294,6 @@ class DeepDocParser:
         result.metadata["document_blocks"] = [b.to_dict() for b in doc_blocks]
         logger.info(
             "DeepDoc PDF 解析完成",
-            pdf_mode=pdf_mode,
             char_count=len(result.full_text),
             chunk_count=len(result.chunks),
         )

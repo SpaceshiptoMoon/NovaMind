@@ -49,12 +49,6 @@ class DeepDocParserFactory:
         capabilities = get_deepdoc_capabilities()
         pdf_modes = capabilities["pdf_modes"]
         return {
-            "pdf_plain": DeepDocParserSpec(
-                parser_id="pdf_plain",
-                file_type="pdf",
-                mode="plain",
-                available=bool(pdf_modes["plain"]["available"]),
-            ),
             "pdf_full": DeepDocParserSpec(
                 parser_id="pdf_full",
                 file_type="pdf",
@@ -159,8 +153,6 @@ class DeepDocParserFactory:
         parser = DeepDocParser()
         parsing_config = {}
         if spec.file_type == "pdf":
-            if spec.mode in {"plain", "full"}:
-                parsing_config["deepdoc_pdf_mode"] = spec.mode
             parsing_config["deepdoc_parser_id"] = spec.parser_id
         elif spec.parser_id not in {"docx", "epub", "excel", "ppt", "figure", "text"}:
             parsing_config["deepdoc_parser_id"] = spec.parser_id

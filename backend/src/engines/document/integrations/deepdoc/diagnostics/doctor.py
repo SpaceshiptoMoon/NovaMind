@@ -3,7 +3,33 @@ from __future__ import annotations
 
 from typing import Any
 
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
+from novamind.engines.document.integrations.deepdoc.runtime_settings import (
+    get_settings,
+    resolve_device_policy,
+)
+
+
+def _execution_providers() -> list[str]:
+    """当前 onnxruntime 构建实际可用的 providers（GPU 是否生效的权威依据）。"""
+    try:
+        import onnxruntime as ort
+
+        return list(ort.get_available_providers())
+    except Exception:  # noqa: BLE001 - 诊断报告缺依赖时如实降级
+        return []
+
+
+def _device_report() -> dict[str, Any]:
+    """唯一设备探针的判定结果 + 安装 flavor 对账 + 实际 providers。"""
+    return {
+        "device_policy": resolve_device_policy(),
+        "install_flavor": get_settings().install_flavor,
+        "execution_providers": _execution_providers(),
+    }
 
 
 def build_doctor_payload(engine: DeepDocEngine, *, include_smoke: bool = False) -> dict[str, Any]:
@@ -22,7 +48,8 @@ def build_doctor_payload(engine: DeepDocEngine, *, include_smoke: bool = False) 
     text_concat_model_status = engine.text_concat_model_status()
     payload = {
         "supported_extensions": sorted(engine.supported_extensions()),
-        "pdf_modes": engine.available_pdf_modes(),
+        "pdf_modes": get_deepdoc_capabilities()["pdf_modes"],
+        "device": _device_report(),
         "runtime_dependencies": runtime_dependencies,
         "vision_model_status": vision_model_status,
         "vision_health": vision_health,

@@ -57,18 +57,15 @@ def _samples() -> list[Path]:
     return sorted(samples)
 
 
-def _parse_all(pdf_mode: str = "plain"):
+def _parse_all():
     parser = DeepDocParser()
     for index, sample in enumerate(_samples(), start=1):
         key = f"sample_{index:03d}"
-        parsing_config = (
-            {"deepdoc_pdf_mode": pdf_mode} if sample.suffix.lower() == ".pdf" else {}
-        )
         started = time.perf_counter()
         result = asyncio.run(
             parser.parse_bytes(
                 sample.read_bytes(), file_type=sample.suffix.lower().lstrip("."),
-                parsing_config=parsing_config, splitting_config={"chunk_size": 1000},
+                splitting_config={"chunk_size": 1000},
             )
         )
         yield key, sample, result, (time.perf_counter() - started) * 1000
@@ -88,36 +85,33 @@ def _snapshot(result, key: str) -> dict:
     }
 
 
-def refresh(pdf_mode: str = "plain") -> None:
+def refresh() -> None:
     """重跑全部金样并冻结基线快照（覆盖 golden_baseline.json）。
 
-    口径必须与门禁测试一致：PDF 走 plain（默认）；变更口径即变更基线语义。
+    口径必须与门禁测试一致：PDF 走唯一策略（文字层+OCR 融合）；变更口径即变更基线语义。
     """
     samples = _samples()
     if not samples:
         print("金样目录为空，无基线可冻结")
         return
     baseline: dict[str, dict] = {}
-    for key, sample, result, _duration in _parse_all(pdf_mode=pdf_mode):
+    for key, sample, result, _duration in _parse_all():
         baseline[key] = _snapshot(result, key)
         print(f"{key} <- {sample.name}: {len(result.full_text)} 字符, {len(result.chunks)} chunks")
     BASELINE_PATH.write_text(
         json.dumps(baseline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    print(f"基线已冻结（pdf_mode={pdf_mode}）：{BASELINE_PATH}（{len(baseline)} 个样本）")
+    print(f"基线已冻结：{BASELINE_PATH}（{len(baseline)} 个样本）")
 
 
-def bench(pdf_mode: str = "full") -> None:
-    """解析基准报告：各样本产物规模/结构计数/耗时/警告数。
-
-    默认 full 模式（真实产线口径，OCR/版面全流水线）——手动按需跑。
-    """
+def bench() -> None:
+    """解析基准报告：各样本产物规模/结构计数/耗时/警告数（唯一策略口径）。"""
     samples = _samples()
     if not samples:
         print("金样目录为空")
         return
     rows = []
-    for key, sample, result, duration in _parse_all(pdf_mode=pdf_mode):
+    for key, sample, result, duration in _parse_all():
         quality = result.metadata.get("quality") or {}
         rows.append({
             "sample": key,
@@ -129,7 +123,6 @@ def bench(pdf_mode: str = "full") -> None:
             "duration_ms": round(duration),
             "warnings": len(quality.get("warnings") or []),
         })
-    print(f"pdf_mode={pdf_mode}")
     print(f"{'样本':<10} {'格式':<6} {'字符':>8} {'块':>6} {'md字符':>8} {'耗时ms':>8} {'警告':>4}  文件")
     for row in rows:
         print(
@@ -143,14 +136,13 @@ def bench(pdf_mode: str = "full") -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="金样基线与基准工具")
     group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--refresh", action="store_true", help="重跑金样冻结基线快照（pdf plain 口径）")
-    group.add_argument("--bench", action="store_true", help="输出解析基准报告（pdf full 口径）")
-    ap.add_argument("--pdf-mode", default=None, choices=["plain", "full"], help="覆盖 PDF 解析模式")
+    group.add_argument("--refresh", action="store_true", help="重跑金样冻结基线快照（唯一策略口径）")
+    group.add_argument("--bench", action="store_true", help="输出解析基准报告（唯一策略口径）")
     args = ap.parse_args()
     if args.refresh:
-        refresh(pdf_mode=args.pdf_mode or "plain")
+        refresh()
     else:
-        bench(pdf_mode=args.pdf_mode or "full")
+        bench()
 
 
 if __name__ == "__main__":

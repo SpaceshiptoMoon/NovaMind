@@ -171,7 +171,7 @@ def test_windowed_parse_full_keeps_book_wide_position_tags(monkeypatch):
     _fake_fuse_page(parser)
     monkeypatch.setenv("DEEPDOC_RENDER_WINDOW_SIZE", "2")
 
-    result = parser(_make_pdf(3), pdf_mode="full", chunk_size=200)
+    result = parser(_make_pdf(3), chunk_size=200)
     assert result.metadata["pages"] == 3
     text_tags = [
         entry.get("position_tag") or entry.get("source_id")

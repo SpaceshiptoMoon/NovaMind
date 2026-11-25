@@ -411,30 +411,25 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self,
         filename: str | bytes | Path,
         *,
-        pdf_mode: str = "full",
         chunk_size: int = 1000,
         formula_recognition: bool | None = None,
-        model_failure_policy: str = "heuristic_fallback",
+        model_failure_policy: str = "raise",
     ) -> DeepDocParseResult:
-        """解析 PDF 入口：按 pdf_mode 分发到 plain 或 full 流水线。
-        
+        """解析 PDF 入口：文字层+OCR 融合全流水线（唯一策略）。
+
         Args:
             filename: 文件路径或 PDF 字节流。
-            pdf_mode: "full"（OCR+版面全流水线，默认）/ "plain"（pdfplumber 直抽
-                文本）；"layout"/"vision" 为 full 的兼容别名。
             chunk_size: chunk 目标字符长度。
             formula_recognition: 是否启用公式识别；None 走配置默认。
-            model_failure_policy: 模型不可用类失败策略（发包模式——降级由调用方
-                声明）："heuristic_fallback"（默认，失败窗回退启发式布局，
-                layout_source 元数据可见）/ "raise"（抛 LayoutInferenceError，
-                由宿主决定重试或失败）。
-        
+            model_failure_policy: 模型不可用类失败策略："raise"（默认，抛
+                LayoutInferenceError，不做静默降级）/ "heuristic_fallback"
+                （失败窗回退启发式布局，layout_source 元数据可见）。
+
         Returns:
             DeepDocParseResult：full_text / chunks / metadata（含 reading_order、
             table_regions、figure_regions、chunk_structure 等契约键）。
-        
+
         Raises:
-            ValueError: pdf_mode 不在支持列表。
             LayoutInferenceError: model_failure_policy="raise" 且版面推理失败。
         """
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
@@ -445,31 +440,16 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self._raise_if_encrypted(filename)
         logger.info(
             "DeepDoc PDF 解析器开始",
-            pdf_mode=pdf_mode,
             chunk_size=chunk_size,
             formula_recognition=formula_recognition,
             source=source_desc,
         )
-        if pdf_mode == "plain":
-            result = self._parse_plain(filename, chunk_size=chunk_size)
-        elif pdf_mode == "full":
-            result = self._parse_full(
-                filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
-                model_failure_policy=model_failure_policy,
-            )
-        elif pdf_mode in ("layout", "vision"):
-            # 兼容别名：layout/vision 已并入 full（上游对齐的逐框融合流水线），
-            # 保留一个发布周期，防止旧 runtime config / 测试漏迁移。
-            logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
-            result = self._parse_full(
-                filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
-                model_failure_policy=model_failure_policy,
-            )
-        else:
-            raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
+        result = self._parse_full(
+            filename, chunk_size=chunk_size, formula_recognition=formula_recognition,
+            model_failure_policy=model_failure_policy,
+        )
         logger.info(
             "DeepDoc PDF 解析器完成",
-            pdf_mode=pdf_mode,
             char_count=len(result.full_text),
             chunk_count=len(result.chunks),
             metadata_keys=list(result.metadata.keys()) if result.metadata else [],
@@ -626,43 +606,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             float(line["bottom"]),
         )
 
-    def _parse_plain(
-        self,
-        filename: str | bytes | Path,
-        *,
-        chunk_size: int,
-    ) -> DeepDocParseResult:
-        """plain 模式：pdfplumber 逐行抽文本 + PUA 归一，不跑 OCR/版面。
-        
-        Returns:
-            DeepDocParseResult，metadata 带 pdf_mode=plain、outlines（书签）、
-            plain_sections（行文本与页码）。
-        """
-        plain_sections, _, outlines = self._plain_parser(filename)
-        plain_lines = [line for line, _ in plain_sections if line.strip()]
-        full_text = "\n".join(plain_lines).strip()
-        chunks = self._chunk_blocks(plain_lines or [full_text], chunk_size=chunk_size)
-        return DeepDocParseResult(
-            full_text=full_text,
-            chunks=chunks,
-            metadata={
-                "parser": "deepdoc",
-                "file_type": "pdf",
-                "pdf_mode": "plain",
-                "outlines": outlines,
-                "plain_sections": plain_sections,
-                "source": "ragflow-adapted",
-                "parser_class": "RAGFlowPdfParser",
-            },
-        )
-
     def _parse_full(
         self,
         filename: str | bytes | Path,
         *,
         chunk_size: int,
         formula_recognition: bool | None = None,
-        model_failure_policy: str = "heuristic_fallback",
+        model_failure_policy: str = "raise",
     ) -> DeepDocParseResult:
         """上游对齐的默认全量流水线：每页 OCR 检测 + 逐框文字层融合 + 乱码回退 OCR
         （_extract_fused_pages）→ ONNX 版面贴标签 → 段落合并 → 页眉过滤 → 表格/图片
