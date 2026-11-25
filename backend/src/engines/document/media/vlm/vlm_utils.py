@@ -110,3 +110,53 @@ async def generate_vlm_text_with_fallback(
             temperature=temperature,
             enable_thinking=True,
         )
+
+# 覆盖率滑窗窗口宽（激进归一后的字符数；12 字约一个短短语粒度）
+_COVERAGE_WINDOW = 12
+# 页级及格线：低于此值触发单页重试；重试后仍低于此值只标记不失败
+_COVERAGE_PASS = 0.95
+
+
+def hard_norm_text(text: str) -> str:
+    """激进归一：连字折叠 + 变音分解 + 仅保留字母数字与汉字并小写。
+
+    用于 VLM 转写覆盖率自检——把连字（ﬁ→fi）、变音（ä→a）、全/半角标点、
+    空格与数字内空格等「写法变体」折叠掉，只比对内容本身。
+    """
+    import unicodedata
+
+    lig = {"ﬁ": "fi", "ﬂ": "fl", "ﬀ": "ff", "ﬃ": "ffi", "ﬄ": "ffl", "ﬆ": "st"}
+    t = text.replace("-\n", " ")
+    for k, v in lig.items():
+        t = t.replace(k, v)
+    t = unicodedata.normalize("NFKD", t)
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    return "".join(ch for ch in t if ch.isalnum() or "\u4e00" <= ch <= "\u9fff").lower()
+
+
+def transcription_coverage(output: str, truth: str | None) -> float | None:
+    """VLM 转写输出对页面真值的滑窗覆盖率（0.0~1.0；无真值返回 None）。
+
+    真值窗口在输出中做顺序无关包含判定——输出阅读顺序与文字层不同（双栏/
+    表格）不扣分；窗口跨公式/表格时可能因 LaTeX 形态差异未命中，属可容忍
+    假阳性（及格线 0.95 已留余量）。
+
+    Args:
+        output: VLM 转写产出文本。
+        truth: 页面真值（文字层/幻灯片文本）；None 返回 None。
+
+    Returns:
+        覆盖率浮点值；truth 为 None 或真值归一后过短（< 窗口宽）时返回 None。
+    """
+    if truth is None:
+        return None
+    n_out, n_truth = hard_norm_text(output), hard_norm_text(truth)
+    if len(n_truth) < _COVERAGE_WINDOW:
+        return None
+    win, hits, total = _COVERAGE_WINDOW, 0, 0
+    for j in range(0, max(len(n_truth) - win, 1), win):
+        total += 1
+        if n_truth[j:j + win] in n_out:
+            hits += 1
+    return hits / max(total, 1)
+

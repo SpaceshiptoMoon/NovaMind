@@ -4,6 +4,8 @@ from novamind.engines.document.media.vlm.vlm_utils import (
     build_vlm_image_messages,
     build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
+    hard_norm_text,
+    transcription_coverage,
 )
 
 __all__ = [
@@ -11,4 +13,6 @@ __all__ = [
     "build_vlm_image_messages",
     "build_vlm_multi_image_messages",
     "generate_vlm_text_with_fallback",
+    "transcription_coverage",
+    "hard_norm_text",
 ]

@@ -1651,6 +1651,11 @@ async def _parse_pdf_with_mineru_static(
 _VLM_TRANSCRIBE_CONCURRENCY = 4
 # 页标记契约与 mineru 产物一致（<!-- page N of M -->），入库前剥除
 _VLM_PAGE_MARK = re.compile(r"<!--\s*page\s+\d+\s+of\s+(\d+)\s*-->")
+# 页级覆盖率及格线（与 vlm_utils._COVERAGE_PASS 同值；此处引用其常量）
+from novamind.engines.document.media.vlm import transcription_coverage as _vlm_cov_fn
+
+# 页级覆盖率及格线（低于触发单页重试；重试后仍低于仅标记不失败）
+_VLM_COVERAGE_PASS = 0.95
 
 
 async def _upload_vlm_page_images(
@@ -1803,6 +1808,13 @@ async def _parse_pdf_with_vlm_static(
     # 页图持久化（辅助产物，失败不阻断）
     await _upload_vlm_page_images(document, pages, _logger)
 
+    # 覆盖率自检真值：视觉化所用的 PDF（含 ppt 转出的 PDF）逐页文字层；
+    # 扫描件文字层为空串 → 覆盖率 None（哨兵模式）
+    from novamind.engines.document.media.ocr.qwen import extract_pdf_page_texts
+    truth_texts = await asyncio.to_thread(extract_pdf_page_texts, content)
+    if len(truth_texts) != len(pages):
+        truth_texts = None  # 页数不一致（异常防御）：退化为哨兵模式
+
     return await _vlm_transcribe_pages(
         document=document,
         pages=pages,
@@ -1811,6 +1823,7 @@ async def _parse_pdf_with_vlm_static(
         splitting_config=splitting_config,
         processor=processor,
         _logger=_logger,
+        truth_texts=truth_texts,
     )
 
 
@@ -1824,6 +1837,7 @@ async def _vlm_transcribe_pages(
     _logger,
     *,
     split: bool = True,
+    truth_texts: list[str | None] | None = None,
 ):
     """VLM 逐页转写核心：并发受控、页序保持、页标记契约与 mineru 对齐。
 
@@ -1839,6 +1853,9 @@ async def _vlm_transcribe_pages(
     Args:
         split: 是否在核心内完成用户切分（pdf/ppt True；图片流 False——下游
             run_post_parse_tail 统一切分，传 processor=None）。
+        truth_texts: 逐页真值（文字层/幻灯片文本，页序对齐；None 或含 None 的
+            页跳过自检）。覆盖率 < 0.95 的页自动重试一次取较优产出；重试后
+            仍不达标只把覆盖率写进元数据标记，不失败（失败方向安全）。
 
     Returns:
         DeepDocParseResult（full_text/chunks/metadata；split=False 时 chunks 为空）。
@@ -1855,7 +1872,13 @@ async def _vlm_transcribe_pages(
     prompt = PromptManager.get_template("vlm_transcribe_page")
     semaphore = asyncio.Semaphore(_VLM_TRANSCRIBE_CONCURRENCY)
 
-    async def _transcribe_one(page_bytes: bytes, page_number: int) -> tuple[int, str]:
+    page_truth: dict[int, str | None] = {}
+    if truth_texts:
+        for idx, (blob, num) in enumerate(pages):
+            t = truth_texts[idx] if idx < len(truth_texts) else None
+            page_truth[num] = (t or "").strip() or None
+
+    async def _call_vlm(page_bytes: bytes, page_number: int) -> str:
         # 大页图先降采样（与图片线同一 VLM 输入口径）
         small, down_mime = _downscale_image_for_vlm(page_bytes)
         mime = down_mime or "image/jpeg"
@@ -1873,7 +1896,26 @@ async def _vlm_transcribe_pages(
                 )
             except Exception as exc:
                 raise RuntimeError(f"第 {page_number} 页 VLM 调用失败: {exc}") from exc
-        return page_number, (text or "").strip()
+        return (text or "").strip()
+
+    async def _transcribe_one(page_bytes: bytes, page_number: int) -> tuple[int, str, float | None]:
+        """转写一页：有真值时覆盖率自检，不达标自动重试一次取较优。"""
+        truth = page_truth.get(page_number)
+        text = await _call_vlm(page_bytes, page_number)
+        cov = _vlm_cov_fn(text, truth)
+        if cov is not None and cov < _VLM_COVERAGE_PASS:
+            _logger.warning(
+                "VLM 页转写覆盖率不达标，自动重试一次",
+                document_id=document.id,
+                page=page_number,
+                coverage=round(cov, 3),
+                vlm_model=vlm_model_name,
+            )
+            text2 = await _call_vlm(page_bytes, page_number)
+            cov2 = _vlm_cov_fn(text2, truth)
+            if cov2 is not None and cov2 > cov:
+                text, cov = text2, cov2
+        return page_number, text, cov
 
     try:
         results = await asyncio.gather(
@@ -1884,7 +1926,8 @@ async def _vlm_transcribe_pages(
             document_id=document.id,
             error_message=f"VLM 转写失败（可重试）：{exc}，模型={vlm_model_name}",
         ) from exc
-    by_page = dict(results)
+    by_page = {num: text for num, text, _cov in results}
+    coverages = {num: cov for num, _text, cov in results}
     missing = [num for num in range(1, total + 1) if not by_page.get(num)]
     if missing:
         raise DocumentProcessingError(
@@ -1893,6 +1936,17 @@ async def _vlm_transcribe_pages(
                 f"VLM 转写失败（可重试）：第 {missing} 页未产出内容"
                 f"（空返回），模型={vlm_model_name}"
             ),
+        )
+    # 低覆盖页只标记不失败：重试后仍不达标说明是该页的系统性形态差异
+    # （公式/表格 LaTeX 化等），覆盖数值进元数据供检索侧降权与质量统计
+    flagged = [num for num, cov in coverages.items() if cov is not None and cov < _VLM_COVERAGE_PASS]
+    if flagged:
+        _logger.warning(
+            "VLM 页转写覆盖率重试后仍不达标（已标记）",
+            document_id=document.id,
+            pages=flagged,
+            coverages={str(n): round(coverages[n], 3) for n in sorted(coverages)},
+            vlm_model=vlm_model_name,
         )
 
     # 拼接（页标记与 mineru 产物同契约）→ 提页数 → 剥标记
@@ -1928,6 +1982,8 @@ async def _vlm_transcribe_pages(
         "file_type": (document.file_type or "pdf").lower(),
         "vlm_page_count": page_count,
         "vlm_model": vlm_model_name,
+        # 逐页覆盖率（None=该页无真值，哨兵模式）；kb-ops 质量基线可统计
+        "vlm_page_coverages": [coverages.get(num) for _blob, num in pages],
     }
     if split_strategy:
         metadata["split_strategy"] = split_strategy

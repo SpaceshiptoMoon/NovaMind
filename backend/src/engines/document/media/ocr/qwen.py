@@ -69,6 +69,36 @@ MIME_BY_EXT: dict[str, str] = {
 }
 
 
+def extract_pdf_page_texts(file_content: bytes) -> list[str]:
+    """PDF 字节逐页提取文字层文本（同步，调用方负责 to_thread 隔离）。
+
+    VLM 转写线的覆盖率自检真值来源：电子版 PDF 文字层与页一一对应；
+    扫描件文字层为空串（自检自然退化为哨兵模式）。
+
+    Args:
+        file_content: PDF 文件字节。
+
+    Returns:
+        逐页文字层文本列表（与页序一致；空页为空串）。
+
+    Raises:
+        OcrFileInvalidError: 文件损坏、加密或非 PDF。
+    """
+    import fitz
+
+    try:
+        doc = fitz.open(stream=file_content, filetype="pdf")
+    except Exception as exc:
+        raise OcrFileInvalidError(f"PDF 打开失败（损坏或加密）: {exc}") from exc
+    texts: list[str] = []
+    try:
+        for page in doc:
+            texts.append(page.get_text("text") or "")
+    finally:
+        doc.close()
+    return texts
+
+
 def render_pdf_page_images(file_content: bytes, dpi: int = DEFAULT_RENDER_DPI) -> list[tuple[bytes, int]]:
     """PDF 字节逐页渲染为 PNG（同步，调用方负责 to_thread 隔离）。
 

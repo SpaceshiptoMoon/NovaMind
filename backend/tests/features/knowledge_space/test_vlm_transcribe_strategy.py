@@ -124,6 +124,9 @@ def pipeline_env(monkeypatch):
 
     monkeypatch.setattr(qwen_mod, "render_pdf_page_images", fake_render)
     monkeypatch.setattr(
+        qwen_mod, "extract_pdf_page_texts", lambda content: ["第一页真值", "第二页真值"]
+    )
+    monkeypatch.setattr(
         "novamind.features.knowledge_space.services.document_pipeline.render_pdf_page_images",
         fake_render,
         raising=False,
@@ -302,6 +305,111 @@ class TestPptVlmEntry:
                 ),
                 _logger=_TEST_LOGGER,
             )
+
+
+
+
+class _ScriptedVlmClient:
+    """按调用次序返回脚本化文本（用于覆盖率重试路径）。"""
+
+    def __init__(self, scripts: list[str]):
+        self.scripts = scripts
+        self.calls = 0
+
+    async def generate_text(self, prompt, **kwargs):
+        text = self.scripts[min(self.calls, len(self.scripts) - 1)]
+        self.calls += 1
+        return text
+
+
+class TestCoverageSelfCheck:
+    """覆盖率自检：不达标自动重试取优；无真值哨兵；重试后仍低仅标记不失败。"""
+
+    @pytest.mark.asyncio
+    async def test_low_coverage_triggers_retry_and_picks_better(self, monkeypatch):
+        """首轮覆盖率低 → 自动重试一次 → 取覆盖率高者；覆盖率入 metadata。"""
+        truth_full = "这是第一页的完整真值内容，包含足够多的细节与信息量用于滑窗覆盖比对。" * 3
+        calls = {"n": 0}
+
+        class _Scripted:
+            async def generate_text(self, prompt, **kwargs):
+                calls["n"] += 1
+                return "缺内容" if calls["n"] == 1 else truth_full
+
+        import novamind.engines.document.media.vlm.vlm_utils as vutils
+        real_cov = vutils.transcription_coverage
+        monkeypatch.setattr(
+            document_pipeline, "_vlm_cov_fn",
+            lambda output, truth: real_cov(output, truth) if truth else None,
+        )
+
+        doc = _doc("pdf")
+        result = await document_pipeline._vlm_transcribe_pages(
+            document=doc,
+            pages=[(b"jpg", 1)],
+            vlm_client=_Scripted(),
+            vlm_model_name="qwen3-vl",
+            splitting_config={},
+            processor=None,
+            _logger=_TEST_LOGGER,
+            split=False,
+            truth_texts=[truth_full],
+        )
+        assert calls["n"] == 2, "低覆盖应触发恰好一次重试"
+        assert truth_full in result.full_text, "应取高覆盖的重试产出"
+        assert result.metadata["vlm_page_coverages"] and result.metadata["vlm_page_coverages"][0] >= 0.95
+
+    @pytest.mark.asyncio
+    async def test_no_truth_pages_get_none_coverage(self, monkeypatch):
+        """无真值（truth_texts=None）：覆盖率记 None，不触发重试。"""
+        calls = {"n": 0}
+
+        class _Counting:
+            async def generate_text(self, prompt, **kwargs):
+                calls["n"] += 1
+                return "无真值页转写"
+
+        result = await document_pipeline._vlm_transcribe_pages(
+            document=_doc("pdf"),
+            pages=[(b"jpg", 1)],
+            vlm_client=_Counting(),
+            vlm_model_name="qwen3-vl",
+            splitting_config={},
+            processor=None,
+            _logger=_TEST_LOGGER,
+            split=False,
+            truth_texts=None,
+        )
+        assert calls["n"] == 1, "无真值不应重试"
+        assert result.metadata["vlm_page_coverages"] == [None]
+
+    @pytest.mark.asyncio
+    async def test_persistent_low_coverage_marked_not_failed(self, monkeypatch):
+        """重试后仍不达标：不失败，元数据记录低覆盖（失败方向安全）。"""
+        monkeypatch.setattr(document_pipeline, "_vlm_cov_fn", lambda out, truth: 0.4 if truth else None)
+        calls = {"n": 0}
+
+        class _Always:
+            async def generate_text(self, prompt, **kwargs):
+                calls["n"] += 1
+                return "稀疏输出"
+
+        doc = _doc("pdf")
+        result = await document_pipeline._vlm_transcribe_pages(
+            document=doc,
+            pages=[(b"jpg", 1), (b"jpg2", 2)],
+            vlm_client=_Always(),
+            vlm_model_name="qwen3-vl",
+            splitting_config={},
+            processor=None,
+            _logger=_TEST_LOGGER,
+            split=False,
+            truth_texts=["第一页真值" * 30, "第二页真值" * 30],
+        )
+        covs = result.metadata["vlm_page_coverages"]
+        assert len(covs) == 2 and all(c is not None and c < 0.95 for c in covs)
+        assert calls["n"] == 4, "每页低覆盖触发一次重试（2×2）"
+        assert result.full_text, "低覆盖不失败，产出仍入库"
 
 
 class TestPageImageUpload:
