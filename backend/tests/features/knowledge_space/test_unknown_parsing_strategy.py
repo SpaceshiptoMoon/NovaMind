@@ -35,6 +35,7 @@ class TestResolveTextParsingStrategy:
         ({"strategy": "default"}, "default"),
         ({"strategy": "deepdoc"}, "deepdoc"),
         ({"strategy": "external_ocr"}, "external_ocr"),
+        ({"strategy": "vlm"}, "vlm"),
     ])
     def test_legal_values_pass_through(self, raw, expected):
         assert resolve_text_parsing_strategy(raw, document_id=1) == expected

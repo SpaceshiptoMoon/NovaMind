@@ -119,6 +119,29 @@ def test_resolve_strategy_accepts_mineru():
     assert resolve_text_parsing_strategy({"strategy": "mineru"}, document_id=1) == "mineru"
 
 
+def test_resolve_strategy_accepts_vlm():
+    """resolve_text_parsing_strategy 接受 vlm（VLM 文档转写线）。"""
+    from novamind.features.knowledge_space.services.document_pipeline import (
+        resolve_text_parsing_strategy,
+    )
+    assert resolve_text_parsing_strategy({"strategy": "vlm"}, document_id=1) == "vlm"
+
+
+def test_pdf_schema_accepts_vlm_strategy():
+    """pdf×vlm schema 接受 + 运行时直通（VLM 文档转写线）。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        PdfParsingConfig,
+        build_runtime_parsing_config,
+    )
+    cfg = PdfParsingConfig.model_validate({"strategy": "vlm", "vlm_model": "qwen3-vl"})
+    assert cfg.strategy == "vlm"
+    rc = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "vlm", "vlm_model": "qwen3-vl"}}}, file_type="pdf"
+    )
+    assert rc["strategy"] == "vlm"
+    assert rc["pdf_vlm_model"] == "qwen3-vl"
+
+
 def test_pdf_schema_accepts_mineru_strategy():
     """schema 接受 strategy=mineru 且运行时配置传播不丢。"""
     cfg = PdfParsingConfig(strategy="mineru")

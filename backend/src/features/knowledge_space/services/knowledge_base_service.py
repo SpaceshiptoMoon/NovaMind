@@ -37,6 +37,8 @@ _KB_LLM_MODEL_PATHS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
     (("wiki", "llm", "model"), "llm", "Wiki 生成", True),
     (("question_generation", "llm", "model"), "llm", "假设问题生成", True),
     (("parsing", "image", "vlm_model"), "vlm", "图片 VLM 描述", False),
+    (("parsing", "text", "pdf", "vlm_model"), "vlm", "PDF VLM 转写", False),
+    (("parsing", "text", "ppt", "vlm_model"), "vlm", "PPT VLM 转写", False),
     (("parsing", "video", "vlm_model"), "vlm", "视频 VLM 描述", False),
     (("parsing", "video", "steps_llm_model"), "llm", "视频分镜", False),
     (("parsing", "video", "narrative_llm_model"), "llm", "视频解说", False),

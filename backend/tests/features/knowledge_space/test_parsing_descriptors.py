@@ -52,9 +52,12 @@ class TestFormats:
 
 class TestStrategyExtraction:
     def test_pdf_strategy_baseline(self):
-        """策略基线：新增解析策略时必须有意识地更新此清单（门禁测试）。"""
+        """策略基线：新增解析策略时必须有意识地更新此清单（门禁测试）。
+
+        双策略恢复（2026-11-25）+ VLM 转写线：default（Python 文字层）+
+        deepdoc（融合，默认）+ 外部显式策略 + vlm（逐页图→md）。"""
         strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
-        assert strategies["pdf"] == ["default", "deepdoc", "external_ocr", "mineru"]
+        assert strategies["pdf"] == ["default", "deepdoc", "external_ocr", "mineru", "vlm"]
 
     def test_common_text_types_default_and_deepdoc(self):
         strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
@@ -63,8 +66,13 @@ class TestStrategyExtraction:
 
     def test_deepdoc_only_types(self):
         strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
-        for key in ("excel", "ppt", "epub"):
+        for key in ("excel", "epub"):
             assert strategies[key] == ["deepdoc"], f"{key} 应为 deepdoc-only"
+
+    def test_ppt_deepdoc_and_vlm(self):
+        """PPT 双策略（2026-11-25 VLM 转写线）：deepdoc 文本抽取 + vlm 逐页转写。"""
+        strategies = _extract_parsing_strategies(TextParsingConfig.model_fields)
+        assert strategies["ppt"] == ["deepdoc", "vlm"]
 
 
 class TestSplittingLimits:

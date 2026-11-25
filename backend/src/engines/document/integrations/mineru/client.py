@@ -92,8 +92,10 @@ def parse_pdf_sync(
     if not config.cli_path:
         raise MineruNotAvailableError(
             "MinerU 引擎未配置：请在配置文件 mineru.cli_path 填入 MinerU 独立环境的"
-            " mineru 可执行文件路径。安装方式：uv venv <venv> && uv pip install "
-            '--python <venv> "mineru[core]"；并用 <venv>/mineru server start 启动本地解析服务'
+            " mineru 可执行文件路径。安装方式（MinerU 4.x 无 core extra，本地模型"
+            "推理装 torch extra）：uv venv <venv> && uv pip install --python <venv> "
+            '"mineru[torch]" "torch>=2.10,<2.11"（torch 钉 cu12 系——2.11+ 默认 '
+            "cu13，与 GPU 栈不兼容）；并用 <venv>/mineru server start 启动本地解析服务"
         )
     cli = Path(config.cli_path)
     if not cli.is_file():

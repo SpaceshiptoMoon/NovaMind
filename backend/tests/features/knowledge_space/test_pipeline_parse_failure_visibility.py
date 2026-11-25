@@ -212,29 +212,14 @@ def _make_parse_result(full_text: str, *, plain_sections=None, bboxes=None, page
     )
 
 
-def test_empty_parse_plain_mode_suggests_full():
-    """plain 模式仅抽文字层、未做 OCR，0 字符（扫描件/图片 PDF）→ 抛错并建议改用 full。"""
-    parse_result = _make_parse_result("", pages=120, pdf_mode="plain")
-    with pytest.raises(DocumentProcessingError, match="plain") as ei:
-        document_pipeline._raise_on_empty_parse(
-            full_text="",
-            parse_result=parse_result,
-            parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"},
-            document_id=96,
-            file_type="pdf",
-        )
-    assert "改用 full" in ei.value.error_message
-    assert "120" in ei.value.error_message
-
-
-def test_empty_parse_full_mode_suggests_ocr_check():
-    """full 模式逐框文字层/OCR 融合后仍 0 字符 → 抛错并提示检查 OCR 模型/ocr_sources。"""
+def test_empty_parse_fusion_mode_suggests_ocr_check():
+    """文字层/OCR 融合（PDF 唯一内置策略）仍 0 字符 → 抛错并提示检查 OCR 模型/ocr_sources。"""
     parse_result = _make_parse_result("", pages=120, pdf_mode="full", ocr_sources=[])
-    with pytest.raises(DocumentProcessingError, match="full") as ei:
+    with pytest.raises(DocumentProcessingError, match="融合") as ei:
         document_pipeline._raise_on_empty_parse(
             full_text="",
             parse_result=parse_result,
-            parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "full"},
+            parsing_config={"strategy": "deepdoc"},
             document_id=96,
             file_type="pdf",
         )
@@ -255,18 +240,36 @@ def test_non_empty_parse_does_not_raise():
     )
 
 
-def test_empty_parse_default_strategy_no_pdf_mode():
-    """default 策略下 0 字符也应抛错并建议改用 full（mode_desc 退化为 strategy）。"""
+def test_empty_parse_zero_chars_reports_fusion_and_strategy():
+    """PDF 0 字符报错带融合文案与策略名（deepdoc 策略）。"""
     parse_result = SimpleNamespace(full_text="   ", chunks=[], metadata={})
-    with pytest.raises(DocumentProcessingError, match="default") as ei:
+    with pytest.raises(DocumentProcessingError, match="融合") as ei:
         document_pipeline._raise_on_empty_parse(
             full_text="   ",
             parse_result=parse_result,
-            parsing_config={"strategy": "default"},
+            parsing_config={"strategy": "deepdoc"},
             document_id=96,
             file_type="pdf",
         )
-    assert "改用 full" in ei.value.error_message
+    assert "strategy=deepdoc" in ei.value.error_message
+
+
+def test_empty_parse_pdf_default_strategy_points_to_deepdoc():
+    """回归（2026-11-25 双策略恢复）：PDF default 策略 0 字符时文案指向
+    deepdoc 切换（大概率是扫描件），而不是 OCR 模型排查。"""
+    parse_result = SimpleNamespace(full_text="", chunks=[], metadata={})
+    with pytest.raises(DocumentProcessingError) as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="",
+            parse_result=parse_result,
+            parsing_config={"strategy": "default"},
+            document_id=97,
+            file_type="pdf",
+        )
+    msg = ei.value.error_message
+    assert "default 策略" in msg and "纯文字层" in msg
+    assert "deepdoc" in msg and "扫描件" in msg
+    assert "OCR 模型是否就绪" not in msg
 
 
 def test_empty_parse_non_pdf_uses_generic_hint_without_ocr_advice():

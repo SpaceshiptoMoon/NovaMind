@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.document.contracts import (
+    page_image_object_name,
     region_placeholder_of,
     replace_figure_placeholders,
 )
@@ -78,7 +79,7 @@ if TYPE_CHECKING:
 # 文本文档解析策略合法值域（与 schema PdfParsingConfig/TextParsingConfig 的
 # Literal 对齐；schema 校验正常拦截脏值，此处防御绕过 schema 的存量脏数据，
 # 如手改 DB）。图片等非文本模态的 strategy 走各自分发，不经此函数。
-_TEXT_PARSING_STRATEGIES = frozenset({"default", "deepdoc", "external_ocr", "mineru"})
+_TEXT_PARSING_STRATEGIES = frozenset({"default", "deepdoc", "external_ocr", "mineru", "vlm"})
 
 
 def resolve_text_parsing_strategy(parsing_config: dict[str, Any], document_id: int) -> str:
@@ -93,7 +94,7 @@ def resolve_text_parsing_strategy(parsing_config: dict[str, Any], document_id: i
         document_id: 文档 id，用于异常上下文。
 
     Returns:
-        合法策略名（default / deepdoc / external_ocr）。
+        合法策略名（default / deepdoc / external_ocr / mineru / vlm）。
 
     Raises:
         PermanentProcessingError: 策略名不在合法值域（重试不可能成功）。
@@ -120,21 +121,20 @@ def _raise_on_empty_parse(
 ) -> None:
     """解析跑完但 0 字符 → 抛 DocumentProcessingError，不静默当成功。
 
-    文案按格式分化——"检查 OCR 模型 / 改用 full 模式"只对 PDF 成立（文字层 + OCR
-    回退是 PDF 解析器的能力面）；其它格式（txt/docx/ofd/eml…）0 字符意味着源文件
+    文案按格式分化——"检查 OCR 模型"只对 PDF 成立（文字层 + OCR 融合是 PDF
+    唯一内置策略的能力面）；其它格式（txt/docx/ofd/eml…）0 字符意味着源文件
     本身没有可提取正文，给 PDF 文案会把用户引向无关的 OCR 排查（doc 952 空 OFD
     夹具实测误导）。
 
-    PDF：full 模式（上游对齐的逐框融合：文字层 + OCR 回退）跑完仍 0 字符，意味着
-    文字层为空且 OCR 也未识别到文字——可能是 OCR 模型未就绪或页面本就是纯无字图片。
-    plain 模式 / default 策略仅抽文字层，0 字符意味着无文字层（扫描件），建议切 full。
+    PDF：文字层+OCR 融合（唯一内置策略）跑完仍 0 字符，意味着文字层为空且 OCR
+    也未识别到文字——可能是 OCR 模型未就绪或页面本就是纯无字图片。
 
-    守"没选就不兜底"原则：不自动回退到其它模式，由用户显式切换（保证解析路径可追踪）。
+    守"没选就不兜底"原则：不自动回退到其它策略，由用户显式切换（保证解析路径可追踪）。
 
     Args:
         full_text: 解析产出全文。
         parse_result: 解析结果对象（取 metadata 诊断信息）。
-        parsing_config: 文本解析配置（strategy / deepdoc_pdf_mode）。
+        parsing_config: 文本解析配置（strategy）。
         document_id: 文档 ID。
         file_type: 文档扩展名（小写），决定文案走 PDF 分支还是通用分支；None 视作非 PDF。
     """
@@ -142,31 +142,40 @@ def _raise_on_empty_parse(
         return
     meta = parse_result.metadata or {}
     pages = meta.get("pages")
-    strategy = parsing_config.get("strategy", "default")
-    pdf_mode = meta.get("pdf_mode") or parsing_config.get("deepdoc_pdf_mode") or ""
-    mode_desc = f"{strategy}/{pdf_mode}" if pdf_mode else strategy
+    strategy = parsing_config.get("strategy", "deepdoc")
     ext = (file_type or "").lower()
     if ext != "pdf":
         label = f"{ext} 文档" if ext else "文档"
         hint = (
-            f"解析抽出 0 字符：{label}经 {mode_desc} 策略解析后没有任何文本内容。"
+            f"解析抽出 0 字符：{label}经 {strategy} 策略解析后没有任何文本内容。"
             f"源文件可能本身没有可提取的正文（空文档、仅占位结构或纯图片内容），"
             f"请检查文件内容是否正确。"
         )
-    elif pdf_mode == "plain" or strategy == "default":
-        hint = (
-            f"解析抽出 0 字符：{mode_desc} 模式仅抽取文字层、未做 OCR，"
-            f"但该 PDF（{pages or '?'} 页）文字层为空（疑似扫描件或图片 PDF）。"
-            f"建议将 PDF 解析器改用 full 模式（含逐框文字层/OCR 融合）以获取文本。"
-        )
     else:
         ocr_sources = meta.get("ocr_sources") or []
-        hint = (
-            f"解析抽出 0 字符：{mode_desc} 模式已完成逐框文字层/OCR 融合仍无文本"
-            f"（pages={pages or '?'}, ocr_sources={ocr_sources}）——"
-            f"文字层为空且 OCR 未识别到文字。请检查 OCR 模型是否就绪"
-            f"（运行 scripts/download_deepdoc_models.py --check）或确认页面非纯无字图片。"
-        )
+        if strategy == "default":
+            # default = Python 库纯文字层：0 字符几乎必然是无文字层的扫描件——
+            # 指向 deepdoc 策略而非 OCR 模型排查
+            hint = (
+                f"解析抽出 0 字符：PDF 走 default 策略（Python 库纯文字层提取）"
+                f"未提取到文字层（pages={pages or '?'}）——该文件大概率是扫描件/"
+                f"图片型 PDF。请在知识库配置中把 PDF 解析策略切换为 deepdoc"
+                f"（文字层+OCR 融合，扫描件适用），或改用外部 OCR。"
+            )
+        elif strategy == "vlm":
+            hint = (
+                f"解析抽出 0 字符：VLM 转写线产出为空"
+                f"（strategy=vlm, pages={pages or '?'}）——所有页面均未得到可入库"
+                f"内容。请检查 VLM 模型是否可用（配置中心 vlm 段连通性）、或换用"
+                f"deepdoc/外部 OCR 策略。"
+            )
+        else:
+            hint = (
+                f"解析抽出 0 字符：PDF 已完成文字层/OCR 融合解析仍无文本"
+                f"（strategy={strategy}, pages={pages or '?'}, ocr_sources={ocr_sources}）——"
+                f"文字层为空且 OCR 未识别到文字。请检查 OCR 模型是否就绪"
+                f"（运行 scripts/download_deepdoc_models.py --check）或确认页面非纯无字图片。"
+            )
     raise PermanentProcessingError(document_id=document_id, error_message=hint)
 
 
@@ -500,7 +509,6 @@ async def execute_document_pipeline(
         file_type=document.file_type,
         parsing_strategy=parsing_config.get("strategy", "default"),
         deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
-        deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
         vlm_description_enabled=parsing_config.get("vlm_description_enabled", False),
         splitting_strategy=splitting_config.get("strategy", "recursive"),
         splitting_chunk_size=splitting_config.get("chunk_size", 1000),
@@ -533,6 +541,19 @@ async def execute_document_pipeline(
             parse_config=parsing_config,
             splitting_config=splitting_config,
             processor=processor,
+            _logger=_logger,
+        )
+    elif parsing_strategy == "vlm":
+        # VLM 文档转写线（pdf/ppt 共入）：逐页视觉化 → 页图入 MinIO →
+        # VLM 逐页转写 markdown。图片类型的 vlm_doc 走图片分发口，不经此。
+        parse_result = await _parse_pdf_with_vlm_static(
+            document=document,
+            file_content=file_content,
+            file_path=file_path,
+            parse_config=parsing_config,
+            splitting_config=splitting_config,
+            processor=processor,
+            model_config_port=model_config_port,
             _logger=_logger,
         )
     else:
@@ -1088,6 +1109,34 @@ async def _process_image_document_static(
             _logger=_logger,
             ocr_task=image_nested_cfg.get("ocr_task"),
         )
+    elif image_strategy == "vlm_doc":
+        # VLM 文档转写：图片即单页文档页 → 转写为 markdown（文档数字化语义，
+        # 与 vlm 描述语义正交）。共用 pdf/ppt 的逐页转写核心；页图即原图
+        # （上传时已入 MinIO，不再重复存页图）。
+        if not image_vlm_model:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message="vlm_doc 策略需要 VLM 模型：请在知识库解析配置中选择模型",
+            )
+        if model_config_port is None:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message="模型配置服务不可用，无法解析 VLM 客户端（内部错误）",
+            )
+        vlm_client = await model_config_port.get_vlm_client_by_model(
+            document.uploader_id, image_vlm_model
+        )
+        result = await _vlm_transcribe_pages(
+            document=document,
+            pages=[(file_content or b"", 1)],
+            vlm_client=vlm_client,
+            vlm_model_name=image_vlm_model,
+            splitting_config={},
+            processor=None,
+            _logger=_logger,
+            split=False,
+        )
+        description_text = result.full_text
     elif image_strategy == "combined":
         # OCR + VLM caption 合并：逐字层（图中文字/实体）双通道交叉、语义层来自
         # caption，重叠以 OCR 全文为准去重。VLM 失败时降级纯 OCR（失败方向安全：
@@ -1365,19 +1414,39 @@ async def _process_image_ocr_external_static(
     return text
 
 
-def _guard_pdf_payload(content: bytes, *, document: Document, strategy: str) -> None:
-    """外部 PDF 解析分支的前置载荷快检（魔数 + 打开密码），失败即终态。
+def _guard_pdf_payload(
+    content: bytes, *, document: Document, strategy: str, file_type: str = "pdf"
+) -> None:
+    """外部 PDF/PPT 解析分支的前置载荷快检（魔数 + 打开密码），失败即终态。
 
-    external_ocr/mineru 把原始字节直交外部服务/子进程，坏文档会白耗外部
-    算力后才失败；deepdoc 分支的同款防线在 pdf.py 入口，此处对齐。只做
+    external_ocr/mineru/vlm 把原始字节直交外部服务/子进程/VLM，坏文档会白耗
+    外部算力后才失败；deepdoc 分支的同款防线在 pdf.py 入口，此处对齐。只做
     零成本快检，不替代外部引擎自身的文件校验。
 
+    Args:
+        file_type: ppt/pptx 走 OOXML zip 魔数快检并跳过 PDF 打开密码检查
+            （转换交 soffice，加密 pptx 由其报错）；其余按 PDF 检查。
+
     Raises:
-        PermanentProcessingError: 非 PDF 魔数（伪格式/损坏包，重试无益）
+        PermanentProcessingError: 魔数不符（伪格式/损坏包，重试无益）
             或 needs_pass 加密（打开密码，页数据不可访问）。权限密码
             （owner password）不拦，与 pdf.py 判据一致。
     """
     import fitz
+
+    if file_type in ("ppt", "pptx"):
+        # OOXML（pptx）为 PK zip；老 .ppt 为 OLE2 头。只做存在性快检，
+        # 结构合法性交 soffice 转换报错
+        stripped = content.lstrip()
+        if not (stripped.startswith(b"PK") or stripped.startswith(b"\xd0\xcf\x11\xe0")):
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message=(
+                    f"解析策略 {strategy} 仅支持 PPT/PPTX，但文件内容不是"
+                    " PowerPoint 文档（魔数缺失，可能是其它格式改名或文件损坏）"
+                ),
+            )
+        return
 
     if not content.lstrip().startswith(b"%PDF-"):
         raise PermanentProcessingError(
@@ -1573,6 +1642,295 @@ async def _parse_pdf_with_mineru_static(
         page_count=result.page_count,
         char_count=len(full_text),
         chunk_count=len(chunks),
+    )
+    return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+
+
+# VLM 转写线的单页并发上限：页间相互独立，4 并发在单用户配置中心的 VLM
+# 速率限制内已足够；页序由 gather 前的索引映射保证，不依赖完成顺序。
+_VLM_TRANSCRIBE_CONCURRENCY = 4
+# 页标记契约与 mineru 产物一致（<!-- page N of M -->），入库前剥除
+_VLM_PAGE_MARK = re.compile(r"<!--\s*page\s+\d+\s+of\s+(\d+)\s*-->")
+
+
+async def _upload_vlm_page_images(
+    document: Document,
+    pages: list[tuple[bytes, int]],
+    _logger,
+) -> None:
+    """把 VLM 转写线的页图持久化到 MinIO（{base}_pages/page_NNNN.jpg）。
+
+    页图是辅助产物（重解析/审计用）：storage 无 minio 锚点时告警跳过，
+    不阻断解析主链（失败方向安全：产物缺失 ≠ 解析失败）。
+
+    Args:
+        document: 文档行（storage 携带 minio_object_name 锚点）。
+        pages: [(页图 JPEG 字节, 页号从 1 起)]。
+        _logger: 结构化日志器。
+    """
+    storage = dict(document.storage or {})
+    base = storage.get("minio_object_name")
+    if not base:
+        _logger.warning(
+            "VLM 页图未持久化：文档缺少 MinIO 锚点",
+            document_id=document.id,
+        )
+        return
+    from novamind.engines.document.contracts import page_image_object_name as _obj_name
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    minio_client = await ClientFactory.get_minio_client()
+    uploaded = 0
+    for page_bytes, page_number in pages:
+        object_name = _obj_name(base, page_number)
+        try:
+            await minio_client.upload_file(object_name, page_bytes, "image/jpeg")
+            uploaded += 1
+        except Exception as exc:  # noqa: BLE001 - 单页上传失败不阻断解析主链
+            _logger.warning(
+                "VLM 页图上传失败（跳过）",
+                document_id=document.id,
+                page=page_number,
+                error=str(exc),
+            )
+    if storage.get("pages_object_dir") != f"{base}_pages":
+        document.storage = {**storage, "pages_object_dir": f"{base}_pages"}
+    _logger.info(
+        "VLM 页图已持久化",
+        document_id=document.id,
+        uploaded=uploaded,
+        total=len(pages),
+    )
+
+
+async def _parse_pdf_with_vlm_static(
+    document: Document,
+    file_content: bytes | None,
+    file_path: str | None,
+    parse_config: dict[str, Any],
+    splitting_config: dict[str, Any],
+    processor,
+    model_config_port,
+    _logger,
+):
+    """VLM 文档转写线入口（pdf/ppt 共用）：视觉化 → 页图入 MinIO → 逐页转写。
+
+    视觉化：pdf 直接逐页渲染（fitz）；ppt/pptx 先 soffice 转 PDF 再渲染
+    （环境缺 soffice → 终态失败并给安装指引）。模型名按文件类型取对应
+    直通键（pdf_vlm_model / ppt_vlm_model），留空 → 终态失败要求显式选择。
+
+    Args:
+        document: 文档行。
+        file_content: 文件字节（inline 上传路径）。
+        file_path: worker 落盘路径（二选一）。
+        parse_config: 运行时解析配置。
+        splitting_config: 用户切分配置。
+        processor: DocumentProcessor（切分链）。
+        model_config_port: 模型配置服务（VLM 客户端解析）。
+        _logger: 结构化日志器。
+
+    Returns:
+        DeepDocParseResult（full_text/chunks/metadata），与 external 分支同构。
+    """
+    from novamind.engines.document.converters.ppt_converter import (
+        PptConversionError,
+        convert_ppt_to_pdf,
+    )
+    from novamind.engines.document.media.ocr.qwen import render_pdf_page_images
+
+    file_type = (document.file_type or "pdf").lower()
+    if file_path:
+        content = await asyncio.to_thread(Path(file_path).read_bytes)
+    else:
+        content = file_content or b""
+    _guard_pdf_payload(content, document=document, strategy="vlm", file_type=file_type)
+
+    # 模型名按文件类型取直通键（pdf/ppt 分别注入，避免与 image 平面 vlm_model 交叉）
+    model_key = "ppt_vlm_model" if file_type in ("ppt", "pptx") else "pdf_vlm_model"
+    vlm_model_name = str(parse_config.get(model_key) or "")
+    if not vlm_model_name:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"VLM 转写未选择模型：请在知识库解析配置中为"
+                f"{'PPT' if file_type in ('ppt', 'pptx') else 'PDF'} 的 VLM 策略"
+                f"选择 VLM 模型（配置中心 vlm 类型），不做默认回退"
+            ),
+        )
+    if model_config_port is None:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message="模型配置服务不可用，无法解析 VLM 客户端（内部错误）",
+        )
+    vlm_client = await model_config_port.get_vlm_client_by_model(
+        document.uploader_id, vlm_model_name
+    )
+
+    # 视觉化：ppt 先 soffice 转 PDF（缺 soffice → 终态失败带安装指引），再统一逐页渲染
+    if file_type in ("ppt", "pptx"):
+        try:
+            content = await convert_ppt_to_pdf(content, document.filename or "input.pptx")
+        except PptConversionError as exc:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message=f"PPT 视觉化失败（不可重试）：{exc}",
+            ) from exc
+    try:
+        rendered = await asyncio.to_thread(render_pdf_page_images, content, 144)
+    except Exception as exc:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=f"PDF 页渲染失败（不可重试）：{exc}",
+        ) from exc
+    # render 返回 [(bytes, 0基页号)] → 统一 1 基
+    pages = [(blob, idx + 1) for blob, idx in rendered]
+    _logger.info(
+        "VLM 转写视觉化完成",
+        document_id=document.id,
+        file_type=file_type,
+        page_count=len(pages),
+        vlm_model=vlm_model_name,
+    )
+    # 页图持久化（辅助产物，失败不阻断）
+    await _upload_vlm_page_images(document, pages, _logger)
+
+    return await _vlm_transcribe_pages(
+        document=document,
+        pages=pages,
+        vlm_client=vlm_client,
+        vlm_model_name=vlm_model_name,
+        splitting_config=splitting_config,
+        processor=processor,
+        _logger=_logger,
+    )
+
+
+async def _vlm_transcribe_pages(
+    document: Document,
+    pages: list[tuple[bytes, int]],
+    vlm_client,
+    vlm_model_name: str,
+    splitting_config: dict[str, Any],
+    processor,
+    _logger,
+    *,
+    split: bool = True,
+):
+    """VLM 逐页转写核心：并发受控、页序保持、页标记契约与 mineru 对齐。
+
+    Args:
+        document: 文档行。
+        pages: [(页图 JPEG 字节, 页号从 1 起)]。
+        vlm_client: 已解析的 VLM 客户端（BaseLLM）。
+        vlm_model_name: 模型名（进 metadata 与日志）。
+        splitting_config: 用户切分配置。
+        processor: DocumentProcessor（切分链）。
+        _logger: 结构化日志器。
+
+    Args:
+        split: 是否在核心内完成用户切分（pdf/ppt True；图片流 False——下游
+            run_post_parse_tail 统一切分，传 processor=None）。
+
+    Returns:
+        DeepDocParseResult（full_text/chunks/metadata；split=False 时 chunks 为空）。
+
+    Raises:
+        DocumentProcessingError: 任一页转写失败/空产出（可重试）。
+    """
+    from novamind.engines.document.integrations.deepdoc.core.models import (
+        DeepDocParseResult,
+    )
+    from novamind.shared.prompts.prompt_manager import PromptManager
+
+    total = len(pages)
+    prompt = PromptManager.get_template("vlm_transcribe_page")
+    semaphore = asyncio.Semaphore(_VLM_TRANSCRIBE_CONCURRENCY)
+
+    async def _transcribe_one(page_bytes: bytes, page_number: int) -> tuple[int, str]:
+        # 大页图先降采样（与图片线同一 VLM 输入口径）
+        small, down_mime = _downscale_image_for_vlm(page_bytes)
+        mime = down_mime or "image/jpeg"
+        messages = build_vlm_image_messages(file_bytes=small, mime_type=mime, text_prompt=prompt)
+        async with semaphore:
+            try:
+                text = await generate_vlm_text_with_fallback(
+                    vlm_client=vlm_client,
+                    messages=messages,
+                    max_tokens=8192,
+                    temperature=0.1,
+                    logger=_logger,
+                    vlm_model=vlm_model_name,
+                    log_context={"document_id": document.id, "page": page_number},
+                )
+            except Exception as exc:
+                raise RuntimeError(f"第 {page_number} 页 VLM 调用失败: {exc}") from exc
+        return page_number, (text or "").strip()
+
+    try:
+        results = await asyncio.gather(
+            *(_transcribe_one(blob, num) for blob, num in pages)
+        )
+    except Exception as exc:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"VLM 转写失败（可重试）：{exc}，模型={vlm_model_name}",
+        ) from exc
+    by_page = dict(results)
+    missing = [num for num in range(1, total + 1) if not by_page.get(num)]
+    if missing:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"VLM 转写失败（可重试）：第 {missing} 页未产出内容"
+                f"（空返回），模型={vlm_model_name}"
+            ),
+        )
+
+    # 拼接（页标记与 mineru 产物同契约）→ 提页数 → 剥标记
+    joined_parts = []
+    for blob, num in pages:
+        page_block = "<!-- page {num} of {total} -->\n{text}".format(
+            num=num, total=total, text=by_page[num]
+        )
+        joined_parts.append(page_block)
+    full_text = "\n\n".join(joined_parts)
+    page_count = total
+    full_text = _VLM_PAGE_MARK.sub("", full_text).strip()
+    if not full_text:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"VLM 转写产出为空（共 {total} 页），模型={vlm_model_name}",
+        )
+
+    chunks: list[str] = []
+    chunk_structure_meta: list = []
+    split_strategy: str | None = None
+    if split:
+        split_items = await processor.split_text_items(
+            full_text,
+            strategy=str(splitting_config.get("strategy", "recursive")),
+            **extract_splitting_params(splitting_config),
+        )
+        chunks = [t for t, _meta in split_items]
+        chunk_structure_meta = [m for _t, m in split_items]
+        split_strategy = str(splitting_config.get("strategy", "recursive"))
+    metadata: dict[str, Any] = {
+        "parser": "vlm",
+        "file_type": (document.file_type or "pdf").lower(),
+        "vlm_page_count": page_count,
+        "vlm_model": vlm_model_name,
+    }
+    if split_strategy:
+        metadata["split_strategy"] = split_strategy
+    if any(chunk_structure_meta):
+        metadata["chunk_structure_meta"] = chunk_structure_meta
+    _logger.info(
+        "VLM 转写完成",
+        document_id=document.id,
+        page_count=page_count,
+        char_count=len(full_text),
+        chunk_count=len(chunks),
+        vlm_model=vlm_model_name,
     )
     return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
 

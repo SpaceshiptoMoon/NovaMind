@@ -164,7 +164,7 @@ class TextTypeParsingConfig(BaseModel):
 
 
 class DeepDocOnlyParsingConfig(BaseModel):
-    """Excel/PPT/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，
+    """Excel/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，
     运行时报 Unsupported file type），仅支持 deepdoc。"""
 
     model_config = ConfigDict(extra="ignore")
@@ -172,17 +172,37 @@ class DeepDocOnlyParsingConfig(BaseModel):
     strategy: Literal["deepdoc"] = Field(default="deepdoc")
 
 
+class PptParsingConfig(BaseModel):
+    """PPT 解析配置——deepdoc（python-pptx 文本抽取）或 vlm（soffice 转图后逐页
+    VLM 转写 markdown，版面/图表还原度高；需环境具备 soffice，缺失时任务终态
+    失败并给出安装指引）。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    strategy: Literal["deepdoc", "vlm"] = Field(default="deepdoc")
+    vlm_model: str | None = Field(
+        default=None,
+        description="VLM 模型名称（仅 strategy=vlm 消费）：留空解析时报错要求显式选择，不做默认回退",
+    )
+
+
 class PdfParsingConfig(TextTypeParsingConfig):
     """PDF parsing config.
 
-    strategy 除 default/deepdoc 外支持：
+    内置策略（2026-11-25 起恢复双策略）：
+    - default：Python 库纯文字层提取（pypdfium2 reader，快、零模型开销）——
+      仅适用电子版 PDF；文字层为空的扫描件会解析出 0 字符并显式报错，
+      提示改用 deepdoc。
+    - deepdoc（默认）：文字层+OCR 融合流水线（版面/表格/公式全开），扫描件
+      与电子版统一适用。零配置知识库落此策略，扫描件开箱即用。
+    strategy 另支持外部策略：
     - external_ocr：整本 PDF 交外部 OCR（配置中心 ocr 段，如 qwen3.5-ocr）
       识别后按用户切分配置继续分块。适用于文字层为空的扫描件/图片型 PDF。
     - mineru：交外部 MinerU 引擎（配置中心 mineru 段，独立环境 CLI 子进程）
       解析。引擎未安装时任务显式终态失败（见 mineru.cli_path 配置）。
     """
 
-    strategy: Literal["default", "deepdoc", "external_ocr", "mineru"] = Field(default="default")
+    strategy: Literal["default", "deepdoc", "external_ocr", "mineru", "vlm"] = Field(default="deepdoc")
     parser: PdfParserName | None = Field(default=None)
     # 仅 external_ocr 消费：document_parsing（整本直传，带版面结构）/
     # multi_lan（逐页渲图纯文本）；None 默认走 document_parsing
@@ -190,15 +210,19 @@ class PdfParsingConfig(TextTypeParsingConfig):
         default=None,
         description="外部 OCR 任务（仅 strategy=external_ocr 消费）：留空走 document_parsing",
     )
+    # 仅 strategy=vlm 消费：逐页图 → VLM 转写 markdown 的模型名（配置中心 vlm 类型）
+    vlm_model: str | None = Field(
+        default=None,
+        description="VLM 模型名称（仅 strategy=vlm 消费）：留空解析时报错要求显式选择，不做默认回退",
+    )
 
     @model_validator(mode="after")
     def validate_parser_usage(self):
-        # default 模式不用 parser（运行时 build_runtime_parsing_config 在
-        # strategy=default 时忽略 parser 字段，仅 deepdoc 时取用）。深度合并
-        # 会产生 strategy=default + 残留 parser 的组合——用户从 deepdoc 切回
-        # default 时未显式清 parser，旧值残留；运行时本就忽略该字段，此处自动
-        # 清空而非报错，避免 update 返回时 response 构造触发 500（KB 配置
-        # update 实测）。parser 原值仍在 DB，切回 deepdoc 时恢复。
+        # 非 deepdoc 策略不用 parser（运行时 build_runtime_parsing_config 仅
+        # deepdoc 时取用）。深度合并会产生 strategy=external_ocr/mineru + 残留
+        # parser 的组合——用户从 deepdoc 切走时未显式清 parser，旧值残留；运行时
+        # 本就忽略该字段，此处自动清空而非报错，避免 update 返回时 response 构造
+        # 触发 500。parser 原值仍在 DB，切回 deepdoc 时恢复。
         """非 deepdoc 策略时自动清空残留 parser 字段（防旧值触发响应构造 500）。"""
         if self.strategy != "deepdoc" and self.parser is not None:
             self.parser = None
@@ -213,7 +237,7 @@ class TextParsingConfig(BaseModel):
     pdf: PdfParsingConfig = Field(default_factory=PdfParsingConfig)
     docx: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
     excel: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
-    ppt: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
+    ppt: PptParsingConfig = Field(default_factory=PptParsingConfig)
     epub: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
     markdown: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
     html: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
@@ -230,6 +254,8 @@ class ImageParsingConfig(BaseModel):
 
     strategy:
     - "vlm": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）
+    - "vlm_doc": VLM 文档转写——把图片当作文档页转写为 markdown（标题层级/表格/
+      公式 LaTeX），适合截图型/照片型文档页；与 "vlm" 的描述语义正交
     - "deepdoc_ocr": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）
     - "combined": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/
       实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。
@@ -242,9 +268,10 @@ class ImageParsingConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["vlm", "deepdoc_ocr", "combined", "external_ocr"] = Field(
+    strategy: Literal["vlm", "vlm_doc", "deepdoc_ocr", "combined", "external_ocr"] = Field(
         default="vlm",
-        description="图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/"
+        description="图片解析策略：vlm(VLM描述)/vlm_doc(VLM文档转写为markdown)/"
+        "deepdoc_ocr(DeepDoc OCR文字提取)/"
         "combined(OCR+VLM 合并，逐字+语义双通道交叉校验)/external_ocr(外部 OCR 服务)",
     )
     # 仅 external_ocr 消费：document_parsing（PDF 整本直传，带版面结构）/
@@ -399,9 +426,7 @@ class ParsingConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["default", "deepdoc"] | None = Field(default=None)
     deepdoc_parser_id: LegacyDeepDocParserId | None = Field(default=None)
-    deepdoc_pdf_mode: Literal["full", "plain"] | None = Field(default=None)
     # 公式识别（pix2text-mfr）：None = 默认开启（模型就绪时识别 equation 区域输出 LaTeX），
     # 显式 False 关闭。模型缺失时解析器 WARNING 软降级（公式保留 OCR 文本）。
     deepdoc_formula_recognition: bool | None = Field(default=None)
@@ -443,24 +468,31 @@ class ParsingConfig(BaseModel):
             value["video"] = video_cfg
 
         # 迁移已移除的 PDF parser（docling/mineru/opendataloader/paddleocr/somark/
-        # tcadp 远程服务未实现；plain 已随前端「default/deepdoc 两选」收敛移除）
-        # → full，避免 schema 收紧后旧配置反序列化 500。
+        # tcadp 远程服务未实现；plain 已随单策略收敛移除）→ full，避免 schema
+        # 收紧后旧配置反序列化 500。
         _REMOVED_PDF_PARSERS = {
             "docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp", "plain",
         }
         # Excel/PPT/EPUB default 模式无 reader（DocumentRegistry 未注册，运行时
         # 报 Unsupported file type），旧配置 default 迁移到 deepdoc。
+        # PDF default（纯文字层）策略已移除——统一融合解析，显式 default 一并
+        # coerce 到 deepdoc。
         _DEEPDOC_ONLY_DOC_TYPES = ("excel", "ppt", "epub")
         text_cfg = value.get("text")
         if isinstance(text_cfg, dict):
             new_text = dict(text_cfg)
             text_changed = False
             pdf_cfg = text_cfg.get("pdf")
-            if isinstance(pdf_cfg, dict) and pdf_cfg.get("parser") in _REMOVED_PDF_PARSERS:
-                pdf_cfg = dict(pdf_cfg)
-                pdf_cfg["parser"] = "full"
-                new_text["pdf"] = pdf_cfg
-                text_changed = True
+            if isinstance(pdf_cfg, dict):
+                pdf_new = dict(pdf_cfg)
+                pdf_changed = False
+                if pdf_new.get("parser") in _REMOVED_PDF_PARSERS:
+                    pdf_new["parser"] = "full"
+                    pdf_changed = True
+                # strategy=default 重新合法（2026-11-25 恢复双策略），不再强转
+                if pdf_changed:
+                    new_text["pdf"] = pdf_new
+                    text_changed = True
             for doc_type in _DEEPDOC_ONLY_DOC_TYPES:
                 dt_cfg = text_cfg.get(doc_type)
                 if isinstance(dt_cfg, dict) and dt_cfg.get("strategy", "default") == "default":
@@ -487,7 +519,6 @@ class ParsingConfig(BaseModel):
             return value
 
         legacy = dict(value)
-        strategy = str(legacy.get("strategy", "default"))
         parser_id = legacy.get("deepdoc_parser_id")
         pdf_mode = legacy.get("deepdoc_pdf_mode")
         migrated_pdf_mode = (
@@ -497,10 +528,12 @@ class ParsingConfig(BaseModel):
         vlm_enabled = bool(legacy.get("vlm_description_enabled", False))
         vlm_model = legacy.get("vlm_model")
 
+        # 平面 strategy/deepdoc_pdf_mode 已随单策略收敛移除：旧平面配置按其
+        # 原始语义落 default（Python 文字层，2026-11-25 双策略恢复后回归原
+        # 行为）；曾显式选过 deepdoc（deepdoc_parser_id / strategy=deepdoc /
+        # deepdoc_pdf_mode）的由下方两个分支抬回 deepdoc 融合。
         migrated: dict[str, Any] = {
-            "strategy": strategy,
             "deepdoc_parser_id": parser_id,
-            "deepdoc_pdf_mode": migrated_pdf_mode,
             "deepdoc_formula_recognition": legacy.get("deepdoc_formula_recognition"),
             "text": {
                 "pdf": {"strategy": "default"},
@@ -545,11 +578,11 @@ class ParsingConfig(BaseModel):
             migrated["text"][doc_type]["strategy"] = "deepdoc"
             if parser_name is not None:
                 migrated["text"]["pdf"]["parser"] = parser_name
-        elif strategy == "deepdoc":
+        elif legacy.get("strategy") == "deepdoc" or migrated_pdf_mode:
+            # 旧 flat deepdoc 策略配置：落回 deepdoc 融合并补齐 parser="full"
+            # （plain/layout/vision 值全部收敛）
             migrated["text"]["pdf"]["strategy"] = "deepdoc"
-            # 旧配置可能只带 deepdoc_pdf_mode 没带 deepdoc_parser_id，按模式补 parser
-            if migrated_pdf_mode:
-                migrated["text"]["pdf"]["parser"] = migrated_pdf_mode
+            migrated["text"]["pdf"]["parser"] = "full"
 
         if vlm_enabled or vlm_model:
             migrated["image"] = {
@@ -568,17 +601,11 @@ class ParsingConfig(BaseModel):
                     merged_text[doc_type] = doc_config
                 merged["text"] = merged_text
                 continue
-            if key == "image" and current_value is not None:
-                merged["image"] = current_value
-                continue
-            if key == "video" and current_value is not None:
-                merged["video"] = current_value
-                continue
-            if key == "audio" and current_value is not None:
-                merged["audio"] = current_value
-                continue
-            if key == "deepdoc_pdf_mode":
-                # 保留迁移后的值（layout/vision → full），不被原始旧值覆盖
+            if key in {"strategy", "deepdoc_pdf_mode", "image", "video", "audio"}:
+                # strategy/deepdoc_pdf_mode 已废除（值由本迁移吸收）；image/video/
+                # audio 走上面的显式合并分支
+                if key in {"image", "video", "audio"} and current_value is not None:
+                    merged[key] = current_value
                 continue
             merged[key] = current_value
 
@@ -781,18 +808,13 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
     Runtime parsers still expect legacy keys such as:
     - strategy
     - deepdoc_parser_id
-    - deepdoc_pdf_mode
     - vlm_description_enabled
     - vlm_model
     """
     parsed = ParsingConfig.model_validate(parsing or {})
     result: dict[str, Any] = {}
-    if parsed.strategy is not None:
-        result["strategy"] = parsed.strategy
     if parsed.deepdoc_parser_id is not None:
         result["deepdoc_parser_id"] = parsed.deepdoc_parser_id
-    if parsed.deepdoc_pdf_mode is not None:
-        result["deepdoc_pdf_mode"] = parsed.deepdoc_pdf_mode
     if parsed.deepdoc_formula_recognition is not None:
         result["deepdoc_formula_recognition"] = parsed.deepdoc_formula_recognition
 
@@ -801,9 +823,6 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
 
     if not file_type:
         if parsed.deepdoc_parser_id is not None:
-            return result
-        if parsed.deepdoc_pdf_mode is not None:
-            result.setdefault("deepdoc_pdf_mode", parsed.deepdoc_pdf_mode)
             return result
 
     target_doc_type = normalized_file_type
@@ -843,10 +862,16 @@ def build_runtime_parsing_config(parsing: dict[str, Any] | None, file_type: str 
         pdf_cfg = text.pdf
         if pdf_cfg.strategy == "deepdoc" and pdf_cfg.parser:
             result["deepdoc_parser_id"] = PDF_PARSER_TO_LEGACY_ID[pdf_cfg.parser]
-            if pdf_cfg.parser in ("full", "plain"):
-                result["deepdoc_pdf_mode"] = pdf_cfg.parser
         elif pdf_cfg.strategy == "external_ocr" and pdf_cfg.ocr_task:
             result["pdf_ocr_task"] = pdf_cfg.ocr_task
+        elif pdf_cfg.strategy == "vlm" and pdf_cfg.vlm_model:
+            result["pdf_vlm_model"] = pdf_cfg.vlm_model
+    elif target_doc_type == "ppt":
+        ppt_cfg = text.ppt
+        if ppt_cfg.strategy == "vlm" and ppt_cfg.vlm_model:
+            result["ppt_vlm_model"] = ppt_cfg.vlm_model
+        elif ppt_cfg.strategy == "deepdoc":
+            result["deepdoc_parser_id"] = "ppt"
     elif text_cfg.strategy == "deepdoc":
         result["deepdoc_parser_id"] = target_doc_type
 

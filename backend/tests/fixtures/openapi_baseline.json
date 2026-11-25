@@ -1083,7 +1083,7 @@
         "type": "object"
       },
       "DeepDocOnlyParsingConfig": {
-        "description": "Excel/PPT/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，\n运行时报 Unsupported file type），仅支持 deepdoc。",
+        "description": "Excel/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，\n运行时报 Unsupported file type），仅支持 deepdoc。",
         "properties": {
           "strategy": {
             "const": "deepdoc",
@@ -3974,7 +3974,7 @@
         "type": "object"
       },
       "ImageParsingConfig": {
-        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。\n- \"external_ocr\": 外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字\n  再走文本 Embedding 索引（无需 VLM 模型，需配置 api_key）。PDF 走\n  document_parsing 整本直传（带版面结构），图片走 multi_lan 单图识别。",
+        "description": "Image parsing config.\n\nstrategy:\n- \"vlm\": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）\n- \"vlm_doc\": VLM 文档转写——把图片当作文档页转写为 markdown（标题层级/表格/\n  公式 LaTeX），适合截图型/照片型文档页；与 \"vlm\" 的描述语义正交\n- \"deepdoc_ocr\": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）\n- \"combined\": DeepDoc OCR + VLM 结构化 caption 合并入库——逐字层（图中文字/\n  实体）来自双通道交叉校验，语义层来自 caption；重叠内容以 OCR 全文为准去重。\n  需要 VLM 模型；OCR 为本地推理无配额。caption↔OCR 交叉校验产出幻觉信号\n  （warning-only，不改写入库文本）。\n- \"external_ocr\": 外部 OCR 服务（配置中心 ocr 段，如 qwen3.5-ocr）提取文字\n  再走文本 Embedding 索引（无需 VLM 模型，需配置 api_key）。PDF 走\n  document_parsing 整本直传（带版面结构），图片走 multi_lan 单图识别。",
         "properties": {
           "ocr_task": {
             "anyOf": [
@@ -3994,9 +3994,10 @@
           },
           "strategy": {
             "default": "vlm",
-            "description": "图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)/combined(OCR+VLM 合并，逐字+语义双通道交叉校验)/external_ocr(外部 OCR 服务)",
+            "description": "图片解析策略：vlm(VLM描述)/vlm_doc(VLM文档转写为markdown)/deepdoc_ocr(DeepDoc OCR文字提取)/combined(OCR+VLM 合并，逐字+语义双通道交叉校验)/external_ocr(外部 OCR 服务)",
             "enum": [
               "vlm",
+              "vlm_doc",
               "deepdoc_ocr",
               "combined",
               "external_ocr"
@@ -6326,21 +6327,6 @@
             ],
             "title": "Deepdoc Parser Id"
           },
-          "deepdoc_pdf_mode": {
-            "anyOf": [
-              {
-                "enum": [
-                  "full",
-                  "plain"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deepdoc Pdf Mode"
-          },
           "image": {
             "anyOf": [
               {
@@ -6350,21 +6336,6 @@
                 "type": "null"
               }
             ]
-          },
-          "strategy": {
-            "anyOf": [
-              {
-                "enum": [
-                  "default",
-                  "deepdoc"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Strategy"
           },
           "text": {
             "anyOf": [
@@ -6447,21 +6418,6 @@
             ],
             "title": "Deepdoc Parser Id"
           },
-          "deepdoc_pdf_mode": {
-            "anyOf": [
-              {
-                "enum": [
-                  "full",
-                  "plain"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deepdoc Pdf Mode"
-          },
           "image": {
             "anyOf": [
               {
@@ -6471,21 +6427,6 @@
                 "type": "null"
               }
             ]
-          },
-          "strategy": {
-            "anyOf": [
-              {
-                "enum": [
-                  "default",
-                  "deepdoc"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Strategy"
           },
           "text": {
             "anyOf": [
@@ -6563,7 +6504,7 @@
         "type": "object"
       },
       "PdfParsingConfig": {
-        "description": "PDF parsing config.\n\nstrategy 除 default/deepdoc 外支持：\n- external_ocr：整本 PDF 交外部 OCR（配置中心 ocr 段，如 qwen3.5-ocr）\n  识别后按用户切分配置继续分块。适用于文字层为空的扫描件/图片型 PDF。\n- mineru：交外部 MinerU 引擎（配置中心 mineru 段，独立环境 CLI 子进程）\n  解析。引擎未安装时任务显式终态失败（见 mineru.cli_path 配置）。",
+        "description": "PDF parsing config.\n\n内置策略（2026-11-25 起恢复双策略）：\n- default：Python 库纯文字层提取（pypdfium2 reader，快、零模型开销）——\n  仅适用电子版 PDF；文字层为空的扫描件会解析出 0 字符并显式报错，\n  提示改用 deepdoc。\n- deepdoc（默认）：文字层+OCR 融合流水线（版面/表格/公式全开），扫描件\n  与电子版统一适用。零配置知识库落此策略，扫描件开箱即用。\nstrategy 另支持外部策略：\n- external_ocr：整本 PDF 交外部 OCR（配置中心 ocr 段，如 qwen3.5-ocr）\n  识别后按用户切分配置继续分块。适用于文字层为空的扫描件/图片型 PDF。\n- mineru：交外部 MinerU 引擎（配置中心 mineru 段，独立环境 CLI 子进程）\n  解析。引擎未安装时任务显式终态失败（见 mineru.cli_path 配置）。",
         "properties": {
           "ocr_task": {
             "anyOf": [
@@ -6594,15 +6535,28 @@
             "title": "Parser"
           },
           "strategy": {
-            "default": "default",
+            "default": "deepdoc",
             "enum": [
               "default",
               "deepdoc",
               "external_ocr",
-              "mineru"
+              "mineru",
+              "vlm"
             ],
             "title": "Strategy",
             "type": "string"
+          },
+          "vlm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "VLM 模型名称（仅 strategy=vlm 消费）：留空解析时报错要求显式选择，不做默认回退",
+            "title": "Vlm Model"
           }
         },
         "title": "PdfParsingConfig",
@@ -6646,6 +6600,34 @@
           "module"
         ],
         "title": "PermissionResponse",
+        "type": "object"
+      },
+      "PptParsingConfig": {
+        "description": "PPT 解析配置——deepdoc（python-pptx 文本抽取）或 vlm（soffice 转图后逐页\nVLM 转写 markdown，版面/图表还原度高；需环境具备 soffice，缺失时任务终态\n失败并给出安装指引）。",
+        "properties": {
+          "strategy": {
+            "default": "deepdoc",
+            "enum": [
+              "deepdoc",
+              "vlm"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "vlm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "VLM 模型名称（仅 strategy=vlm 消费）：留空解析时报错要求显式选择，不做默认回退",
+            "title": "Vlm Model"
+          }
+        },
+        "title": "PptParsingConfig",
         "type": "object"
       },
       "QueryRewriteConfig": {
@@ -9042,7 +9024,7 @@
             "$ref": "#/components/schemas/PdfParsingConfig"
           },
           "ppt": {
-            "$ref": "#/components/schemas/DeepDocOnlyParsingConfig"
+            "$ref": "#/components/schemas/PptParsingConfig"
           },
           "txt": {
             "$ref": "#/components/schemas/TextTypeParsingConfig"
@@ -9642,8 +9624,15 @@
             "title": "Phone"
           },
           "role": {
-            "$ref": "#/components/schemas/RoleBrief",
-            "description": "用户系统角色"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBrief"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "用户系统角色，角色引用悬空时为 null"
           },
           "status": {
             "description": "用户状态，0为禁用，1为启用，2为封禁，3为已删除",
@@ -9673,7 +9662,6 @@
           "id",
           "username",
           "email",
-          "role",
           "status",
           "created_at"
         ],

@@ -14,7 +14,7 @@ class DocConversionError(RuntimeError):
     """Raised when a legacy .doc file cannot be converted to .docx."""
 
 
-def _find_soffice() -> str | None:
+def find_soffice() -> str | None:
     """定位 soffice 可执行文件：先查 PATH，再探测 Windows 常见安装路径；找不到返回 None。"""
     candidates = [
         shutil.which("soffice"),
@@ -30,7 +30,7 @@ def _find_soffice() -> str | None:
 
 def _convert_with_soffice(source_path: Path, target_dir: Path) -> bytes | None:
     """用 LibreOffice headless 转 .doc 为 .docx；未安装返回 None，转换失败抛 DocConversionError。"""
-    soffice = _find_soffice()
+    soffice = find_soffice()
     if not soffice:
         return None
 

@@ -156,7 +156,8 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
 
     assert runtime["strategy"] == "deepdoc"
     assert runtime["deepdoc_parser_id"] == "pdf_full"
-    assert runtime["deepdoc_pdf_mode"] == "full"
+    # 单策略收敛：deepdoc_pdf_mode 键已随 plain/full 模式机制移除
+    assert "deepdoc_pdf_mode" not in runtime
     # OCR 兜底已删除，runtime dict 不再携带 ocr_enabled 键
     assert "ocr_enabled" not in runtime
 
@@ -188,16 +189,14 @@ def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys
                 },
                 "docx": {"strategy": "deepdoc"},
             },
-            "strategy": "deepdoc",
             "deepdoc_parser_id": "docx",
-            "deepdoc_pdf_mode": None,
         },
         file_type="pdf",
     )
 
     assert runtime["strategy"] == "deepdoc"
     assert runtime["deepdoc_parser_id"] == "pdf_full"
-    assert runtime["deepdoc_pdf_mode"] == "full"
+    assert "deepdoc_pdf_mode" not in runtime
 
 
 def test_pdf_default_strategy_rejects_parser():
@@ -1190,6 +1189,34 @@ def test_runtime_parsing_config_external_ocr_strategy_passthrough():
         ParsingConfig.model_validate(
             {"image": {"strategy": "external_ocr", "ocr_task": "unknown_task"}}
         )
+
+
+def test_runtime_parsing_config_pdf_vlm_passthrough():
+    """pdf×vlm 直通 pdf_vlm_model；非 vlm 策略不落键（防脏值）。"""
+    runtime = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "vlm", "vlm_model": "qwen3-vl"}}}, file_type="pdf"
+    )
+    assert runtime["strategy"] == "vlm"
+    assert runtime["pdf_vlm_model"] == "qwen3-vl"
+    runtime2 = build_runtime_parsing_config(
+        {"text": {"pdf": {"strategy": "deepdoc", "vlm_model": "qwen3-vl"}}}, file_type="pdf"
+    )
+    assert "pdf_vlm_model" not in runtime2
+
+
+def test_runtime_parsing_config_ppt_vlm_passthrough():
+    """ppt×vlm 直通 ppt_vlm_model；pptx 归一 ppt 配置面；deepdoc 仍带 parser_id。"""
+    runtime = build_runtime_parsing_config(
+        {"text": {"ppt": {"strategy": "vlm", "vlm_model": "qwen3-vl"}}}, file_type="pptx"
+    )
+    assert runtime["strategy"] == "vlm"
+    assert runtime["ppt_vlm_model"] == "qwen3-vl"
+    runtime2 = build_runtime_parsing_config(
+        {"text": {"ppt": {"strategy": "deepdoc"}}}, file_type="pptx"
+    )
+    assert runtime2["strategy"] == "deepdoc"
+    assert runtime2["deepdoc_parser_id"] == "ppt"
+    assert "ppt_vlm_model" not in runtime2
 
 
 def test_runtime_parsing_config_pdf_external_ocr_passthrough():

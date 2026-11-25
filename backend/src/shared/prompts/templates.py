@@ -22,6 +22,8 @@ class PromptTemplate(Enum):
 
     # 图片描述（VLM）
     IMAGE_DESCRIPTION = "image_description"
+    # 文档页转写（VLM，pdf/ppt/图片 的 vlm 文档转写线）
+    VLM_TRANSCRIBE_PAGE = "vlm_transcribe_page"
 
     # 视频帧描述（VLM）
     VIDEO_FRAME_DESCRIPTION = "video_frame_description"

@@ -156,6 +156,7 @@ def replace_figure_placeholders(
 _PARSED_DIR_SUFFIX = "_parsed"
 _ARTIFACTS_DIR_SUFFIX = "_artifacts"
 _FIGURES_DIR_SUFFIX = "_figures"
+_PAGES_DIR_SUFFIX = "_pages"
 
 
 def parsed_text_object_name(base: str) -> str:
@@ -181,6 +182,16 @@ def embeddings_snapshot_object_name(base: str) -> str:
 def figures_dir_name(base: str) -> str:
     """figure 图片目录（短文件名相对此目录；代理端点按此还原）。"""
     return f"{base}{_FIGURES_DIR_SUFFIX}"
+
+
+def pages_dir_name(base: str) -> str:
+    """VLM 转写线的页图目录（pdf/ppt 逐页渲染图存此，image 原图不重复存）。"""
+    return f"{base}{_PAGES_DIR_SUFFIX}"
+
+
+def page_image_object_name(base: str, page_number: int) -> str:
+    """单页页图对象名（page_number 从 1 起；JPEG 固定后缀）。"""
+    return f"{pages_dir_name(base)}/page_{page_number:04d}.jpg"
 
 
 def artifacts_dir_name(base: str) -> str:

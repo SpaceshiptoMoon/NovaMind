@@ -29,18 +29,32 @@ pytestmark = pytest.mark.unit
 
 # ---- PdfParsingConfig validator 放宽 ----
 
-def test_pdf_default_strategy_auto_clears_residual_parser():
-    """strategy=default + 残留 parser → 自动清 parser=None，不抛错。"""
+def test_pdf_default_strategy_accepted_with_residual_parser_cleared():
+    """default 策略恢复合法（2026-11-25 双策略）：残留 parser 自动清空不抛错。"""
     cfg = PdfParsingConfig(strategy="default", parser="full")
-    assert cfg.parser is None, "default 模式应自动清 parser"
     assert cfg.strategy == "default"
+    assert cfg.parser is None, "default 不消费 parser，残留值应自动清空"
 
 
-def test_pdf_default_strategy_without_parser_unchanged():
-    """strategy=default + 无 parser → 保持 None，不抛。"""
-    cfg = PdfParsingConfig(strategy="default")
+def test_pdf_vlm_strategy_auto_clears_residual_parser():
+    """strategy=vlm + 残留 parser → 自动清 parser（非 deepdoc 同款语义）。"""
+    cfg = PdfParsingConfig(strategy="vlm", parser="full", vlm_model="qwen3-vl")
+    assert cfg.strategy == "vlm"
     assert cfg.parser is None
-    assert cfg.strategy == "default"
+    assert cfg.vlm_model == "qwen3-vl"
+
+
+def test_pdf_schema_default_is_deepdoc():
+    """零配置（不传 strategy）落 deepdoc：扫描件开箱即用。"""
+    cfg = PdfParsingConfig()
+    assert cfg.strategy == "deepdoc"
+
+
+def test_pdf_external_strategy_auto_clears_residual_parser():
+    """strategy=external_ocr + 残留 parser → 自动清 parser=None，不抛错。"""
+    cfg = PdfParsingConfig(strategy="external_ocr", parser="full")
+    assert cfg.parser is None, "非 deepdoc 策略应自动清 parser"
+    assert cfg.strategy == "external_ocr"
 
 
 def test_pdf_deepdoc_strategy_retains_parser():
@@ -60,10 +74,9 @@ def test_pdf_deepdoc_strategy_without_parser_allowed():
 # ---- update 500 回归（route 层 KnowledgeBaseConfigResponse 反序列化）----
 
 def test_kb_config_tolerates_default_with_residual_parser():
-    """深度合并产生 strategy=default + 残留 parser=full 时，KnowledgeBaseConfig
-    反序列化不抛错且 parser 被清——旧版在此抛 ValidationError → route 500。"""
-    # 模拟深度合并结果：库里原 deepdoc+full，用户 PATCH strategy=default，parser 残留；
-    # ocr_enabled 为已删字段的旧值，应被忽略而非报错
+    """库里残留 strategy=default + parser=full 的旧配置时，KnowledgeBaseConfig
+    反序列化不抛错：default 重新合法，原样保留策略；parser 由 validator 自动清。"""
+    # 模拟旧库配置：default+full 残留；ocr_enabled 为已删字段的旧值，应被忽略而非报错
     merged = {
         "space_type": ["text"],
         "parsing": {
@@ -82,5 +95,5 @@ def test_kb_config_tolerates_default_with_residual_parser():
         "question_generation": {"enabled": False},
     }
     cfg = KnowledgeBaseConfig.model_validate(merged)  # 旧版在此抛错
-    assert cfg.parsing.text.pdf.strategy == "default"
-    assert cfg.parsing.text.pdf.parser is None, "残留 parser 应被 validator 自动清"
+    assert cfg.parsing.text.pdf.strategy == "default", "双策略恢复后 default 原样保留"
+    assert cfg.parsing.text.pdf.parser is None, "default 不消费 parser，validator 自动清空"
