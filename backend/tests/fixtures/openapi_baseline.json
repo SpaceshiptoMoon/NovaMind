@@ -4395,6 +4395,9 @@
           "splitting": {
             "$ref": "#/components/schemas/SplittingConfig"
           },
+          "vectorization": {
+            "$ref": "#/components/schemas/VectorizationConfig"
+          },
           "wiki": {
             "$ref": "#/components/schemas/WikiGenerationConfig"
           }
@@ -4433,6 +4436,9 @@
           },
           "splitting": {
             "$ref": "#/components/schemas/SplittingConfig"
+          },
+          "vectorization": {
+            "$ref": "#/components/schemas/VectorizationConfig"
           },
           "wiki": {
             "$ref": "#/components/schemas/WikiGenerationConfig"
@@ -9828,6 +9834,19 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VectorizationConfig": {
+        "description": "向量化配置——关闭后文档照常解析/切分/入 ES（BM25 可检索），\n但不计算向量：语义检索对该文档不可召回，嵌入成本为零。\n\n关→开时既有分块经嵌入指纹失效自动补嵌；开→关不清理存量向量\n（混合库中向量检索对有向量文档仍生效，无向量文档仅 BM25 召回）。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "description": "是否计算向量：关闭后仅 BM25 关键词检索可用，语义/hybrid 检索不可召回",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "VectorizationConfig",
         "type": "object"
       },
       "VideoParsingConfig": {

@@ -1155,11 +1155,22 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
         parse_metadata=parse_metadata, frame_paths=frame_paths,
     )
 
-    # 3. 向量化
+    # 3. 向量化（vectorization.enabled=False 时跳过向量计算：chunks 照常入 ES
+    # 但不带 dense 向量——父块先例证明缺向量字段合法，BM25 检索不受影响，
+    # 语义检索对该文档不可召回；开关开→关不清理存量向量，关→开经指纹失效补嵌）
     await begin_step(session, task, "embedded")
+    vectorization_cfg = pipeline_config.get("vectorization") or {}
+    vectorization_enabled = bool(vectorization_cfg.get("enabled", True))
     resumed_embed = False
     embeddings: list[list[float] | None] = []
-    if embed_fingerprint and resume_minio is not None:
+    if not vectorization_enabled:
+        embeddings = [None] * len(es_chunks)
+        logger.warning(
+            "向量化已关闭：文档入库为纯文本（BM25 可检索，语义检索不可召回）",
+            document_id=document.id,
+            chunk_count=len(es_chunks),
+        )
+    if vectorization_enabled and embed_fingerprint and resume_minio is not None:
         if snapshot_fingerprint(document, "embed") == embed_fingerprint:
             snap = await load_embeddings_snapshot(document, resume_minio, logger)
             if snap and isinstance(snap.get("embeddings"), list) and len(snap["embeddings"]) == len(es_chunks):
@@ -1171,7 +1182,7 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
                     embedding_count=len(embeddings),
                     embedding_model=snap.get("embedding_model", ""),
                 )
-    if not resumed_embed:
+    if not resumed_embed and vectorization_enabled:
         # 父块（parent_child 产物）只作检索期回带容器、不参与召回，跳过
         # embedding 省成本；槽位留 None 定长占位——快照的 len(es_chunks) 契约
         # 与下方 `if emb:` 回填守卫均无需改动（ES dense_vector 缺字段合法）。
@@ -1202,8 +1213,9 @@ async def run_post_parse_tail(inputs: TailInputs) -> dict[str, Any]:
         if emb:
             es_chunks[i]["embedding"] = emb
     await finish_step_committed(session, task, "embedded", metrics={
-        "embedding_count": len(embeddings),
+        "embedding_count": len([e for e in embeddings if e]),
         "dimension": embedding_config.get("dimension"),
+        "vectorization": "enabled" if vectorization_enabled else "disabled",
         **({"resumed": True} if resumed_embed else {}),
     })
     await check_document_cancelled(document.id)

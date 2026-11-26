@@ -541,11 +541,17 @@ export interface WikiGenerationConfig {
   extraction_instructions?: string | null
 }
 
+export interface VectorizationConfig {
+  /** 是否计算向量：关闭后仅 BM25 关键词检索可用，语义/hybrid 检索不可召回 */
+  enabled?: boolean
+}
+
 export interface KBConfig {
   space_type?: string[] // text/image/video/audio，KB 支持的数据模态
   description?: string
   splitting?: SplittingConfig
   parsing?: ParsingConfig
+  vectorization?: VectorizationConfig
   question_generation?: QuestionGenerationConfig
   wiki?: WikiGenerationConfig
 }
@@ -591,6 +597,7 @@ export interface KnowledgeBaseConfigResponse {
 export interface KnowledgeBaseConfigUpdateRequest {
   space_type?: string[]
   splitting?: SplittingConfig
+  vectorization?: VectorizationConfig
   parsing?: ParsingConfig
   question_generation?: QuestionGenerationConfig
   wiki?: WikiGenerationConfig

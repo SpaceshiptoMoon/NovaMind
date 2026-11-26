@@ -60,6 +60,22 @@
         <KbSplittingSection :config-form="configForm" />
       </section>
 
+      <section v-show="currentStep === 1" class="editor-section">
+        <div class="section-heading">
+          <h3 class="section-title">向量化</h3>
+          <p class="section-desc">关闭后文档照常解析/切分/入库，但只做 BM25 关键词检索（不耗嵌入配额）；重新开启后已有分块会自动补算向量。</p>
+        </div>
+
+        <el-form label-width="120px">
+          <el-form-item label="启用向量化">
+            <el-switch v-model="configForm.vectorizationEnabled" />
+            <span class="field-hint" style="margin-left: 12px">
+              {{ configForm.vectorizationEnabled ? '语义检索 / hybrid 检索可用' : '仅 BM25 关键词检索可用，语义检索不可召回' }}
+            </span>
+          </el-form-item>
+        </el-form>
+      </section>
+
       <section v-show="currentStep === 0" class="editor-section">
         <div class="section-heading">
           <h3 class="section-title">解析策略</h3>
@@ -240,6 +256,7 @@ const configForm = reactive({
   audioDiarizationEnabled: false,
   audioSpeakerCount: null as number | null,
 
+  vectorizationEnabled: true,
   splittingStrategy: 'recursive',
   splittingChunkSize: 1000,
   splittingChunkOverlap: 100,
@@ -407,6 +424,8 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   const parsing = kbConfig?.parsing as ParsingConfig | undefined
   const qg = kbConfig?.question_generation
 
+  const vec = kbConfig?.vectorization
+  configForm.vectorizationEnabled = vec?.enabled ?? true
   configForm.splittingStrategy = splitting?.strategy || 'recursive'
   configForm.splittingChunkSize = splitting?.chunk_size ?? 1000
   configForm.splittingChunkOverlap = splitting?.chunk_overlap ?? 100
@@ -684,6 +703,7 @@ function buildPayload(): KnowledgeBaseConfigUpdateRequest {
   return {
     space_type: configForm.kbSpaceTypes.length > 0 ? configForm.kbSpaceTypes : ['text'],
     splitting: buildSplittingConfig(),
+    vectorization: { enabled: configForm.vectorizationEnabled },
     parsing: buildParsingConfig(),
     question_generation: {
       enabled: configForm.qgEnabled,

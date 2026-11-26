@@ -664,6 +664,22 @@ class WikiGenerationConfig(BaseModel):
 # ========== Full KB config ==========
 
 
+class VectorizationConfig(BaseModel):
+    """向量化配置——关闭后文档照常解析/切分/入 ES（BM25 可检索），
+    但不计算向量：语义检索对该文档不可召回，嵌入成本为零。
+
+    关→开时既有分块经嵌入指纹失效自动补嵌；开→关不清理存量向量
+    （混合库中向量检索对有向量文档仍生效，无向量文档仅 BM25 召回）。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(
+        default=True,
+        description="是否计算向量：关闭后仅 BM25 关键词检索可用，语义/hybrid 检索不可召回",
+    )
+
+
 class KnowledgeBaseConfig(BaseModel):
     """Full knowledge-base config."""
 
@@ -674,6 +690,7 @@ class KnowledgeBaseConfig(BaseModel):
     description: str = Field(default="", max_length=2000)
     splitting: SplittingConfig = Field(default_factory=SplittingConfig)
     parsing: ParsingConfig = Field(default_factory=ParsingConfig)
+    vectorization: VectorizationConfig = Field(default_factory=VectorizationConfig)
     question_generation: QuestionGenerationConfig = Field(default_factory=QuestionGenerationConfig)
     wiki: WikiGenerationConfig = Field(default_factory=WikiGenerationConfig)
 
