@@ -791,6 +791,7 @@ class KnowledgeBaseConfigUpdate(BaseModel):
         description="数据模态列表：text=文本文档, image=图片, video=视频, audio=音频",
     )
     splitting: SplittingConfig | None = Field(default=None)
+    vectorization: VectorizationConfig | None = Field(default=None)
     parsing: ParsingConfig | None = Field(default=None)
     question_generation: QuestionGenerationConfig | None = Field(default=None)
     # wiki 必须与 KnowledgeBaseConfig 的字段面保持对齐：PATCH schema 漏声明时
