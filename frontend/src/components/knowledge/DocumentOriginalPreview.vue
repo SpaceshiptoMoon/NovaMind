@@ -15,29 +15,24 @@
         </div>
       </div>
       <div class="file-actions">
-        <el-button
-          type="primary"
-          size="small"
+        <!-- 按钮精简（2026-11-27）：查看解析结果由页面「对比预览」承接（左原文右md
+            为其超集），此处只保留下载入口且合并为单一下拉，页面可见按钮数最小化 -->
+        <el-dropdown
           :disabled="!canViewOriginal"
-          @click="handleViewOriginal"
+          @command="handleDownloadCommand"
         >
-          <el-icon><View /></el-icon>
-          查看解析结果
-        </el-button>
-        <!-- 样式层级：主操作（查看）用 primary，下载类次要操作统一中性默认样式 -->
-        <el-button
-          size="small"
-          :disabled="!canViewOriginal"
-          :loading="downloadingParsed"
-          @click="handleDownloadParsed"
-        >
-          <el-icon v-if="!downloadingParsed"><Download /></el-icon>
-          下载解析 MD
-        </el-button>
-        <el-button size="small" :loading="downloadingSource" @click="handleDownloadSource">
-          <el-icon><Download /></el-icon>
-          下载源文件
-        </el-button>
+          <el-button size="small" :disabled="!canViewOriginal" :loading="downloadingSource || downloadingParsed">
+            <el-icon><Download /></el-icon>
+            下载
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="source">源文件</el-dropdown-item>
+              <el-dropdown-item command="parsed">解析 MD</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
@@ -298,6 +293,15 @@ onUnmounted(() => {
 const imagePreviewVisible = ref(false)
 
 // 点击查看原文
+/** 下载下拉分发：source=源文件 / parsed=解析 MD（复用既有下载实现） */
+async function handleDownloadCommand(command: string) {
+  if (command === 'source') {
+    await handleDownloadSource()
+  } else if (command === 'parsed') {
+    await handleDownloadParsed()
+  }
+}
+
 async function handleViewOriginal() {
   originalDialogVisible.value = true
   if (parsedText.value) return
