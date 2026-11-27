@@ -117,9 +117,16 @@ def create_error_handler(
         if include_request_id:
             response_content["request_id"] = trace_id
 
+        # 错误响应禁止缓存：4xx/5xx 被浏览器启发式缓存后，修复后的重试会
+        # 一直吃本地旧错误（实测：410 文档缺失修复后，浏览器仍回放缓存
+        # 响应，用户侧表现为"修好了还是不行"）
         return JSONResponse(
             status_code=status_code,
             content=response_content,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
+            },
         )
 
     return handler

@@ -245,7 +245,11 @@ export const documentApi = {
     // 使用 axios 统一拦截器（自动带 token、自动刷新），获取 text/markdown 响应
     const response = await instance.get(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text`,
-      { responseType: 'text', headers: { Accept: 'text/markdown' } },
+      {
+        responseType: 'text',
+        headers: { Accept: 'text/markdown' },
+        params: { t: Date.now() },
+      },
     )
     return typeof response.data === 'string' ? response.data : String(response.data)
   },
@@ -264,10 +268,10 @@ export const documentApi = {
     )
   },
 
-  /** 获取文档原始文件预览 Blob URL（带认证） */
+  /** 获取文档原始文件预览 Blob URL（带认证；时间戳防浏览器缓存旧错误响应） */
   async getDocumentPreviewBlobUrl(spaceId: number, kbId: number, docId: number): Promise<string> {
     const blob = await request.download(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`,
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview?t=${Date.now()}`,
     )
     return window.URL.createObjectURL(blob)
   },
