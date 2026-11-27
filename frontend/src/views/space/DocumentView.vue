@@ -735,10 +735,15 @@ function showProcessDialog(ids: number[]) {
 }
 
 async function handleProcess() {
+  // 用户要求（2026-11-27）：点击「开始处理」立即关闭弹窗，提交在后台完成。
+  // 失败时全局拦截器会弹错误提示，弹窗保持关闭；列表随后轮询/刷新兜底。
+  processDialogVisible.value = false
+  const targetIds = [...processTargetIds.value]
+  selectedIds.value = []
   processLoading.value = true
   try {
     const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
-      document_ids: processTargetIds.value,
+      document_ids: targetIds,
     })
     const failedMessages = res.results
       .filter((item) => item.status === 'failed')
@@ -753,9 +758,7 @@ async function handleProcess() {
       ElMessage.warning(failedMessages[0])
     }
 
-    processDialogVisible.value = false
-    selectedIds.value = []
-    await fetchDocuments()
+    await fetchDocuments(false)
   } finally {
     processLoading.value = false
   }
