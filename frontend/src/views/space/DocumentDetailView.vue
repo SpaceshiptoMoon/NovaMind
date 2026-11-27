@@ -1,219 +1,243 @@
 <template>
-  <div class="document-detail-view">
-    <!-- 文档信息头 -->
-    <div v-loading="loading" class="info-section">
-      <div class="info-header">
-        <div class="info-title-row">
-          <div
-            class="file-type-badge"
-            :style="{
-              background: getFileTypeStyle(document?.file_type || '').bg,
-              color: getFileTypeStyle(document?.file_type || '').color,
-            }"
-          >
-            {{ (document?.file_type || 'FILE').toUpperCase() }}
-          </div>
-          <h3 class="doc-filename" :title="document?.filename">
-            {{ document?.filename || (loadFailed ? '文档不存在或已删除' : '加载中...') }}
-          </h3>
-          <!-- 状态随标题行：比埋在元信息网格里更先被看到 -->
-          <el-tag
-            v-if="document"
-            class="doc-status-tag"
-            :type="currentStatusConfig.type"
-            effect="plain"
-            size="small"
-          >
-            {{ currentStatusConfig.text }}
-          </el-tag>
-        </div>
-        <p
-          v-if="latestTask?.error_message && docStatus !== 2"
-          class="error-line"
-          :title="latestTask.error_message"
-          @click="errorExpanded = !errorExpanded"
+  <div v-loading="loading" class="document-detail-view">
+    <!-- 顶栏：类型徽标 + 文件名 + 状态 + 关键统计 + 操作（元数据/标签/流程时间线收进可折叠详情） -->
+    <header class="detail-header">
+      <div class="header-row">
+        <div
+          class="file-type-badge"
+          :style="{
+            background: getFileTypeStyle(document?.file_type || '').bg,
+            color: getFileTypeStyle(document?.file_type || '').color,
+          }"
         >
-          {{ errorDisplayText }}
-        </p>
-      </div>
-
-      <!-- Meta grid：规模/媒体/解析产出统一行内 label 随值，比上标签下值的格子更紧凑扫读 -->
-      <div v-if="document" class="meta-grid">
-        <div class="meta-item">
-          <span class="meta-label">文件大小</span>
-          <span class="meta-value">{{ formatFileSize(document.file_size || 0) }}</span>
+          {{ (document?.file_type || 'FILE').toUpperCase() }}
         </div>
-        <div v-if="(document.chunk_count ?? 0) > 0" class="meta-item">
-          <span class="meta-label">分块数</span>
-          <span class="meta-value">{{ document.chunk_count }}</span>
-        </div>
-        <div v-if="(document.token_count ?? 0) > 0" class="meta-item">
-          <span class="meta-label">Token 数</span>
-          <span class="meta-value">{{ document.token_count }}</span>
-        </div>
-        <div class="meta-item">
-          <span class="meta-label">上传时间</span>
-          <span class="meta-value">{{ formatDate(document.created_at) }}</span>
-        </div>
-        <div v-if="document.duration_seconds != null" class="meta-item">
-          <span class="meta-label">时长</span>
-          <span class="meta-value">{{ formatDuration(document.duration_seconds) }}</span>
-        </div>
-        <div v-if="document.chunk_type" class="meta-item">
-          <span class="meta-label">内容类型</span>
-          <span class="meta-value">{{
-            chunkTypeLabels[document.chunk_type] || document.chunk_type
-          }}</span>
-        </div>
-        <div v-if="document.frame_count != null" class="meta-item">
-          <span class="meta-label">视频帧数</span>
-          <span class="meta-value">{{ document.frame_count }}</span>
-        </div>
-        <div v-if="document.segment_count != null" class="meta-item">
-          <span class="meta-label">音频分段数</span>
-          <span class="meta-value">{{ document.segment_count }}</span>
-        </div>
-        <div v-if="document.page_count != null" class="meta-item">
-          <span class="meta-label">页数</span>
-          <span class="meta-value">{{ document.page_count }}</span>
-        </div>
-        <div v-if="document.char_count != null" class="meta-item">
-          <span class="meta-label">字符数</span>
-          <span class="meta-value">{{ document.char_count.toLocaleString() }}</span>
-        </div>
-        <div v-if="document.outline_count != null" class="meta-item">
-          <span class="meta-label">书签数</span>
-          <span class="meta-value">{{ document.outline_count }}</span>
-        </div>
-        <div v-if="document.section_count != null" class="meta-item">
-          <span class="meta-label">段落数</span>
-          <span class="meta-value">{{ document.section_count }}</span>
-        </div>
-        <div v-if="document.table_count != null" class="meta-item">
-          <span class="meta-label">表格数</span>
-          <span class="meta-value">{{ document.table_count }}</span>
-        </div>
-        <div v-if="document.image_count != null" class="meta-item">
-          <span class="meta-label">图片数</span>
-          <span class="meta-value">{{ document.image_count }}</span>
-        </div>
-        <div v-if="document.embedding_model" class="meta-item">
-          <span class="meta-label">Embedding</span>
-          <span
-            class="meta-value meta-value-long"
-            :title="
-              document.embedding_model +
-              (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')
-            "
-          >
-            {{ document.embedding_model
-            }}<template v-if="document.embedding_dim != null">
-              · {{ document.embedding_dim }} 维</template
-            >
-          </span>
-        </div>
-        <div v-if="document.parse_duration_ms != null" class="meta-item">
-          <span class="meta-label">解析耗时</span>
-          <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
-        </div>
-        <div v-if="parseQualityWarnings.length > 0" class="meta-item">
-          <span class="meta-label">解析质量</span>
-          <span class="meta-value quality-warnings" :title="parseQualityWarnings.join('\n')"
-            >⚠ {{ parseQualityWarnings.length }} 条降级警告</span
-          >
-        </div>
-        <div v-else-if="document.quality" class="meta-item">
-          <span class="meta-label">解析质量</span>
-          <span class="meta-value">无警告</span>
-        </div>
-        <!-- 已纳入 Wiki 反向条：读完原文一步跳到 AI 综合页（读者自然下一步） -->
-        <div v-if="wikiRefs.length > 0" class="meta-item">
-          <span class="meta-label">Wiki</span>
-          <span class="meta-value wiki-refs-value">
-            <template v-for="(r, i) in wikiRefs.slice(0, 3)" :key="r.slug">
-              <RouterLink
-                class="wiki-ref-link"
-                :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
-                :title="r.title"
-                >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink
-              ><span v-if="i < Math.min(wikiRefs.length, 3) - 1">、</span>
-            </template>
-            <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
-              等 {{ wikiRefs.length }} 页 →
-            </span>
-          </span>
-        </div>
-        <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑。
-            空态给「打标签」行动按钮（而非消极的「无」），有标签时编辑入口收成铅笔图标 -->
-        <div class="meta-item">
-          <span class="meta-label">标签</span>
-          <span v-if="!tagsEditing" class="meta-value tags-value">
-            <template v-if="(document.tags || []).length > 0">
-              <el-tag
-                v-for="t in document.tags"
-                :key="t"
-                size="small"
-                effect="plain"
-                round
-                class="tag-chip"
-                >{{ t }}</el-tag
-              >
-              <el-button
-                text
-                size="small"
-                class="tags-edit-btn"
-                aria-label="编辑标签"
-                title="编辑标签"
-                @click="startEditTags"
-              >
-                <el-icon><Edit /></el-icon>
-              </el-button>
-            </template>
-            <el-button v-else text size="small" class="tags-add-btn" @click="startEditTags">
-              <el-icon><Plus /></el-icon>
-              打标签
-            </el-button>
-          </span>
-          <span v-else class="meta-value tags-value">
-            <el-select
-              v-model="tagsInput"
-              multiple
-              filterable
-              allow-create
-              default-first-option
-              placeholder="输入标签回车，可多个"
+        <div class="header-text">
+          <div class="header-title-row">
+            <h2 class="doc-name" :title="document?.filename">
+              {{ document?.filename || (loadFailed ? '文档不存在或已删除' : '加载中...') }}
+            </h2>
+            <el-tag
+              v-if="document"
+              class="doc-status-tag"
+              :type="currentStatusConfig.type"
+              effect="plain"
               size="small"
-              class="tags-editor"
-              :max-collapse-tags="10"
-            />
-            <el-button size="small" type="primary" :loading="tagsSaving" @click="saveTags">
-              保存
-            </el-button>
-            <el-button size="small" @click="tagsEditing = false">取消</el-button>
-          </span>
-        </div>
-      </div>
-
-      <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
-      <div v-if="hasNodeLogs" class="pipeline-timeline-section">
-        <div class="timeline-header" @click="timelineExpanded = !timelineExpanded">
-          <h4>处理流程</h4>
-          <el-icon class="timeline-toggle" :class="{ 'is-expanded': timelineExpanded }">
-            <ArrowRight />
-          </el-icon>
-        </div>
-        <el-collapse-transition>
-          <div v-show="timelineExpanded">
-            <TaskNodeLogTable :step-progress="latestTask?.step_progress ?? null" />
+            >
+              {{ currentStatusConfig.text }}
+            </el-tag>
           </div>
-        </el-collapse-transition>
+          <!-- 关键统计 chips：只留最常看的数字，其余收进折叠详情 -->
+          <div v-if="document" class="stat-chips">
+            <span class="stat-chip">
+              <span class="stat-label">大小</span>{{ formatFileSize(document.file_size || 0) }}
+            </span>
+            <span v-if="document.page_count != null" class="stat-chip">
+              <span class="stat-label">页数</span>{{ document.page_count }}
+            </span>
+            <span v-if="(document.chunk_count ?? 0) > 0" class="stat-chip">
+              <span class="stat-label">分块</span>{{ document.chunk_count }}
+            </span>
+            <span v-if="(document.token_count ?? 0) > 0" class="stat-chip">
+              <span class="stat-label">Token</span>{{ document.token_count.toLocaleString() }}
+            </span>
+            <span v-if="document.char_count != null" class="stat-chip">
+              <span class="stat-label">字符</span>{{ document.char_count.toLocaleString() }}
+            </span>
+            <span class="stat-chip">
+              <span class="stat-label">上传</span>{{ formatDate(document.created_at) }}
+            </span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <el-button size="small" @click="showCompareDialog = true">
+            <el-icon class="section-action-icon"><CopyDocument /></el-icon>
+            对比预览
+          </el-button>
+          <el-tooltip content="详细信息（元数据 / 标签 / 流程时间线）" placement="top">
+            <el-button
+              size="small"
+              :type="infoExpanded ? 'primary' : 'default'"
+              @click="infoExpanded = !infoExpanded"
+            >
+              详情
+            </el-button>
+          </el-tooltip>
+        </div>
       </div>
-    </div>
 
-    <!-- 双栏内容区 -->
-    <div class="content-layout">
-      <!-- 左栏：分块列表 -->
-      <div class="content-main">
+      <!-- 失败原因独立一行：可展开看全文 -->
+      <p
+        v-if="latestTask?.error_message && docStatus !== 2"
+        class="error-line"
+        :title="latestTask.error_message"
+        @click="errorExpanded = !errorExpanded"
+      >
+        {{ errorDisplayText }}
+      </p>
+
+      <!-- 可折叠详细信息（原 info-section 全量内容收纳于此） -->
+      <el-collapse-transition>
+        <div v-show="infoExpanded" class="meta-detail">
+          <div v-if="document" class="meta-grid">
+            <div v-if="document.duration_seconds != null" class="meta-item">
+              <span class="meta-label">时长</span>
+              <span class="meta-value">{{ formatDuration(document.duration_seconds) }}</span>
+            </div>
+            <div v-if="document.chunk_type" class="meta-item">
+              <span class="meta-label">内容类型</span>
+              <span class="meta-value">{{
+                chunkTypeLabels[document.chunk_type] || document.chunk_type
+              }}</span>
+            </div>
+            <div v-if="document.frame_count != null" class="meta-item">
+              <span class="meta-label">视频帧数</span>
+              <span class="meta-value">{{ document.frame_count }}</span>
+            </div>
+            <div v-if="document.segment_count != null" class="meta-item">
+              <span class="meta-label">音频分段数</span>
+              <span class="meta-value">{{ document.segment_count }}</span>
+            </div>
+            <div v-if="document.outline_count != null" class="meta-item">
+              <span class="meta-label">书签数</span>
+              <span class="meta-value">{{ document.outline_count }}</span>
+            </div>
+            <div v-if="document.section_count != null" class="meta-item">
+              <span class="meta-label">段落数</span>
+              <span class="meta-value">{{ document.section_count }}</span>
+            </div>
+            <div v-if="document.table_count != null" class="meta-item">
+              <span class="meta-label">表格数</span>
+              <span class="meta-value">{{ document.table_count }}</span>
+            </div>
+            <div v-if="document.image_count != null" class="meta-item">
+              <span class="meta-label">图片数</span>
+              <span class="meta-value">{{ document.image_count }}</span>
+            </div>
+            <div v-if="document.embedding_model" class="meta-item">
+              <span class="meta-label">Embedding</span>
+              <span
+                class="meta-value meta-value-long"
+                :title="
+                  document.embedding_model +
+                  (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')
+                "
+              >
+                {{ document.embedding_model
+                }}<template v-if="document.embedding_dim != null">
+                  · {{ document.embedding_dim }} 维</template
+                >
+              </span>
+            </div>
+            <div v-if="document.parse_duration_ms != null" class="meta-item">
+              <span class="meta-label">解析耗时</span>
+              <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
+            </div>
+            <div v-if="parseQualityWarnings.length > 0" class="meta-item">
+              <span class="meta-label">解析质量</span>
+              <span class="meta-value quality-warnings" :title="parseQualityWarnings.join('\n')"
+                >⚠ {{ parseQualityWarnings.length }} 条降级警告</span
+              >
+            </div>
+            <div v-else-if="document.quality" class="meta-item">
+              <span class="meta-label">解析质量</span>
+              <span class="meta-value">无警告</span>
+            </div>
+            <!-- 已纳入 Wiki 反向条：读完原文一步跳到 AI 综合页 -->
+            <div v-if="wikiRefs.length > 0" class="meta-item">
+              <span class="meta-label">Wiki</span>
+              <span class="meta-value wiki-refs-value">
+                <template v-for="(r, i) in wikiRefs.slice(0, 3)" :key="r.slug">
+                  <RouterLink
+                    class="wiki-ref-link"
+                    :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
+                    :title="r.title"
+                    >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink
+                  ><span v-if="i < Math.min(wikiRefs.length, 3) - 1">、</span>
+                </template>
+                <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
+                  等 {{ wikiRefs.length }} 页 →
+                </span>
+              </span>
+            </div>
+            <!-- 用户自定义标签：行内编辑 -->
+            <div class="meta-item">
+              <span class="meta-label">标签</span>
+              <span v-if="!tagsEditing" class="meta-value tags-value">
+                <template v-if="(document.tags || []).length > 0">
+                  <el-tag
+                    v-for="t in document.tags"
+                    :key="t"
+                    size="small"
+                    effect="plain"
+                    round
+                    class="tag-chip"
+                    >{{ t }}</el-tag
+                  >
+                  <el-button
+                    text
+                    size="small"
+                    class="tags-edit-btn"
+                    aria-label="编辑标签"
+                    title="编辑标签"
+                    @click="startEditTags"
+                  >
+                    <el-icon><Edit /></el-icon>
+                  </el-button>
+                </template>
+                <el-button v-else text size="small" class="tags-add-btn" @click="startEditTags">
+                  <el-icon><Plus /></el-icon>
+                  打标签
+                </el-button>
+              </span>
+              <span v-else class="meta-value tags-value">
+                <el-select
+                  v-model="tagsInput"
+                  multiple
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="输入标签回车，可多个"
+                  size="small"
+                  class="tags-editor"
+                  :max-collapse-tags="10"
+                />
+                <el-button size="small" type="primary" :loading="tagsSaving" @click="saveTags">
+                  保存
+                </el-button>
+                <el-button size="small" @click="tagsEditing = false">取消</el-button>
+              </span>
+            </div>
+          </div>
+
+          <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
+          <div v-if="hasNodeLogs" class="pipeline-timeline-section">
+            <div class="timeline-header" @click="timelineExpanded = !timelineExpanded">
+              <h4>处理流程</h4>
+              <el-icon class="timeline-toggle" :class="{ 'is-expanded': timelineExpanded }">
+                <ArrowRight />
+              </el-icon>
+            </div>
+            <el-collapse-transition>
+              <div v-show="timelineExpanded">
+                <TaskNodeLogTable :step-progress="latestTask?.step_progress ?? null" />
+              </div>
+            </el-collapse-transition>
+          </div>
+        </div>
+      </el-collapse-transition>
+    </header>
+
+    <!-- 左右分栏：左原文预览 / 右分块（可拖拽调宽） -->
+    <el-splitter class="detail-split">
+      <el-splitter-panel size="38" min="20" max="65" class="pane pane-preview">
+        <div class="pane-header">
+          <h4>原文预览</h4>
+        </div>
+        <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
+      </el-splitter-panel>
+
+      <el-splitter-panel size="62" min="35" class="pane pane-chunks">
         <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
         <div v-if="isVideoDoc" class="narrative-section chunks-section">
           <div class="section-header">
@@ -267,23 +291,24 @@
 
         <!-- 分块列表 -->
         <div class="chunks-section">
-          <div class="section-header">
-            <h4>文档分块</h4>
-            <div class="section-header-right">
-              <el-button
-                v-if="!showOriginalPanel"
-                text
-                size="small"
-                @click="showOriginalPanel = true"
-              >
-                <el-icon class="section-action-icon"><View /></el-icon>
-                预览
-              </el-button>
-              <el-button text size="small" @click="showCompareDialog = true">
+          <div class="chunks-toolbar">
+            <el-input
+              v-model="searchText"
+              placeholder="搜索本页分块内容"
+              clearable
+              size="small"
+              class="chunk-search"
+            />
+            <el-radio-group v-model="textMode" size="small">
+              <el-radio-button value="ellipse">省略</el-radio-button>
+              <el-radio-button value="full">全文</el-radio-button>
+            </el-radio-group>
+            <span class="chunk-count">{{ totalChunks }} 个分块</span>
+            <div class="toolbar-right">
+              <el-button size="small" @click="showCompareDialog = true">
                 <el-icon class="section-action-icon"><CopyDocument /></el-icon>
                 对比预览
               </el-button>
-              <span class="chunk-count">{{ totalChunks }} 个分块</span>
             </div>
           </div>
 
@@ -297,9 +322,9 @@
             <el-button @click="router.back()">返回文档列表</el-button>
           </EmptyState>
 
-          <div v-if="chunks.length > 0" class="chunks-list">
+          <div v-if="filteredChunks.length > 0" class="chunks-list">
             <div
-              v-for="chunk in chunks"
+              v-for="chunk in filteredChunks"
               :key="chunk.chunk_id"
               class="chunk-card"
               :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
@@ -342,14 +367,16 @@
                   <ArrowRight />
                 </el-icon>
               </div>
-              <!-- 折叠态：截断预览 -->
+              <!-- 折叠态：省略模式 3 行钳制 / 全文模式平铺（限高滚动） -->
               <div
                 v-if="!expandedChunks[chunk.chunk_index]"
                 class="chunk-preview"
+                :class="{ 'is-full': textMode === 'full' }"
                 @click="toggleChunk(chunk.chunk_index)"
               >
                 <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
-                <template v-else>{{ truncateContent(chunk.content) }}</template>
+                <template v-else-if="textMode === 'full'">{{ chunk.content }}</template>
+                <template v-else>{{ truncateContent(chunk.content, 160) }}</template>
               </div>
               <!-- 展开态：完整内容（Markdown 渲染：figure 图片 + TSR 表格 HTML 可视化） -->
               <template v-else>
@@ -422,40 +449,29 @@
             />
           </div>
         </div>
-      </div>
+      </el-splitter-panel>
+    </el-splitter>
 
-      <!-- 右栏：原文预览（sticky 跟随滚动；关闭后经左栏头部「预览」钮召回） -->
-      <div v-if="showOriginalPanel" class="content-sidebar">
-        <div class="sidebar-header">
-          <h4>预览与导出</h4>
-          <el-button text size="small" @click="showOriginalPanel = false">
-            <el-icon><Close /></el-icon>
-          </el-button>
-        </div>
-        <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
+    <!-- 原文 / 解析MD 左右对比 -->
+    <el-dialog
+      v-model="showCompareDialog"
+      @close="showCompareDialog = false"
+      :title="`对比预览：${document?.filename || ''}`"
+      width="95vw"
+      destroy-on-close
+      class="compare-dialog"
+      align-center
+    >
+      <div class="compare-dialog-body">
+        <DocumentCompareView
+          :space-id="spaceId"
+          :kb-id="kbId"
+          :doc-id="docId"
+          :filename="document?.filename || ''"
+          @close="showCompareDialog = false"
+        />
       </div>
-
-      <!-- 原文 / 解析MD 左右对比 -->
-      <el-dialog
-        v-model="showCompareDialog"
-        @close="showCompareDialog = false"
-        :title="`对比预览：${document?.filename || ''}`"
-        width="95vw"
-        destroy-on-close
-        class="compare-dialog"
-        align-center
-      >
-        <div class="compare-dialog-body">
-          <DocumentCompareView
-            :space-id="spaceId"
-            :kb-id="kbId"
-            :doc-id="docId"
-            :filename="document?.filename || ''"
-            @close="showCompareDialog = false"
-          />
-        </div>
-      </el-dialog>
-    </div>
+    </el-dialog>
 
     <!-- 图片预览弹窗 -->
     <el-dialog
@@ -477,8 +493,9 @@
 /**
  * 文档详情页。
  *
- * 对应路由 /home/spaces/:id/documents/:docId，展示文档元信息、解析失败/处理中的节点级
- * 流程时间线、分块列表（折叠预览 + 展开渲染 Markdown/图片）与右侧原文预览面板。
+ * 对应路由 /home/spaces/:id/documents/:docId，顶栏收文件关键信息（元数据/标签/
+ * 流程时间线折叠于「详情」），下方左右分栏：左原文预览、右分块列表（密度双态 +
+ * 本页搜索）。分块列表（折叠预览 + 展开渲染 Markdown/图片）与右侧原文预览面板。
  * kbId 优先取 query，缺失时先反查归属知识库再加载，失败落「文档不存在」空态。
  */
 
@@ -521,9 +538,22 @@ const previewUrl = ref('')
 // 分块展开/折叠
 const expandedChunks = ref<Record<number, boolean>>({})
 
-// 原文预览面板
-const showOriginalPanel = ref(true)
 const showCompareDialog = ref(false)
+
+// 详细信息折叠区（元数据网格/标签/流程时间线整体收纳，顶栏只留关键统计）
+const infoExpanded = ref(false)
+
+// 分块文本密度：ellipse=3 行省略（默认）/ full=全文平铺（RAGFlow 同款双态）
+const textMode = ref<'full' | 'ellipse'>('ellipse')
+
+// 本页分块搜索（服务端分页：过滤仅作用于当前页）
+const searchText = ref('')
+
+const filteredChunks = computed(() => {
+  const kw = searchText.value.trim().toLowerCase()
+  if (!kw) return chunks.value
+  return chunks.value.filter((c) => (c.content || '').toLowerCase().includes(kw))
+})
 
 // 节点级时间线 / 错误全文展开
 const timelineExpanded = ref(false)
@@ -818,28 +848,25 @@ function maybeAutoExpandTimeline() {
 
 <style scoped>
 .document-detail-view {
-  padding-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  /* 顶栏 + 分栏占满可视高度，分栏内部各自滚动（RAGFlow 同款全屏工作台形态） */
+  height: calc(100vh - 120px);
+  min-height: 480px;
 }
 
-/* ===== Info Section ===== */
+/* ===== 顶栏 ===== */
 
-.info-section {
+.detail-header {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
-  padding: var(--space-5);
-  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-3);
+  flex-shrink: 0;
 }
 
-.info-header {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.info-title-row {
+.header-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -861,27 +888,71 @@ function maybeAutoExpandTimeline() {
   user-select: none;
 }
 
-.doc-filename {
+.header-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.doc-name {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   font-family: var(--font-display);
-  /* 长文件名单行收敛，悬停 title 看全名 */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 状态随标题：紧随文件名，不可被压缩 */
 .doc-status-tag {
   flex-shrink: 0;
 }
 
-/* 失败原因独立一行：不再挤在元信息格子里截断 60px，可展开看全文 */
+/* 关键统计 chips：行内 label 随值的紧凑药丸 */
+.stat-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stat-chip {
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.stat-label {
+  color: var(--color-text-muted);
+  margin-right: 4px;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* 失败原因独立一行：可展开看全文 */
 .error-line {
-  margin: 0;
+  margin: var(--space-2) 0 0;
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
   line-height: 1.6;
@@ -892,7 +963,13 @@ function maybeAutoExpandTimeline() {
   word-break: break-word;
 }
 
-/* ===== Meta grid ===== */
+/* ===== 可折叠详细信息（原 meta-grid + 标签 + Wiki + 流程时间线） ===== */
+
+.meta-detail {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-light);
+}
 
 .meta-grid {
   display: grid;
@@ -900,7 +977,6 @@ function maybeAutoExpandTimeline() {
   gap: var(--space-2) var(--space-4);
 }
 
-/* Embedding 这类长值项占两个轨道，避免普通轨道宽度下必然省略号截断 */
 .meta-item:has(.meta-value-long) {
   grid-column: span 2;
 }
@@ -910,7 +986,6 @@ function maybeAutoExpandTimeline() {
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  /* 行内 label 随值：label 固定宽对齐成列，值收敛省略 */
 }
 
 .meta-label {
@@ -930,13 +1005,11 @@ function maybeAutoExpandTimeline() {
   white-space: nowrap;
 }
 
-/* 解析质量警告：琥珀色警示，title 悬停展开明细 */
 .quality-warnings {
   color: var(--color-warning, #b45309);
   cursor: help;
 }
 
-/* 标签行：展示态 tag 排布 + 行内编辑态控件 */
 .tags-value {
   display: inline-flex;
   align-items: center;
@@ -948,8 +1021,6 @@ function maybeAutoExpandTimeline() {
   margin-right: 0;
 }
 
-/* 空态行动按钮：做成「空标签占位 chip」——el-tag 同款尺寸的虚线药丸，
-   读作「这里有个空标签位」而非一块矩形按钮，贴行内语境 */
 .tags-add-btn {
   height: 22px;
   padding: 0 10px;
@@ -966,7 +1037,6 @@ function maybeAutoExpandTimeline() {
   background: transparent;
 }
 
-/* 有标签时的编辑入口：铅笔 icon-only，弱化但可发现（hover 浮现主色） */
 .tags-edit-btn {
   padding: 2px 4px;
   color: var(--color-text-muted);
@@ -980,7 +1050,6 @@ function maybeAutoExpandTimeline() {
   min-width: 260px;
 }
 
-/* 已纳入 Wiki 反向条：主色链接，超出 3 页显示等 N 页 */
 .wiki-refs-value {
   display: inline-flex;
   align-items: center;
@@ -1002,8 +1071,6 @@ function maybeAutoExpandTimeline() {
   color: var(--color-text-muted);
 }
 
-/* ===== Pipeline Timeline Section ===== */
-
 .pipeline-timeline-section {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
@@ -1021,7 +1088,7 @@ function maybeAutoExpandTimeline() {
 
 .timeline-header h4 {
   margin: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
@@ -1035,62 +1102,73 @@ function maybeAutoExpandTimeline() {
   transform: rotate(90deg);
 }
 
-/* ===== Content Layout ===== */
+/* ===== 左右分栏 ===== */
 
-.content-layout {
-  display: flex;
-  gap: var(--space-4);
-  align-items: flex-start;
-}
-
-.content-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.compare-dialog-body {
-  height: 78vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.compare-dialog-body > * {
+.detail-split {
   flex: 1;
   min-height: 0;
 }
 
-.content-sidebar {
-  width: 360px;
-  flex-shrink: 0;
-  /* 侧栏 sticky 跟随：长分块列表滚动时预览/导出始终在视口内 */
-  position: sticky;
-  top: var(--space-4);
+.pane {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4);
 }
 
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.pane-preview {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+}
+
+.pane-header {
   margin-bottom: var(--space-3);
 }
 
-.sidebar-header h4 {
+.pane-header h4 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
-/* ===== Chunks Section ===== */
+/* ===== 分块区 ===== */
 
 .chunks-section {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* chunks 工具栏：sticky 跟随滚动（搜索/密度切换/计数常驻） */
+.chunks-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg-page, transparent);
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.chunk-search {
+  width: 220px;
+}
+
+.chunk-count {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .section-header {
@@ -1098,7 +1176,7 @@ function maybeAutoExpandTimeline() {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .section-header h4 {
@@ -1106,13 +1184,12 @@ function maybeAutoExpandTimeline() {
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
-  font-family: var(--font-display);
 }
 
 .section-header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -1120,7 +1197,7 @@ function maybeAutoExpandTimeline() {
   margin-right: var(--space-1);
 }
 
-/* ===== Narrative Section（视频叙事文档） ===== */
+/* ===== 叙事文档（视频） ===== */
 
 .narrative-desc {
   margin: 0 0 var(--space-3);
@@ -1163,11 +1240,7 @@ function maybeAutoExpandTimeline() {
   color: var(--color-danger);
 }
 
-.chunk-count {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
+/* ===== 分块卡片（RAGFlow 风格重绘） ===== */
 
 .chunks-list {
   display: flex;
@@ -1179,13 +1252,21 @@ function maybeAutoExpandTimeline() {
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  transition: all var(--transition-fast);
+  padding: var(--space-3) var(--space-4);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.chunk-card:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
 }
 
 .chunk-card.chunk-expanded {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-primary-muted);
+  background: var(--color-bg-card-elevated);
 }
 
 .chunk-header {
@@ -1228,15 +1309,27 @@ function maybeAutoExpandTimeline() {
   transform: rotate(90deg);
 }
 
+/* 折叠态预览：省略模式 3 行钳制；全文模式平铺限高滚动 */
 .chunk-preview {
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
   cursor: pointer;
   padding-top: var(--space-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chunk-preview.is-full {
+  display: block;
+  -webkit-line-clamp: unset;
+  max-height: 420px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
 }
 
 .meta-tag {
@@ -1358,50 +1451,16 @@ function maybeAutoExpandTimeline() {
   margin-top: var(--space-4);
 }
 
-/* ===== Responsive ===== */
+/* ===== 对比预览对话框 ===== */
 
-@media (max-width: 1100px) {
-  .content-layout {
-    flex-direction: column;
-  }
-
-  .content-sidebar {
-    width: 100%;
-    /* 纵向堆叠后不再 sticky（会遮住内容尾部） */
-    position: static;
-  }
+.compare-dialog-body {
+  height: 78vh;
+  display: flex;
+  flex-direction: column;
 }
 
-@media (max-width: 640px) {
-  .info-section,
-  .chunks-section {
-    padding: var(--space-4);
-  }
-
-  /* 标题行降级：徽章 + 名字换行，状态标签随行 */
-  .info-title-row {
-    flex-wrap: wrap;
-  }
-
-  .doc-filename {
-    white-space: normal;
-    word-break: break-all;
-  }
-
-  .meta-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* Embedding 这类长值在 2 列网格里放不下，单独占满整行 */
-  .meta-item:has(.meta-value-long) {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 480px) {
-  /* 极窄视口 2 列放不下值（"2.6 KB" 都被截断），降单列保读性 */
-  .meta-grid {
-    grid-template-columns: 1fr;
-  }
+.compare-dialog-body > * {
+  flex: 1;
+  min-height: 0;
 }
 </style>
