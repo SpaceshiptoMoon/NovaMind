@@ -420,6 +420,8 @@
               "
             />
           </div>
+          </div>
+          </el-collapse-transition>
         </div>
       </div>
 
