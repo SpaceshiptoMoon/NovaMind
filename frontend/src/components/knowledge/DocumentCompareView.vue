@@ -18,7 +18,10 @@
         :style="{ flexBasis: leftWidthPercent + '%' }"
         @scroll.passive="onLeftScroll"
       >
-        <div v-if="leftLoading" class="compare-loading">
+        <div v-if="compareError" class="compare-unsupported">
+          原文渲染失败：{{ compareError }}
+        </div>
+        <div v-else-if="leftLoading" class="compare-loading">
           <el-skeleton :rows="10" animated />
         </div>
 
@@ -82,10 +85,24 @@
  * 同步滚动为比例映射（左右滚动百分比互映，可关）。
  * chunk 级高亮联动（chunk-position 端点已返回页+bbox）留作 V2。
  */
-import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed, onErrorCaptured } from 'vue'
 import VuePdfEmbed from 'vue-pdf-embed'
+// pdfjs worker 显式注册（README Option 1 的 Vite 形态；默认 blob 在部分
+// 环境会被 CSP/模块解析打断，显式入口更稳）
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { GlobalWorkerOptions } from 'pdfjs-dist'
 import { documentApi } from '@/api/knowledge'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+
+GlobalWorkerOptions.workerSrc = PdfWorker
+
+// 子树渲染错误（如 pdf 渲染失败）就地捕获并转为错误提示：
+// 防止异常打断父级响应链导致对话框关闭失效
+const compareError = ref('')
+onErrorCaptured((err) => {
+  compareError.value = String((err as Error)?.message || err)
+  return false
+})
 
 const props = defineProps<{
   spaceId: number

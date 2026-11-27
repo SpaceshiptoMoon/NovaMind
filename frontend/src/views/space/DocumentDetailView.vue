@@ -438,6 +438,7 @@
       <!-- 原文 / 解析MD 左右对比 -->
       <el-dialog
         v-model="showCompareDialog"
+        @close="showCompareDialog = false"
         :title="`对比预览：${document?.filename || ''}`"
         width="95vw"
         destroy-on-close

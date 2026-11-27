@@ -24,6 +24,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.18.9",
     "marked": "^17.0.5",
+    "pdfjs-dist": "^6.5.438",
     "pinia": "^3.0.4",
     "vue": "^3.5.31",
     "vue-pdf-embed": "^2.1.7",
