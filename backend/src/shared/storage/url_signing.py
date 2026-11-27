@@ -34,13 +34,19 @@ async def presigned_get_url(
     Raises:
         S3Error: 签名失败（失败结果不缓存，每次重试）。
     """
+    # 预签名 URL 的消费者全部是浏览器侧资源（页图/图块/帧/音频片段）——
+    # 必须用公网可达地址：客户端实现了 get_public_file_url（按
+    # minio.public_endpoint 替换 netloc）时优先取用，否则回退内网 URL
+    # （纯 CPU 老部署/未配置 public_endpoint 的现状，行为不变）。
+    get_url = getattr(minio_client, "get_public_file_url", None) or minio_client.get_file_url
+
     cache_ttl = expires - PRESIGN_CACHE_MARGIN
     if cache_ttl <= 0:
         # 短签名（不足余量两倍）不值得缓存，直接签
-        return await minio_client.get_file_url(bucket_name, object_name, expires)
+        return await get_url(bucket_name, object_name, expires)
 
     async def _sign() -> str:
-        return await minio_client.get_file_url(bucket_name, object_name, expires)
+        return await get_url(bucket_name, object_name, expires)
 
     return await get_or_load(
         f"presign:{bucket_name}:{object_name}:{expires}", cache_ttl, _sign
