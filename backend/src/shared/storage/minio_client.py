@@ -81,6 +81,22 @@ class MinioClient:
             region=region,
         )
 
+        # 公网签名客户端：与主客户端同桶同凭据，但以 public_endpoint 计算签名。
+        # 预签名 URL 的签名绑定 Host——用内网 endpoint 签名后字符串替换 netloc
+        # 会 SignatureDoesNotMatch（实测），必须以公网 endpoint 原生签名。
+        self._public_client = None
+        if public_endpoint:
+            pub = public_endpoint
+            pub_secure = "://" in pub and pub.split("://")[0] == "https"
+            pub_host = pub.split("://")[-1]
+            self._public_client = Minio(
+                pub_host,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=pub_secure,
+                region=region,
+            )
+
         logger.info(
             "MinIO 客户端初始化成功",
             endpoint=endpoint,
@@ -875,28 +891,30 @@ class MinioClient:
         Returns:
             公网可达的预签名 URL（如未配置 public_endpoint 则返回内网 URL）
         """
-        url = await self.get_file_url(bucket_name, object_name, expires)
         if not self.public_endpoint:
             logger.warning(
                 "未配置 minio.public_endpoint，外部服务可能无法访问此 URL",
                 object=object_name,
             )
-            return url
+            return await self.get_file_url(bucket_name, object_name, expires)
 
-        from urllib.parse import urlparse, urlunparse
-
-        parsed = urlparse(url)
-        # 替换 netloc（host:port）为 public_endpoint
-        netloc = self.public_endpoint
-        if "://" in netloc:
-            # public_endpoint 带了 scheme，也替换 scheme
-            from urllib.parse import urlparse as up
-            pub = up(netloc)
-            parsed = parsed._replace(scheme=pub.scheme, netloc=pub.netloc)
-        else:
-            parsed = parsed._replace(netloc=netloc)
-
-        return urlunparse(parsed)
+        # 以公网 endpoint 原生签名：签名绑定 Host，字符串替换 netloc 会
+        # SignatureDoesNotMatch（403，实测）
+        try:
+            return await asyncio.to_thread(
+                self._public_client.presigned_get_object,
+                bucket_name,
+                object_name,
+                timedelta(seconds=expires),
+            )
+        except S3Error as e:
+            logger.error(
+                "获取公网预签名 URL 失败",
+                bucket=bucket_name,
+                object=object_name,
+                error=str(e)
+            )
+            raise
 
     async def get_file_info(
         self,
