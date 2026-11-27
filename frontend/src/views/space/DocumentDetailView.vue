@@ -265,28 +265,27 @@
           </p>
         </div>
 
-        <!-- 分块列表 -->
+        <!-- 分块列表：默认折叠，展开时才拉取渲染（开页只加载文件信息） -->
         <div class="chunks-section">
-          <div class="section-header">
+          <div class="section-header chunks-section-toggle" @click="toggleChunksSection">
+            <el-icon
+              class="chunks-chevron"
+              :class="{ 'is-expanded': chunksSectionExpanded }"
+            >
+              <ArrowRight />
+            </el-icon>
             <h4>文档分块</h4>
-            <div class="section-header-right">
-              <el-button
-                v-if="!showOriginalPanel"
-                text
-                size="small"
-                @click="showOriginalPanel = true"
-              >
-                <el-icon class="section-action-icon"><View /></el-icon>
-                预览
-              </el-button>
+            <span class="chunk-count">{{ totalChunks }} 个分块</span>
+            <div class="section-header-right" @click.stop>
               <el-button text size="small" @click="showCompareDialog = true">
                 <el-icon class="section-action-icon"><CopyDocument /></el-icon>
                 对比预览
               </el-button>
-              <span class="chunk-count">{{ totalChunks }} 个分块</span>
             </div>
           </div>
 
+          <el-collapse-transition>
+          <div v-show="chunksSectionExpanded" class="chunks-body">
           <!-- 无分块空态：未处理/解析失败时不再整块消失，给出明确的下一步引导 -->
           <EmptyState
             v-if="totalChunks === 0 && !loading"
@@ -521,6 +520,19 @@ const previewUrl = ref('')
 // 分块展开/折叠
 const expandedChunks = ref<Record<number, boolean>>({})
 
+// 分块区整体折叠：打开详情页只加载文件信息，分块列表展开时才拉取渲染
+// （分块接口 + Markdown 渲染是详情页最重的加载项，按需加载避免开页卡顿）
+const chunksSectionExpanded = ref(false)
+const chunksLoaded = ref(false)
+
+async function toggleChunksSection(): Promise<void> {
+  chunksSectionExpanded.value = !chunksSectionExpanded.value
+  if (chunksSectionExpanded.value && !chunksLoaded.value) {
+    await fetchChunks()
+    chunksLoaded.value = true
+  }
+}
+
 // 原文预览面板
 const showOriginalPanel = ref(true)
 const showCompareDialog = ref(false)
@@ -579,7 +591,7 @@ async function fetchDocument() {
     document.value = data
     totalChunks.value = data.chunk_count || 0
     chunkCurrentPage.value = 1
-    await fetchChunks()
+    // 分块列表改为折叠懒加载：展开时经 toggleChunksSection 拉取，开页不请求
     // 文档类型就绪后才能判定视频文档，再拉叙事状态；已在合成中则续上轮询
     await fetchNarrative()
     void fetchWikiReferences()
@@ -1167,6 +1179,34 @@ function maybeAutoExpandTimeline() {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   white-space: nowrap;
+  margin-left: auto;
+}
+
+/* 分块区折叠头：可点击展开/收起（懒加载分块，开页只加载文件信息） */
+.chunks-section-toggle {
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-md);
+  margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  padding: var(--space-3) var(--space-5);
+}
+
+.chunks-section-toggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.chunks-chevron {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chunks-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
+.chunks-body {
+  padding-top: var(--space-2);
 }
 
 .chunks-list {
