@@ -1,447 +1,461 @@
 <template>
-  <div v-loading="loading" class="document-detail-view">
-    <!-- 顶栏：类型徽标 + 文件名 + 状态 + 关键统计 + 详情折叠 -->
-    <header class="detail-header">
-      <div class="header-row">
-        <div
-          class="file-type-badge"
-          :style="{
-            background: getFileTypeStyle(document?.file_type || '').bg,
-            color: getFileTypeStyle(document?.file_type || '').color,
-          }"
+  <div class="document-detail-view">
+    <!-- 文档信息头 -->
+    <div v-loading="loading" class="info-section">
+      <div class="info-header">
+        <div class="info-title-row">
+          <div
+            class="file-type-badge"
+            :style="{
+              background: getFileTypeStyle(document?.file_type || '').bg,
+              color: getFileTypeStyle(document?.file_type || '').color,
+            }"
+          >
+            {{ (document?.file_type || 'FILE').toUpperCase() }}
+          </div>
+          <h3 class="doc-filename" :title="document?.filename">
+            {{ document?.filename || (loadFailed ? '文档不存在或已删除' : '加载中...') }}
+          </h3>
+          <!-- 状态随标题行：比埋在元信息网格里更先被看到 -->
+          <el-tag
+            v-if="document"
+            class="doc-status-tag"
+            :type="currentStatusConfig.type"
+            effect="plain"
+            size="small"
+          >
+            {{ currentStatusConfig.text }}
+          </el-tag>
+        </div>
+        <p
+          v-if="latestTask?.error_message && docStatus !== 2"
+          class="error-line"
+          :title="latestTask.error_message"
+          @click="errorExpanded = !errorExpanded"
         >
-          {{ (document?.file_type || 'FILE').toUpperCase() }}
+          {{ errorDisplayText }}
+        </p>
+      </div>
+
+      <!-- Meta grid：规模/媒体/解析产出统一行内 label 随值，比上标签下值的格子更紧凑扫读 -->
+      <div v-if="document" class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">文件大小</span>
+          <span class="meta-value">{{ formatFileSize(document.file_size || 0) }}</span>
         </div>
-        <div class="header-text">
-          <div class="header-title-row">
-            <h2 class="doc-name" :title="document?.filename">
-              {{ document?.filename || (loadFailed ? '文档不存在或已删除' : '加载中...') }}
-            </h2>
-            <el-tag
-              v-if="document"
-              class="doc-status-tag"
-              :type="currentStatusConfig.type"
-              effect="plain"
-              size="small"
-            >
-              {{ currentStatusConfig.text }}
-            </el-tag>
-          </div>
-          <div v-if="document" class="stat-chips">
-            <span class="stat-chip">
-              <span class="stat-label">大小</span>{{ formatFileSize(document.file_size || 0) }}
-            </span>
-            <span v-if="document.page_count != null" class="stat-chip">
-              <span class="stat-label">页数</span>{{ document.page_count }}
-            </span>
-            <span v-if="(document.chunk_count ?? 0) > 0" class="stat-chip">
-              <span class="stat-label">分块</span>{{ document.chunk_count }}
-            </span>
-            <span v-if="(document.token_count ?? 0) > 0" class="stat-chip">
-              <span class="stat-label">Token</span>{{ document.token_count.toLocaleString() }}
-            </span>
-            <span v-if="document.char_count != null" class="stat-chip">
-              <span class="stat-label">字符</span>{{ document.char_count.toLocaleString() }}
-            </span>
-            <span class="stat-chip">
-              <span class="stat-label">上传</span>{{ formatDate(document.created_at) }}
-            </span>
-          </div>
+        <div v-if="(document.chunk_count ?? 0) > 0" class="meta-item">
+          <span class="meta-label">分块数</span>
+          <span class="meta-value">{{ document.chunk_count }}</span>
         </div>
-        <div class="header-actions">
-          <el-tooltip content="详细信息（元数据 / 标签 / 流程时间线）" placement="top">
-            <el-button
-              size="small"
-              :type="infoExpanded ? 'primary' : 'default'"
-              @click="infoExpanded = !infoExpanded"
+        <div v-if="(document.token_count ?? 0) > 0" class="meta-item">
+          <span class="meta-label">Token 数</span>
+          <span class="meta-value">{{ document.token_count }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">上传时间</span>
+          <span class="meta-value">{{ formatDate(document.created_at) }}</span>
+        </div>
+        <div v-if="document.duration_seconds != null" class="meta-item">
+          <span class="meta-label">时长</span>
+          <span class="meta-value">{{ formatDuration(document.duration_seconds) }}</span>
+        </div>
+        <div v-if="document.chunk_type" class="meta-item">
+          <span class="meta-label">内容类型</span>
+          <span class="meta-value">{{
+            chunkTypeLabels[document.chunk_type] || document.chunk_type
+          }}</span>
+        </div>
+        <div v-if="document.frame_count != null" class="meta-item">
+          <span class="meta-label">视频帧数</span>
+          <span class="meta-value">{{ document.frame_count }}</span>
+        </div>
+        <div v-if="document.segment_count != null" class="meta-item">
+          <span class="meta-label">音频分段数</span>
+          <span class="meta-value">{{ document.segment_count }}</span>
+        </div>
+        <div v-if="document.page_count != null" class="meta-item">
+          <span class="meta-label">页数</span>
+          <span class="meta-value">{{ document.page_count }}</span>
+        </div>
+        <div v-if="document.char_count != null" class="meta-item">
+          <span class="meta-label">字符数</span>
+          <span class="meta-value">{{ document.char_count.toLocaleString() }}</span>
+        </div>
+        <div v-if="document.outline_count != null" class="meta-item">
+          <span class="meta-label">书签数</span>
+          <span class="meta-value">{{ document.outline_count }}</span>
+        </div>
+        <div v-if="document.section_count != null" class="meta-item">
+          <span class="meta-label">段落数</span>
+          <span class="meta-value">{{ document.section_count }}</span>
+        </div>
+        <div v-if="document.table_count != null" class="meta-item">
+          <span class="meta-label">表格数</span>
+          <span class="meta-value">{{ document.table_count }}</span>
+        </div>
+        <div v-if="document.image_count != null" class="meta-item">
+          <span class="meta-label">图片数</span>
+          <span class="meta-value">{{ document.image_count }}</span>
+        </div>
+        <div v-if="document.embedding_model" class="meta-item">
+          <span class="meta-label">Embedding</span>
+          <span
+            class="meta-value meta-value-long"
+            :title="
+              document.embedding_model +
+              (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')
+            "
+          >
+            {{ document.embedding_model
+            }}<template v-if="document.embedding_dim != null">
+              · {{ document.embedding_dim }} 维</template
             >
-              详情
+          </span>
+        </div>
+        <div v-if="document.parse_duration_ms != null" class="meta-item">
+          <span class="meta-label">解析耗时</span>
+          <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
+        </div>
+        <div v-if="parseQualityWarnings.length > 0" class="meta-item">
+          <span class="meta-label">解析质量</span>
+          <span class="meta-value quality-warnings" :title="parseQualityWarnings.join('\n')"
+            >⚠ {{ parseQualityWarnings.length }} 条降级警告</span
+          >
+        </div>
+        <div v-else-if="document.quality" class="meta-item">
+          <span class="meta-label">解析质量</span>
+          <span class="meta-value">无警告</span>
+        </div>
+        <!-- 已纳入 Wiki 反向条：读完原文一步跳到 AI 综合页（读者自然下一步） -->
+        <div v-if="wikiRefs.length > 0" class="meta-item">
+          <span class="meta-label">Wiki</span>
+          <span class="meta-value wiki-refs-value">
+            <template v-for="(r, i) in wikiRefs.slice(0, 3)" :key="r.slug">
+              <RouterLink
+                class="wiki-ref-link"
+                :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
+                :title="r.title"
+                >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink
+              ><span v-if="i < Math.min(wikiRefs.length, 3) - 1">、</span>
+            </template>
+            <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
+              等 {{ wikiRefs.length }} 页 →
+            </span>
+          </span>
+        </div>
+        <!-- 用户自定义标签：业务分类过滤维度（检索页可按标签筛选）；行内编辑。
+            空态给「打标签」行动按钮（而非消极的「无」），有标签时编辑入口收成铅笔图标 -->
+        <div class="meta-item">
+          <span class="meta-label">标签</span>
+          <span v-if="!tagsEditing" class="meta-value tags-value">
+            <template v-if="(document.tags || []).length > 0">
+              <el-tag
+                v-for="t in document.tags"
+                :key="t"
+                size="small"
+                effect="plain"
+                round
+                class="tag-chip"
+                >{{ t }}</el-tag
+              >
+              <el-button
+                text
+                size="small"
+                class="tags-edit-btn"
+                aria-label="编辑标签"
+                title="编辑标签"
+                @click="startEditTags"
+              >
+                <el-icon><Edit /></el-icon>
+              </el-button>
+            </template>
+            <el-button v-else text size="small" class="tags-add-btn" @click="startEditTags">
+              <el-icon><Plus /></el-icon>
+              打标签
             </el-button>
-          </el-tooltip>
+          </span>
+          <span v-else class="meta-value tags-value">
+            <el-select
+              v-model="tagsInput"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              placeholder="输入标签回车，可多个"
+              size="small"
+              class="tags-editor"
+              :max-collapse-tags="10"
+            />
+            <el-button size="small" type="primary" :loading="tagsSaving" @click="saveTags">
+              保存
+            </el-button>
+            <el-button size="small" @click="tagsEditing = false">取消</el-button>
+          </span>
         </div>
       </div>
 
-      <p
-        v-if="latestTask?.error_message && docStatus !== 2"
-        class="error-line"
-        :title="latestTask.error_message"
-        @click="errorExpanded = !errorExpanded"
-      >
-        {{ errorDisplayText }}
-      </p>
-
-      <!-- 可折叠详细信息（原 info-section 全量内容收纳于此） -->
-      <el-collapse-transition>
-        <div v-show="infoExpanded" class="meta-detail">
-          <div v-if="document" class="meta-grid">
-            <div v-if="document.duration_seconds != null" class="meta-item">
-              <span class="meta-label">时长</span>
-              <span class="meta-value">{{ formatDuration(document.duration_seconds) }}</span>
-            </div>
-            <div v-if="document.chunk_type" class="meta-item">
-              <span class="meta-label">内容类型</span>
-              <span class="meta-value">{{
-                chunkTypeLabels[document.chunk_type] || document.chunk_type
-              }}</span>
-            </div>
-            <div v-if="document.frame_count != null" class="meta-item">
-              <span class="meta-label">视频帧数</span>
-              <span class="meta-value">{{ document.frame_count }}</span>
-            </div>
-            <div v-if="document.segment_count != null" class="meta-item">
-              <span class="meta-label">音频分段数</span>
-              <span class="meta-value">{{ document.segment_count }}</span>
-            </div>
-            <div v-if="document.outline_count != null" class="meta-item">
-              <span class="meta-label">书签数</span>
-              <span class="meta-value">{{ document.outline_count }}</span>
-            </div>
-            <div v-if="document.section_count != null" class="meta-item">
-              <span class="meta-label">段落数</span>
-              <span class="meta-value">{{ document.section_count }}</span>
-            </div>
-            <div v-if="document.table_count != null" class="meta-item">
-              <span class="meta-label">表格数</span>
-              <span class="meta-value">{{ document.table_count }}</span>
-            </div>
-            <div v-if="document.image_count != null" class="meta-item">
-              <span class="meta-label">图片数</span>
-              <span class="meta-value">{{ document.image_count }}</span>
-            </div>
-            <div v-if="document.embedding_model" class="meta-item">
-              <span class="meta-label">Embedding</span>
-              <span
-                class="meta-value meta-value-long"
-                :title="
-                  document.embedding_model +
-                  (document.embedding_dim != null ? ` · ${document.embedding_dim} 维` : '')
-                "
-              >
-                {{ document.embedding_model
-                }}<template v-if="document.embedding_dim != null">
-                  · {{ document.embedding_dim }} 维</template
-                >
-              </span>
-            </div>
-            <div v-if="document.parse_duration_ms != null" class="meta-item">
-              <span class="meta-label">解析耗时</span>
-              <span class="meta-value">{{ formatDuration(document.parse_duration_ms / 1000) }}</span>
-            </div>
-            <div v-if="parseQualityWarnings.length > 0" class="meta-item">
-              <span class="meta-label">解析质量</span>
-              <span class="meta-value quality-warnings" :title="parseQualityWarnings.join('\n')"
-                >⚠ {{ parseQualityWarnings.length }} 条降级警告</span
-              >
-            </div>
-            <div v-else-if="document.quality" class="meta-item">
-              <span class="meta-label">解析质量</span>
-              <span class="meta-value">无警告</span>
-            </div>
-            <div v-if="wikiRefs.length > 0" class="meta-item">
-              <span class="meta-label">Wiki</span>
-              <span class="meta-value wiki-refs-value">
-                <template v-for="(r, i) in wikiRefs.slice(0, 3)" :key="r.slug">
-                  <RouterLink
-                    class="wiki-ref-link"
-                    :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki?page=${encodeURIComponent(r.slug)}`"
-                    :title="r.title"
-                    >《{{ r.title.length > 18 ? r.title.slice(0, 18) + '…' : r.title }}》</RouterLink
-                  ><span v-if="i < Math.min(wikiRefs.length, 3) - 1">、</span>
-                </template>
-                <span v-if="wikiRefs.length > 3" class="wiki-refs-more">
-                  等 {{ wikiRefs.length }} 页 →
-                </span>
-              </span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">标签</span>
-              <span v-if="!tagsEditing" class="meta-value tags-value">
-                <template v-if="(document.tags || []).length > 0">
-                  <el-tag
-                    v-for="t in document.tags"
-                    :key="t"
-                    size="small"
-                    effect="plain"
-                    round
-                    class="tag-chip"
-                    >{{ t }}</el-tag
-                  >
-                  <el-button
-                    text
-                    size="small"
-                    class="tags-edit-btn"
-                    aria-label="编辑标签"
-                    title="编辑标签"
-                    @click="startEditTags"
-                  >
-                    <el-icon><Edit /></el-icon>
-                  </el-button>
-                </template>
-                <el-button v-else text size="small" class="tags-add-btn" @click="startEditTags">
-                  <el-icon><Plus /></el-icon>
-                  打标签
-                </el-button>
-              </span>
-              <span v-else class="meta-value tags-value">
-                <el-select
-                  v-model="tagsInput"
-                  multiple
-                  filterable
-                  allow-create
-                  default-first-option
-                  placeholder="输入标签回车，可多个"
-                  size="small"
-                  class="tags-editor"
-                  :max-collapse-tags="10"
-                />
-                <el-button size="small" type="primary" :loading="tagsSaving" @click="saveTags">
-                  保存
-                </el-button>
-                <el-button size="small" @click="tagsEditing = false">取消</el-button>
-              </span>
-            </div>
-          </div>
-
-          <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
-          <div v-if="hasNodeLogs" class="pipeline-timeline-section">
-            <div class="timeline-header" @click="timelineExpanded = !timelineExpanded">
-              <h4>处理流程</h4>
-              <el-icon class="timeline-toggle" :class="{ 'is-expanded': timelineExpanded }">
-                <ArrowRight />
-              </el-icon>
-            </div>
-            <el-collapse-transition>
-              <div v-show="timelineExpanded">
-                <TaskNodeLogTable :step-progress="latestTask?.step_progress ?? null" />
-              </div>
-            </el-collapse-transition>
-          </div>
+      <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
+      <div v-if="hasNodeLogs" class="pipeline-timeline-section">
+        <div class="timeline-header" @click="timelineExpanded = !timelineExpanded">
+          <h4>处理流程</h4>
+          <el-icon class="timeline-toggle" :class="{ 'is-expanded': timelineExpanded }">
+            <ArrowRight />
+          </el-icon>
         </div>
-      </el-collapse-transition>
-    </header>
-
-    <!-- 主对比视图：左原文 / 右解析 md（页面主体，占满剩余高度） -->
-    <div class="compare-main">
-      <DocumentCompareView
-        :space-id="spaceId"
-        :kb-id="kbId"
-        :doc-id="docId"
-        :filename="document?.filename || ''"
-      />
+        <el-collapse-transition>
+          <div v-show="timelineExpanded">
+            <TaskNodeLogTable :step-progress="latestTask?.step_progress ?? null" />
+          </div>
+        </el-collapse-transition>
+      </div>
     </div>
 
-    <!-- 分块列表：默认折叠，需要查看再展开 -->
-    <section class="chunks-fold-section">
-      <div class="chunks-fold-header" @click="chunksExpanded = !chunksExpanded">
-        <el-icon class="chunks-fold-chevron" :class="{ 'is-expanded': chunksExpanded }">
-          <ArrowRight />
-        </el-icon>
-        <h4>分块列表</h4>
-        <span class="chunk-count">{{ totalChunks }} 个分块</span>
-      </div>
-      <el-collapse-transition>
-        <div v-show="chunksExpanded" class="chunks-fold-body">
-          <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
-          <div v-if="isVideoDoc" class="narrative-section chunks-section">
-            <div class="section-header">
-              <h4>叙事文档</h4>
-              <div class="section-header-right">
-                <el-tag :type="narrativeTagType" effect="plain" size="small">
-                  {{ narrativeStatusText }}
-                </el-tag>
-                <el-button
-                  v-if="narrativeStatus === 'completed'"
-                  text
-                  size="small"
-                  @click="narrativeExpanded = !narrativeExpanded"
-                >
-                  <el-icon class="section-action-icon"><View /></el-icon>
-                  {{ narrativeExpanded ? '收起' : '查看章节' }}
-                </el-button>
-                <el-button
-                  text
-                  size="small"
-                  :loading="narrativeGenerating"
-                  @click="handleGenerateNarrative"
-                >
-                  {{ narrativeStatus === 'completed' ? '重新生成' : '生成章节文档' }}
-                </el-button>
-              </div>
-            </div>
-            <p class="narrative-desc">
-              用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 +
-              章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
-            </p>
-            <div v-if="narrativeStatus === 'completed' && narrativeExpanded" class="narrative-body">
-              <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
-              <div v-for="(ch, i) in narrative?.chapters ?? []" :key="i" class="narrative-chapter">
-                <div class="chapter-title">
-                  <span class="chapter-index-badge">{{ i + 1 }}</span>
-                  <strong>{{ ch.title }}</strong>
-                  <span v-if="ch.start_time != null" class="meta-tag time-tag">
-                    {{ formatDuration(ch.start_time) }}
-                    -
-                    {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
-                  </span>
-                </div>
-                <p class="chapter-summary">{{ ch.summary }}</p>
-              </div>
-            </div>
-            <p v-if="narrativeStatus === 'failed'" class="narrative-error">
-              {{ narrative?.error_message || '合成失败，可重试' }}
-            </p>
-          </div>
-
-          <!-- 分块列表 -->
-          <div class="chunks-section">
-            <div class="chunks-toolbar">
-              <el-input
-                v-model="searchText"
-                placeholder="搜索分块内容"
-                clearable
+    <!-- 双栏内容区 -->
+    <div class="content-layout">
+      <!-- 左栏：分块列表 -->
+      <div class="content-main">
+        <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
+        <div v-if="isVideoDoc" class="narrative-section chunks-section">
+          <div class="section-header">
+            <h4>叙事文档</h4>
+            <div class="section-header-right">
+              <el-tag :type="narrativeTagType" effect="plain" size="small">
+                {{ narrativeStatusText }}
+              </el-tag>
+              <el-button
+                v-if="narrativeStatus === 'completed'"
+                text
                 size="small"
-                class="chunk-search"
-              />
-              <el-radio-group v-model="textMode" size="small">
-                <el-radio-button value="ellipse">省略</el-radio-button>
-                <el-radio-button value="full">全文</el-radio-button>
-              </el-radio-group>
+                @click="narrativeExpanded = !narrativeExpanded"
+              >
+                <el-icon class="section-action-icon"><View /></el-icon>
+                {{ narrativeExpanded ? '收起' : '查看章节' }}
+              </el-button>
+              <el-button
+                text
+                size="small"
+                :loading="narrativeGenerating"
+                @click="handleGenerateNarrative"
+              >
+                {{ narrativeStatus === 'completed' ? '重新生成' : '生成章节文档' }}
+              </el-button>
+            </div>
+          </div>
+          <p class="narrative-desc">
+            用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 +
+            章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
+          </p>
+          <div v-if="narrativeStatus === 'completed' && narrativeExpanded" class="narrative-body">
+            <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
+            <div v-for="(ch, i) in narrative?.chapters ?? []" :key="i" class="narrative-chapter">
+              <div class="chapter-title">
+                <span class="chapter-index-badge">{{ i + 1 }}</span>
+                <strong>{{ ch.title }}</strong>
+                <span v-if="ch.start_time != null" class="meta-tag time-tag">
+                  {{ formatDuration(ch.start_time) }}
+                  -
+                  {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
+                </span>
+              </div>
+              <p class="chapter-summary">{{ ch.summary }}</p>
+            </div>
+          </div>
+          <p v-if="narrativeStatus === 'failed'" class="narrative-error">
+            {{ narrative?.error_message || '合成失败，可重试' }}
+          </p>
+        </div>
+
+        <!-- 分块列表 -->
+        <div class="chunks-section">
+          <div class="section-header">
+            <h4>文档分块</h4>
+            <div class="section-header-right">
+              <el-button
+                v-if="!showOriginalPanel"
+                text
+                size="small"
+                @click="showOriginalPanel = true"
+              >
+                <el-icon class="section-action-icon"><View /></el-icon>
+                预览
+              </el-button>
+              <el-button text size="small" @click="showCompareDialog = true">
+                <el-icon class="section-action-icon"><CopyDocument /></el-icon>
+                对比预览
+              </el-button>
               <span class="chunk-count">{{ totalChunks }} 个分块</span>
             </div>
+          </div>
 
-            <EmptyState
-              v-if="totalChunks === 0 && !loading"
-              variant="data"
-              headline="暂无分块"
-              :description="emptyChunkDescription"
+          <!-- 无分块空态：未处理/解析失败时不再整块消失，给出明确的下一步引导 -->
+          <EmptyState
+            v-if="totalChunks === 0 && !loading"
+            variant="data"
+            headline="暂无分块"
+            :description="emptyChunkDescription"
+          >
+            <el-button @click="router.back()">返回文档列表</el-button>
+          </EmptyState>
+
+          <div v-if="chunks.length > 0" class="chunks-list">
+            <div
+              v-for="chunk in chunks"
+              :key="chunk.chunk_id"
+              class="chunk-card"
+              :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
             >
-              <el-button @click="router.back()">返回文档列表</el-button>
-            </EmptyState>
-
-            <div v-if="filteredChunks.length > 0" class="chunks-list">
-              <div
-                v-for="chunk in filteredChunks"
-                :key="chunk.chunk_id"
-                class="chunk-card"
-                :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
-              >
-                <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
-                  <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
-                  <div class="chunk-meta">
-                    <span
-                      v-if="chunkMetaOf(chunk).chunk_role === 'parent'"
-                      class="meta-tag chunk-role-tag parent"
-                      >父块</span
-                    >
-                    <span
-                      v-else-if="chunkMetaOf(chunk).chunk_role === 'child'"
-                      class="meta-tag chunk-role-tag child"
-                      >子块</span
-                    >
-                    <span
-                      v-if="chunk.chunk_type && chunk.chunk_type !== 'text'"
-                      class="meta-tag chunk-type-tag"
-                      >{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span
-                    >
-                    <span v-if="chunkMetaOf(chunk).page" class="meta-tag"
-                      >第 {{ chunkMetaOf(chunk).page }} 页</span
-                    >
-                    <span v-if="chunkMetaOf(chunk).section_title" class="meta-tag">{{
-                      chunkMetaOf(chunk).section_title
-                    }}</span>
-                    <span v-if="chunkMetaOf(chunk).start_time != null" class="meta-tag time-tag">
-                      {{ formatDuration(chunkMetaOf(chunk).start_time as number) }}
-                      -
-                      {{ formatDuration(chunkMetaOf(chunk).end_time as number) }}
-                    </span>
-                    <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
-                  </div>
-                  <el-icon
-                    class="chunk-toggle"
-                    :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }"
+              <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
+                <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
+                <div class="chunk-meta">
+                  <span
+                    v-if="chunkMetaOf(chunk).chunk_role === 'parent'"
+                    class="meta-tag chunk-role-tag parent"
+                    >父块</span
                   >
-                    <ArrowRight />
-                  </el-icon>
+                  <span
+                    v-else-if="chunkMetaOf(chunk).chunk_role === 'child'"
+                    class="meta-tag chunk-role-tag child"
+                    >子块</span
+                  >
+                  <span
+                    v-if="chunk.chunk_type && chunk.chunk_type !== 'text'"
+                    class="meta-tag chunk-type-tag"
+                    >{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span
+                  >
+                  <span v-if="chunkMetaOf(chunk).page" class="meta-tag"
+                    >第 {{ chunkMetaOf(chunk).page }} 页</span
+                  >
+                  <span v-if="chunkMetaOf(chunk).section_title" class="meta-tag">{{
+                    chunkMetaOf(chunk).section_title
+                  }}</span>
+                  <span v-if="chunkMetaOf(chunk).start_time != null" class="meta-tag time-tag">
+                    {{ formatDuration(chunkMetaOf(chunk).start_time as number) }}
+                    -
+                    {{ formatDuration(chunkMetaOf(chunk).end_time as number) }}
+                  </span>
+                  <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
                 </div>
-                <div
-                  v-if="!expandedChunks[chunk.chunk_index]"
-                  class="chunk-preview"
-                  :class="{ 'is-full': textMode === 'full' }"
-                  @click="toggleChunk(chunk.chunk_index)"
+                <el-icon
+                  class="chunk-toggle"
+                  :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }"
                 >
-                  <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
-                  <template v-else-if="textMode === 'full'">{{ chunk.content }}</template>
-                  <template v-else>{{ truncateContent(chunk.content, 160) }}</template>
-                </div>
-                <template v-else>
-                  <div class="chunk-content">
-                    <template v-if="chunk.chunk_type === 'image'">
-                      <img
-                        v-if="chunk.media_url || chunk.image_url"
-                        :src="chunk.media_url || chunk.image_url"
-                        :alt="chunk.content"
-                        loading="lazy"
-                        class="chunk-image"
-                        @click="previewImage(chunk)"
-                      />
-                      <div class="chunk-image-desc">{{ chunk.content }}</div>
-                    </template>
-                    <template v-else-if="frameThumbsOf(chunk).length">
-                      <div class="chunk-frames">
-                        <el-image
-                          v-for="(url, fi) in frameThumbsOf(chunk)"
-                          :key="fi"
-                          :src="url"
-                          :preview-src-list="frameThumbsOf(chunk)"
-                          :initial-index="fi"
-                          fit="cover"
-                          loading="lazy"
-                          hide-on-click-modal
-                          preview-teleported
-                          class="chunk-frame-thumb"
-                        />
-                      </div>
-                      <MarkdownRenderer v-if="document" :content="chunk.content" />
-                      <template v-else>{{ chunk.content }}</template>
-                    </template>
-                    <MarkdownRenderer v-else-if="document" :content="chunk.content" />
-                    <template v-else>{{ chunk.content }}</template>
-                  </div>
-                  <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-                    <el-tag v-for="q in chunk.questions" :key="q" size="small" effect="plain" round>
-                      {{ q }}
-                    </el-tag>
-                  </div>
-                </template>
+                  <ArrowRight />
+                </el-icon>
               </div>
-            </div>
-
-            <div v-if="totalChunks > 0" class="chunks-pagination">
-              <Pagination
-                :page="chunkCurrentPage"
-                :page-size="chunkPageSize"
-                :total="totalChunks"
-                :page-sizes="[10, 20, 50, 100]"
-                layout="total, sizes, prev, pager, next"
-                @update:page="
-                  (p: number) => {
-                    chunkCurrentPage = p
-                    fetchChunks()
-                  }
-                "
-                @update:page-size="
-                  (s: number) => {
-                    chunkPageSize = s
-                    chunkCurrentPage = 1
-                    fetchChunks()
-                  }
-                "
-              />
+              <!-- 折叠态：截断预览 -->
+              <div
+                v-if="!expandedChunks[chunk.chunk_index]"
+                class="chunk-preview"
+                @click="toggleChunk(chunk.chunk_index)"
+              >
+                <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
+                <template v-else>{{ truncateContent(chunk.content) }}</template>
+              </div>
+              <!-- 展开态：完整内容（Markdown 渲染：figure 图片 + TSR 表格 HTML 可视化） -->
+              <template v-else>
+                <div class="chunk-content">
+                  <template v-if="chunk.chunk_type === 'image'">
+                    <img
+                      v-if="chunk.media_url || chunk.image_url"
+                      :src="chunk.media_url || chunk.image_url"
+                      :alt="chunk.content"
+                      loading="lazy"
+                      class="chunk-image"
+                      @click="previewImage(chunk)"
+                    />
+                    <div class="chunk-image-desc">{{ chunk.content }}</div>
+                  </template>
+                  <!-- 视频帧图缩略图：后端把 metadata.frame_paths 预签名成 frame_urls（与检索
+                       结果页同约定）；media_url 指向原视频文件，<img> 渲染不了，不能混用。
+                       帧图与正文里的 VLM 描述一一对应，点击放大可翻帧 -->
+                  <template v-else-if="frameThumbsOf(chunk).length">
+                    <div class="chunk-frames">
+                      <el-image
+                        v-for="(url, fi) in frameThumbsOf(chunk)"
+                        :key="fi"
+                        :src="url"
+                        :preview-src-list="frameThumbsOf(chunk)"
+                        :initial-index="fi"
+                        fit="cover"
+                        loading="lazy"
+                        hide-on-click-modal
+                        preview-teleported
+                        class="chunk-frame-thumb"
+                      />
+                    </div>
+                    <MarkdownRenderer v-if="document" :content="chunk.content" />
+                    <template v-else>{{ chunk.content }}</template>
+                  </template>
+                  <!-- content 里的 figure 短文件名已由后端 chunks 端点换成即时预签名 URL -->
+                  <MarkdownRenderer v-else-if="document" :content="chunk.content" />
+                  <template v-else>{{ chunk.content }}</template>
+                </div>
+                <div v-if="chunk.questions?.length > 0" class="chunk-questions">
+                  <el-tag v-for="q in chunk.questions" :key="q" size="small" effect="plain" round>
+                    {{ q }}
+                  </el-tag>
+                </div>
+              </template>
             </div>
           </div>
+
+          <div v-if="totalChunks > 0" class="chunks-pagination">
+            <Pagination
+              :page="chunkCurrentPage"
+              :page-size="chunkPageSize"
+              :total="totalChunks"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @update:page="
+                (p: number) => {
+                  chunkCurrentPage = p
+                  fetchChunks()
+                }
+              "
+              @update:page-size="
+                (s: number) => {
+                  chunkPageSize = s
+                  chunkCurrentPage = 1
+                  fetchChunks()
+                }
+              "
+            />
+          </div>
         </div>
-      </el-collapse-transition>
-    </section>
+      </div>
+
+      <!-- 右栏：原文预览（sticky 跟随滚动；关闭后经左栏头部「预览」钮召回） -->
+      <div v-if="showOriginalPanel" class="content-sidebar">
+        <div class="sidebar-header">
+          <h4>预览与导出</h4>
+          <el-button text size="small" @click="showOriginalPanel = false">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+        <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
+      </div>
+
+      <!-- 原文 / 解析MD 左右对比 -->
+      <el-dialog
+        v-model="showCompareDialog"
+        @close="showCompareDialog = false"
+        :title="`对比预览：${document?.filename || ''}`"
+        width="95vw"
+        destroy-on-close
+        class="compare-dialog"
+        align-center
+      >
+        <div class="compare-dialog-body">
+          <DocumentCompareView
+            :space-id="spaceId"
+            :kb-id="kbId"
+            :doc-id="docId"
+            :filename="document?.filename || ''"
+            @close="showCompareDialog = false"
+          />
+        </div>
+      </el-dialog>
+    </div>
 
     <!-- 图片预览弹窗 -->
     <el-dialog
@@ -459,14 +473,12 @@
   </div>
 </template>
 
-
 <script setup lang="ts">
 /**
  * 文档详情页。
  *
- * 对应路由 /home/spaces/:id/documents/:docId，顶栏收文件关键信息（元数据/标签/
- * 流程时间线折叠于「详情」），下方左右分栏：左原文预览、右分块列表（密度双态 +
- * 本页搜索）。分块列表（折叠预览 + 展开渲染 Markdown/图片）与右侧原文预览面板。
+ * 对应路由 /home/spaces/:id/documents/:docId，展示文档元信息、解析失败/处理中的节点级
+ * 流程时间线、分块列表（折叠预览 + 展开渲染 Markdown/图片）与右侧原文预览面板。
  * kbId 优先取 query，缺失时先反查归属知识库再加载，失败落「文档不存在」空态。
  */
 
@@ -509,22 +521,9 @@ const previewUrl = ref('')
 // 分块展开/折叠
 const expandedChunks = ref<Record<number, boolean>>({})
 
-const chunksExpanded = ref(false)
-
-// 详细信息折叠区（元数据网格/标签/流程时间线整体收纳，顶栏只留关键统计）
-const infoExpanded = ref(false)
-
-// 分块文本密度：ellipse=3 行省略（默认）/ full=全文平铺（RAGFlow 同款双态）
-const textMode = ref<'full' | 'ellipse'>('ellipse')
-
-// 本页分块搜索（服务端分页：过滤仅作用于当前页）
-const searchText = ref('')
-
-const filteredChunks = computed(() => {
-  const kw = searchText.value.trim().toLowerCase()
-  if (!kw) return chunks.value
-  return chunks.value.filter((c) => (c.content || '').toLowerCase().includes(kw))
-})
+// 原文预览面板
+const showOriginalPanel = ref(true)
+const showCompareDialog = ref(false)
 
 // 节点级时间线 / 错误全文展开
 const timelineExpanded = ref(false)
@@ -819,25 +818,28 @@ function maybeAutoExpandTimeline() {
 
 <style scoped>
 .document-detail-view {
-  display: flex;
-  flex-direction: column;
-  /* 顶栏 + 对比主体占满视口剩余高度；分块折叠区在下方按需展开 */
-  height: calc(100vh - 110px);
-  min-height: 520px;
+  padding-top: var(--space-2);
 }
 
-/* ===== 顶栏 ===== */
+/* ===== Info Section ===== */
 
-.detail-header {
+.info-section {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
-  padding: var(--space-3) var(--space-5);
-  margin-bottom: var(--space-3);
-  flex-shrink: 0;
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
-.header-row {
+.info-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.info-title-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -859,66 +861,27 @@ function maybeAutoExpandTimeline() {
   user-select: none;
 }
 
-.header-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.header-title-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.doc-name {
+.doc-filename {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   font-family: var(--font-display);
+  /* 长文件名单行收敛，悬停 title 看全名 */
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 状态随标题：紧随文件名，不可被压缩 */
 .doc-status-tag {
   flex-shrink: 0;
 }
 
-.stat-chips {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.stat-chip {
-  font-size: var(--text-xs);
-  color: var(--color-text);
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-
-.stat-label {
-  color: var(--color-text-muted);
-  margin-right: 4px;
-}
-
-.header-actions {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
+/* 失败原因独立一行：不再挤在元信息格子里截断 60px，可展开看全文 */
 .error-line {
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
   line-height: 1.6;
@@ -929,13 +892,7 @@ function maybeAutoExpandTimeline() {
   word-break: break-word;
 }
 
-/* ===== 可折叠详细信息 ===== */
-
-.meta-detail {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-light);
-}
+/* ===== Meta grid ===== */
 
 .meta-grid {
   display: grid;
@@ -943,6 +900,7 @@ function maybeAutoExpandTimeline() {
   gap: var(--space-2) var(--space-4);
 }
 
+/* Embedding 这类长值项占两个轨道，避免普通轨道宽度下必然省略号截断 */
 .meta-item:has(.meta-value-long) {
   grid-column: span 2;
 }
@@ -952,6 +910,7 @@ function maybeAutoExpandTimeline() {
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
+  /* 行内 label 随值：label 固定宽对齐成列，值收敛省略 */
 }
 
 .meta-label {
@@ -971,11 +930,13 @@ function maybeAutoExpandTimeline() {
   white-space: nowrap;
 }
 
+/* 解析质量警告：琥珀色警示，title 悬停展开明细 */
 .quality-warnings {
   color: var(--color-warning, #b45309);
   cursor: help;
 }
 
+/* 标签行：展示态 tag 排布 + 行内编辑态控件 */
 .tags-value {
   display: inline-flex;
   align-items: center;
@@ -987,6 +948,8 @@ function maybeAutoExpandTimeline() {
   margin-right: 0;
 }
 
+/* 空态行动按钮：做成「空标签占位 chip」——el-tag 同款尺寸的虚线药丸，
+   读作「这里有个空标签位」而非一块矩形按钮，贴行内语境 */
 .tags-add-btn {
   height: 22px;
   padding: 0 10px;
@@ -1003,6 +966,7 @@ function maybeAutoExpandTimeline() {
   background: transparent;
 }
 
+/* 有标签时的编辑入口：铅笔 icon-only，弱化但可发现（hover 浮现主色） */
 .tags-edit-btn {
   padding: 2px 4px;
   color: var(--color-text-muted);
@@ -1016,6 +980,7 @@ function maybeAutoExpandTimeline() {
   min-width: 260px;
 }
 
+/* 已纳入 Wiki 反向条：主色链接，超出 3 页显示等 N 页 */
 .wiki-refs-value {
   display: inline-flex;
   align-items: center;
@@ -1037,6 +1002,8 @@ function maybeAutoExpandTimeline() {
   color: var(--color-text-muted);
 }
 
+/* ===== Pipeline Timeline Section ===== */
+
 .pipeline-timeline-section {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
@@ -1054,7 +1021,7 @@ function maybeAutoExpandTimeline() {
 
 .timeline-header h4 {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
@@ -1068,95 +1035,62 @@ function maybeAutoExpandTimeline() {
   transform: rotate(90deg);
 }
 
-/* ===== 主对比视图 ===== */
+/* ===== Content Layout ===== */
 
-.compare-main {
+.content-layout {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.content-main {
   flex: 1;
-  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
+  gap: var(--space-4);
 }
 
-.compare-main > * {
+.compare-dialog-body {
+  height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.compare-dialog-body > * {
   flex: 1;
   min-height: 0;
 }
 
-/* ===== 分块折叠区 ===== */
-
-.chunks-fold-section {
-  margin-top: var(--space-3);
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
+.content-sidebar {
+  width: 360px;
   flex-shrink: 0;
-  overflow: hidden;
+  /* 侧栏 sticky 跟随：长分块列表滚动时预览/导出始终在视口内 */
+  position: sticky;
+  top: var(--space-4);
 }
 
-.chunks-fold-header {
+.sidebar-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  cursor: pointer;
-  user-select: none;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
 }
 
-.chunks-fold-header:hover {
-  background: var(--color-bg-hover);
-}
-
-.chunks-fold-header h4 {
+.sidebar-header h4 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
-.chunks-fold-chevron {
-  color: var(--color-text-muted);
-  transition: transform var(--transition-fast);
-}
-
-.chunks-fold-chevron.is-expanded {
-  transform: rotate(90deg);
-}
-
-.chunks-fold-body {
-  padding: 0 var(--space-5) var(--space-4);
-  /* 展开也不吞掉对比主体：限高内部滚动 */
-  max-height: 45vh;
-  overflow-y: auto;
-}
-
-/* ===== 分块区内部（沿用既有卡片/工具栏样式口径） ===== */
+/* ===== Chunks Section ===== */
 
 .chunks-section {
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-
-.chunks-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.chunk-search {
-  width: 220px;
-}
-
-.chunk-count {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  margin-left: auto;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
 }
 
 .section-header {
@@ -1164,7 +1098,7 @@ function maybeAutoExpandTimeline() {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .section-header h4 {
@@ -1172,17 +1106,67 @@ function maybeAutoExpandTimeline() {
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
+  font-family: var(--font-display);
 }
 
 .section-header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
 }
 
 .section-action-icon {
   margin-right: var(--space-1);
+}
+
+/* ===== Narrative Section（视频叙事文档） ===== */
+
+.narrative-desc {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.narrative-overview {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text);
+}
+
+.narrative-chapter {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.chapter-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.chapter-summary {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.narrative-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.chunk-count {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .chunks-list {
@@ -1195,16 +1179,13 @@ function maybeAutoExpandTimeline() {
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
-  transition: border-color var(--transition-fast);
-}
-
-.chunk-card:hover {
-  border-color: var(--color-border);
+  padding: var(--space-4);
+  transition: all var(--transition-fast);
 }
 
 .chunk-card.chunk-expanded {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary-muted);
 }
 
 .chunk-header {
@@ -1249,12 +1230,13 @@ function maybeAutoExpandTimeline() {
 
 .chunk-preview {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.6;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   padding-top: var(--space-2);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .meta-tag {
@@ -1276,6 +1258,7 @@ function maybeAutoExpandTimeline() {
   font-weight: var(--weight-medium);
 }
 
+/* 父子分块角色徽标：父块=回带容器（无向量不召回），子块=检索单元 */
 .meta-tag.chunk-role-tag.parent {
   color: var(--color-warning);
   background: var(--color-warning-subtle);
@@ -1304,12 +1287,14 @@ function maybeAutoExpandTimeline() {
   background: var(--color-bg-hover);
   padding: var(--space-3);
   border-radius: var(--radius-md);
+  /* 320px 视口可读高度下限；纯文本超长滚动，Markdown 图片类不受 max-height 限制自然撑开 */
   max-height: 420px;
   overflow-y: auto;
   border: 1px solid var(--color-border-light);
   margin-top: var(--space-3);
 }
 
+/* Markdown 渲染的展开态不做内部滚动（图片/表格在受限内滚区里体验差），交给页面滚动 */
 .chunk-content :deep(.markdown-body) {
   font-family: var(--font-body);
   white-space: normal;
@@ -1321,8 +1306,14 @@ function maybeAutoExpandTimeline() {
   border-radius: var(--radius-md);
   object-fit: contain;
   cursor: pointer;
+  transition: opacity var(--transition-fast);
 }
 
+.chunk-image:hover {
+  opacity: 0.9;
+}
+
+/* 视频帧图缩略图条：规格同 SearchView .result-frames（16:9 缩略图），置于帧描述正文之上 */
 .chunk-frames {
   display: flex;
   flex-wrap: wrap;
@@ -1367,47 +1358,50 @@ function maybeAutoExpandTimeline() {
   margin-top: var(--space-4);
 }
 
-/* ===== 叙事文档（视频） ===== */
+/* ===== Responsive ===== */
 
-.narrative-desc {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+@media (max-width: 1100px) {
+  .content-layout {
+    flex-direction: column;
+  }
+
+  .content-sidebar {
+    width: 100%;
+    /* 纵向堆叠后不再 sticky（会遮住内容尾部） */
+    position: static;
+  }
 }
 
-.narrative-overview {
-  margin: 0 0 var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--color-text);
+@media (max-width: 640px) {
+  .info-section,
+  .chunks-section {
+    padding: var(--space-4);
+  }
+
+  /* 标题行降级：徽章 + 名字换行，状态标签随行 */
+  .info-title-row {
+    flex-wrap: wrap;
+  }
+
+  .doc-filename {
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  .meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Embedding 这类长值在 2 列网格里放不下，单独占满整行 */
+  .meta-item:has(.meta-value-long) {
+    grid-column: 1 / -1;
+  }
 }
 
-.narrative-chapter {
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--color-border-light);
+@media (max-width: 480px) {
+  /* 极窄视口 2 列放不下值（"2.6 KB" 都被截断），降单列保读性 */
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
 }
-
-.chapter-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-}
-
-.chapter-summary {
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--color-text-secondary);
-}
-
-.narrative-error {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-}
-
 </style>
