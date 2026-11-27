@@ -279,6 +279,10 @@
                 <el-icon class="section-action-icon"><View /></el-icon>
                 预览
               </el-button>
+              <el-button text size="small" @click="showCompareDialog = true">
+                <el-icon class="section-action-icon"><CopyDocument /></el-icon>
+                对比预览
+              </el-button>
               <span class="chunk-count">{{ totalChunks }} 个分块</span>
             </div>
           </div>
@@ -430,6 +434,26 @@
         </div>
         <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
       </div>
+
+      <!-- 原文 / 解析MD 左右对比 -->
+      <el-dialog
+        v-model="showCompareDialog"
+        :title="`对比预览：${document?.filename || ''}`"
+        width="95vw"
+        destroy-on-close
+        class="compare-dialog"
+        align-center
+      >
+        <div class="compare-dialog-body">
+          <DocumentCompareView
+            :space-id="spaceId"
+            :kb-id="kbId"
+            :doc-id="docId"
+            :filename="document?.filename || ''"
+            @close="showCompareDialog = false"
+          />
+        </div>
+      </el-dialog>
     </div>
 
     <!-- 图片预览弹窗 -->
@@ -460,12 +484,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, ArrowRight, View, Edit, Plus } from '@element-plus/icons-vue'
+import { Close, ArrowRight, View, Edit, Plus, CopyDocument } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
+import DocumentCompareView from '@/components/knowledge/DocumentCompareView.vue'
 import { TaskNodeLogTable } from '@/components/knowledge'
 import type { DocumentDetail, Chunk, DocumentTaskItem, VideoNarrativeResponse } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
@@ -497,6 +522,7 @@ const expandedChunks = ref<Record<number, boolean>>({})
 
 // 原文预览面板
 const showOriginalPanel = ref(true)
+const showCompareDialog = ref(false)
 
 // 节点级时间线 / 错误全文展开
 const timelineExpanded = ref(false)
@@ -1022,6 +1048,17 @@ function maybeAutoExpandTimeline() {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.compare-dialog-body {
+  height: 78vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.compare-dialog-body > * {
+  flex: 1;
+  min-height: 0;
 }
 
 .content-sidebar {

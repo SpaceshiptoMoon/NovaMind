@@ -10,6 +10,7 @@ import type {
   DocumentTaskListResponse,
   DocumentTaskItemListResponse,
   DocumentFramesResponse,
+  DocumentPagesResponse,
   ChunkPositionResponse,
   VideoNarrativeResponse,
   VideoNarrativeTriggerResponse,
@@ -256,6 +257,13 @@ export const documentApi = {
     )
   },
 
+  /** 获取 VLM 转写页图预签名 URL 清单（无页图返回空列表） */
+  getDocumentPages(spaceId: number, kbId: number, docId: number) {
+    return request.get<DocumentPagesResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/pages`,
+    )
+  },
+
   /** 获取文档原始文件预览 Blob URL（带认证） */
   async getDocumentPreviewBlobUrl(spaceId: number, kbId: number, docId: number): Promise<string> {
     const blob = await request.download(
@@ -341,3 +349,4 @@ export const documentApi = {
     )
   },
 }
+

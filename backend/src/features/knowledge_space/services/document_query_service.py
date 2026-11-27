@@ -688,6 +688,57 @@ class DocumentQueryService:
                 return None
             raise
 
+    async def get_document_pages(self, document_id: int) -> dict:
+        """获取 VLM 转写线页图的预签名 URL 清单。
+
+        读取 document.storage["pages"]（逐页 {page, object_name} 清单，见
+        _upload_vlm_page_images），为每页生成预签名 URL。非 VLM 线文档
+        （deepdoc/external_ocr）或无页图数据时返回空列表——前端据此走
+        PDF 现场渲染分支。
+
+        Args:
+            document_id: 文档 ID
+
+        Returns:
+            {"pages": [{"page": 1, "url": "..."}, ...], "total": N}
+        """
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            return {"pages": [], "total": 0}
+
+        storage_info = document.get_storage_info()
+        page_records = storage_info.get("pages") or []
+        if not page_records:
+            return {"pages": [], "total": 0}
+
+        try:
+            # 先按页号排序再换签：页图顺序确定，前端按清单序即页序
+            page_records = sorted(
+                (r for r in page_records if (r or {}).get("object_name") and (r or {}).get("page")),
+                key=lambda r: int(r["page"]),
+            )
+            pages = []
+            for record in page_records:
+                object_name = (record or {}).get("object_name")
+                page_number = (record or {}).get("page")
+                if not object_name or not page_number:
+                    continue
+                url = await presigned_get_url(
+                    self.minio_client,
+                    self.minio_client.default_bucket,
+                    object_name,
+                    3600,
+                )
+                pages.append({"page": int(page_number), "url": url})
+            pages.sort(key=lambda item: item["page"])
+            return {"pages": pages, "total": len(pages)}
+        except Exception:
+            self.logger.warning(
+                "VLM 页图预签名 URL 生成失败",
+                document_id=document_id,
+            )
+            return {"pages": [], "total": 0}
+
     async def get_document_frames(self, document_id: int) -> dict:
         """获取文档视频帧预签名 URL 列表。
 

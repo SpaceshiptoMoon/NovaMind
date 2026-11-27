@@ -1394,6 +1394,34 @@ async def download_document_parsed_text(
 
 
 @router.get(
+    "/{kb_id}/documents/{document_id}/pages",
+    summary="获取 VLM 转写页图清单",
+    description=(
+        "返回 VLM 转写线产出的页图预签名 URL 清单（逐页 JPEG）。仅 VLM/PPT "
+        "转写线文档有效；deepdoc/external_ocr 文档无页图，返回空列表——前端"
+        "据此改走 PDF 现场渲染。"
+    ),
+)
+async def get_document_pages(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 VLM 转写页图预签名 URL 清单"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    result = await document_query_service.get_document_pages(document_id)
+    return result
+
+
+@router.get(
     "/{kb_id}/documents/{document_id}/frames",
     summary="获取文档视频帧",
     description="返回文档的视频帧预签名 URL 列表。仅视频文档有效，其他类型返回空列表。",

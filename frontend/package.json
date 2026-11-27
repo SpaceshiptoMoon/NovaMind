@@ -26,6 +26,7 @@
     "marked": "^17.0.5",
     "pinia": "^3.0.4",
     "vue": "^3.5.31",
+    "vue-pdf-embed": "^2.1.7",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {
