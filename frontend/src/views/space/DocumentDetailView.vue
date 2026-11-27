@@ -1,6 +1,6 @@
 <template>
   <div v-loading="loading" class="document-detail-view">
-    <!-- 顶栏：类型徽标 + 文件名 + 状态 + 关键统计 + 操作（元数据/标签/流程时间线收进可折叠详情） -->
+    <!-- 顶栏：类型徽标 + 文件名 + 状态 + 关键统计 + 详情折叠 -->
     <header class="detail-header">
       <div class="header-row">
         <div
@@ -27,7 +27,6 @@
               {{ currentStatusConfig.text }}
             </el-tag>
           </div>
-          <!-- 关键统计 chips：只留最常看的数字，其余收进折叠详情 -->
           <div v-if="document" class="stat-chips">
             <span class="stat-chip">
               <span class="stat-label">大小</span>{{ formatFileSize(document.file_size || 0) }}
@@ -50,10 +49,6 @@
           </div>
         </div>
         <div class="header-actions">
-          <el-button size="small" @click="showCompareDialog = true">
-            <el-icon class="section-action-icon"><CopyDocument /></el-icon>
-            对比预览
-          </el-button>
           <el-tooltip content="详细信息（元数据 / 标签 / 流程时间线）" placement="top">
             <el-button
               size="small"
@@ -66,7 +61,6 @@
         </div>
       </div>
 
-      <!-- 失败原因独立一行：可展开看全文 -->
       <p
         v-if="latestTask?.error_message && docStatus !== 2"
         class="error-line"
@@ -143,7 +137,6 @@
               <span class="meta-label">解析质量</span>
               <span class="meta-value">无警告</span>
             </div>
-            <!-- 已纳入 Wiki 反向条：读完原文一步跳到 AI 综合页 -->
             <div v-if="wikiRefs.length > 0" class="meta-item">
               <span class="meta-label">Wiki</span>
               <span class="meta-value wiki-refs-value">
@@ -160,7 +153,6 @@
                 </span>
               </span>
             </div>
-            <!-- 用户自定义标签：行内编辑 -->
             <div class="meta-item">
               <span class="meta-label">标签</span>
               <span v-if="!tagsEditing" class="meta-value tags-value">
@@ -228,250 +220,228 @@
       </el-collapse-transition>
     </header>
 
-    <!-- 左右分栏：左原文预览 / 右分块（可拖拽调宽） -->
-    <el-splitter class="detail-split">
-      <el-splitter-panel size="38" min="20" max="65" class="pane pane-preview">
-        <div class="pane-header">
-          <h4>原文预览</h4>
-        </div>
-        <DocumentOriginalPreview :space-id="spaceId" :kb-id="kbId" :document="document" />
-      </el-splitter-panel>
+    <!-- 主对比视图：左原文 / 右解析 md（页面主体，占满剩余高度） -->
+    <div class="compare-main">
+      <DocumentCompareView
+        :space-id="spaceId"
+        :kb-id="kbId"
+        :doc-id="docId"
+        :filename="document?.filename || ''"
+      />
+    </div>
 
-      <el-splitter-panel size="62" min="35" class="pane pane-chunks">
-        <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
-        <div v-if="isVideoDoc" class="narrative-section chunks-section">
-          <div class="section-header">
-            <h4>叙事文档</h4>
-            <div class="section-header-right">
-              <el-tag :type="narrativeTagType" effect="plain" size="small">
-                {{ narrativeStatusText }}
-              </el-tag>
-              <el-button
-                v-if="narrativeStatus === 'completed'"
-                text
-                size="small"
-                @click="narrativeExpanded = !narrativeExpanded"
-              >
-                <el-icon class="section-action-icon"><View /></el-icon>
-                {{ narrativeExpanded ? '收起' : '查看章节' }}
-              </el-button>
-              <el-button
-                text
-                size="small"
-                :loading="narrativeGenerating"
-                @click="handleGenerateNarrative"
-              >
-                {{ narrativeStatus === 'completed' ? '重新生成' : '生成章节文档' }}
-              </el-button>
-            </div>
-          </div>
-          <p class="narrative-desc">
-            用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 +
-            章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
-          </p>
-          <div v-if="narrativeStatus === 'completed' && narrativeExpanded" class="narrative-body">
-            <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
-            <div v-for="(ch, i) in narrative?.chapters ?? []" :key="i" class="narrative-chapter">
-              <div class="chapter-title">
-                <span class="chapter-index-badge">{{ i + 1 }}</span>
-                <strong>{{ ch.title }}</strong>
-                <span v-if="ch.start_time != null" class="meta-tag time-tag">
-                  {{ formatDuration(ch.start_time) }}
-                  -
-                  {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
-                </span>
-              </div>
-              <p class="chapter-summary">{{ ch.summary }}</p>
-            </div>
-          </div>
-          <p v-if="narrativeStatus === 'failed'" class="narrative-error">
-            {{ narrative?.error_message || '合成失败，可重试' }}
-          </p>
-        </div>
-
-        <!-- 分块列表 -->
-        <div class="chunks-section">
-          <div class="chunks-toolbar">
-            <el-input
-              v-model="searchText"
-              placeholder="搜索本页分块内容"
-              clearable
-              size="small"
-              class="chunk-search"
-            />
-            <el-radio-group v-model="textMode" size="small">
-              <el-radio-button value="ellipse">省略</el-radio-button>
-              <el-radio-button value="full">全文</el-radio-button>
-            </el-radio-group>
-            <span class="chunk-count">{{ totalChunks }} 个分块</span>
-            <div class="toolbar-right">
-              <el-button size="small" @click="showCompareDialog = true">
-                <el-icon class="section-action-icon"><CopyDocument /></el-icon>
-                对比预览
-              </el-button>
-            </div>
-          </div>
-
-          <!-- 无分块空态：未处理/解析失败时不再整块消失，给出明确的下一步引导 -->
-          <EmptyState
-            v-if="totalChunks === 0 && !loading"
-            variant="data"
-            headline="暂无分块"
-            :description="emptyChunkDescription"
-          >
-            <el-button @click="router.back()">返回文档列表</el-button>
-          </EmptyState>
-
-          <div v-if="filteredChunks.length > 0" class="chunks-list">
-            <div
-              v-for="chunk in filteredChunks"
-              :key="chunk.chunk_id"
-              class="chunk-card"
-              :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
-            >
-              <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
-                <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
-                <div class="chunk-meta">
-                  <span
-                    v-if="chunkMetaOf(chunk).chunk_role === 'parent'"
-                    class="meta-tag chunk-role-tag parent"
-                    >父块</span
-                  >
-                  <span
-                    v-else-if="chunkMetaOf(chunk).chunk_role === 'child'"
-                    class="meta-tag chunk-role-tag child"
-                    >子块</span
-                  >
-                  <span
-                    v-if="chunk.chunk_type && chunk.chunk_type !== 'text'"
-                    class="meta-tag chunk-type-tag"
-                    >{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span
-                  >
-                  <span v-if="chunkMetaOf(chunk).page" class="meta-tag"
-                    >第 {{ chunkMetaOf(chunk).page }} 页</span
-                  >
-                  <span v-if="chunkMetaOf(chunk).section_title" class="meta-tag">{{
-                    chunkMetaOf(chunk).section_title
-                  }}</span>
-                  <span v-if="chunkMetaOf(chunk).start_time != null" class="meta-tag time-tag">
-                    {{ formatDuration(chunkMetaOf(chunk).start_time as number) }}
-                    -
-                    {{ formatDuration(chunkMetaOf(chunk).end_time as number) }}
-                  </span>
-                  <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
-                </div>
-                <el-icon
-                  class="chunk-toggle"
-                  :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }"
-                >
-                  <ArrowRight />
-                </el-icon>
-              </div>
-              <!-- 折叠态：省略模式 3 行钳制 / 全文模式平铺（限高滚动） -->
-              <div
-                v-if="!expandedChunks[chunk.chunk_index]"
-                class="chunk-preview"
-                :class="{ 'is-full': textMode === 'full' }"
-                @click="toggleChunk(chunk.chunk_index)"
-              >
-                <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
-                <template v-else-if="textMode === 'full'">{{ chunk.content }}</template>
-                <template v-else>{{ truncateContent(chunk.content, 160) }}</template>
-              </div>
-              <!-- 展开态：完整内容（Markdown 渲染：figure 图片 + TSR 表格 HTML 可视化） -->
-              <template v-else>
-                <div class="chunk-content">
-                  <template v-if="chunk.chunk_type === 'image'">
-                    <img
-                      v-if="chunk.media_url || chunk.image_url"
-                      :src="chunk.media_url || chunk.image_url"
-                      :alt="chunk.content"
-                      loading="lazy"
-                      class="chunk-image"
-                      @click="previewImage(chunk)"
-                    />
-                    <div class="chunk-image-desc">{{ chunk.content }}</div>
-                  </template>
-                  <!-- 视频帧图缩略图：后端把 metadata.frame_paths 预签名成 frame_urls（与检索
-                       结果页同约定）；media_url 指向原视频文件，<img> 渲染不了，不能混用。
-                       帧图与正文里的 VLM 描述一一对应，点击放大可翻帧 -->
-                  <template v-else-if="frameThumbsOf(chunk).length">
-                    <div class="chunk-frames">
-                      <el-image
-                        v-for="(url, fi) in frameThumbsOf(chunk)"
-                        :key="fi"
-                        :src="url"
-                        :preview-src-list="frameThumbsOf(chunk)"
-                        :initial-index="fi"
-                        fit="cover"
-                        loading="lazy"
-                        hide-on-click-modal
-                        preview-teleported
-                        class="chunk-frame-thumb"
-                      />
-                    </div>
-                    <MarkdownRenderer v-if="document" :content="chunk.content" />
-                    <template v-else>{{ chunk.content }}</template>
-                  </template>
-                  <!-- content 里的 figure 短文件名已由后端 chunks 端点换成即时预签名 URL -->
-                  <MarkdownRenderer v-else-if="document" :content="chunk.content" />
-                  <template v-else>{{ chunk.content }}</template>
-                </div>
-                <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-                  <el-tag v-for="q in chunk.questions" :key="q" size="small" effect="plain" round>
-                    {{ q }}
-                  </el-tag>
-                </div>
-              </template>
-            </div>
-          </div>
-
-          <div v-if="totalChunks > 0" class="chunks-pagination">
-            <Pagination
-              :page="chunkCurrentPage"
-              :page-size="chunkPageSize"
-              :total="totalChunks"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next"
-              @update:page="
-                (p: number) => {
-                  chunkCurrentPage = p
-                  fetchChunks()
-                }
-              "
-              @update:page-size="
-                (s: number) => {
-                  chunkPageSize = s
-                  chunkCurrentPage = 1
-                  fetchChunks()
-                }
-              "
-            />
-          </div>
-        </div>
-      </el-splitter-panel>
-    </el-splitter>
-
-    <!-- 原文 / 解析MD 左右对比 -->
-    <el-dialog
-      v-model="showCompareDialog"
-      @close="showCompareDialog = false"
-      :title="`对比预览：${document?.filename || ''}`"
-      width="95vw"
-      destroy-on-close
-      class="compare-dialog"
-      align-center
-    >
-      <div class="compare-dialog-body">
-        <DocumentCompareView
-          :space-id="spaceId"
-          :kb-id="kbId"
-          :doc-id="docId"
-          :filename="document?.filename || ''"
-          @close="showCompareDialog = false"
-        />
+    <!-- 分块列表：默认折叠，需要查看再展开 -->
+    <section class="chunks-fold-section">
+      <div class="chunks-fold-header" @click="chunksExpanded = !chunksExpanded">
+        <el-icon class="chunks-fold-chevron" :class="{ 'is-expanded': chunksExpanded }">
+          <ArrowRight />
+        </el-icon>
+        <h4>分块列表</h4>
+        <span class="chunk-count">{{ totalChunks }} 个分块</span>
       </div>
-    </el-dialog>
+      <el-collapse-transition>
+        <div v-show="chunksExpanded" class="chunks-fold-body">
+          <!-- 叙事文档（视频专属）：章节化连贯文档，与碎片块并存；按需生成 -->
+          <div v-if="isVideoDoc" class="narrative-section chunks-section">
+            <div class="section-header">
+              <h4>叙事文档</h4>
+              <div class="section-header-right">
+                <el-tag :type="narrativeTagType" effect="plain" size="small">
+                  {{ narrativeStatusText }}
+                </el-tag>
+                <el-button
+                  v-if="narrativeStatus === 'completed'"
+                  text
+                  size="small"
+                  @click="narrativeExpanded = !narrativeExpanded"
+                >
+                  <el-icon class="section-action-icon"><View /></el-icon>
+                  {{ narrativeExpanded ? '收起' : '查看章节' }}
+                </el-button>
+                <el-button
+                  text
+                  size="small"
+                  :loading="narrativeGenerating"
+                  @click="handleGenerateNarrative"
+                >
+                  {{ narrativeStatus === 'completed' ? '重新生成' : '生成章节文档' }}
+                </el-button>
+              </div>
+            </div>
+            <p class="narrative-desc">
+              用 LLM 把碎片帧描述合成为章节化连贯叙事（全片梗概 +
+              章节时间轴）；问答命中本视频内容时会自动附带章节摘要。
+            </p>
+            <div v-if="narrativeStatus === 'completed' && narrativeExpanded" class="narrative-body">
+              <p v-if="narrative?.overview" class="narrative-overview">{{ narrative.overview }}</p>
+              <div v-for="(ch, i) in narrative?.chapters ?? []" :key="i" class="narrative-chapter">
+                <div class="chapter-title">
+                  <span class="chapter-index-badge">{{ i + 1 }}</span>
+                  <strong>{{ ch.title }}</strong>
+                  <span v-if="ch.start_time != null" class="meta-tag time-tag">
+                    {{ formatDuration(ch.start_time) }}
+                    -
+                    {{ ch.end_time != null ? formatDuration(ch.end_time) : '末尾' }}
+                  </span>
+                </div>
+                <p class="chapter-summary">{{ ch.summary }}</p>
+              </div>
+            </div>
+            <p v-if="narrativeStatus === 'failed'" class="narrative-error">
+              {{ narrative?.error_message || '合成失败，可重试' }}
+            </p>
+          </div>
+
+          <!-- 分块列表 -->
+          <div class="chunks-section">
+            <div class="chunks-toolbar">
+              <el-input
+                v-model="searchText"
+                placeholder="搜索分块内容"
+                clearable
+                size="small"
+                class="chunk-search"
+              />
+              <el-radio-group v-model="textMode" size="small">
+                <el-radio-button value="ellipse">省略</el-radio-button>
+                <el-radio-button value="full">全文</el-radio-button>
+              </el-radio-group>
+              <span class="chunk-count">{{ totalChunks }} 个分块</span>
+            </div>
+
+            <EmptyState
+              v-if="totalChunks === 0 && !loading"
+              variant="data"
+              headline="暂无分块"
+              :description="emptyChunkDescription"
+            >
+              <el-button @click="router.back()">返回文档列表</el-button>
+            </EmptyState>
+
+            <div v-if="filteredChunks.length > 0" class="chunks-list">
+              <div
+                v-for="chunk in filteredChunks"
+                :key="chunk.chunk_id"
+                class="chunk-card"
+                :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
+              >
+                <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
+                  <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
+                  <div class="chunk-meta">
+                    <span
+                      v-if="chunkMetaOf(chunk).chunk_role === 'parent'"
+                      class="meta-tag chunk-role-tag parent"
+                      >父块</span
+                    >
+                    <span
+                      v-else-if="chunkMetaOf(chunk).chunk_role === 'child'"
+                      class="meta-tag chunk-role-tag child"
+                      >子块</span
+                    >
+                    <span
+                      v-if="chunk.chunk_type && chunk.chunk_type !== 'text'"
+                      class="meta-tag chunk-type-tag"
+                      >{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span
+                    >
+                    <span v-if="chunkMetaOf(chunk).page" class="meta-tag"
+                      >第 {{ chunkMetaOf(chunk).page }} 页</span
+                    >
+                    <span v-if="chunkMetaOf(chunk).section_title" class="meta-tag">{{
+                      chunkMetaOf(chunk).section_title
+                    }}</span>
+                    <span v-if="chunkMetaOf(chunk).start_time != null" class="meta-tag time-tag">
+                      {{ formatDuration(chunkMetaOf(chunk).start_time as number) }}
+                      -
+                      {{ formatDuration(chunkMetaOf(chunk).end_time as number) }}
+                    </span>
+                    <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
+                  </div>
+                  <el-icon
+                    class="chunk-toggle"
+                    :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }"
+                  >
+                    <ArrowRight />
+                  </el-icon>
+                </div>
+                <div
+                  v-if="!expandedChunks[chunk.chunk_index]"
+                  class="chunk-preview"
+                  :class="{ 'is-full': textMode === 'full' }"
+                  @click="toggleChunk(chunk.chunk_index)"
+                >
+                  <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
+                  <template v-else-if="textMode === 'full'">{{ chunk.content }}</template>
+                  <template v-else>{{ truncateContent(chunk.content, 160) }}</template>
+                </div>
+                <template v-else>
+                  <div class="chunk-content">
+                    <template v-if="chunk.chunk_type === 'image'">
+                      <img
+                        v-if="chunk.media_url || chunk.image_url"
+                        :src="chunk.media_url || chunk.image_url"
+                        :alt="chunk.content"
+                        loading="lazy"
+                        class="chunk-image"
+                        @click="previewImage(chunk)"
+                      />
+                      <div class="chunk-image-desc">{{ chunk.content }}</div>
+                    </template>
+                    <template v-else-if="frameThumbsOf(chunk).length">
+                      <div class="chunk-frames">
+                        <el-image
+                          v-for="(url, fi) in frameThumbsOf(chunk)"
+                          :key="fi"
+                          :src="url"
+                          :preview-src-list="frameThumbsOf(chunk)"
+                          :initial-index="fi"
+                          fit="cover"
+                          loading="lazy"
+                          hide-on-click-modal
+                          preview-teleported
+                          class="chunk-frame-thumb"
+                        />
+                      </div>
+                      <MarkdownRenderer v-if="document" :content="chunk.content" />
+                      <template v-else>{{ chunk.content }}</template>
+                    </template>
+                    <MarkdownRenderer v-else-if="document" :content="chunk.content" />
+                    <template v-else>{{ chunk.content }}</template>
+                  </div>
+                  <div v-if="chunk.questions?.length > 0" class="chunk-questions">
+                    <el-tag v-for="q in chunk.questions" :key="q" size="small" effect="plain" round>
+                      {{ q }}
+                    </el-tag>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div v-if="totalChunks > 0" class="chunks-pagination">
+              <Pagination
+                :page="chunkCurrentPage"
+                :page-size="chunkPageSize"
+                :total="totalChunks"
+                :page-sizes="[10, 20, 50, 100]"
+                layout="total, sizes, prev, pager, next"
+                @update:page="
+                  (p: number) => {
+                    chunkCurrentPage = p
+                    fetchChunks()
+                  }
+                "
+                @update:page-size="
+                  (s: number) => {
+                    chunkPageSize = s
+                    chunkCurrentPage = 1
+                    fetchChunks()
+                  }
+                "
+              />
+            </div>
+          </div>
+        </div>
+      </el-collapse-transition>
+    </section>
 
     <!-- 图片预览弹窗 -->
     <el-dialog
@@ -488,6 +458,7 @@
     </el-dialog>
   </div>
 </template>
+
 
 <script setup lang="ts">
 /**
@@ -538,7 +509,7 @@ const previewUrl = ref('')
 // 分块展开/折叠
 const expandedChunks = ref<Record<number, boolean>>({})
 
-const showCompareDialog = ref(false)
+const chunksExpanded = ref(false)
 
 // 详细信息折叠区（元数据网格/标签/流程时间线整体收纳，顶栏只留关键统计）
 const infoExpanded = ref(false)
@@ -850,9 +821,9 @@ function maybeAutoExpandTimeline() {
 .document-detail-view {
   display: flex;
   flex-direction: column;
-  /* 顶栏 + 分栏占满可视高度，分栏内部各自滚动（RAGFlow 同款全屏工作台形态） */
-  height: calc(100vh - 120px);
-  min-height: 480px;
+  /* 顶栏 + 对比主体占满视口剩余高度；分块折叠区在下方按需展开 */
+  height: calc(100vh - 110px);
+  min-height: 520px;
 }
 
 /* ===== 顶栏 ===== */
@@ -918,7 +889,6 @@ function maybeAutoExpandTimeline() {
   flex-shrink: 0;
 }
 
-/* 关键统计 chips：行内 label 随值的紧凑药丸 */
 .stat-chips {
   display: flex;
   align-items: center;
@@ -944,13 +914,9 @@ function maybeAutoExpandTimeline() {
 
 .header-actions {
   margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   flex-shrink: 0;
 }
 
-/* 失败原因独立一行：可展开看全文 */
 .error-line {
   margin: var(--space-2) 0 0;
   padding: var(--space-2) var(--space-3);
@@ -963,7 +929,7 @@ function maybeAutoExpandTimeline() {
   word-break: break-word;
 }
 
-/* ===== 可折叠详细信息（原 meta-grid + 标签 + Wiki + 流程时间线） ===== */
+/* ===== 可折叠详细信息 ===== */
 
 .meta-detail {
   margin-top: var(--space-3);
@@ -1102,37 +1068,72 @@ function maybeAutoExpandTimeline() {
   transform: rotate(90deg);
 }
 
-/* ===== 左右分栏 ===== */
+/* ===== 主对比视图 ===== */
 
-.detail-split {
+.compare-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.compare-main > * {
   flex: 1;
   min-height: 0;
 }
 
-.pane {
-  height: 100%;
-  overflow-y: auto;
-  padding: var(--space-4);
-}
+/* ===== 分块折叠区 ===== */
 
-.pane-preview {
+.chunks-fold-section {
+  margin-top: var(--space-3);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
-.pane-header {
-  margin-bottom: var(--space-3);
+.chunks-fold-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  user-select: none;
 }
 
-.pane-header h4 {
+.chunks-fold-header:hover {
+  background: var(--color-bg-hover);
+}
+
+.chunks-fold-header h4 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
-/* ===== 分块区 ===== */
+.chunks-fold-chevron {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.chunks-fold-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
+.chunks-fold-body {
+  padding: 0 var(--space-5) var(--space-4);
+  /* 展开也不吞掉对比主体：限高内部滚动 */
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+/* ===== 分块区内部（沿用既有卡片/工具栏样式口径） ===== */
 
 .chunks-section {
   background: transparent;
@@ -1140,18 +1141,11 @@ function maybeAutoExpandTimeline() {
   padding: 0;
 }
 
-/* chunks 工具栏：sticky 跟随滚动（搜索/密度切换/计数常驻） */
 .chunks-toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--color-bg-page, transparent);
-  padding: var(--space-2) 0;
   margin-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border-light);
 }
 
 .chunk-search {
@@ -1163,12 +1157,6 @@ function maybeAutoExpandTimeline() {
   color: var(--color-text-muted);
   white-space: nowrap;
   margin-left: auto;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .section-header {
@@ -1195,6 +1183,188 @@ function maybeAutoExpandTimeline() {
 
 .section-action-icon {
   margin-right: var(--space-1);
+}
+
+.chunks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chunk-card {
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  transition: border-color var(--transition-fast);
+}
+
+.chunk-card:hover {
+  border-color: var(--color-border);
+}
+
+.chunk-card.chunk-expanded {
+  border-color: var(--color-primary);
+}
+
+.chunk-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.chunk-index-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
+}
+
+.chunk-meta {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.chunk-toggle {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chunk-toggle.is-expanded {
+  transform: rotate(90deg);
+}
+
+.chunk-preview {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  cursor: pointer;
+  padding-top: var(--space-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meta-tag {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-hover);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.meta-tag.embedded {
+  color: var(--color-success);
+  background: var(--color-success-subtle);
+}
+
+.meta-tag.chunk-type-tag {
+  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  font-weight: var(--weight-medium);
+}
+
+.meta-tag.chunk-role-tag.parent {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+  font-weight: var(--weight-medium);
+}
+
+.meta-tag.chunk-role-tag.child {
+  color: var(--color-info);
+  background: var(--color-info-subtle);
+  font-weight: var(--weight-medium);
+}
+
+.meta-tag.time-tag {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  font-family: var(--font-mono);
+}
+
+.chunk-content {
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--color-bg-hover);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-light);
+  margin-top: var(--space-3);
+}
+
+.chunk-content :deep(.markdown-body) {
+  font-family: var(--font-body);
+  white-space: normal;
+}
+
+.chunk-image {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.chunk-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.chunk-frame-thumb {
+  width: 120px;
+  height: 68px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+  cursor: zoom-in;
+}
+
+.chunk-image-desc {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.image-preview-dialog :deep(.el-dialog__body) {
+  padding: 0;
+}
+
+.chunk-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.chunks-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-4);
 }
 
 /* ===== 叙事文档（视频） ===== */
@@ -1240,227 +1410,4 @@ function maybeAutoExpandTimeline() {
   color: var(--color-danger);
 }
 
-/* ===== 分块卡片（RAGFlow 风格重绘） ===== */
-
-.chunks-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.chunk-card {
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
-}
-
-.chunk-card:hover {
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
-}
-
-.chunk-card.chunk-expanded {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary-muted);
-  background: var(--color-bg-card-elevated);
-}
-
-.chunk-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  cursor: pointer;
-}
-
-.chunk-index-badge {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-full);
-  background: var(--color-primary-subtle);
-  color: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  flex-shrink: 0;
-}
-
-.chunk-meta {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.chunk-toggle {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  transition: transform var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.chunk-toggle.is-expanded {
-  transform: rotate(90deg);
-}
-
-/* 折叠态预览：省略模式 3 行钳制；全文模式平铺限高滚动 */
-.chunk-preview {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-  cursor: pointer;
-  padding-top: var(--space-2);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.chunk-preview.is-full {
-  display: block;
-  -webkit-line-clamp: unset;
-  max-height: 420px;
-  overflow-y: auto;
-  font-family: var(--font-mono);
-}
-
-.meta-tag {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  background: var(--color-bg-hover);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-}
-
-.meta-tag.embedded {
-  color: var(--color-success);
-  background: var(--color-success-subtle);
-}
-
-.meta-tag.chunk-type-tag {
-  color: var(--color-primary);
-  background: var(--color-primary-subtle);
-  font-weight: var(--weight-medium);
-}
-
-/* 父子分块角色徽标：父块=回带容器（无向量不召回），子块=检索单元 */
-.meta-tag.chunk-role-tag.parent {
-  color: var(--color-warning);
-  background: var(--color-warning-subtle);
-  font-weight: var(--weight-medium);
-}
-
-.meta-tag.chunk-role-tag.child {
-  color: var(--color-info);
-  background: var(--color-info-subtle);
-  font-weight: var(--weight-medium);
-}
-
-.meta-tag.time-tag {
-  color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
-  font-family: var(--font-mono);
-}
-
-.chunk-content {
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--color-text);
-  font-family: var(--font-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--color-bg-hover);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  /* 320px 视口可读高度下限；纯文本超长滚动，Markdown 图片类不受 max-height 限制自然撑开 */
-  max-height: 420px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border-light);
-  margin-top: var(--space-3);
-}
-
-/* Markdown 渲染的展开态不做内部滚动（图片/表格在受限内滚区里体验差），交给页面滚动 */
-.chunk-content :deep(.markdown-body) {
-  font-family: var(--font-body);
-  white-space: normal;
-}
-
-.chunk-image {
-  max-width: 100%;
-  max-height: 400px;
-  border-radius: var(--radius-md);
-  object-fit: contain;
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-
-.chunk-image:hover {
-  opacity: 0.9;
-}
-
-/* 视频帧图缩略图条：规格同 SearchView .result-frames（16:9 缩略图），置于帧描述正文之上 */
-.chunk-frames {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.chunk-frame-thumb {
-  width: 120px;
-  height: 68px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
-  cursor: zoom-in;
-}
-
-.chunk-image-desc {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--color-text-secondary);
-  font-family: var(--font-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.image-preview-dialog :deep(.el-dialog__body) {
-  padding: 0;
-}
-
-.chunk-questions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-light);
-}
-
-.chunks-pagination {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--space-4);
-}
-
-/* ===== 对比预览对话框 ===== */
-
-.compare-dialog-body {
-  height: 78vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.compare-dialog-body > * {
-  flex: 1;
-  min-height: 0;
-}
 </style>
